@@ -1,4 +1,4 @@
-package main
+package tui
 
 import (
 	"fmt"
@@ -17,10 +17,7 @@ var (
 
 // View renders the conversation history, streaming buffer, status line,
 // and input prompt.
-func (m *Model) View() string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+func (m model) View() string {
 	var b strings.Builder
 
 	// Render conversation history.
