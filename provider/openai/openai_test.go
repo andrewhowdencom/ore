@@ -223,6 +223,46 @@ func TestProviderInvoke_CustomClient(t *testing.T) {
 	assert.ErrorIs(t, err, wantErr)
 }
 
+func TestProviderInvoke_WithReasoning(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponse(200, `{"choices":[{"message":{"role":"assistant","content":"Hello, world!","reasoning_content":"Let me analyze this..."}}]}`),
+	}
+
+	p := New("test-key", "o3-mini", WithHTTPClient(mockClient(transport)))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	artifacts, err := p.Invoke(t.Context(), mem)
+	require.NoError(t, err)
+	require.Len(t, artifacts, 2)
+
+	text, ok := artifacts[0].(artifact.Text)
+	require.True(t, ok, "expected artifact.Text, got %T", artifacts[0])
+	assert.Equal(t, "Hello, world!", text.Content)
+
+	reasoning, ok := artifacts[1].(artifact.Reasoning)
+	require.True(t, ok, "expected artifact.Reasoning, got %T", artifacts[1])
+	assert.Equal(t, "Let me analyze this...", reasoning.Content)
+}
+
+func TestProviderInvoke_EmptyReasoning(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponse(200, `{"choices":[{"message":{"role":"assistant","content":"Hello, world!","reasoning_content":""}}]}`),
+	}
+
+	p := New("test-key", "o3-mini", WithHTTPClient(mockClient(transport)))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	artifacts, err := p.Invoke(t.Context(), mem)
+	require.NoError(t, err)
+	require.Len(t, artifacts, 1)
+
+	text, ok := artifacts[0].(artifact.Text)
+	require.True(t, ok, "expected artifact.Text, got %T", artifacts[0])
+	assert.Equal(t, "Hello, world!", text.Content)
+}
+
 func TestProviderInvoke_RoleMapping(t *testing.T) {
 	transport := &mockTransport{
 		response: mockResponse(200, `{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`),

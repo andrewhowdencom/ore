@@ -32,3 +32,11 @@ type Image struct {
 
 // Kind returns the artifact kind identifier.
 func (i Image) Kind() string { return "image" }
+
+// Reasoning represents a reasoning or thinking content artifact.
+type Reasoning struct {
+	Content string
+}
+
+// Kind returns the artifact kind identifier.
+func (r Reasoning) Kind() string { return "reasoning" }

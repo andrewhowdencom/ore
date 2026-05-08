@@ -4,6 +4,7 @@ package openai
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/andrewhowdencom/tack/artifact"
@@ -117,7 +118,17 @@ func (p *Provider) Invoke(ctx context.Context, s state.State) ([]artifact.Artifa
 		return nil, fmt.Errorf("no choices in response")
 	}
 
-	return []artifact.Artifact{
-		artifact.Text{Content: resp.Choices[0].Message.Content},
-	}, nil
+	msg := resp.Choices[0].Message
+	artifacts := []artifact.Artifact{
+		artifact.Text{Content: msg.Content},
+	}
+
+	if field, ok := msg.JSON.ExtraFields["reasoning_content"]; ok {
+		var reasoning string
+		if err := json.Unmarshal([]byte(field.Raw()), &reasoning); err == nil && reasoning != "" {
+			artifacts = append(artifacts, artifact.Reasoning{Content: reasoning})
+		}
+	}
+
+	return artifacts, nil
 }
