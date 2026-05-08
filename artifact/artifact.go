@@ -40,3 +40,28 @@ type Reasoning struct {
 
 // Kind returns the artifact kind identifier.
 func (r Reasoning) Kind() string { return "reasoning" }
+
+// TextDelta represents a partial chunk of text content for streaming.
+type TextDelta struct {
+	Content string
+}
+
+// Kind returns the artifact kind identifier.
+func (t TextDelta) Kind() string { return "text_delta" }
+
+// ReasoningDelta represents a partial chunk of reasoning content for streaming.
+type ReasoningDelta struct {
+	Content string
+}
+
+// Kind returns the artifact kind identifier.
+func (r ReasoningDelta) Kind() string { return "reasoning_delta" }
+
+// ToolCallDelta represents a partial chunk of a tool invocation for streaming.
+type ToolCallDelta struct {
+	Name      string
+	Arguments string
+}
+
+// Kind returns the artifact kind identifier.
+func (t ToolCallDelta) Kind() string { return "tool_call_delta" }

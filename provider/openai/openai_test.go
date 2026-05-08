@@ -294,3 +294,57 @@ func TestProviderInvoke_RoleMapping(t *testing.T) {
 		assert.Equal(t, want, msg["role"])
 	}
 }
+
+func TestProviderInvokeStreaming_Success(t *testing.T) {
+	sseBody := "data: {\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\",\"created\":1693583820,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello\"},\"finish_reason\":null}]}\n\n" +
+		"data: {\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\",\"created\":1693583820,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" world\"},\"finish_reason\":null}]}\n\n" +
+		"data: [DONE]\n\n"
+
+	resp := &http.Response{
+		StatusCode: 200,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(sseBody)),
+	}
+
+	transport := &mockTransport{response: resp}
+	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	artifacts, err := p.InvokeStreaming(t.Context(), mem, ch)
+	require.NoError(t, err)
+
+	// Verify deltas were emitted.
+	require.Len(t, ch, 2)
+	d1 := <-ch
+	assert.Equal(t, "text_delta", d1.Kind())
+	assert.Equal(t, "Hello", d1.(artifact.TextDelta).Content)
+	d2 := <-ch
+	assert.Equal(t, "text_delta", d2.Kind())
+	assert.Equal(t, " world", d2.(artifact.TextDelta).Content)
+
+	// Verify complete artifact.
+	require.Len(t, artifacts, 1)
+	text, ok := artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "Hello world", text.Content)
+}
+
+func TestProviderInvokeStreaming_NilChannel(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponse(200, `{"choices":[{"message":{"role":"assistant","content":"Hello!"}}]}`),
+	}
+
+	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	// Passing nil channel should fall back to non-streaming Invoke.
+	artifacts, err := p.InvokeStreaming(t.Context(), mem, nil)
+	require.NoError(t, err)
+	require.Len(t, artifacts, 1)
+	text, ok := artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "Hello!", text.Content)
+}
