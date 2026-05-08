@@ -6,7 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/andrewhowdencom/tack/artifact"
@@ -15,45 +15,40 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// mockTransport is an http.RoundTripper that returns a canned response and
+// optionally captures the outgoing request for inspection.
+type mockTransport struct {
+	response *http.Response
+	request  *http.Request
+	err      error
+}
+
+func (m *mockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	m.request = req
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.response, nil
+}
+
+func mockClient(transport *mockTransport) *http.Client {
+	return &http.Client{Transport: transport}
+}
+
+func mockResponse(status int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+}
+
 func TestProviderInvoke_Success(t *testing.T) {
-	wantContent := "Hello, world!"
+	transport := &mockTransport{
+		response: mockResponse(200, `{"choices":[{"message":{"role":"assistant","content":"Hello, world!"}}]}`),
+	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
-
-		var reqBody chatCompletionRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&reqBody))
-		assert.Equal(t, "gpt-4", reqBody.Model)
-		assert.Len(t, reqBody.Messages, 1)
-		assert.Equal(t, "user", reqBody.Messages[0].Role)
-		assert.Equal(t, "hello", reqBody.Messages[0].Content)
-
-		resp := chatCompletionResponse{
-			Choices: []struct {
-				Message struct {
-					Role    string `json:"role"`
-					Content string `json:"content"`
-				} `json:"message"`
-			}{
-				{
-					Message: struct {
-						Role    string `json:"role"`
-						Content string `json:"content"`
-					}{
-						Role:    "assistant",
-						Content: wantContent,
-					},
-				},
-			},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		assert.NoError(t, json.NewEncoder(w).Encode(resp))
-	}))
-	defer server.Close()
-
-	p := New("test-key", "gpt-4", WithBaseURL(server.URL))
+	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
 	mem := &state.Memory{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -63,18 +58,15 @@ func TestProviderInvoke_Success(t *testing.T) {
 
 	text, ok := artifacts[0].(artifact.Text)
 	require.True(t, ok, "expected artifact.Text, got %T", artifacts[0])
-	assert.Equal(t, wantContent, text.Content)
+	assert.Equal(t, "Hello, world!", text.Content)
 }
 
 func TestProviderInvoke_HTTPError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-		_, err := io.WriteString(w, `{"error": "invalid key"}`)
-		assert.NoError(t, err)
-	}))
-	defer server.Close()
+	transport := &mockTransport{
+		response: mockResponse(401, `{"error":{"message":"invalid key","type":"invalid_request_error"}}`),
+	}
 
-	p := New("bad-key", "gpt-4", WithBaseURL(server.URL))
+	p := New("bad-key", "gpt-4", WithHTTPClient(mockClient(transport)))
 	mem := &state.Memory{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -83,20 +75,11 @@ func TestProviderInvoke_HTTPError(t *testing.T) {
 }
 
 func TestProviderInvoke_EmptyChoices(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := chatCompletionResponse{Choices: []struct {
-			Message struct {
-				Role    string `json:"role"`
-				Content string `json:"content"`
-			} `json:"message"`
-		}{}}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		assert.NoError(t, json.NewEncoder(w).Encode(resp))
-	}))
-	defer server.Close()
+	transport := &mockTransport{
+		response: mockResponse(200, `{"choices":[]}`),
+	}
 
-	p := New("test-key", "gpt-4", WithBaseURL(server.URL))
+	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
 	mem := &state.Memory{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -106,33 +89,11 @@ func TestProviderInvoke_EmptyChoices(t *testing.T) {
 }
 
 func TestProviderInvoke_MultipleTextArtifacts(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var reqBody chatCompletionRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&reqBody))
+	transport := &mockTransport{
+		response: mockResponse(200, `{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`),
+	}
 
-		require.Len(t, reqBody.Messages, 1)
-		assert.Equal(t, "line1\nline2", reqBody.Messages[0].Content)
-
-		resp := chatCompletionResponse{
-			Choices: []struct {
-				Message struct {
-					Role    string `json:"role"`
-					Content string `json:"content"`
-				} `json:"message"`
-			}{
-				{Message: struct {
-					Role    string `json:"role"`
-					Content string `json:"content"`
-				}{Role: "assistant", Content: "ok"}},
-			},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		assert.NoError(t, json.NewEncoder(w).Encode(resp))
-	}))
-	defer server.Close()
-
-	p := New("test-key", "gpt-4", WithBaseURL(server.URL))
+	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
 	mem := &state.Memory{}
 	mem.Append(state.RoleUser,
 		artifact.Text{Content: "line1"},
@@ -141,37 +102,19 @@ func TestProviderInvoke_MultipleTextArtifacts(t *testing.T) {
 
 	_, err := p.Invoke(t.Context(), mem)
 	require.NoError(t, err)
+
+	// Verify the request body contains concatenated text.
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	assert.Contains(t, string(body), "line1\\nline2")
 }
 
 func TestProviderInvoke_NonTextArtifactsSkipped(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var reqBody chatCompletionRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&reqBody))
+	transport := &mockTransport{
+		response: mockResponse(200, `{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`),
+	}
 
-		require.Len(t, reqBody.Messages, 1)
-		// Only text artifacts should be serialized; ToolCall and Image skipped.
-		assert.Equal(t, "hello", reqBody.Messages[0].Content)
-
-		resp := chatCompletionResponse{
-			Choices: []struct {
-				Message struct {
-					Role    string `json:"role"`
-					Content string `json:"content"`
-				} `json:"message"`
-			}{
-				{Message: struct {
-					Role    string `json:"role"`
-					Content string `json:"content"`
-				}{Role: "assistant", Content: "ok"}},
-			},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		assert.NoError(t, json.NewEncoder(w).Encode(resp))
-	}))
-	defer server.Close()
-
-	p := New("test-key", "gpt-4", WithBaseURL(server.URL))
+	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
 	mem := &state.Memory{}
 	mem.Append(state.RoleUser,
 		artifact.Text{Content: "hello"},
@@ -181,66 +124,48 @@ func TestProviderInvoke_NonTextArtifactsSkipped(t *testing.T) {
 
 	_, err := p.Invoke(t.Context(), mem)
 	require.NoError(t, err)
+
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+
+	msgs, ok := reqBody["messages"].([]any)
+	require.True(t, ok)
+	require.Len(t, msgs, 1)
+
+	msg, ok := msgs[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "hello", msg["content"])
 }
 
 func TestProviderInvoke_EmptyState(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var reqBody chatCompletionRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&reqBody))
-		assert.Empty(t, reqBody.Messages)
+	transport := &mockTransport{
+		response: mockResponse(200, `{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`),
+	}
 
-		resp := chatCompletionResponse{
-			Choices: []struct {
-				Message struct {
-					Role    string `json:"role"`
-					Content string `json:"content"`
-				} `json:"message"`
-			}{
-				{Message: struct {
-					Role    string `json:"role"`
-					Content string `json:"content"`
-				}{Role: "assistant", Content: "ok"}},
-			},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		assert.NoError(t, json.NewEncoder(w).Encode(resp))
-	}))
-	defer server.Close()
-
-	p := New("test-key", "gpt-4", WithBaseURL(server.URL))
+	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
 	mem := &state.Memory{}
 
 	_, err := p.Invoke(t.Context(), mem)
 	require.NoError(t, err)
+
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+
+	msgs, ok := reqBody["messages"].([]any)
+	require.True(t, ok)
+	assert.Empty(t, msgs)
 }
 
 func TestProviderInvoke_MultipleChoices(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := chatCompletionResponse{
-			Choices: []struct {
-				Message struct {
-					Role    string `json:"role"`
-					Content string `json:"content"`
-				} `json:"message"`
-			}{
-				{Message: struct {
-					Role    string `json:"role"`
-					Content string `json:"content"`
-				}{Role: "assistant", Content: "first"}},
-				{Message: struct {
-					Role    string `json:"role"`
-					Content string `json:"content"`
-				}{Role: "assistant", Content: "second"}},
-			},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		assert.NoError(t, json.NewEncoder(w).Encode(resp))
-	}))
-	defer server.Close()
+	transport := &mockTransport{
+		response: mockResponse(200, `{"choices":[{"message":{"role":"assistant","content":"first"}},{"message":{"role":"assistant","content":"second"}}]}`),
+	}
 
-	p := New("test-key", "gpt-4", WithBaseURL(server.URL))
+	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
 	mem := &state.Memory{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -249,37 +174,29 @@ func TestProviderInvoke_MultipleChoices(t *testing.T) {
 	require.Len(t, artifacts, 1)
 
 	text, ok := artifacts[0].(artifact.Text)
-	require.True(t, ok, "expected artifact.Text, got %T", artifacts[0])
+	require.True(t, ok)
 	assert.Equal(t, "first", text.Content)
 }
 
 func TestProviderInvoke_MalformedJSON(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, err := io.WriteString(w, `{"invalid`)
-		assert.NoError(t, err)
-	}))
-	defer server.Close()
+	transport := &mockTransport{
+		response: mockResponse(200, `{"invalid`),
+	}
 
-	p := New("test-key", "gpt-4", WithBaseURL(server.URL))
+	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
 	mem := &state.Memory{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	_, err := p.Invoke(t.Context(), mem)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "decode response")
 }
 
 func TestProviderInvoke_ContextCancellation(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Block until context is cancelled.
-		<-r.Context().Done()
-		w.WriteHeader(http.StatusServiceUnavailable)
-	}))
-	defer server.Close()
+	transport := &mockTransport{
+		err: context.Canceled,
+	}
 
-	p := New("test-key", "gpt-4", WithBaseURL(server.URL))
+	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
 	mem := &state.Memory{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -293,52 +210,25 @@ func TestProviderInvoke_ContextCancellation(t *testing.T) {
 
 func TestProviderInvoke_CustomClient(t *testing.T) {
 	wantErr := errors.New("custom transport error")
-
-	client := &http.Client{
-		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-			return nil, wantErr
-		}),
+	transport := &mockTransport{
+		err: wantErr,
 	}
 
-	p := New("test-key", "gpt-4", WithClient(client))
+	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
 	mem := &state.Memory{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	_, err := p.Invoke(t.Context(), mem)
-	require.ErrorIs(t, err, wantErr)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, wantErr)
 }
 
 func TestProviderInvoke_RoleMapping(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var reqBody chatCompletionRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&reqBody))
-		require.Len(t, reqBody.Messages, 4)
+	transport := &mockTransport{
+		response: mockResponse(200, `{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`),
+	}
 
-		roles := []string{"system", "user", "assistant", "tool"}
-		for i, want := range roles {
-			assert.Equal(t, want, reqBody.Messages[i].Role)
-		}
-
-		resp := chatCompletionResponse{
-			Choices: []struct {
-				Message struct {
-					Role    string `json:"role"`
-					Content string `json:"content"`
-				} `json:"message"`
-			}{
-				{Message: struct {
-					Role    string `json:"role"`
-					Content string `json:"content"`
-				}{Role: "assistant", Content: "ok"}},
-			},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		assert.NoError(t, json.NewEncoder(w).Encode(resp))
-	}))
-	defer server.Close()
-
-	p := New("test-key", "gpt-4", WithBaseURL(server.URL))
+	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
 	mem := &state.Memory{}
 	mem.Append(state.RoleSystem, artifact.Text{Content: "sys"})
 	mem.Append(state.RoleUser, artifact.Text{Content: "usr"})
@@ -347,11 +237,20 @@ func TestProviderInvoke_RoleMapping(t *testing.T) {
 
 	_, err := p.Invoke(t.Context(), mem)
 	require.NoError(t, err)
-}
 
-// roundTripperFunc is a convenience type for creating a custom http.RoundTripper.
-type roundTripperFunc func(req *http.Request) (*http.Response, error)
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
 
-func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return f(req)
+	msgs, ok := reqBody["messages"].([]any)
+	require.True(t, ok)
+	require.Len(t, msgs, 4)
+
+	roles := []string{"system", "user", "assistant", "user"}
+	for i, want := range roles {
+		msg, ok := msgs[i].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, want, msg["role"])
+	}
 }

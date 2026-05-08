@@ -1,89 +1,83 @@
 // Package openai implements a provider adapter for OpenAI-compatible chat
-// completions APIs. It uses the standard net/http client and supports
-// custom base URLs for local proxies or alternative endpoints.
+// completions APIs. It wraps the official github.com/openai/openai-go client.
 package openai
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 
 	"github.com/andrewhowdencom/tack/artifact"
 	"github.com/andrewhowdencom/tack/provider"
 	"github.com/andrewhowdencom/tack/state"
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
 )
 
-const defaultBaseURL = "https://api.openai.com/v1"
-
-// Provider implements provider.Provider for OpenAI-compatible APIs.
+// Provider implements provider.Provider for OpenAI-compatible APIs using the
+// official OpenAI Go SDK.
 type Provider struct {
-	apiKey  string
-	model   string
-	baseURL string
-	client  *http.Client
+	client openai.Client
+	model  string
+}
+
+// config holds the build-time configuration for the Provider.
+type config struct {
+	apiKey     string
+	model      string
+	baseURL    string
+	httpClient option.HTTPClient
 }
 
 // Option configures a Provider via the functional options pattern.
-type Option func(*Provider)
+type Option func(*config)
 
 // WithBaseURL sets a custom API base URL (e.g., for local proxies).
 func WithBaseURL(url string) Option {
-	return func(p *Provider) {
-		p.baseURL = url
+	return func(c *config) {
+		c.baseURL = url
 	}
 }
 
-// WithClient sets a custom HTTP client for the provider.
-func WithClient(client *http.Client) Option {
-	return func(p *Provider) {
-		p.client = client
+// WithHTTPClient sets a custom HTTP client for the provider. This is primarily
+// useful for testing.
+func WithHTTPClient(client option.HTTPClient) Option {
+	return func(c *config) {
+		c.httpClient = client
 	}
 }
 
 // New creates an OpenAI-compatible provider.
 func New(apiKey, model string, opts ...Option) *Provider {
-	p := &Provider{
-		apiKey:  apiKey,
-		model:   model,
-		baseURL: defaultBaseURL,
-		client:  http.DefaultClient,
+	cfg := &config{
+		apiKey: apiKey,
+		model:  model,
 	}
 	for _, opt := range opts {
-		opt(p)
+		opt(cfg)
 	}
-	return p
+
+	sdkOpts := []option.RequestOption{option.WithAPIKey(cfg.apiKey)}
+	if cfg.baseURL != "" {
+		sdkOpts = append(sdkOpts, option.WithBaseURL(cfg.baseURL))
+	}
+	if cfg.httpClient != nil {
+		sdkOpts = append(sdkOpts, option.WithHTTPClient(cfg.httpClient))
+	}
+
+	return &Provider{
+		client: openai.NewClient(sdkOpts...),
+		model:  cfg.model,
+	}
 }
 
 // Compile-time interface check.
 var _ provider.Provider = (*Provider)(nil)
 
-type chatCompletionRequest struct {
-	Model    string    `json:"model"`
-	Messages []message `json:"messages"`
-}
-
-type message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type chatCompletionResponse struct {
-	Choices []struct {
-		Message struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
-}
-
-// Invoke serializes state into an OpenAI chat completions request,
+// Invoke serializes state into an OpenAI chat completions request via the SDK,
 // calls the API, and deserializes the response into artifacts.
 func (p *Provider) Invoke(ctx context.Context, s state.State) ([]artifact.Artifact, error) {
 	turns := s.Turns()
-	messages := make([]message, 0, len(turns))
+	messages := make([]openai.ChatCompletionMessageParamUnion, 0, len(turns))
 
 	for _, turn := range turns {
 		content := ""
@@ -96,51 +90,34 @@ func (p *Provider) Invoke(ctx context.Context, s state.State) ([]artifact.Artifa
 			}
 			// Non-text artifacts are skipped in this initial implementation.
 		}
-		messages = append(messages, message{
-			Role:    string(turn.Role),
-			Content: content,
-		})
+
+		var msg openai.ChatCompletionMessageParamUnion
+		switch turn.Role {
+		case state.RoleSystem:
+			msg = openai.SystemMessage(content)
+		case state.RoleUser:
+			msg = openai.UserMessage(content)
+		case state.RoleAssistant:
+			msg = openai.AssistantMessage(content)
+		default:
+			msg = openai.UserMessage(content)
+		}
+		messages = append(messages, msg)
 	}
 
-	reqBody := chatCompletionRequest{
-		Model:    p.model,
+	resp, err := p.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Model:    openai.ChatModel(p.model),
 		Messages: messages,
-	}
-
-	jsonBody, err := json.Marshal(reqBody)
+	})
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
+		return nil, fmt.Errorf("chat completion: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/chat/completions", bytes.NewReader(jsonBody))
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+p.apiKey)
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("do request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var result chatCompletionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
-	}
-
-	if len(result.Choices) == 0 {
+	if len(resp.Choices) == 0 {
 		return nil, fmt.Errorf("no choices in response")
 	}
 
 	return []artifact.Artifact{
-		artifact.Text{Content: result.Choices[0].Message.Content},
+		artifact.Text{Content: resp.Choices[0].Message.Content},
 	}, nil
 }
