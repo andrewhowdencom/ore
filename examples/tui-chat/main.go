@@ -1,3 +1,5 @@
+// tui-chat is a reference application demonstrating a streaming chat REPL
+// using the tack framework with the surface/tui package.
 package main
 
 import (
@@ -12,7 +14,7 @@ import (
 	"github.com/andrewhowdencom/tack/provider/openai"
 	"github.com/andrewhowdencom/tack/state"
 	"github.com/andrewhowdencom/tack/step"
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/andrewhowdencom/tack/surface/tui"
 )
 
 func main() {
@@ -42,12 +44,8 @@ func run() error {
 
 	baseURL := os.Getenv("TACK_BASE_URL")
 
-	// Create TUI model.
-	m := newModel()
-
-	// Create Bubble Tea program with alternate screen buffer.
-	p := tea.NewProgram(m, tea.WithAltScreen())
-	m.SetProgram(p)
+	// Create TUI surface.
+	s := tui.New()
 
 	// Build OpenAI provider.
 	var opts []openai.Option
@@ -58,11 +56,11 @@ func run() error {
 
 	// Compose framework layers.
 	loop := &core.Loop{}
-	s := step.New(loop, m)
+	st := step.New(loop, s)
 	orchestrator := &orchestrate.ReAct{
 		State:    &state.Memory{},
-		Step:     s,
-		Surface:  m,
+		Step:     st,
+		Surface:  s,
 		Provider: prov,
 	}
 
@@ -77,7 +75,7 @@ func run() error {
 	}()
 
 	// Run the TUI. This blocks until the user quits (Ctrl+C).
-	if _, err := p.Run(); err != nil {
+	if err := s.Run(); err != nil {
 		return fmt.Errorf("tui exited: %w", err)
 	}
 
