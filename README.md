@@ -14,15 +14,25 @@ tack is organized into four layers. Each layer communicates through narrow inter
 
 ### Core Loop
 
-The minimal agentic engine. It maintains state, orchestrates tool-use cycles, and manages the conversation between the system and the LLM. It is intentionally agnostic about:
+The minimal agentic engine. A single Core Loop turn is:
+
+1. Read current state
+2. Assemble a prompt and call the LLM
+3. Parse the response
+4. If the response requests a tool call, execute it and feed the observation back into state
+5. Return updated state
+
+That is all it does. It is intentionally agnostic about:
 
 - How it is triggered (interactive message, webhook, cron schedule, file system event)
 - Where its outputs go (terminal, web page, Slack channel, message queue)
 - Which LLM provider serves inference
 - Which tools are available
-- Whether memory, reflection, or other meta-cognitive patterns are employed
+- **Which reasoning pattern drives the conversation** — ReAct, Chain-of-Thought, Tree-of-Thought, reflection, planning, multi-agent debate, or any other meta-cognitive strategy
 
-The Core Loop provides extension hooks for middleware and lifecycle events. It is designed to be extensible enough to support patterns like memory and reflection in the future without prescribing their implementation today.
+Reasoning patterns are not inside the Core Loop. They live in extensions and orchestrators that sit above it: a ReAct extension wraps the loop with "Thought → Action → Observation" prompt formatting and parsing; a Tree-of-Thought orchestrator forks multiple loop instances with branched state; a reflection extension hooks loop termination to trigger self-critique and memory updates. The Core Loop itself remains the same dumb crank in every case.
+
+The Core Loop provides narrow extension hooks for middleware and lifecycle events so that these patterns can be composed around it without mutating the core.
 
 ### I/O Surfaces
 
@@ -48,6 +58,7 @@ Examples of Extension Points include:
 - **LLM Provider interfaces** — Adapters for OpenAI, Anthropic, local models, or custom endpoints
 - **Middleware interfaces** — Hooks that intercept prompts, responses, or tool calls
 - **Lifecycle interfaces** — Hooks for session start, end, compaction, or error handling
+- **Output Parser interfaces** — Swappable parsers for different reasoning formats (e.g., ReAct's `Thought: ... Action: ...`, structured JSON tool calls, or scoring functions for search-based strategies)
 
 Extensions compose. They do not mutate the core.
 
@@ -63,7 +74,7 @@ There is no single "tack" binary that does everything. Instead, there are compos
 2. **Composability** — Components connect through narrow interfaces. A Core Loop, a TUI surface, and an OpenAI provider compose the same way as a Core Loop, a webhook surface, and a local Ollama provider.
 3. **I/O Agnosticism** — The Core Loop does not know whether it is running in an interactive terminal or responding to a 3 AM PagerDuty alert. Surfaces handle the world; the core handles the loop.
 4. **Build-time Extension** — Extensions are Go packages composed at build time, not runtime plugins. This keeps deployment simple and interfaces type-safe.
-5. **Defer Specifics** — Patterns like memory, reflection, planning, and multi-agent orchestration are enabled by the Core Loop's extensibility but are not designed in the core. They will emerge in Extension Points as concrete needs arise.
+5. **Defer Specifics** — Patterns like memory, reflection, planning, reasoning strategies (ReAct, ToT, CoT), and multi-agent orchestration are enabled by the Core Loop's extensibility but are not designed in the core. They emerge as extensions and orchestrators that control how the loop is invoked, not as alternative core implementations.
 
 ## Relationship to pi.dev
 
