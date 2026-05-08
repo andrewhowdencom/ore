@@ -48,6 +48,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.mu.Unlock()
 			}
 		case tea.KeyCtrlC:
+			select {
+			case m.eventsCh <- surface.InterruptEvent{}:
+			default:
+			}
 			return m, tea.Quit
 		case tea.KeyBackspace:
 			m.mu.Lock()

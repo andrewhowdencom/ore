@@ -71,19 +71,23 @@ func (m *Model) Events() <-chan surface.Event {
 
 // RenderDelta appends an ephemeral delta artifact to the streaming buffer
 // and triggers a re-render via the Bubble Tea program.
+// The lock is released before calling program.Send to avoid deadlock:
+// Bubble Tea's main goroutine calls View() which also acquires m.mu, and
+// program.Send blocks on the unbuffered p.msgs channel until the main
+// goroutine reads from it.
 func (m *Model) RenderDelta(ctx context.Context, delta artifact.Artifact) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	switch d := delta.(type) {
 	case artifact.TextDelta:
 		m.streamBuffer.WriteString(d.Content)
 	case artifact.ReasoningDelta:
 		m.streamBuffer.WriteString(d.Content)
 	}
+	prog := m.program
+	m.mu.Unlock()
 
-	if m.program != nil {
-		m.program.Send(deltaMsg{})
+	if prog != nil {
+		prog.Send(deltaMsg{})
 	}
 	return nil
 }
@@ -92,8 +96,6 @@ func (m *Model) RenderDelta(ctx context.Context, delta artifact.Artifact) error 
 // streaming buffer, and triggers a re-render.
 func (m *Model) RenderTurn(ctx context.Context, turn state.Turn) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	var text strings.Builder
 	for _, art := range turn.Artifacts {
 		if t, ok := art.(artifact.Text); ok {
@@ -106,9 +108,11 @@ func (m *Model) RenderTurn(ctx context.Context, turn state.Turn) error {
 		text: text.String(),
 	})
 	m.streamBuffer.Reset()
+	prog := m.program
+	m.mu.Unlock()
 
-	if m.program != nil {
-		m.program.Send(turnMsg{})
+	if prog != nil {
+		prog.Send(turnMsg{})
 	}
 	return nil
 }
@@ -116,11 +120,12 @@ func (m *Model) RenderTurn(ctx context.Context, turn state.Turn) error {
 // SetStatus updates the transient status line and triggers a re-render.
 func (m *Model) SetStatus(ctx context.Context, status string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.status = status
+	prog := m.program
+	m.mu.Unlock()
 
-	if m.program != nil {
-		m.program.Send(statusMsg{})
+	if prog != nil {
+		prog.Send(statusMsg{})
 	}
 	return nil
 }
