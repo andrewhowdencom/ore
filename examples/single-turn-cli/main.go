@@ -77,15 +77,24 @@ func run() error {
 		return fmt.Errorf("turn failed: %w", err)
 	}
 
-	// Print assistant text artifacts from the response.
+	// Print assistant artifacts from the response.
 	turns := mem.Turns()
 	if len(turns) == 0 {
 		return fmt.Errorf("no turns in state")
 	}
 	last := turns[len(turns)-1]
 	for _, art := range last.Artifacts {
-		if text, ok := art.(artifact.Text); ok {
-			fmt.Println(text.Content)
+		switch a := art.(type) {
+		case artifact.Text:
+			fmt.Println(a.Content)
+		case artifact.Reasoning:
+			fmt.Printf("--- reasoning ---\n%s\n", a.Content)
+		case artifact.ToolCall:
+			fmt.Printf("--- tool_call: %s ---\n%s\n", a.Name, a.Arguments)
+		case artifact.Image:
+			fmt.Printf("--- image ---\n%s\n", a.URL)
+		default:
+			fmt.Printf("--- %s ---\n[unsupported artifact type]\n", art.Kind())
 		}
 	}
 

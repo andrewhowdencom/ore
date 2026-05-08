@@ -10,6 +10,7 @@ import (
 var _ Artifact = Text{}
 var _ Artifact = ToolCall{}
 var _ Artifact = Image{}
+var _ Artifact = Reasoning{}
 
 func TestArtifactKinds(t *testing.T) {
 	tests := []struct {
@@ -20,6 +21,7 @@ func TestArtifactKinds(t *testing.T) {
 		{"text", Text{Content: "hello"}, "text"},
 		{"tool_call", ToolCall{Name: "foo", Arguments: "{}"}, "tool_call"},
 		{"image", Image{URL: "http://example.com/img.png"}, "image"},
+		{"reasoning", Reasoning{Content: "Let me think..."}, "reasoning"},
 	}
 
 	for _, tt := range tests {

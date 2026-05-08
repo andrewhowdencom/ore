@@ -68,6 +68,32 @@ func TestLoop_Turn_PropagatesError(t *testing.T) {
 	assert.Len(t, mem.Turns(), 1)
 }
 
+func TestLoop_Turn_AppendsReasoningArtifact(t *testing.T) {
+	loop := &Loop{}
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	mock := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world"},
+			artifact.Reasoning{Content: "Let me think..."},
+		},
+	}
+
+	result, err := loop.Turn(context.Background(), mem, mock)
+	require.NoError(t, err)
+	assert.Same(t, mem, result)
+
+	turns := mem.Turns()
+	require.Len(t, turns, 2)
+
+	last := turns[1]
+	assert.Equal(t, state.RoleAssistant, last.Role)
+	require.Len(t, last.Artifacts, 2)
+	assert.Equal(t, "text", last.Artifacts[0].Kind())
+	assert.Equal(t, "reasoning", last.Artifacts[1].Kind())
+}
+
 func TestLoop_Turn_EmptyArtifacts(t *testing.T) {
 	loop := &Loop{}
 	mem := &state.Memory{}
