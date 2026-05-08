@@ -17,7 +17,7 @@ var (
 
 // View renders the conversation history, streaming buffer, status line,
 // and input prompt.
-func (m model) View() string {
+func (m *model) View() string {
 	var b strings.Builder
 
 	// Render conversation history.

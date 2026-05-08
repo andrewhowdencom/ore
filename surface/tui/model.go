@@ -58,13 +58,13 @@ type renderedTurn struct {
 
 // Init returns an initial command. No periodic ticks are needed because
 // deltas arrive via program.Send from the orchestrator goroutine.
-func (m model) Init() tea.Cmd {
+func (m *model) Init() tea.Cmd {
 	return nil
 }
 
 // Update handles incoming messages: keyboard input, window resize, and
 // custom messages carrying delta/turn/status data from the surface methods.
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case deltaMsg:
 		switch d := msg.delta.(type) {

@@ -23,7 +23,7 @@ type TUI struct {
 func New() *TUI {
 	eventsCh := make(chan surface.Event, 10)
 	m := model{eventsCh: eventsCh}
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(&m, tea.WithAltScreen())
 	return &TUI{
 		eventsCh: eventsCh,
 		program:  p,

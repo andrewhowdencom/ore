@@ -15,14 +15,14 @@ import (
 func TestModel_Update_Delta_TextDelta(t *testing.T) {
 	m := model{}
 	newM, _ := m.Update(deltaMsg{delta: artifact.TextDelta{Content: "hello"}})
-	mm := newM.(model)
+	mm := newM.(*model)
 	assert.Equal(t, "hello", mm.streamBuffer.String())
 }
 
 func TestModel_Update_Delta_ReasoningDelta(t *testing.T) {
 	m := model{}
 	newM, _ := m.Update(deltaMsg{delta: artifact.ReasoningDelta{Content: "thinking"}})
-	mm := newM.(model)
+	mm := newM.(*model)
 	assert.Equal(t, "thinking", mm.streamBuffer.String())
 }
 
@@ -35,7 +35,7 @@ func TestModel_Update_Turn(t *testing.T) {
 		},
 	}
 	newM, _ := m.Update(turnMsg{turn: turn})
-	mm := newM.(model)
+	mm := newM.(*model)
 	require.Len(t, mm.turns, 1)
 	assert.Equal(t, state.RoleAssistant, mm.turns[0].role)
 	assert.Equal(t, "hello world", mm.turns[0].text)
@@ -53,28 +53,28 @@ func TestModel_Update_Turn_ResetsStreamBuffer(t *testing.T) {
 		},
 	}
 	newM, _ := m.Update(turnMsg{turn: turn})
-	mm := newM.(model)
+	mm := newM.(*model)
 	assert.Empty(t, mm.streamBuffer.String())
 }
 
 func TestModel_Update_Status(t *testing.T) {
 	m := model{}
 	newM, _ := m.Update(statusMsg{status: "thinking..."})
-	mm := newM.(model)
+	mm := newM.(*model)
 	assert.Equal(t, "thinking...", mm.status)
 }
 
 func TestModel_Update_KeyRunes(t *testing.T) {
 	m := model{}
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hello")})
-	mm := newM.(model)
+	mm := newM.(*model)
 	assert.Equal(t, "hello", mm.input.String())
 }
 
 func TestModel_Update_KeySpace(t *testing.T) {
 	m := model{}
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
-	mm := newM.(model)
+	mm := newM.(*model)
 	assert.Equal(t, " ", mm.input.String())
 }
 
@@ -82,14 +82,14 @@ func TestModel_Update_KeyBackspace(t *testing.T) {
 	m := model{}
 	m.input.WriteString("hi")
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
-	mm := newM.(model)
+	mm := newM.(*model)
 	assert.Equal(t, "h", mm.input.String())
 }
 
 func TestModel_Update_KeyBackspace_Empty(t *testing.T) {
 	m := model{}
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
-	mm := newM.(model)
+	mm := newM.(*model)
 	assert.Empty(t, mm.input.String())
 }
 
@@ -99,7 +99,7 @@ func TestModel_Update_KeyEnter_WithInput(t *testing.T) {
 	m.input.WriteString("hello")
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	mm := newM.(model)
+	mm := newM.(*model)
 
 	require.Len(t, mm.turns, 1)
 	assert.Equal(t, state.RoleUser, mm.turns[0].role)
@@ -122,7 +122,7 @@ func TestModel_Update_KeyEnter_EmptyInput(t *testing.T) {
 	m := model{eventsCh: eventsCh}
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	mm := newM.(model)
+	mm := newM.(*model)
 
 	assert.Empty(t, mm.turns)
 	assert.Empty(t, mm.input.String())
@@ -137,7 +137,7 @@ func TestModel_Update_KeyEnter_EmptyInput(t *testing.T) {
 func TestModel_Update_WindowSize(t *testing.T) {
 	m := model{}
 	newM, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	mm := newM.(model)
+	mm := newM.(*model)
 	assert.Equal(t, 80, mm.width)
 	assert.Equal(t, 24, mm.height)
 }
@@ -147,7 +147,7 @@ func TestModel_Update_KeyCtrlC(t *testing.T) {
 	m := model{eventsCh: eventsCh}
 
 	newM, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
-	mm := newM.(model)
+	mm := newM.(*model)
 
 	select {
 	case e := <-eventsCh:
