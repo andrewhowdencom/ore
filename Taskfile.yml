@@ -1,0 +1,33 @@
+version: '3'
+
+tasks:
+  setup:
+    desc: Install required tools and dependencies
+    cmds:
+      - go mod download
+
+  build:
+    desc: Compile the application and all packages
+    cmds:
+      - go build ./...
+      - go build ./examples/single-turn-cli
+
+  test:
+    desc: Run unit tests with race detection
+    cmds:
+      - go test -race ./...
+
+  lint:
+    desc: Run code linters
+    cmds:
+      - go vet ./...
+      - golangci-lint run ./...
+
+  generate:
+    desc: Generate code (no-op for this project)
+    cmds:
+      - echo "No code generation required"
+
+  validate:
+    desc: Run lints, tests, and build before committing
+    deps: [lint, test, build]
