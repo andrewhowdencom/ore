@@ -62,6 +62,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.input.WriteString(string(runes[:len(runes)-1]))
 			}
 			m.mu.Unlock()
+		case tea.KeySpace:
+			m.mu.Lock()
+			m.input.WriteString(" ")
+			m.mu.Unlock()
 		case tea.KeyRunes:
 			m.mu.Lock()
 			m.input.WriteString(string(msg.Runes))
