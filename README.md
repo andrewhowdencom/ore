@@ -59,7 +59,7 @@ Examples:
 - **Tool Call Handler** — Detects `tool_call` artifacts, executes the corresponding functions, and appends results to state. This is deliberately an extension, not core behavior. It is the primary stress test for whether the extension model actually works.
 - **Image Handler** — Detects `image` artifacts (URLs or base64 blobs), stores or renders them, and appends references to state
 - **Structured Output Handler** — Validates `json_schema` artifacts against a declared schema
-- **Streaming Handler** — Intercepts `text_delta` or `reasoning_delta` artifacts and routes them to a TUI or SSE stream in real time
+- **Streaming Handler** — Intercepts `text_delta` or `reasoning_delta` artifacts and routes them to a TUI or SSE stream in real time. The framework supports a dual-stream artifact model: ephemeral delta artifacts flow through a "hot" channel for real-time rendering, while complete buffered artifacts are appended to state via the "cold" path. Provider adapters own delta→complete buffering internally.
 
 Multiple artifact handlers can fire on the same response. A response containing text, a tool call, and a reasoning block will be processed by three different handlers, each doing its own work.
 
@@ -85,11 +85,29 @@ An I/O Surface can be:
 
 A Surface's contract with the application layer is about **ingress events** and **egress actions**, not about rendering chat windows.
 
+The framework defines a `surface.Surface` interface with four egress actions and one ingress source:
+
+- `Events() <-chan Event` — read-only channel of user-generated events (`UserMessageEvent`, `InterruptEvent`, etc.)
+- `RenderDelta(ctx, artifact.Artifact) error` — render an ephemeral delta artifact incrementally (e.g., `TextDelta` chunks)
+- `RenderTurn(ctx, state.Turn) error` — render a complete turn that has been appended to state
+- `SetStatus(ctx, string) error` — update a transient status indicator (e.g., "thinking...", "calling tool...")
+
+Implementations (TUI, web, Telegram, etc.) satisfy this interface at build time. The framework does not assume any specific rendering mechanism.
+
+### Orchestration
+
+Above the Core Loop, the framework provides two composable abstractions that separate **single-turn execution** from **multi-turn strategy**:
+
+- **`step.Step`** — executes one complete inference turn. It calls `core.Turn()`, routes streaming deltas to the surface via a background goroutine, and then runs registered artifact handlers synchronously on the complete response. Handlers may mutate state (e.g., append `RoleTool` turns with tool results).
+- **`orchestrate.ReAct`** — an `Orchestrator` implementation that loops on `Step` while state changes. It reads events from a `Surface`, appends `RoleUser` turns, calls `Step.Execute()`, renders new turns via `RenderTurn()`, and loops again if a handler appended a `RoleTool` turn. Status updates ("thinking...", "calling tool...") are sent to the surface between iterations.
+
+This separation means single-turn applications (e.g., a REST API endpoint) can use `Step` directly, while multi-turn agents (e.g., a TUI coding assistant) compose `Step` with `ReAct` or a custom `Orchestrator`.
+
 ### Agents / Applications
 
-An Agent (or Application) is a runnable assembly that composes the Core Loop, a Provider Adapter, a set of Artifact Handlers and Extensions, and one or more I/O Surfaces into a concrete system.
+An Agent (or Application) is a runnable assembly that composes the Core Loop, a Provider Adapter, a set of Artifact Handlers and Extensions, one or more I/O Surfaces, and an Orchestrator into a concrete system.
 
-Crucially, the application layer is also where **orchestration** happens. The Core Loop does not loop on its own. The application decides:
+Crucially, the application layer is also where **strategy** happens. The Core Loop does not loop on its own. The application (via an Orchestrator) decides:
 
 - When to call `Core.Turn()`
 - Whether to call it once (single-shot Q&A) or repeatedly (tool-calling agent)
@@ -121,6 +139,17 @@ Where tack diverges:
 
 ## Project Status
 
-This README is a vision document. It describes the architecture and design intent that coding agents should follow when implementing tack. Concrete interfaces, provider implementations, surfaces, artifact handlers, and example applications will be discovered and refined case-by-case during development.
+This README remains a vision document, but the framework is now partially implemented. The following packages and interfaces are available:
 
-The repository currently contains only this north-star document. Implementation begins by defining the Core Loop's interfaces and a reference TUI surface.
+- `artifact/` — `Artifact` interface with `Text`, `ToolCall`, `Image`, `Reasoning`, and streaming delta types (`TextDelta`, `ReasoningDelta`, `ToolCallDelta`)
+- `state/` — `State` interface with `Turns()` and `Append()`, and an in-memory `Memory` implementation
+- `provider/` — `Provider` interface with `Invoke()`, and `StreamingProvider` for channel-based delta emission
+- `core/` — `Loop.Turn()` with optional streaming support via variadic delta channel
+- `step/` — `Step` abstraction with artifact `Handler` interface for single-turn execution
+- `orchestrate/` — `Orchestrator` interface and `ReAct` implementation for multi-turn looping
+- `surface/` — `Surface` interface with ingress events and egress delta/turn/status rendering
+- `provider/openai/` — OpenAI-compatible adapter with streaming chat completions support
+- `examples/single-turn-cli/` — Reference one-shot CLI application
+- `examples/tui-chat/` — Reference streaming chat REPL using Bubble Tea
+
+Remaining work: additional provider adapters (Anthropic, Gemini), additional artifact handlers (image, structured output), middleware and lifecycle hooks, and more I/O surface implementations (web, Telegram, webhook).
