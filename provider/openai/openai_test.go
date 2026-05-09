@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/andrewhowdencom/tack/artifact"
@@ -30,6 +32,20 @@ func (m *mockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, m.err
 	}
 	return m.response, nil
+}
+
+// concurrentMockTransport returns a fresh response for each request,
+// making it safe for concurrent use.
+type concurrentMockTransport struct {
+	responseBody string
+}
+
+func (m *concurrentMockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: 200,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(m.responseBody)),
+	}, nil
 }
 
 func mockClient(transport *mockTransport) *http.Client {
@@ -348,6 +364,40 @@ func TestProviderInvokeStreaming_NilChannel(t *testing.T) {
 	text, ok := artifacts[0].(artifact.Text)
 	require.True(t, ok)
 	assert.Equal(t, "Hello!", text.Content)
+}
+
+func TestProviderInvoke_ConcurrentSetTools(t *testing.T) {
+	transport := &concurrentMockTransport{
+		responseBody: `{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`,
+	}
+
+	p := New("test-key", "gpt-4", WithHTTPClient(&http.Client{Transport: transport}))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	var wg sync.WaitGroup
+
+	// Goroutine A: continuously updates tools.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			_ = p.SetTools([]provider.Tool{
+				{Name: fmt.Sprintf("tool-%d", i), Description: "test", Schema: map[string]any{"type": "object"}},
+			})
+		}
+	}()
+
+	// Goroutine B: continuously invokes the provider.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			_, _ = p.Invoke(t.Context(), mem)
+		}
+	}()
+
+	wg.Wait()
 }
 
 func TestProviderInvoke_MixedAssistantTextAndToolCalls(t *testing.T) {

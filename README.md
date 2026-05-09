@@ -94,6 +94,18 @@ step := loop.New(loop.WithHandlers(registry.Handler()))
 
 Adapters that implement `provider.ToolProvider` (e.g., the OpenAI adapter) expose `SetTools` to update the tool list after construction. The `WithTools` option is a convenience for initial configuration; both call `SetTools` internally. The `provider.Tool` struct is provider-agnostic — each adapter maps it to its native API.
 
+**Dynamic tool configuration.** The tool list can be evolved during a session by calling `SetTools` before each turn. This allows the application to prune, expand, or replace tools based on context, user permissions, or discovered capabilities:
+
+```go
+// Before each turn, update the provider's tool list.
+if tp, ok := prov.(provider.ToolProvider); ok {
+    tp.SetTools(selectToolsForContext(ctx, state))
+}
+_, err := step.Turn(ctx, state, prov)
+```
+
+`SetTools` is safe for concurrent use with `Invoke` and `InvokeStreaming` in the OpenAI adapter.
+
 #### Other Extension Points
 
 - **`BeforeTurn` hook** (`loop.BeforeTurn`) — transforms state before the provider call. Multiple hooks compose in registration order. Errors abort the turn. Register via `loop.WithBeforeTurn(...)`:

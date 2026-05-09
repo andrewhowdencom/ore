@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/andrewhowdencom/tack/artifact"
 	"github.com/andrewhowdencom/tack/provider"
@@ -22,6 +23,7 @@ import (
 type Provider struct {
 	client openai.Client
 	model  string
+	mu     sync.RWMutex
 	tools  []provider.Tool
 }
 
@@ -89,8 +91,11 @@ var _ provider.Provider = (*Provider)(nil)
 var _ provider.StreamingProvider = (*Provider)(nil)
 var _ provider.ToolProvider = (*Provider)(nil)
 
-// SetTools updates the set of available tools for the provider.
+// SetTools updates the set of available tools for the provider. It is safe
+// for concurrent use with Invoke and InvokeStreaming.
 func (p *Provider) SetTools(tools []provider.Tool) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.tools = tools
 	return nil
 }
@@ -193,12 +198,16 @@ func concatText(artifacts []artifact.Artifact) string {
 func (p *Provider) Invoke(ctx context.Context, s state.State) ([]artifact.Artifact, error) {
 	messages := p.serializeMessages(s)
 
+	p.mu.RLock()
+	tools := p.tools
+	p.mu.RUnlock()
+
 	params := openai.ChatCompletionNewParams{
 		Model:    openai.ChatModel(p.model),
 		Messages: messages,
 	}
-	if len(p.tools) > 0 {
-		params.Tools = p.serializeTools()
+	if len(tools) > 0 {
+		params.Tools = p.serializeTools(tools)
 	}
 
 	resp, err := p.client.Chat.Completions.New(ctx, params)
@@ -253,12 +262,16 @@ func (p *Provider) InvokeStreaming(ctx context.Context, s state.State, deltasCh 
 
 	messages := p.serializeMessages(s)
 
+	p.mu.RLock()
+	tools := p.tools
+	p.mu.RUnlock()
+
 	params := openai.ChatCompletionNewParams{
 		Model:    openai.ChatModel(p.model),
 		Messages: messages,
 	}
-	if len(p.tools) > 0 {
-		params.Tools = p.serializeTools()
+	if len(tools) > 0 {
+		params.Tools = p.serializeTools(tools)
 	}
 
 	stream := p.client.Chat.Completions.NewStreaming(ctx, params)
@@ -345,9 +358,9 @@ func (p *Provider) InvokeStreaming(ctx context.Context, s state.State, deltasCh 
 
 // serializeTools converts provider-agnostic tool definitions into OpenAI SDK
 // tool parameters.
-func (p *Provider) serializeTools() []openai.ChatCompletionToolParam {
-	toolParams := make([]openai.ChatCompletionToolParam, len(p.tools))
-	for i, t := range p.tools {
+func (p *Provider) serializeTools(tools []provider.Tool) []openai.ChatCompletionToolParam {
+	toolParams := make([]openai.ChatCompletionToolParam, len(tools))
+	for i, t := range tools {
 		fnDef := openai.FunctionDefinitionParam{
 			Name:       t.Name,
 			Parameters: openai.FunctionParameters(t.Schema),
