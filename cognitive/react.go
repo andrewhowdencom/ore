@@ -1,0 +1,43 @@
+package cognitive
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/andrewhowdencom/tack/loop"
+	"github.com/andrewhowdencom/tack/provider"
+	"github.com/andrewhowdencom/tack/state"
+)
+
+// ReAct is a cognitive pattern that implements the ReAct feedback loop:
+// it repeatedly invokes Step.Turn() while the last turn in state is not
+// from the assistant (indicating pending tool results), driving the
+// assistant to reason, act, and observe until no more tool calls remain.
+type ReAct struct {
+	Step     *loop.Step
+	Provider provider.Provider
+}
+
+// Run executes the ReAct feedback loop starting from the given state.
+// It returns when the last turn is from the assistant (no pending tool
+// calls) or when the context is cancelled.
+func (r *ReAct) Run(ctx context.Context, st state.State) (state.State, error) {
+	for {
+		result, err := r.Step.Turn(ctx, st, r.Provider)
+		if err != nil {
+			return result, fmt.Errorf("react turn failed: %w", err)
+		}
+
+		turns := result.Turns()
+		if len(turns) == 0 {
+			return result, nil
+		}
+
+		last := turns[len(turns)-1]
+		if last.Role == state.RoleAssistant {
+			return result, nil
+		}
+
+		st = result
+	}
+}
