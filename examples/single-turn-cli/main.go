@@ -70,14 +70,15 @@ func run() error {
 	}
 	p := openai.New(apiKey, model, opts...)
 
-	// Tool calling example (uncomment to enable):
+	// Tool calling example (uncomment this block and comment out the provider
+	// and step setup immediately above and below it):
 	//
 	//   registry := tool.NewRegistry()
 	//   registry.Register("calculator", func(ctx context.Context, args map[string]any) (any, error) {
 	//       return "42", nil
 	//   })
 	//   p := openai.New(apiKey, model, opts...)
-	//   p.SetTools([]provider.Tool{
+	//   _ = p.SetTools([]provider.Tool{
 	//       {Name: "calculator", Description: "A simple calculator", Schema: map[string]any{"type": "object"}},
 	//   })
 	//   s := loop.New(loop.WithHandlers(registry.Handler()))
