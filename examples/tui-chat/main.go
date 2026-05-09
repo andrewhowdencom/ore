@@ -9,11 +9,10 @@ import (
 	"os"
 	"sync"
 
-	"github.com/andrewhowdencom/tack/core"
+	"github.com/andrewhowdencom/tack/loop"
 	"github.com/andrewhowdencom/tack/orchestrate"
 	"github.com/andrewhowdencom/tack/provider/openai"
 	"github.com/andrewhowdencom/tack/state"
-	"github.com/andrewhowdencom/tack/step"
 	"github.com/andrewhowdencom/tack/surface/tui"
 )
 
@@ -55,8 +54,7 @@ func run() error {
 	prov := openai.New(apiKey, modelName, opts...)
 
 	// Compose framework layers.
-	loop := &core.Loop{}
-	st := step.New(loop, s)
+	st := loop.New(loop.WithSurface(s))
 	orchestrator := &orchestrate.ReAct{
 		State:    &state.Memory{},
 		Step:     st,

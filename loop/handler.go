@@ -1,7 +1,4 @@
-// Package step implements the Step abstraction: a single complete inference
-// turn that delegates to core.Turn(), routes streaming deltas to a Surface,
-// and runs registered artifact handlers on the complete response.
-package step
+package loop
 
 import (
 	"context"

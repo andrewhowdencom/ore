@@ -12,9 +12,9 @@ This is a learning project and a conceptual exploration. It is inspired by [pi.d
 
 tack is organized into layers. Each layer communicates through narrow interfaces. No layer knows more about the others than it needs to.
 
-### Core Loop
+### Loop / Step
 
-The minimal inference primitive. A single Core Loop turn is:
+The minimal inference primitive. A single Step turn is:
 
 1. Read current state
 2. Hand state to a provider adapter, which serializes it for a specific LLM API
@@ -25,7 +25,7 @@ The minimal inference primitive. A single Core Loop turn is:
 
 That is all it does. It does not loop. It does not execute tools. It does not parse ReAct text. It does not know what an image is.
 
-The Core Loop is intentionally agnostic about:
+Step is intentionally agnostic about:
 
 - How it is triggered (interactive message, webhook, cron schedule, file system event)
 - Where its outputs go (terminal, web page, Slack channel, message queue)
@@ -36,15 +36,15 @@ The Core Loop is intentionally agnostic about:
 
 ### Provider Adapters
 
-Provider Adapters are the bridge between the Core Loop and specific LLM APIs. They understand the native protocol of their provider: OpenAI's chat completions, Anthropic's Messages API, Google's Gemini, local Ollama endpoints, or custom enterprise gateways.
+Provider Adapters are the bridge between Step and specific LLM APIs. They understand the native protocol of their provider: OpenAI's chat completions, Anthropic's Messages API, Google's Gemini, local Ollama endpoints, or custom enterprise gateways.
 
 A provider adapter's job is:
 
 - **Serialize** tack's generic state into the provider's native request format
 - **Invoke** the LLM through the provider's SDK or HTTP API
-- **Deserialize** the provider's native response into a generic, provider-agnostic artifact format that the Core Loop can append to state
+- **Deserialize** the provider's native response into a generic, provider-agnostic artifact format that Step can append to state
 
-The Core Loop does not know whether it is talking to GPT-4, Claude, Gemini, or a local model. It only knows: hand state to adapter, receive state back.
+Step does not know whether it is talking to GPT-4, Claude, Gemini, or a local model. It only knows: hand state to adapter, receive state back.
 
 ### Extension Points
 
@@ -96,20 +96,20 @@ Implementations (TUI, web, Telegram, etc.) satisfy this interface at build time.
 
 ### Orchestration
 
-Above the Core Loop, the framework provides two composable abstractions that separate **single-turn execution** from **multi-turn strategy**:
+Above the Loop / Step, the framework provides two composable abstractions that separate **single-turn execution** from **multi-turn strategy**:
 
-- **`step.Step`** — executes one complete inference turn. It calls `core.Turn()`, routes streaming deltas to the surface via a background goroutine, and then runs registered artifact handlers synchronously on the complete response. Handlers may mutate state (e.g., append `RoleTool` turns with tool results).
-- **`orchestrate.ReAct`** — an `Orchestrator` implementation that loops on `Step` while state changes. It reads events from a `Surface`, appends `RoleUser` turns, calls `Step.Execute()`, renders new turns via `RenderTurn()`, and loops again if a handler appended a `RoleTool` turn. Status updates ("thinking...", "calling tool...") are sent to the surface between iterations.
+- **`loop.Step`** — executes one complete inference turn. It invokes the provider, optionally routes streaming deltas to the surface via a background goroutine, and then runs registered artifact handlers synchronously on the complete response. Handlers may mutate state (e.g., append `RoleTool` turns with tool results).
+- **`orchestrate.ReAct`** — an `Orchestrator` implementation that loops on `Step` while state changes. It reads events from a `Surface`, appends `RoleUser` turns, calls `Step.Turn()`, renders new turns via `RenderTurn()`, and loops again if a handler appended a `RoleTool` turn. Status updates ("thinking...", "calling tool...") are sent to the surface between iterations.
 
 This separation means single-turn applications (e.g., a REST API endpoint) can use `Step` directly, while multi-turn agents (e.g., a TUI coding assistant) compose `Step` with `ReAct` or a custom `Orchestrator`.
 
 ### Agents / Applications
 
-An Agent (or Application) is a runnable assembly that composes the Core Loop, a Provider Adapter, a set of Artifact Handlers and Extensions, one or more I/O Surfaces, and an Orchestrator into a concrete system.
+An Agent (or Application) is a runnable assembly that composes loop.Step, a Provider Adapter, a set of Artifact Handlers and Extensions, one or more I/O Surfaces, and an Orchestrator into a concrete system.
 
-Crucially, the application layer is also where **strategy** happens. The Core Loop does not loop on its own. The application (via an Orchestrator) decides:
+Crucially, the application layer is also where **strategy** happens. Step does not loop on its own. The application (via an Orchestrator) decides:
 
-- When to call `Core.Turn()`
+- When to call `Step.Turn()`
 - Whether to call it once (single-shot Q&A) or repeatedly (tool-calling agent)
 - Whether to fork state and run multiple loops in parallel (Tree-of-Thought)
 - Whether to insert reflection messages between turns (Reflexion)
@@ -119,11 +119,11 @@ There is no single "tack" binary that does everything. Instead, there are compos
 
 ## Design Principles
 
-1. **Simplicity** — The Core Loop does as little as possible. It is a stateful inference primitive. Every feature that can live outside the core does.
-2. **Composability** — Components connect through narrow interfaces. A Core Loop, an OpenAI adapter, a tool handler, and a TUI surface compose the same way as a Core Loop, an Anthropic adapter, an image handler, and a webhook surface.
-3. **I/O Agnosticism** — The Core Loop does not know whether it is running in an interactive terminal or responding to a 3 AM PagerDuty alert. Surfaces handle the world; the core handles one inference turn.
+1. **Simplicity** — Step does as little as possible. It is a stateful inference primitive. Every feature that can live outside the core does.
+2. **Composability** — Components connect through narrow interfaces. A Step, an OpenAI adapter, a tool handler, and a TUI surface compose the same way as a Step, an Anthropic adapter, an image handler, and a webhook surface.
+3. **I/O Agnosticism** — Step does not know whether it is running in an interactive terminal or responding to a 3 AM PagerDuty alert. Surfaces handle the world; Step handles one inference turn.
 4. **Build-time Extension** — Extensions are Go packages composed at build time, not runtime plugins. This keeps deployment simple and interfaces type-safe.
-5. **Defer Specifics** — Patterns like memory, reflection, planning, reasoning strategies (ReAct, ToT, CoT), multi-agent orchestration, and tool calling are enabled by the Core Loop's extensibility but are not designed in the core. They emerge as artifact handlers, orchestrators, and applications that control how turns are invoked, not as alternative core implementations.
+5. **Defer Specifics** — Patterns like memory, reflection, planning, reasoning strategies (ReAct, ToT, CoT), multi-agent orchestration, and tool calling are enabled by Step's extensibility but are not designed in the core. They emerge as artifact handlers, orchestrators, and applications that control how turns are invoked, not as alternative core implementations.
 6. **Treat Tool Calling as an Extension** — Tool calling is a common and important capability, but it is not privileged. It is one artifact handler among many. This ensures the architecture can absorb future LLM capabilities (images, audio, video, structured output) without core changes.
 
 ## Relationship to pi.dev
@@ -144,8 +144,7 @@ This README remains a vision document, but the framework is now partially implem
 - `artifact/` — `Artifact` interface with `Text`, `ToolCall`, `Image`, `Reasoning`, and streaming delta types (`TextDelta`, `ReasoningDelta`, `ToolCallDelta`)
 - `state/` — `State` interface with `Turns()` and `Append()`, and an in-memory `Memory` implementation
 - `provider/` — `Provider` interface with `Invoke()`, and `StreamingProvider` for channel-based delta emission
-- `core/` — `Loop.Turn()` with optional streaming support via variadic delta channel
-- `step/` — `Step` abstraction with artifact `Handler` interface for single-turn execution
+- `loop/` — `Step` with `Turn()` method, optional streaming via surface, and artifact `Handler` interface for single-turn execution
 - `orchestrate/` — `Orchestrator` interface and `ReAct` implementation for multi-turn looping
 - `surface/` — `Surface` interface with ingress events and egress delta/turn/status rendering
 - `provider/openai/` — OpenAI-compatible adapter with streaming chat completions support
