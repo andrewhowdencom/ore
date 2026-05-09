@@ -12,12 +12,18 @@ import (
 	"github.com/andrewhowdencom/tack/surface"
 )
 
+// BeforeTurn transforms state before the provider call.
+type BeforeTurn interface {
+	BeforeTurn(ctx context.Context, s state.State) (state.State, error)
+}
+
 // Step executes a single complete inference turn: it invokes the provider,
 // optionally routes streaming deltas to a surface in real-time, and runs
 // registered artifact handlers synchronously on the complete response.
 type Step struct {
-	surface  surface.Surface
-	handlers []Handler
+	surface     surface.Surface
+	beforeTurns []BeforeTurn
+	handlers    []Handler
 }
 
 // New creates a Step with the given options.
@@ -39,6 +45,15 @@ func WithSurface(surf surface.Surface) Option {
 	}
 }
 
+// WithBeforeTurn configures before-turn hooks that run before the provider
+// call. Hooks run in registration order; each receives the state returned by
+// the previous hook. An error from any hook aborts the turn.
+func WithBeforeTurn(beforeTurns ...BeforeTurn) Option {
+	return func(s *Step) {
+		s.beforeTurns = beforeTurns
+	}
+}
+
 // WithHandlers configures artifact handlers to run after each turn.
 func WithHandlers(handlers ...Handler) Option {
 	return func(s *Step) {
@@ -53,6 +68,15 @@ func WithHandlers(handlers ...Handler) Option {
 // artifact from the assistant turn. The operation is fully synchronous and
 // blocking.
 func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider) (state.State, error) {
+	var err error
+
+	for _, bt := range s.beforeTurns {
+		st, err = bt.BeforeTurn(ctx, st)
+		if err != nil {
+			return st, fmt.Errorf("before turn hook failed: %w", err)
+		}
+	}
+
 	var deltasCh chan artifact.Artifact
 	if s.surface != nil {
 		deltasCh = make(chan artifact.Artifact, 100)
@@ -72,7 +96,6 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider) (s
 	}
 
 	var artifacts []artifact.Artifact
-	var err error
 
 	if deltasCh != nil {
 		if sp, ok := p.(provider.StreamingProvider); ok {

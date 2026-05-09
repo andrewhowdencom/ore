@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/andrewhowdencom/tack/artifact"
+	"github.com/andrewhowdencom/tack/provider"
 	"github.com/andrewhowdencom/tack/state"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,6 +32,20 @@ func (m *mockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, m.err
 	}
 	return m.response, nil
+}
+
+// concurrentMockTransport returns a fresh response for each request,
+// making it safe for concurrent use.
+type concurrentMockTransport struct {
+	responseBody string
+}
+
+func (m *concurrentMockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: 200,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(m.responseBody)),
+	}, nil
 }
 
 func mockClient(transport *mockTransport) *http.Client {
@@ -347,4 +364,159 @@ func TestProviderInvokeStreaming_NilChannel(t *testing.T) {
 	text, ok := artifacts[0].(artifact.Text)
 	require.True(t, ok)
 	assert.Equal(t, "Hello!", text.Content)
+}
+
+func TestProviderInvoke_ConcurrentSetTools(t *testing.T) {
+	transport := &concurrentMockTransport{
+		responseBody: `{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`,
+	}
+
+	p := New("test-key", "gpt-4", WithHTTPClient(&http.Client{Transport: transport}))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	var wg sync.WaitGroup
+
+	// Goroutine A: continuously updates tools.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			_ = p.SetTools([]provider.Tool{
+				{Name: fmt.Sprintf("tool-%d", i), Description: "test", Schema: map[string]any{"type": "object"}},
+			})
+		}
+	}()
+
+	// Goroutine B: continuously invokes the provider.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			_, _ = p.Invoke(t.Context(), mem)
+		}
+	}()
+
+	wg.Wait()
+}
+
+func TestProviderInvoke_MixedAssistantTextAndToolCalls(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponse(200, `{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`),
+	}
+
+	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	// Manually append an assistant turn with both text and tool calls.
+	mem.Append(state.RoleAssistant,
+		artifact.Text{Content: "I'll look that up"},
+		artifact.ToolCall{ID: "call_1", Name: "search", Arguments: `{"query":"test"}`},
+		artifact.ToolCall{ID: "call_2", Name: "calculate", Arguments: `{"expr":"1+1"}`},
+	)
+
+	_, err := p.Invoke(t.Context(), mem)
+	require.NoError(t, err)
+
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+
+	msgs, ok := reqBody["messages"].([]any)
+	require.True(t, ok)
+	require.Len(t, msgs, 2)
+
+	// First message is user.
+	userMsg, ok := msgs[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "user", userMsg["role"])
+
+	// Second message is assistant with content and tool_calls.
+	asstMsg, ok := msgs[1].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "assistant", asstMsg["role"])
+	assert.Equal(t, "I'll look that up", asstMsg["content"])
+
+	toolCalls, ok := asstMsg["tool_calls"].([]any)
+	require.True(t, ok)
+	require.Len(t, toolCalls, 2)
+
+	tc1, ok := toolCalls[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "call_1", tc1["id"])
+	fn1, ok := tc1["function"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "search", fn1["name"])
+
+	tc2, ok := toolCalls[1].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "call_2", tc2["id"])
+	fn2, ok := tc2["function"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "calculate", fn2["name"])
+}
+
+func TestProviderInvoke_ToolsWithDescription(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponse(200, `{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`),
+	}
+
+	tools := []provider.Tool{
+		{
+			Name:        "add",
+			Description: "Add two numbers together",
+			Schema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"a": map[string]any{"type": "number"},
+					"b": map[string]any{"type": "number"},
+				},
+			},
+		},
+		{
+			Name:        "multiply",
+			Description: "Multiply two numbers together",
+			Schema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"a": map[string]any{"type": "number"},
+					"b": map[string]any{"type": "number"},
+				},
+			},
+		},
+	}
+
+	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
+	require.NoError(t, p.SetTools(tools))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	_, err := p.Invoke(t.Context(), mem)
+	require.NoError(t, err)
+
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+
+	reqTools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, reqTools, 2)
+
+	t1, ok := reqTools[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "function", t1["type"])
+	fn1, ok := t1["function"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "add", fn1["name"])
+	assert.Equal(t, "Add two numbers together", fn1["description"])
+
+	t2, ok := reqTools[1].(map[string]any)
+	require.True(t, ok)
+	fn2, ok := t2["function"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "multiply", fn2["name"])
+	assert.Equal(t, "Multiply two numbers together", fn2["description"])
 }

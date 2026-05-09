@@ -53,6 +53,22 @@ func run() error {
 	}
 	prov := openai.New(apiKey, modelName, opts...)
 
+	// Tool calling example (uncomment this block and comment out the provider
+	// and step setup immediately above and below it):
+	//
+	//   registry := tool.NewRegistry()
+	//   registry.Register("calculator", func(ctx context.Context, args map[string]any) (any, error) {
+	//       return "42", nil
+	//   })
+	//   prov := openai.New(apiKey, modelName, opts...)
+	//   _ = prov.SetTools([]provider.Tool{
+	//       {Name: "calculator", Description: "A simple calculator", Schema: map[string]any{"type": "object"}},
+	//   })
+	//   st := loop.New(loop.WithSurface(s), loop.WithHandlers(registry.Handler()))
+	//
+	// The ReAct orchestrator automatically loops while tool calls are in flight.
+	// See examples/calculator for a standalone tool-calling example.
+
 	// Compose framework layers.
 	st := loop.New(loop.WithSurface(s))
 	orchestrator := &orchestrate.ReAct{
