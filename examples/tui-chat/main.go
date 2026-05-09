@@ -59,11 +59,10 @@ func run() error {
 	//   registry.Register("calculator", func(ctx context.Context, args map[string]any) (any, error) {
 	//       return "42", nil
 	//   })
-	//   prov = openai.New(apiKey, modelName, append(opts, openai.WithTools(provider.Tool{
-	//       Name:        "calculator",
-	//       Description: "A simple calculator",
-	//       Schema:      map[string]any{"type": "object"},
-	//   }))...)
+	//   prov := openai.New(apiKey, modelName, opts...)
+	//   prov.SetTools([]provider.Tool{
+	//       {Name: "calculator", Description: "A simple calculator", Schema: map[string]any{"type": "object"}},
+	//   })
 	//   st = loop.New(loop.WithSurface(s), loop.WithHandlers(registry.Handler()))
 	//
 	// The ReAct orchestrator automatically loops while tool calls are in flight.

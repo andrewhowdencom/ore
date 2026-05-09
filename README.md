@@ -82,9 +82,10 @@ registry.Register("add", func(ctx context.Context, args map[string]any) (any, er
     return a + b, nil
 })
 
-prov := openai.New(apiKey, model, openai.WithTools(
-    provider.Tool{Name: "add", Description: "Add two numbers", Schema: schema},
-))
+prov := openai.New(apiKey, model)
+prov.SetTools([]provider.Tool{
+    {Name: "add", Description: "Add two numbers", Schema: schema},
+})
 
 // The concrete type tool.Handler implements loop.Handler.
 step := loop.New(loop.WithHandlers(registry.Handler()))
@@ -92,7 +93,7 @@ step := loop.New(loop.WithHandlers(registry.Handler()))
 // The ReAct orchestrator automatically loops while tool calls are in flight.
 ```
 
-Adapters that implement `provider.ToolProvider` (e.g., the OpenAI adapter) expose `SetTools` to update the tool list after construction. The `WithTools` option is a convenience for initial configuration; both call `SetTools` internally. The `provider.Tool` struct is provider-agnostic — each adapter maps it to its native API.
+Adapters that implement `provider.ToolProvider` (e.g., the OpenAI adapter) expose `SetTools` to configure the tool list. The `provider.Tool` struct is provider-agnostic — each adapter maps it to its native API.
 
 **Dynamic tool configuration.** The tool list can be evolved during a session by calling `SetTools` before each turn. This allows the application to prune, expand, or replace tools based on context, user permissions, or discovered capabilities:
 

@@ -76,11 +76,10 @@ func run() error {
 	//   registry.Register("calculator", func(ctx context.Context, args map[string]any) (any, error) {
 	//       return "42", nil
 	//   })
-	//   p = openai.New(apiKey, model, append(opts, openai.WithTools(provider.Tool{
-	//       Name:        "calculator",
-	//       Description: "A simple calculator",
-	//       Schema:      map[string]any{"type": "object"},
-	//   }))...)
+	//   p := openai.New(apiKey, model, opts...)
+	//   p.SetTools([]provider.Tool{
+	//       {Name: "calculator", Description: "A simple calculator", Schema: map[string]any{"type": "object"}},
+	//   })
 	//   s := loop.New(loop.WithHandlers(registry.Handler()))
 	//
 	// Note: to use tools, loop until the assistant responds with text rather

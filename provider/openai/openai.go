@@ -33,7 +33,6 @@ type config struct {
 	model      string
 	baseURL    string
 	httpClient option.HTTPClient
-	tools      []provider.Tool
 }
 
 // Option configures a Provider via the functional options pattern.
@@ -51,13 +50,6 @@ func WithBaseURL(url string) Option {
 func WithHTTPClient(client option.HTTPClient) Option {
 	return func(c *config) {
 		c.httpClient = client
-	}
-}
-
-// WithTools configures the provider with the given tool definitions.
-func WithTools(tools ...provider.Tool) Option {
-	return func(c *config) {
-		c.tools = tools
 	}
 }
 
@@ -82,7 +74,6 @@ func New(apiKey, model string, opts ...Option) *Provider {
 	return &Provider{
 		client: openai.NewClient(sdkOpts...),
 		model:  cfg.model,
-		tools:  cfg.tools,
 	}
 }
 

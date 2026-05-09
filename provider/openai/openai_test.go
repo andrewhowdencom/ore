@@ -488,7 +488,8 @@ func TestProviderInvoke_ToolsWithDescription(t *testing.T) {
 		},
 	}
 
-	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)), WithTools(tools...))
+	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
+	require.NoError(t, p.SetTools(tools))
 	mem := &state.Memory{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 

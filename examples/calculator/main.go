@@ -113,23 +113,18 @@ func run() error {
 		},
 	}
 
-	// Build provider with tools.
+	// Build provider.
 	var opts []openai.Option
 	if baseURL != "" {
 		opts = append(opts, openai.WithBaseURL(baseURL))
 	}
-	opts = append(opts, openai.WithTools(tools...))
 	prov := openai.New(apiKey, model, opts...)
 
-	// Dynamic tool updates: the tool list can be changed mid-session by
-	// calling SetTools on the provider. For example, after the first turn
-	// you might disable a tool that is no longer relevant:
-	//
-	//   if tp, ok := prov.(provider.ToolProvider); ok {
-	//       tp.SetTools(reducedTools)
-	//   }
-	//
-	// SetTools is safe for concurrent use with Turn/Invoke.
+	// Configure tools on the provider. The tool list can be changed
+	// mid-session by calling SetTools again before any turn.
+	if err := prov.SetTools(tools); err != nil {
+		return err
+	}
 
 	// Build state with the user message.
 	mem := &state.Memory{}
