@@ -32,3 +32,19 @@ type StreamingProvider interface {
 	// adapter may fall back to non-streaming behavior.
 	InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact) ([]artifact.Artifact, error)
 }
+
+// Tool describes a callable tool exposed to an LLM provider.
+type Tool struct {
+	Name        string
+	Description string
+	// Schema defines the JSON Schema for the tool's parameters.
+	Schema map[string]any
+}
+
+// ToolProvider is the interface implemented by LLM provider adapters that
+// support tool calling. It composes Provider and adds the ability to configure
+// the set of available tools before invocation.
+type ToolProvider interface {
+	Provider
+	SetTools(tools []Tool) error
+}

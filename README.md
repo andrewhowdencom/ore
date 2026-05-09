@@ -48,26 +48,71 @@ Step does not know whether it is talking to GPT-4, Claude, Gemini, or a local mo
 
 ### Extension Points
 
-Extension Points are clean Go interfaces for capabilities that applications compose at build time. They are not runtime plugins or shared libraries; they are packages you import and wire together.
+Extension Points are clean Go interfaces for capabilities that applications compose at build time. They follow a lifecycle naming convention (`BeforeX`, `AfterX`, `HandleX`) and are not runtime plugins or shared libraries; they are packages you import and wire together.
 
 #### Artifact Handlers
 
-The most important extension pattern. LLM responses are heterogeneous bags of artifacts. An Artifact Handler processes specific artifact types it understands and ignores the rest.
+The most important extension pattern. LLM responses are heterogeneous bags of artifacts. An Artifact Handler processes specific artifact types it understands and ignores the rest. Handlers implement `loop.Handler` and are registered via `loop.WithHandlers()`.
 
-Examples:
+The primary concrete handler is the **Tool Call Handler** (in `tool/`). It detects `tool_call` artifacts, looks up the tool in a `tool.Registry` by name, executes the corresponding Go function, and appends `RoleTool` turns with `ToolResult` artifacts. Unknown tools are refused. This is deliberately an extension, not core behavior — it validates that the extension model actually works.
 
-- **Tool Call Handler** — Detects `tool_call` artifacts, executes the corresponding functions, and appends results to state. This is deliberately an extension, not core behavior. It is the primary stress test for whether the extension model actually works.
-- **Image Handler** — Detects `image` artifacts (URLs or base64 blobs), stores or renders them, and appends references to state
-- **Structured Output Handler** — Validates `json_schema` artifacts against a declared schema
-- **Streaming Handler** — Intercepts `text_delta` or `reasoning_delta` artifacts and routes them to a TUI or SSE stream in real time. The framework supports a dual-stream artifact model: ephemeral delta artifacts flow through a "hot" channel for real-time rendering, while complete buffered artifacts are appended to state via the "cold" path. Provider adapters own delta→complete buffering internally.
+Other handlers:
+
+- **Image Handler** (planned) — Detects `image` artifacts (URLs or base64 blobs), stores or renders them, and appends references to state
+- **Structured Output Handler** (planned) — Validates `json_schema` artifacts against a declared schema
+- **Streaming Support** — `Step` can render partial delta artifacts in real time when the provider implements `provider.StreamingProvider`. No separate streaming handler is required; provider adapters own delta→complete buffering internally.
 
 Multiple artifact handlers can fire on the same response. A response containing text, a tool call, and a reasoning block will be processed by three different handlers, each doing its own work.
 
+#### Tool Calling
+
+Tool calling uses three mechanisms that compose through the extension point pattern:
+
+1. **Provider adapter** (`provider/openai/`) — configures tools via `provider.ToolProvider.SetTools()`, serializes them in requests, deserializes `ToolCall` from responses, and serializes `RoleTool` turns with `ToolResult` back to the provider
+2. **Artifact Handler** (`tool/`) — a `tool.Registry` maps names to Go functions, and a `tool.Handler` implements `loop.Handler` to execute them
+3. **`BeforeTurn` hook** (optional) — a `loop.BeforeTurn` implementation can inject system prompts or tool usage instructions before the provider call
+
+The application wires them together:
+
+```go
+registry := tool.NewRegistry()
+registry.Register("add", func(ctx context.Context, args map[string]any) (any, error) {
+    a, _ := args["a"].(float64)
+    b, _ := args["b"].(float64)
+    return a + b, nil
+})
+
+prov := openai.New(apiKey, model, openai.WithTools(
+    provider.Tool{Name: "add", Description: "Add two numbers", Schema: schema},
+))
+
+// The concrete type tool.Handler implements loop.Handler.
+step := loop.New(loop.WithHandlers(registry.Handler()))
+
+// The ReAct orchestrator automatically loops while tool calls are in flight.
+```
+
+Adapters that implement `provider.ToolProvider` (e.g., the OpenAI adapter) expose `SetTools` to update the tool list after construction. The `WithTools` option is a convenience for initial configuration; both call `SetTools` internally. The `provider.Tool` struct is provider-agnostic — each adapter maps it to its native API.
+
 #### Other Extension Points
 
-- **Middleware interfaces** — Hooks that intercept prompts, responses, or state transitions
-- **Lifecycle interfaces** — Hooks for session start, end, compaction, or error handling
-- **Output Parser interfaces** — Swappable parsers for reasoning formats (e.g., ReAct's `Thought: ... Action: ...` for models without native tool support)
+- **`BeforeTurn` hook** (`loop.BeforeTurn`) — transforms state before the provider call. Multiple hooks compose in registration order. Errors abort the turn. Register via `loop.WithBeforeTurn(...)`:
+
+  ```go
+  type systemPromptInjector struct{}
+
+  func (i systemPromptInjector) BeforeTurn(ctx context.Context, s state.State) (state.State, error) {
+      s.Append(state.RoleSystem, artifact.Text{Content: "You are a helpful assistant."})
+      return s, nil
+  }
+
+  step := loop.New(
+      loop.WithBeforeTurn(systemPromptInjector{}),
+      loop.WithHandlers(registry.Handler()),
+  )
+  ```
+- **Lifecycle interfaces** (planned) — Hooks for session start, end, compaction, or error handling
+- **Output Parser interfaces** (planned) — Swappable parsers for reasoning formats (e.g., ReAct's `Thought: ... Action: ...` for models without native tool support)
 
 Extensions compose. They do not mutate the core.
 
@@ -141,14 +186,16 @@ Where tack diverges:
 
 This README remains a vision document, but the framework is now partially implemented. The following packages and interfaces are available:
 
-- `artifact/` — `Artifact` interface with `Text`, `ToolCall`, `Image`, `Reasoning`, and streaming delta types (`TextDelta`, `ReasoningDelta`, `ToolCallDelta`)
+- `artifact/` — `Artifact` interface with `Text`, `ToolCall`, `ToolResult`, `Usage`, `Image`, `Reasoning`, and streaming delta types (`TextDelta`, `ReasoningDelta`, `ToolCallDelta`)
 - `state/` — `State` interface with `Turns()` and `Append()`, and an in-memory `Memory` implementation
-- `provider/` — `Provider` interface with `Invoke()`, and `StreamingProvider` for channel-based delta emission
-- `loop/` — `Step` with `Turn()` method, optional streaming via surface, and artifact `Handler` interface for single-turn execution
+- `provider/` — `Provider` interface with `Invoke()`, `StreamingProvider` for channel-based delta emission, and `ToolProvider` for tool configuration
+- `loop/` — `Step` with `Turn()` method, `BeforeTurn` hook, optional streaming via surface, and artifact `Handler` interface for single-turn execution
+- `tool/` — `Registry` for mapping tool names to Go functions, and `Handler` implementing `loop.Handler` for tool execution
 - `orchestrate/` — `Orchestrator` interface and `ReAct` implementation for multi-turn looping
 - `surface/` — `Surface` interface with ingress events and egress delta/turn/status rendering
-- `provider/openai/` — OpenAI-compatible adapter with streaming chat completions support
+- `provider/openai/` — OpenAI-compatible adapter with streaming chat completions and tool calling support
 - `examples/single-turn-cli/` — Reference one-shot CLI application
 - `examples/tui-chat/` — Reference streaming chat REPL using Bubble Tea
+- `examples/calculator/` — Reference tool-calling application with add and multiply
 
-Remaining work: additional provider adapters (Anthropic, Gemini), additional artifact handlers (image, structured output), middleware and lifecycle hooks, and more I/O surface implementations (web, Telegram, webhook).
+Remaining work: additional provider adapters (Anthropic, Gemini), additional artifact handlers (image, structured output), additional lifecycle hooks, and more I/O surface implementations (web, Telegram, webhook).

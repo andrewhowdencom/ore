@@ -6,10 +6,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/andrewhowdencom/tack/artifact"
 	"github.com/andrewhowdencom/tack/provider"
+	"github.com/openai/openai-go/packages/param"
 	"github.com/andrewhowdencom/tack/state"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -20,6 +22,7 @@ import (
 type Provider struct {
 	client openai.Client
 	model  string
+	tools  []provider.Tool
 }
 
 // config holds the build-time configuration for the Provider.
@@ -28,6 +31,7 @@ type config struct {
 	model      string
 	baseURL    string
 	httpClient option.HTTPClient
+	tools      []provider.Tool
 }
 
 // Option configures a Provider via the functional options pattern.
@@ -45,6 +49,13 @@ func WithBaseURL(url string) Option {
 func WithHTTPClient(client option.HTTPClient) Option {
 	return func(c *config) {
 		c.httpClient = client
+	}
+}
+
+// WithTools configures the provider with the given tool definitions.
+func WithTools(tools ...provider.Tool) Option {
+	return func(c *config) {
+		c.tools = tools
 	}
 }
 
@@ -69,47 +80,112 @@ func New(apiKey, model string, opts ...Option) *Provider {
 	return &Provider{
 		client: openai.NewClient(sdkOpts...),
 		model:  cfg.model,
+		tools:  cfg.tools,
 	}
 }
 
 // Compile-time interface checks.
 var _ provider.Provider = (*Provider)(nil)
 var _ provider.StreamingProvider = (*Provider)(nil)
+var _ provider.ToolProvider = (*Provider)(nil)
+
+// SetTools updates the set of available tools for the provider.
+func (p *Provider) SetTools(tools []provider.Tool) error {
+	p.tools = tools
+	return nil
+}
 
 // serializeMessages converts tack state into OpenAI chat completion message
-// parameters. It concatenates Text artifacts within each turn and maps
-// tack roles to OpenAI message types.
+// parameters. It maps tack roles to OpenAI message types and preserves
+// ToolCall and ToolResult artifacts for tool calling conversations.
 func (p *Provider) serializeMessages(s state.State) []openai.ChatCompletionMessageParamUnion {
 	turns := s.Turns()
 	messages := make([]openai.ChatCompletionMessageParamUnion, 0, len(turns))
 
 	for _, turn := range turns {
-		content := ""
-		for _, art := range turn.Artifacts {
-			if text, ok := art.(artifact.Text); ok {
-				if content != "" {
-					content += "\n"
-				}
-				content += text.Content
-			}
-			// Non-text artifacts are skipped in this initial implementation.
-		}
-
-		var msg openai.ChatCompletionMessageParamUnion
 		switch turn.Role {
 		case state.RoleSystem:
-			msg = openai.SystemMessage(content)
+			content := concatText(turn.Artifacts)
+			messages = append(messages, openai.SystemMessage(content))
 		case state.RoleUser:
-			msg = openai.UserMessage(content)
+			content := concatText(turn.Artifacts)
+			messages = append(messages, openai.UserMessage(content))
 		case state.RoleAssistant:
-			msg = openai.AssistantMessage(content)
+			var toolCalls []artifact.ToolCall
+			var textContent string
+			for _, art := range turn.Artifacts {
+				switch a := art.(type) {
+				case artifact.Text:
+					if textContent != "" {
+						textContent += "\n"
+					}
+					textContent += a.Content
+				case artifact.ToolCall:
+					toolCalls = append(toolCalls, a)
+				}
+			}
+
+			if len(toolCalls) > 0 {
+				tcParams := make([]openai.ChatCompletionMessageToolCallParam, len(toolCalls))
+				for i, tc := range toolCalls {
+					tcParams[i] = openai.ChatCompletionMessageToolCallParam{
+						ID: tc.ID,
+						Function: openai.ChatCompletionMessageToolCallFunctionParam{
+							Name:      tc.Name,
+							Arguments: tc.Arguments,
+						},
+					}
+				}
+				assistantMsg := openai.ChatCompletionAssistantMessageParam{
+					ToolCalls: tcParams,
+				}
+				if textContent != "" {
+					assistantMsg.Content = openai.ChatCompletionAssistantMessageParamContentUnion{
+						OfString: param.NewOpt(textContent),
+					}
+				}
+				messages = append(messages, openai.ChatCompletionMessageParamUnion{
+					OfAssistant: &assistantMsg,
+				})
+			} else {
+				messages = append(messages, openai.AssistantMessage(textContent))
+			}
+		case state.RoleTool:
+			var toolMsgs []openai.ChatCompletionMessageParamUnion
+			for _, art := range turn.Artifacts {
+				if tr, ok := art.(artifact.ToolResult); ok {
+					toolMsgs = append(toolMsgs, openai.ToolMessage(tr.Content, tr.ToolCallID))
+				}
+			}
+			if len(toolMsgs) > 0 {
+				messages = append(messages, toolMsgs...)
+			} else {
+				// Fallback: non-ToolResult artifacts in RoleTool turns are treated as
+				// user messages for backward compatibility.
+				content := concatText(turn.Artifacts)
+				messages = append(messages, openai.UserMessage(content))
+			}
 		default:
-			msg = openai.UserMessage(content)
+			content := concatText(turn.Artifacts)
+			messages = append(messages, openai.UserMessage(content))
 		}
-		messages = append(messages, msg)
 	}
 
 	return messages
+}
+
+// concatText extracts and concatenates Text artifacts from a slice.
+func concatText(artifacts []artifact.Artifact) string {
+	var content string
+	for _, art := range artifacts {
+		if text, ok := art.(artifact.Text); ok {
+			if content != "" {
+				content += "\n"
+			}
+			content += text.Content
+		}
+	}
+	return content
 }
 
 // Invoke serializes state into an OpenAI chat completions request via the SDK,
@@ -117,10 +193,15 @@ func (p *Provider) serializeMessages(s state.State) []openai.ChatCompletionMessa
 func (p *Provider) Invoke(ctx context.Context, s state.State) ([]artifact.Artifact, error) {
 	messages := p.serializeMessages(s)
 
-	resp, err := p.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+	params := openai.ChatCompletionNewParams{
 		Model:    openai.ChatModel(p.model),
 		Messages: messages,
-	})
+	}
+	if len(p.tools) > 0 {
+		params.Tools = p.serializeTools()
+	}
+
+	resp, err := p.client.Chat.Completions.New(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("chat completion: %w", err)
 	}
@@ -130,8 +211,18 @@ func (p *Provider) Invoke(ctx context.Context, s state.State) ([]artifact.Artifa
 	}
 
 	msg := resp.Choices[0].Message
-	artifacts := []artifact.Artifact{
-		artifact.Text{Content: msg.Content},
+	artifacts := make([]artifact.Artifact, 0)
+
+	if len(msg.ToolCalls) > 0 {
+		for _, tc := range msg.ToolCalls {
+			artifacts = append(artifacts, artifact.ToolCall{
+				ID:        tc.ID,
+				Name:      tc.Function.Name,
+				Arguments: tc.Function.Arguments,
+			})
+		}
+	} else {
+		artifacts = append(artifacts, artifact.Text{Content: msg.Content})
 	}
 
 	if field, ok := msg.JSON.ExtraFields["reasoning_content"]; ok {
@@ -139,6 +230,14 @@ func (p *Provider) Invoke(ctx context.Context, s state.State) ([]artifact.Artifa
 		if err := json.Unmarshal([]byte(field.Raw()), &reasoning); err == nil && reasoning != "" {
 			artifacts = append(artifacts, artifact.Reasoning{Content: reasoning})
 		}
+	}
+
+	if resp.Usage.PromptTokens > 0 || resp.Usage.CompletionTokens > 0 || resp.Usage.TotalTokens > 0 {
+		artifacts = append(artifacts, artifact.Usage{
+			PromptTokens:     int(resp.Usage.PromptTokens),
+			CompletionTokens: int(resp.Usage.CompletionTokens),
+			TotalTokens:      int(resp.Usage.TotalTokens),
+		})
 	}
 
 	return artifacts, nil
@@ -154,12 +253,24 @@ func (p *Provider) InvokeStreaming(ctx context.Context, s state.State, deltasCh 
 
 	messages := p.serializeMessages(s)
 
-	stream := p.client.Chat.Completions.NewStreaming(ctx, openai.ChatCompletionNewParams{
+	params := openai.ChatCompletionNewParams{
 		Model:    openai.ChatModel(p.model),
 		Messages: messages,
-	})
+	}
+	if len(p.tools) > 0 {
+		params.Tools = p.serializeTools()
+	}
+
+	stream := p.client.Chat.Completions.NewStreaming(ctx, params)
 
 	var textContent strings.Builder
+
+	type toolCallAccum struct {
+		id   string
+		name strings.Builder
+		args strings.Builder
+	}
+	toolCalls := make(map[int64]*toolCallAccum)
 
 	for stream.Next() {
 		chunk := stream.Current()
@@ -176,6 +287,33 @@ func (p *Provider) InvokeStreaming(ctx context.Context, s state.State, deltasCh 
 				return nil, ctx.Err()
 			}
 		}
+
+		for _, tc := range delta.ToolCalls {
+			acc, ok := toolCalls[tc.Index]
+			if !ok {
+				acc = &toolCallAccum{}
+				toolCalls[tc.Index] = acc
+			}
+			if tc.ID != "" {
+				acc.id = tc.ID
+			}
+			if tc.Function.Name != "" {
+				acc.name.WriteString(tc.Function.Name)
+			}
+			if tc.Function.Arguments != "" {
+				acc.args.WriteString(tc.Function.Arguments)
+			}
+
+			select {
+			case deltasCh <- artifact.ToolCallDelta{
+				ID:        acc.id,
+				Name:      tc.Function.Name,
+				Arguments: tc.Function.Arguments,
+			}:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
 	}
 
 	if err := stream.Err(); err != nil {
@@ -183,9 +321,43 @@ func (p *Provider) InvokeStreaming(ctx context.Context, s state.State, deltasCh 
 	}
 
 	var artifacts []artifact.Artifact
-	if textContent.Len() > 0 {
+
+	if len(toolCalls) > 0 {
+		indices := make([]int64, 0, len(toolCalls))
+		for idx := range toolCalls {
+			indices = append(indices, idx)
+		}
+		sort.Slice(indices, func(i, j int) bool { return indices[i] < indices[j] })
+		for _, idx := range indices {
+			acc := toolCalls[idx]
+			artifacts = append(artifacts, artifact.ToolCall{
+				ID:        acc.id,
+				Name:      acc.name.String(),
+				Arguments: acc.args.String(),
+			})
+		}
+	} else if textContent.Len() > 0 {
 		artifacts = append(artifacts, artifact.Text{Content: textContent.String()})
 	}
 
 	return artifacts, nil
+}
+
+// serializeTools converts provider-agnostic tool definitions into OpenAI SDK
+// tool parameters.
+func (p *Provider) serializeTools() []openai.ChatCompletionToolParam {
+	toolParams := make([]openai.ChatCompletionToolParam, len(p.tools))
+	for i, t := range p.tools {
+		fnDef := openai.FunctionDefinitionParam{
+			Name:       t.Name,
+			Parameters: openai.FunctionParameters(t.Schema),
+		}
+		if t.Description != "" {
+			fnDef.Description = param.NewOpt(t.Description)
+		}
+		toolParams[i] = openai.ChatCompletionToolParam{
+			Function: fnDef,
+		}
+	}
+	return toolParams
 }

@@ -18,12 +18,33 @@ func (t Text) Kind() string { return "text" }
 
 // ToolCall represents a tool invocation artifact.
 type ToolCall struct {
+	ID        string
 	Name      string
 	Arguments string
 }
 
 // Kind returns the artifact kind identifier.
 func (t ToolCall) Kind() string { return "tool_call" }
+
+// ToolResult represents the result of executing a tool call.
+type ToolResult struct {
+	ToolCallID string
+	Content    string
+	IsError    bool
+}
+
+// Kind returns the artifact kind identifier.
+func (t ToolResult) Kind() string { return "tool_result" }
+
+// Usage represents token consumption metadata from a provider response.
+type Usage struct {
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}
+
+// Kind returns the artifact kind identifier.
+func (u Usage) Kind() string { return "usage" }
 
 // Image represents an image artifact referenced by URL.
 type Image struct {
@@ -59,6 +80,7 @@ func (r ReasoningDelta) Kind() string { return "reasoning_delta" }
 
 // ToolCallDelta represents a partial chunk of a tool invocation for streaming.
 type ToolCallDelta struct {
+	ID        string
 	Name      string
 	Arguments string
 }

@@ -23,8 +23,13 @@ func (m *mockProvider) Invoke(ctx context.Context, s state.State) ([]artifact.Ar
 	return m.artifacts, m.err
 }
 
-// Compile-time interface check.
+func (m *mockProvider) SetTools(tools []provider.Tool) error {
+	return nil
+}
+
+// Compile-time interface checks.
 var _ provider.Provider = (*mockProvider)(nil)
+var _ provider.ToolProvider = (*mockProvider)(nil)
 
 // mockStreamingProvider implements provider.StreamingProvider for testing.
 type mockStreamingProvider struct {
@@ -44,14 +49,20 @@ func (m *mockStreamingProvider) InvokeStreaming(ctx context.Context, s state.Sta
 	return m.artifacts, m.err
 }
 
-// Compile-time interface check.
+func (m *mockStreamingProvider) SetTools(tools []provider.Tool) error {
+	return nil
+}
+
+// Compile-time interface checks.
 var _ provider.StreamingProvider = (*mockStreamingProvider)(nil)
+var _ provider.ToolProvider = (*mockStreamingProvider)(nil)
 
 // mockSurface implements surface.Surface for testing.
 type mockSurface struct {
 	deltas   []artifact.Artifact
 	turns    []state.Turn
 	statuses []string
+	err      error
 }
 
 func (m *mockSurface) Events() <-chan surface.Event {
@@ -60,7 +71,7 @@ func (m *mockSurface) Events() <-chan surface.Event {
 
 func (m *mockSurface) RenderDelta(ctx context.Context, delta artifact.Artifact) error {
 	m.deltas = append(m.deltas, delta)
-	return nil
+	return m.err
 }
 
 func (m *mockSurface) RenderTurn(ctx context.Context, turn state.Turn) error {
@@ -93,6 +104,18 @@ func (m *mockHandler) Handle(ctx context.Context, art artifact.Artifact, s state
 
 // Compile-time interface check.
 var _ Handler = (*mockHandler)(nil)
+
+// mockBeforeTurn implements BeforeTurn for testing.
+type mockBeforeTurn struct {
+	fn func(ctx context.Context, s state.State) (state.State, error)
+}
+
+func (m *mockBeforeTurn) BeforeTurn(ctx context.Context, s state.State) (state.State, error) {
+	return m.fn(ctx, s)
+}
+
+// Compile-time interface check.
+var _ BeforeTurn = (*mockBeforeTurn)(nil)
 
 func TestStep_Turn_AppendsArtifacts(t *testing.T) {
 	s := New()
@@ -359,6 +382,87 @@ func TestStep_Turn_HandlerError(t *testing.T) {
 	require.ErrorIs(t, err, wantErr)
 }
 
+func TestStep_Turn_BeforeTurn_TransformsState(t *testing.T) {
+	before := &mockBeforeTurn{
+		fn: func(ctx context.Context, s state.State) (state.State, error) {
+			// Append a system message before the provider call.
+			s.Append(state.RoleSystem, artifact.Text{Content: "system-prompt"})
+			return s, nil
+		},
+	}
+	s := New(WithBeforeTurn(before))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	mock := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world"},
+		},
+	}
+
+	_, err := s.Turn(context.Background(), mem, mock)
+	require.NoError(t, err)
+
+	turns := mem.Turns()
+	require.Len(t, turns, 3)
+	assert.Equal(t, state.RoleUser, turns[0].Role)
+	assert.Equal(t, state.RoleSystem, turns[1].Role)
+	assert.Equal(t, state.RoleAssistant, turns[2].Role)
+}
+
+func TestStep_Turn_BeforeTurn_ErrorAborts(t *testing.T) {
+	wantErr := errors.New("before turn failed")
+	before := &mockBeforeTurn{
+		fn: func(ctx context.Context, s state.State) (state.State, error) {
+			return s, wantErr
+		},
+	}
+	s := New(WithBeforeTurn(before))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	mock := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world"},
+		},
+	}
+
+	_, err := s.Turn(context.Background(), mem, mock)
+	require.ErrorIs(t, err, wantErr)
+
+	// Provider should not have been called, so only the user turn exists.
+	assert.Len(t, mem.Turns(), 1)
+}
+
+func TestStep_Turn_BeforeTurn_MultipleInOrder(t *testing.T) {
+	var order []int
+	before1 := &mockBeforeTurn{
+		fn: func(ctx context.Context, s state.State) (state.State, error) {
+			order = append(order, 1)
+			return s, nil
+		},
+	}
+	before2 := &mockBeforeTurn{
+		fn: func(ctx context.Context, s state.State) (state.State, error) {
+			order = append(order, 2)
+			return s, nil
+		},
+	}
+	s := New(WithBeforeTurn(before1, before2))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	mock := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world"},
+		},
+	}
+
+	_, err := s.Turn(context.Background(), mem, mock)
+	require.NoError(t, err)
+	assert.Equal(t, []int{1, 2}, order)
+}
+
 func TestStep_Turn_StreamingAndHandler(t *testing.T) {
 	surf := &mockSurface{}
 	h := &mockHandler{}
@@ -399,4 +503,145 @@ func TestStep_Turn_StreamingAndHandler(t *testing.T) {
 	require.Len(t, h.called, 2)
 	assert.Equal(t, "text", h.called[0].Kind())
 	assert.Equal(t, "tool_call", h.called[1].Kind())
+}
+
+func TestStep_Turn_BeforeTurnAndHandler_EndToEnd(t *testing.T) {
+	before := &mockBeforeTurn{
+		fn: func(ctx context.Context, s state.State) (state.State, error) {
+			s.Append(state.RoleSystem, artifact.Text{Content: "system prompt"})
+			return s, nil
+		},
+	}
+
+	h := &mockHandler{
+		fn: func(ctx context.Context, art artifact.Artifact, s state.State) error {
+			if tc, ok := art.(artifact.ToolCall); ok {
+				s.Append(state.RoleTool, artifact.ToolResult{
+					ToolCallID: tc.ID,
+					Content:    "result",
+				})
+			}
+			return nil
+		},
+	}
+
+	s := New(WithBeforeTurn(before), WithHandlers(h))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "calling tool"},
+			artifact.ToolCall{ID: "call_1", Name: "test", Arguments: "{}"},
+		},
+	}
+
+	result, err := s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 4) // User, System (BeforeTurn), Assistant, Tool (handler)
+	assert.Equal(t, state.RoleUser, turns[0].Role)
+	assert.Equal(t, state.RoleSystem, turns[1].Role)
+	assert.Equal(t, state.RoleAssistant, turns[2].Role)
+	assert.Equal(t, state.RoleTool, turns[3].Role)
+
+	// Verify the handler processed both artifacts.
+	require.Len(t, h.called, 2)
+	assert.Equal(t, "text", h.called[0].Kind())
+	assert.Equal(t, "tool_call", h.called[1].Kind())
+
+	// Verify the tool result was appended.
+	last := turns[3]
+	require.Len(t, last.Artifacts, 1)
+	tr, ok := last.Artifacts[0].(artifact.ToolResult)
+	require.True(t, ok)
+	assert.Equal(t, "call_1", tr.ToolCallID)
+	assert.Equal(t, "result", tr.Content)
+}
+
+func TestStep_Turn_UsageArtifact(t *testing.T) {
+	var capturedUsage *artifact.Usage
+	h := &mockHandler{
+		fn: func(ctx context.Context, art artifact.Artifact, s state.State) error {
+			if u, ok := art.(artifact.Usage); ok {
+				capturedUsage = &u
+			}
+			return nil
+		},
+	}
+
+	s := New(WithHandlers(h))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world"},
+			artifact.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15},
+		},
+	}
+
+	_, err := s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+
+	require.NotNil(t, capturedUsage)
+	assert.Equal(t, 10, capturedUsage.PromptTokens)
+	assert.Equal(t, 5, capturedUsage.CompletionTokens)
+	assert.Equal(t, 15, capturedUsage.TotalTokens)
+}
+
+func TestStep_Turn_HandlerErrorAfterPartialProcessing(t *testing.T) {
+	h := &mockHandler{
+		fn: func(ctx context.Context, art artifact.Artifact, s state.State) error {
+			if art.Kind() == "text" {
+				return nil // succeed on first artifact
+			}
+			return errors.New("handler failed on second artifact")
+		},
+	}
+	s := New(WithHandlers(h))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world"},
+			artifact.ToolCall{ID: "call_1", Name: "test", Arguments: "{}"},
+		},
+	}
+
+	_, err := s.Turn(context.Background(), mem, prov)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "handler failed on second artifact")
+
+	// Both artifacts were passed to the handler; the second caused the error.
+	require.Len(t, h.called, 2)
+	assert.Equal(t, "text", h.called[0].Kind())
+	assert.Equal(t, "tool_call", h.called[1].Kind())
+}
+
+func TestStep_Turn_SurfaceRenderDeltaError(t *testing.T) {
+	surf := &mockSurface{err: errors.New("render failed")}
+	s := New(WithSurface(surf))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	prov := &mockStreamingProvider{
+		deltas: []artifact.Artifact{
+			artifact.TextDelta{Content: "wor"},
+			artifact.TextDelta{Content: "ld"},
+		},
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world!"},
+		},
+	}
+
+	_, err := s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+
+	// Verify deltas were still rendered despite errors.
+	require.Len(t, surf.deltas, 2)
+	assert.Equal(t, "wor", surf.deltas[0].(artifact.TextDelta).Content)
+	assert.Equal(t, "ld", surf.deltas[1].(artifact.TextDelta).Content)
 }
