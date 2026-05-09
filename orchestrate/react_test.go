@@ -7,10 +7,9 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/tack/artifact"
-	"github.com/andrewhowdencom/tack/core"
+	"github.com/andrewhowdencom/tack/loop"
 	"github.com/andrewhowdencom/tack/provider"
 	"github.com/andrewhowdencom/tack/state"
-	"github.com/andrewhowdencom/tack/step"
 	"github.com/andrewhowdencom/tack/surface"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -107,7 +106,7 @@ func (p *slowProvider) InvokeStreaming(ctx context.Context, s state.State, delta
 
 var _ provider.StreamingProvider = (*slowProvider)(nil)
 
-// testHandler implements step.Handler for testing.
+// testHandler implements loop.Handler for testing.
 type testHandler struct {
 	fn func(ctx context.Context, art artifact.Artifact, s state.State) error
 }
@@ -119,15 +118,14 @@ func (h *testHandler) Handle(ctx context.Context, art artifact.Artifact, s state
 	return nil
 }
 
-var _ step.Handler = (*testHandler)(nil)
+var _ loop.Handler = (*testHandler)(nil)
 
 func TestReAct_SingleTurn(t *testing.T) {
 	eventsCh := make(chan surface.Event, 10)
 	surf := &mockSurface{eventsCh: eventsCh}
 	mem := &state.Memory{}
 
-	loop := &core.Loop{}
-	s := step.New(loop, surf)
+	s := loop.New(loop.WithSurface(surf))
 
 	prov := &simpleProvider{
 		artifacts: []artifact.Artifact{
@@ -179,8 +177,7 @@ func TestReAct_ToolLoop(t *testing.T) {
 		},
 	}
 
-	loop := &core.Loop{}
-	s := step.New(loop, surf, toolHandler)
+	s := loop.New(loop.WithSurface(surf), loop.WithHandlers(toolHandler))
 
 	prov := &countingProvider{}
 
@@ -229,8 +226,7 @@ func TestReAct_Interrupt(t *testing.T) {
 	surf := &mockSurface{eventsCh: eventsCh}
 	mem := &state.Memory{}
 
-	loop := &core.Loop{}
-	s := step.New(loop, surf)
+	s := loop.New(loop.WithSurface(surf))
 
 	prov := &slowProvider{startedCh: make(chan struct{})}
 

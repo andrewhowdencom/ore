@@ -1,5 +1,5 @@
 // single-turn-cli is a reference application demonstrating composition of the
-// tack core loop with an OpenAI-compatible provider adapter.
+// tack loop.Step with an OpenAI-compatible provider adapter.
 package main
 
 import (
@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/andrewhowdencom/tack/artifact"
-	"github.com/andrewhowdencom/tack/core"
+	"github.com/andrewhowdencom/tack/loop"
 	"github.com/andrewhowdencom/tack/provider/openai"
 	"github.com/andrewhowdencom/tack/state"
 )
@@ -70,9 +70,9 @@ func run() error {
 	}
 	p := openai.New(apiKey, model, opts...)
 
-	// Execute a single core loop turn.
-	loop := &core.Loop{}
-	_, err := loop.Turn(ctx, mem, p)
+	// Execute a single loop turn.
+	s := loop.New()
+	_, err := s.Turn(ctx, mem, p)
 	if err != nil {
 		return fmt.Errorf("turn failed: %w", err)
 	}

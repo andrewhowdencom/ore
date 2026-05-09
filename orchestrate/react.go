@@ -9,7 +9,7 @@ import (
 	"github.com/andrewhowdencom/tack/artifact"
 	"github.com/andrewhowdencom/tack/provider"
 	"github.com/andrewhowdencom/tack/state"
-	"github.com/andrewhowdencom/tack/step"
+	"github.com/andrewhowdencom/tack/loop"
 	"github.com/andrewhowdencom/tack/surface"
 )
 
@@ -18,7 +18,7 @@ import (
 // assistant to reason, act, and observe until no more tool calls remain.
 type ReAct struct {
 	State    state.State
-	Step     *step.Step
+	Step     *loop.Step
 	Surface  surface.Surface
 	Provider provider.Provider
 
@@ -104,7 +104,7 @@ func (r *ReAct) handleUserMessage(ctx context.Context, event surface.UserMessage
 		}
 
 		before := len(r.State.Turns())
-		result, err := r.Step.Execute(ctx, r.State, r.Provider)
+		result, err := r.Step.Turn(ctx, r.State, r.Provider)
 		if err != nil {
 			_ = r.Surface.SetStatus(ctx, fmt.Sprintf("error: %v", err))
 			return err
