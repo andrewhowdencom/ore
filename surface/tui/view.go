@@ -15,8 +15,8 @@ var (
 	statusStyle = lipgloss.NewStyle().Faint(true).Italic(true)
 )
 
-// View renders the conversation history, streaming buffer, status line,
-// and input prompt.
+// View renders the conversation history inside a scrollable viewport and
+// anchors the input prompt at the bottom of the terminal.
 func (m *model) View() string {
 	var b strings.Builder
 
@@ -49,10 +49,14 @@ func (m *model) View() string {
 		b.WriteString("\n")
 	}
 
-	// Render input prompt with cursor.
-	b.WriteString("> ")
-	b.WriteString(m.input.String())
-	b.WriteString("_")
+	m.viewport.SetContent(b.String())
 
-	return b.String()
+	// Render input prompt as a fixed line at the bottom.
+	inputLine := "> " + m.input.String() + "_"
+
+	view := m.viewport.View()
+	if view != "" {
+		return view + "\n" + inputLine
+	}
+	return inputLine
 }
