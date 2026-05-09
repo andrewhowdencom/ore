@@ -8,6 +8,7 @@ import (
 	"github.com/andrewhowdencom/tack/artifact"
 	"github.com/andrewhowdencom/tack/state"
 	"github.com/andrewhowdencom/tack/surface"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -22,7 +23,10 @@ type TUI struct {
 // Bubble Tea program configured with the alternate screen buffer.
 func New() *TUI {
 	eventsCh := make(chan surface.Event, 10)
-	m := model{eventsCh: eventsCh}
+	m := model{
+		eventsCh: eventsCh,
+		viewport: viewport.New(0, 0),
+	}
 	p := tea.NewProgram(&m, tea.WithAltScreen())
 	return &TUI{
 		eventsCh: eventsCh,

@@ -7,6 +7,7 @@ import (
 	"github.com/andrewhowdencom/tack/artifact"
 	"github.com/andrewhowdencom/tack/state"
 	"github.com/andrewhowdencom/tack/surface"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -48,6 +49,9 @@ type model struct {
 	// Terminal dimensions.
 	width  int
 	height int
+
+	// Scrollable viewport for conversation history.
+	viewport viewport.Model
 }
 
 // renderedTurn represents a single turn in the conversation history.
@@ -73,6 +77,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case artifact.ReasoningDelta:
 			m.streamBuffer.WriteString(d.Content)
 		}
+		m.viewport.GotoBottom()
 	case turnMsg:
 		var text strings.Builder
 		for _, art := range msg.turn.Artifacts {
@@ -85,10 +90,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			text: text.String(),
 		})
 		m.streamBuffer.Reset()
+		m.viewport.GotoBottom()
 	case statusMsg:
 		m.status = msg.status
 	case tea.KeyMsg:
 		switch msg.Type {
+		case tea.KeyPgUp, tea.KeyPgDown:
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
 		case tea.KeyEnter:
 			if m.input.Len() > 0 {
 				content := m.input.String()
@@ -124,6 +134,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.viewport.Width = msg.Width
+		m.viewport.Height = msg.Height - 1
 	}
 	return m, nil
 }
