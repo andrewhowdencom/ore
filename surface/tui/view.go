@@ -6,6 +6,7 @@ import (
 
 	"github.com/andrewhowdencom/tack/state"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/cellbuf"
 )
 
 var (
@@ -15,31 +16,65 @@ var (
 	statusStyle = lipgloss.NewStyle().Faint(true).Italic(true)
 )
 
+// wrapText wraps text to fit within the given terminal width, prefixing the
+// first line with label and subsequent lines with indent. It is Unicode and
+// ANSI aware.
+func wrapText(text, label, indent string, width int) string {
+	if width <= 0 || text == "" {
+		return label + text
+	}
+	labelWidth := lipgloss.Width(label)
+	available := width - labelWidth
+	if available <= 1 {
+		return label + text
+	}
+	wrapped := cellbuf.Wrap(text, available, " ")
+	lines := strings.Split(wrapped, "\n")
+	var b strings.Builder
+	for i, line := range lines {
+		if i == 0 {
+			b.WriteString(label)
+		} else {
+			b.WriteString("\n")
+			b.WriteString(indent)
+		}
+		b.WriteString(line)
+	}
+	return b.String()
+}
+
 // View renders the conversation history inside a scrollable viewport and
 // anchors the input prompt at the bottom of the terminal.
 func (m *model) View() string {
 	var b strings.Builder
 
+	width := m.viewport.Width
+
+	userLabel := "You: "
+	userIndent := strings.Repeat(" ", lipgloss.Width(userLabel))
+
+	assistantLabel := assistantStyle.Render("Assistant: ")
+	assistantIndent := strings.Repeat(" ", lipgloss.Width(assistantLabel))
+
+	toolLabel := "Tool: "
+	toolIndent := strings.Repeat(" ", lipgloss.Width(toolLabel))
+
 	// Render conversation history.
 	for _, turn := range m.turns {
 		switch turn.role {
 		case state.RoleUser:
-			b.WriteString("You: ")
-			b.WriteString(turn.text)
+			b.WriteString(wrapText(turn.text, userLabel, userIndent, width))
 		case state.RoleAssistant:
-			b.WriteString(assistantStyle.Render("Assistant: "))
-			b.WriteString(turn.text)
+			b.WriteString(wrapText(turn.text, assistantLabel, assistantIndent, width))
 		case state.RoleTool:
-			b.WriteString("Tool: ")
-			b.WriteString(turn.text)
+			b.WriteString(wrapText(turn.text, toolLabel, toolIndent, width))
 		}
 		b.WriteString("\n\n")
 	}
 
 	// Render the in-progress streaming response.
 	if m.streamBuffer.Len() > 0 {
-		b.WriteString(assistantStyle.Render("Assistant: "))
-		b.WriteString(m.streamBuffer.String())
+		b.WriteString(wrapText(m.streamBuffer.String(), assistantLabel, assistantIndent, width))
 		b.WriteString("\n\n")
 	}
 
