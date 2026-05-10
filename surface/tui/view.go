@@ -88,6 +88,10 @@ func (m *model) View() string {
 		case state.RoleUser:
 			b.WriteString(wrapText(turn.text, userLabel, userIndent, width))
 		case state.RoleAssistant:
+			// Use pre-rendered ANSI output (from glamour) for finalized
+			// assistant turns. Falls back to plain text wrapText when
+			// rendered is empty, which happens for streaming text
+			// (incomplete markdown) or when glamour rendering failed.
 			if turn.rendered != "" {
 				b.WriteString(prefixLines(turn.rendered, assistantLabel, assistantIndent))
 			} else {
