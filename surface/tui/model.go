@@ -3,7 +3,7 @@ package tui
 import (
 	"log/slog"
 	"strings"
-	"time"
+
 
 	"github.com/andrewhowdencom/tack/artifact"
 	"github.com/andrewhowdencom/tack/state"
@@ -31,8 +31,7 @@ type statusMsg struct {
 	status string
 }
 
-// cursorTickMsg toggles the blinking cursor visibility.
-type cursorTickMsg struct{}
+
 
 // model implements tea.Model. All state mutation happens in Update,
 // which runs on Bubble Tea's single goroutine, so no locks are needed.
@@ -48,11 +47,7 @@ type model struct {
 	// reasoningStreamBuffer holds the partial reasoning/thinking content.
 	reasoningStreamBuffer strings.Builder
 
-	// streaming is true while the assistant is actively generating a response.
-	streaming bool
 
-	// cursorVisible toggles the blinking cursor indicator.
-	cursorVisible bool
 
 	// Transient status line (e.g., "thinking...").
 	status string
@@ -85,25 +80,13 @@ func (m *model) Init() tea.Cmd {
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case deltaMsg:
-		wasEmpty := m.textStreamBuffer.Len() == 0 && m.reasoningStreamBuffer.Len() == 0
-		var handled bool
 		switch d := msg.delta.(type) {
 		case artifact.TextDelta:
 			m.textStreamBuffer.WriteString(d.Content)
-			handled = true
 		case artifact.ReasoningDelta:
 			m.reasoningStreamBuffer.WriteString(d.Content)
-			handled = true
 		}
-		if handled {
-			m.streaming = true
-			m.viewport.GotoBottom()
-			if wasEmpty {
-				return m, tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
-					return cursorTickMsg{}
-				})
-			}
-		}
+		m.viewport.GotoBottom()
 	case turnMsg:
 		var text strings.Builder
 		for _, art := range msg.turn.Artifacts {
@@ -117,16 +100,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		})
 		m.textStreamBuffer.Reset()
 		m.reasoningStreamBuffer.Reset()
-		m.streaming = false
-		m.cursorVisible = false
 		m.viewport.GotoBottom()
-	case cursorTickMsg:
-		if m.streaming {
-			m.cursorVisible = !m.cursorVisible
-			return m, tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
-				return cursorTickMsg{}
-			})
-		}
 	case statusMsg:
 		m.status = msg.status
 	case tea.KeyMsg:

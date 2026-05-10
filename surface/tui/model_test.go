@@ -413,118 +413,6 @@ func TestModel_View_WrapsLongTurn(t *testing.T) {
 	assert.True(t, hasContinuation, "long turn should wrap with continuation lines")
 }
 
-func TestModel_Update_Delta_StartsBlinking(t *testing.T) {
-	m := model{}
-	_, cmd := m.Update(deltaMsg{delta: artifact.TextDelta{Content: "hello"}})
-	require.NotNil(t, cmd, "first delta should start the blinking cursor")
-}
-
-func TestModel_Update_CursorTickMsg_TogglesCursor(t *testing.T) {
-	m := model{streaming: true}
-
-	// First tick: should toggle to true
-	newM, cmd := m.Update(cursorTickMsg{})
-	mm := newM.(*model)
-	assert.True(t, mm.cursorVisible, "cursor should be visible after first tick")
-	require.NotNil(t, cmd, "should return next tick command")
-
-	// Second tick: should toggle to false
-	newM2, cmd2 := mm.Update(cursorTickMsg{})
-	mm2 := newM2.(*model)
-	assert.False(t, mm2.cursorVisible, "cursor should be hidden after second tick")
-	require.NotNil(t, cmd2, "should return next tick command")
-}
-
-func TestModel_Update_Turn_StopsBlinking(t *testing.T) {
-	m := model{}
-	m.streaming = true
-	m.cursorVisible = true
-	m.textStreamBuffer.WriteString("partial")
-
-	turn := state.Turn{
-		Role: state.RoleAssistant,
-		Artifacts: []artifact.Artifact{
-			artifact.Text{Content: "complete"},
-		},
-	}
-	newM, _ := m.Update(turnMsg{turn: turn})
-	mm := newM.(*model)
-	assert.False(t, mm.streaming, "streaming should be false after turn")
-	assert.False(t, mm.cursorVisible, "cursor should be hidden after turn")
-	assert.Empty(t, mm.textStreamBuffer.String())
-	assert.Empty(t, mm.reasoningStreamBuffer.String())
-}
-
-func TestModel_View_ContainsReasoningStream(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-	}
-	m.reasoningStreamBuffer.WriteString("analyzing patterns")
-	output := m.View()
-	assert.Contains(t, output, "Thinking: ")
-	assert.Contains(t, output, "analyzing patterns")
-}
-
-func TestModel_View_BlinkingCursorVisible(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-	}
-	m.streaming = true
-	m.cursorVisible = true
-	m.textStreamBuffer.WriteString("partial")
-	output := m.View()
-	assert.Contains(t, output, "partial")
-	assert.Contains(t, output, "▌")
-}
-
-func TestModel_View_BlinkingCursorHidden(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-	}
-	m.streaming = true
-	m.cursorVisible = false
-	m.textStreamBuffer.WriteString("partial")
-	output := m.View()
-	assert.Contains(t, output, "partial")
-	assert.NotContains(t, output, "▌")
-}
-
-func TestModel_View_NoCursorWhenNotStreaming(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-	}
-	m.streaming = false
-	m.cursorVisible = true
-	m.textStreamBuffer.WriteString("partial")
-	output := m.View()
-	assert.Contains(t, output, "partial")
-	assert.NotContains(t, output, "▌")
-}
-
-func TestModel_Update_Delta_SecondDeltaDoesNotRestartTick(t *testing.T) {
-	m := model{}
-	// First delta starts the tick
-	_, cmd1 := m.Update(deltaMsg{delta: artifact.TextDelta{Content: "first"}})
-	require.NotNil(t, cmd1, "first delta should start the blinking cursor")
-
-	// Second delta should NOT return a tick command
-	newM, cmd2 := m.Update(deltaMsg{delta: artifact.TextDelta{Content: "second"}})
-	mm := newM.(*model)
-	assert.Nil(t, cmd2, "second delta should not restart cursor tick")
-	assert.Equal(t, "firstsecond", mm.textStreamBuffer.String())
-}
-
-func TestModel_Update_CursorTickMsg_NotStreaming(t *testing.T) {
-	m := model{}
-	m.streaming = false
-	m.cursorVisible = false
-
-	newM, cmd := m.Update(cursorTickMsg{})
-	mm := newM.(*model)
-	assert.False(t, mm.cursorVisible, "cursor should stay hidden when not streaming")
-	assert.Nil(t, cmd, "should not return next tick when not streaming")
-}
-
 // unknownArtifact is an artifact type not handled by the TUI model.
 type unknownArtifact struct{}
 
@@ -536,7 +424,6 @@ func TestModel_Update_Delta_UnknownArtifact(t *testing.T) {
 	mm := newM.(*model)
 	assert.Empty(t, mm.textStreamBuffer.String())
 	assert.Empty(t, mm.reasoningStreamBuffer.String())
-	assert.False(t, mm.streaming)
 	assert.Nil(t, cmd)
 }
 
@@ -544,15 +431,4 @@ func TestWrapText_AvailableLEOne(t *testing.T) {
 	// "You: " has width 5, so width=6 gives available=1.
 	output := wrapText("hello", "You: ", "     ", 6)
 	assert.Equal(t, "You: hello", output)
-}
-
-func TestRenderStreamWithCursor_Overflow(t *testing.T) {
-	// "A: " has width 3, text "abcde" is 5 chars. With width=8,
-	// wrapText produces "A: abcde" (exactly 8 visible chars).
-	// The cursor (1 char) should overflow to a new line.
-	output := renderStreamWithCursor("abcde", "A: ", "   ", "▌", 8)
-	lines := strings.Split(output, "\n")
-	require.Len(t, lines, 2, "cursor should appear on a new line when it overflows")
-	assert.Equal(t, "A: abcde", lines[0])
-	assert.Equal(t, "   ▌", lines[1])
 }

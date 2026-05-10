@@ -45,27 +45,6 @@ func wrapText(text, label, indent string, width int) string {
 	return b.String()
 }
 
-// renderStreamWithCursor wraps stream text with its label and indent, then
-// appends a blinking cursor to the last non-empty line when active.
-func renderStreamWithCursor(text, label, indent, cursor string, width int) string {
-	wrapped := wrapText(text, label, indent, width)
-	if cursor == "" {
-		return wrapped
-	}
-	lines := strings.Split(wrapped, "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		if strings.TrimSpace(lines[i]) != "" {
-			if lipgloss.Width(lines[i])+lipgloss.Width(cursor) <= width {
-				lines[i] = lines[i] + cursor
-			} else {
-				lines = append(lines, indent+cursor)
-			}
-			break
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
 // View renders the conversation history inside a scrollable viewport and
 // anchors the input prompt at the bottom of the terminal.
 func (m *model) View() string {
@@ -95,33 +74,17 @@ func (m *model) View() string {
 		b.WriteString("\n\n")
 	}
 
-	// Render the in-progress streaming response.
-	cursor := ""
-	if m.streaming && m.cursorVisible {
-		cursor = "▌"
-	}
-
+	// Render the in-progress text stream.
 	if m.textStreamBuffer.Len() > 0 {
-		b.WriteString(renderStreamWithCursor(
-			m.textStreamBuffer.String(),
-			assistantLabel,
-			assistantIndent,
-			cursor,
-			width,
-		))
+		b.WriteString(wrapText(m.textStreamBuffer.String(), assistantLabel, assistantIndent, width))
 		b.WriteString("\n\n")
 	}
 
+	// Render the in-progress reasoning stream.
 	if m.reasoningStreamBuffer.Len() > 0 {
 		thinkingLabel := thinkingStyle.Render("Thinking: ")
 		thinkingIndent := strings.Repeat(" ", lipgloss.Width(thinkingLabel))
-		b.WriteString(renderStreamWithCursor(
-			m.reasoningStreamBuffer.String(),
-			thinkingLabel,
-			thinkingIndent,
-			cursor,
-			width,
-		))
+		b.WriteString(wrapText(m.reasoningStreamBuffer.String(), thinkingLabel, thinkingIndent, width))
 		b.WriteString("\n\n")
 	}
 
