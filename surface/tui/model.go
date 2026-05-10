@@ -86,18 +86,23 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case deltaMsg:
 		wasEmpty := m.textStreamBuffer.Len() == 0 && m.reasoningStreamBuffer.Len() == 0
+		var handled bool
 		switch d := msg.delta.(type) {
 		case artifact.TextDelta:
 			m.textStreamBuffer.WriteString(d.Content)
+			handled = true
 		case artifact.ReasoningDelta:
 			m.reasoningStreamBuffer.WriteString(d.Content)
+			handled = true
 		}
-		m.streaming = true
-		m.viewport.GotoBottom()
-		if wasEmpty {
-			return m, tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
-				return cursorTickMsg{}
-			})
+		if handled {
+			m.streaming = true
+			m.viewport.GotoBottom()
+			if wasEmpty {
+				return m, tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
+					return cursorTickMsg{}
+				})
+			}
 		}
 	case turnMsg:
 		var text strings.Builder
