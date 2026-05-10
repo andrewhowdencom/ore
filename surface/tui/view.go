@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/andrewhowdencom/tack/state"
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/cellbuf"
 )
@@ -32,6 +33,41 @@ func wrapText(text, label, indent string, width int) string {
 	}
 	wrapped := cellbuf.Wrap(text, available, " ")
 	lines := strings.Split(wrapped, "\n")
+	var b strings.Builder
+	for i, line := range lines {
+		if i == 0 {
+			b.WriteString(label)
+		} else {
+			b.WriteString("\n")
+			b.WriteString(indent)
+		}
+		b.WriteString(line)
+	}
+	return b.String()
+}
+
+// renderMarkdown renders the given text as rich Markdown using glamour.
+// The width parameter controls the word-wrap width. If glamour fails, an
+// error is returned so the caller can fall back to plain text.
+func renderMarkdown(text string, width int) (string, error) {
+	r, err := glamour.NewTermRenderer(
+		glamour.WithAutoStyle(),
+		glamour.WithWordWrap(width),
+	)
+	if err != nil {
+		return "", err
+	}
+	return r.Render(text)
+}
+
+// prefixLines prepends label to the first line and indent to every
+// subsequent line of text. It does not re-wrap text; the caller is
+// responsible for ensuring each line already fits within the desired width.
+func prefixLines(text, label, indent string) string {
+	if text == "" {
+		return label + text
+	}
+	lines := strings.Split(text, "\n")
 	var b strings.Builder
 	for i, line := range lines {
 		if i == 0 {
