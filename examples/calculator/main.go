@@ -13,6 +13,7 @@ import (
 	"strconv"
 
 	"github.com/andrewhowdencom/tack/artifact"
+	"github.com/andrewhowdencom/tack/cognitive"
 	"github.com/andrewhowdencom/tack/loop"
 	"github.com/andrewhowdencom/tack/provider"
 	"github.com/andrewhowdencom/tack/provider/openai"
@@ -133,53 +134,34 @@ func run() error {
 	// Create step with tool handler.
 	step := loop.New(loop.WithHandlers(registry.Handler()))
 
-	// Run turns until the assistant responds with text (not tool calls).
-	for {
-		_, err := step.Turn(ctx, mem, prov)
-		if err != nil {
-			return fmt.Errorf("turn failed: %w", err)
-		}
+	// Run the cognitive pattern.
+	react := &cognitive.ReAct{
+		Step:     step,
+		Provider: prov,
+	}
 
-		turns := mem.Turns()
-		last := turns[len(turns)-1]
-		if last.Role != state.RoleAssistant {
-			// Tool results were appended; run another turn so the provider
-			// can see the results and generate the final answer.
-			continue
-		}
+	result, err := react.Run(ctx, mem)
+	if err != nil {
+		return fmt.Errorf("react failed: %w", err)
+	}
 
-		// Print assistant artifacts from the response.
-		for _, art := range last.Artifacts {
-			switch a := art.(type) {
-			case artifact.Text:
-				fmt.Println(a.Content)
-			case artifact.Reasoning:
-				fmt.Printf("--- reasoning ---\n%s\n", a.Content)
-			case artifact.ToolCall:
-				fmt.Printf("--- tool_call: %s ---\n%s\n", a.Name, a.Arguments)
-			case artifact.Usage:
-				fmt.Printf("--- usage: %d prompt / %d completion / %d total ---\n",
-					a.PromptTokens, a.CompletionTokens, a.TotalTokens)
-			default:
-				fmt.Printf("--- %s ---\n[unsupported artifact type]\n", art.Kind())
-			}
+	// Print assistant artifacts from the final response.
+	turns := result.Turns()
+	last := turns[len(turns)-1]
+	for _, art := range last.Artifacts {
+		switch a := art.(type) {
+		case artifact.Text:
+			fmt.Println(a.Content)
+		case artifact.Reasoning:
+			fmt.Printf("--- reasoning ---\n%s\n", a.Content)
+		case artifact.ToolCall:
+			fmt.Printf("--- tool_call: %s ---\n%s\n", a.Name, a.Arguments)
+		case artifact.Usage:
+			fmt.Printf("--- usage: %d prompt / %d completion / %d total ---\n",
+				a.PromptTokens, a.CompletionTokens, a.TotalTokens)
+		default:
+			fmt.Printf("--- %s ---\n[unsupported artifact type]\n", art.Kind())
 		}
-
-		// If the assistant turn contains tool calls, the handler has already
-		// executed them and appended results. Continue for another turn.
-		hasToolCalls := false
-		for _, art := range last.Artifacts {
-			if art.Kind() == "tool_call" {
-				hasToolCalls = true
-				break
-			}
-		}
-		if hasToolCalls {
-			continue
-		}
-
-		// Otherwise, the assistant provided a final answer — we're done.
-		break
 	}
 
 	return nil

@@ -8,7 +8,6 @@ import (
 	"github.com/andrewhowdencom/tack/artifact"
 	"github.com/andrewhowdencom/tack/provider"
 	"github.com/andrewhowdencom/tack/state"
-	"github.com/andrewhowdencom/tack/surface"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -56,36 +55,6 @@ func (m *mockStreamingProvider) SetTools(tools []provider.Tool) error {
 // Compile-time interface checks.
 var _ provider.StreamingProvider = (*mockStreamingProvider)(nil)
 var _ provider.ToolProvider = (*mockStreamingProvider)(nil)
-
-// mockSurface implements surface.Surface for testing.
-type mockSurface struct {
-	deltas   []artifact.Artifact
-	turns    []state.Turn
-	statuses []string
-	err      error
-}
-
-func (m *mockSurface) Events() <-chan surface.Event {
-	return nil
-}
-
-func (m *mockSurface) RenderDelta(ctx context.Context, delta artifact.Artifact) error {
-	m.deltas = append(m.deltas, delta)
-	return m.err
-}
-
-func (m *mockSurface) RenderTurn(ctx context.Context, turn state.Turn) error {
-	m.turns = append(m.turns, turn)
-	return nil
-}
-
-func (m *mockSurface) SetStatus(ctx context.Context, status string) error {
-	m.statuses = append(m.statuses, status)
-	return nil
-}
-
-// Compile-time interface check.
-var _ surface.Surface = (*mockSurface)(nil)
 
 // mockHandler implements Handler for testing.
 type mockHandler struct {
@@ -206,86 +175,6 @@ func TestStep_Turn_EmptyArtifacts(t *testing.T) {
 	assert.Empty(t, last.Artifacts)
 }
 
-func TestStep_Turn_Streaming(t *testing.T) {
-	surf := &mockSurface{}
-	s := New(WithSurface(surf))
-	mem := &state.Memory{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
-
-	prov := &mockStreamingProvider{
-		deltas: []artifact.Artifact{
-			artifact.TextDelta{Content: "wor"},
-			artifact.TextDelta{Content: "ld"},
-		},
-		artifacts: []artifact.Artifact{
-			artifact.Text{Content: "world!"},
-		},
-	}
-
-	result, err := s.Turn(context.Background(), mem, prov)
-	require.NoError(t, err)
-	assert.Same(t, mem, result)
-
-	// Verify deltas were rendered.
-	require.Len(t, surf.deltas, 2)
-	assert.Equal(t, "text_delta", surf.deltas[0].Kind())
-	assert.Equal(t, "wor", surf.deltas[0].(artifact.TextDelta).Content)
-	assert.Equal(t, "text_delta", surf.deltas[1].Kind())
-	assert.Equal(t, "ld", surf.deltas[1].(artifact.TextDelta).Content)
-
-	// Verify complete artifact appended.
-	turns := mem.Turns()
-	require.Len(t, turns, 2)
-	last := turns[1]
-	assert.Equal(t, state.RoleAssistant, last.Role)
-	require.Len(t, last.Artifacts, 1)
-	text, ok := last.Artifacts[0].(artifact.Text)
-	require.True(t, ok)
-	assert.Equal(t, "world!", text.Content)
-}
-
-func TestStep_Turn_ProviderErrorWithSurface(t *testing.T) {
-	surf := &mockSurface{}
-	s := New(WithSurface(surf))
-	mem := &state.Memory{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
-
-	wantErr := context.Canceled
-	prov := &mockStreamingProvider{err: wantErr}
-
-	_, err := s.Turn(context.Background(), mem, prov)
-	require.ErrorIs(t, err, wantErr)
-}
-
-func TestStep_Turn_NonStreamingProviderWithSurface(t *testing.T) {
-	surf := &mockSurface{}
-	s := New(WithSurface(surf))
-	mem := &state.Memory{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
-
-	// Regular provider (not StreamingProvider).
-	prov := &mockProvider{
-		artifacts: []artifact.Artifact{
-			artifact.Text{Content: "no-stream"},
-		},
-	}
-
-	result, err := s.Turn(context.Background(), mem, prov)
-	require.NoError(t, err)
-	assert.Same(t, mem, result)
-
-	// No deltas should have been emitted because provider doesn't stream.
-	assert.Len(t, surf.deltas, 0)
-
-	turns := mem.Turns()
-	require.Len(t, turns, 2)
-	last := turns[1]
-	require.Len(t, last.Artifacts, 1)
-	text, ok := last.Artifacts[0].(artifact.Text)
-	require.True(t, ok)
-	assert.Equal(t, "no-stream", text.Content)
-}
-
 func TestStep_Turn_NoSurfaceStreamingProvider(t *testing.T) {
 	s := New()
 	mem := &state.Memory{}
@@ -311,9 +200,8 @@ func TestStep_Turn_NoSurfaceStreamingProvider(t *testing.T) {
 }
 
 func TestStep_Turn_Handler(t *testing.T) {
-	surf := &mockSurface{}
 	h := &mockHandler{}
-	s := New(WithSurface(surf), WithHandlers(h))
+	s := New(WithHandlers(h))
 	mem := &state.Memory{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -333,7 +221,6 @@ func TestStep_Turn_Handler(t *testing.T) {
 }
 
 func TestStep_Turn_HandlerAppendsToolResult(t *testing.T) {
-	surf := &mockSurface{}
 	h := &mockHandler{
 		fn: func(ctx context.Context, art artifact.Artifact, s state.State) error {
 			if art.Kind() == "tool_call" {
@@ -342,7 +229,7 @@ func TestStep_Turn_HandlerAppendsToolResult(t *testing.T) {
 			return nil
 		},
 	}
-	s := New(WithSurface(surf), WithHandlers(h))
+	s := New(WithHandlers(h))
 	mem := &state.Memory{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -365,10 +252,9 @@ func TestStep_Turn_HandlerAppendsToolResult(t *testing.T) {
 }
 
 func TestStep_Turn_HandlerError(t *testing.T) {
-	surf := &mockSurface{}
 	wantErr := context.Canceled
 	h := &mockHandler{err: wantErr}
-	s := New(WithSurface(surf), WithHandlers(h))
+	s := New(WithHandlers(h))
 	mem := &state.Memory{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -461,48 +347,6 @@ func TestStep_Turn_BeforeTurn_MultipleInOrder(t *testing.T) {
 	_, err := s.Turn(context.Background(), mem, mock)
 	require.NoError(t, err)
 	assert.Equal(t, []int{1, 2}, order)
-}
-
-func TestStep_Turn_StreamingAndHandler(t *testing.T) {
-	surf := &mockSurface{}
-	h := &mockHandler{}
-	s := New(WithSurface(surf), WithHandlers(h))
-	mem := &state.Memory{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
-
-	prov := &mockStreamingProvider{
-		deltas: []artifact.Artifact{
-			artifact.TextDelta{Content: "wor"},
-			artifact.TextDelta{Content: "ld"},
-		},
-		artifacts: []artifact.Artifact{
-			artifact.Text{Content: "world!"},
-			artifact.ToolCall{Name: "test", Arguments: "{}"},
-		},
-	}
-
-	result, err := s.Turn(context.Background(), mem, prov)
-	require.NoError(t, err)
-	assert.Same(t, mem, result)
-
-	// Verify deltas were rendered.
-	require.Len(t, surf.deltas, 2)
-	assert.Equal(t, "text_delta", surf.deltas[0].Kind())
-	assert.Equal(t, "wor", surf.deltas[0].(artifact.TextDelta).Content)
-	assert.Equal(t, "text_delta", surf.deltas[1].Kind())
-	assert.Equal(t, "ld", surf.deltas[1].(artifact.TextDelta).Content)
-
-	// Verify complete artifacts appended.
-	turns := mem.Turns()
-	require.Len(t, turns, 2)
-	last := turns[1]
-	assert.Equal(t, state.RoleAssistant, last.Role)
-	require.Len(t, last.Artifacts, 2)
-
-	// Verify handler was called for both artifacts.
-	require.Len(t, h.called, 2)
-	assert.Equal(t, "text", h.called[0].Kind())
-	assert.Equal(t, "tool_call", h.called[1].Kind())
 }
 
 func TestStep_Turn_BeforeTurnAndHandler_EndToEnd(t *testing.T) {
@@ -621,9 +465,9 @@ func TestStep_Turn_HandlerErrorAfterPartialProcessing(t *testing.T) {
 	assert.Equal(t, "tool_call", h.called[1].Kind())
 }
 
-func TestStep_Turn_SurfaceRenderDeltaError(t *testing.T) {
-	surf := &mockSurface{err: errors.New("render failed")}
-	s := New(WithSurface(surf))
+func TestStep_Turn_OutputEvents(t *testing.T) {
+	outputCh := make(chan OutputEvent, 10)
+	s := New(WithOutput(outputCh))
 	mem := &state.Memory{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -637,11 +481,150 @@ func TestStep_Turn_SurfaceRenderDeltaError(t *testing.T) {
 		},
 	}
 
-	_, err := s.Turn(context.Background(), mem, prov)
+	result, err := s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+	assert.Same(t, mem, result)
+
+	// Verify output events were emitted.
+	close(outputCh)
+	var deltas []OutputEvent
+	var turnCompletes []OutputEvent
+	for event := range outputCh {
+		switch event.Kind() {
+		case "delta":
+			deltas = append(deltas, event)
+		case "turn_complete":
+			turnCompletes = append(turnCompletes, event)
+		}
+	}
+
+	require.Len(t, deltas, 2)
+	assert.Equal(t, "wor", deltas[0].(DeltaEvent).Delta.(artifact.TextDelta).Content)
+	assert.Equal(t, "ld", deltas[1].(DeltaEvent).Delta.(artifact.TextDelta).Content)
+
+	require.Len(t, turnCompletes, 1)
+	assert.Equal(t, state.RoleAssistant, turnCompletes[0].(TurnCompleteEvent).Turn.Role)
+	require.Len(t, turnCompletes[0].(TurnCompleteEvent).Turn.Artifacts, 1)
+	text, ok := turnCompletes[0].(TurnCompleteEvent).Turn.Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "world!", text.Content)
+}
+
+func TestStep_Turn_OutputEventsWithHandler(t *testing.T) {
+	outputCh := make(chan OutputEvent, 10)
+	h := &mockHandler{
+		fn: func(ctx context.Context, art artifact.Artifact, s state.State) error {
+			if art.Kind() == "tool_call" {
+				s.Append(state.RoleTool, artifact.Text{Content: "tool result"})
+			}
+			return nil
+		},
+	}
+	s := New(WithOutput(outputCh), WithHandlers(h))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	prov := &mockStreamingProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "calling tool"},
+			artifact.ToolCall{Name: "test", Arguments: "{}"},
+		},
+	}
+
+	result, err := s.Turn(context.Background(), mem, prov)
 	require.NoError(t, err)
 
-	// Verify deltas were still rendered despite errors.
-	require.Len(t, surf.deltas, 2)
-	assert.Equal(t, "wor", surf.deltas[0].(artifact.TextDelta).Content)
-	assert.Equal(t, "ld", surf.deltas[1].(artifact.TextDelta).Content)
+	close(outputCh)
+	var turnCompletes []OutputEvent
+	for event := range outputCh {
+		if event.Kind() == "turn_complete" {
+			turnCompletes = append(turnCompletes, event)
+		}
+	}
+
+	// Only the assistant turn should emit a TurnCompleteEvent.
+	require.Len(t, turnCompletes, 1)
+	assert.Equal(t, state.RoleAssistant, turnCompletes[0].(TurnCompleteEvent).Turn.Role)
+
+	// State should have User, Assistant, Tool.
+	turns := result.Turns()
+	require.Len(t, turns, 3)
+	assert.Equal(t, state.RoleUser, turns[0].Role)
+	assert.Equal(t, state.RoleAssistant, turns[1].Role)
+	assert.Equal(t, state.RoleTool, turns[2].Role)
+}
+
+func TestStep_Turn_OutputEvents_NonStreamingProvider(t *testing.T) {
+	outputCh := make(chan OutputEvent, 10)
+	s := New(WithOutput(outputCh))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	// Regular provider (not StreamingProvider).
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world"},
+		},
+	}
+
+	result, err := s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+	assert.Same(t, mem, result)
+
+	close(outputCh)
+	var deltas []OutputEvent
+	var turnCompletes []OutputEvent
+	for event := range outputCh {
+		switch event.Kind() {
+		case "delta":
+			deltas = append(deltas, event)
+		case "turn_complete":
+			turnCompletes = append(turnCompletes, event)
+		}
+	}
+
+	// No deltas because provider doesn't stream.
+	assert.Len(t, deltas, 0)
+	// One TurnCompleteEvent with the complete turn.
+	require.Len(t, turnCompletes, 1)
+	assert.Equal(t, state.RoleAssistant, turnCompletes[0].(TurnCompleteEvent).Turn.Role)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+	last := turns[1]
+	assert.Equal(t, state.RoleAssistant, last.Role)
+	require.Len(t, last.Artifacts, 1)
+	text, ok := last.Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "world", text.Content)
+}
+
+func TestStep_Turn_NoOutputEventsWithoutChannel(t *testing.T) {
+	s := New()
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	prov := &mockStreamingProvider{
+		deltas: []artifact.Artifact{
+			artifact.TextDelta{Content: "wor"},
+		},
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world!"},
+		},
+	}
+
+	result, err := s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+	assert.Same(t, mem, result)
+
+	// No output channel configured, so no events should be emitted.
+	// The streaming provider should still return artifacts correctly.
+	turns := mem.Turns()
+	require.Len(t, turns, 2)
+	last := turns[1]
+	assert.Equal(t, state.RoleAssistant, last.Role)
+	require.Len(t, last.Artifacts, 1)
+	text, ok := last.Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "world!", text.Content)
 }

@@ -90,7 +90,7 @@ prov.SetTools([]provider.Tool{
 // The concrete type tool.Handler implements loop.Handler.
 step := loop.New(loop.WithHandlers(registry.Handler()))
 
-// The ReAct orchestrator automatically loops while tool calls are in flight.
+// The cognitive.ReAct pattern automatically loops while tool calls are in flight.
 ```
 
 Adapters that implement `provider.ToolProvider` (e.g., the OpenAI adapter) expose `SetTools` to configure the tool list. The `provider.Tool` struct is provider-agnostic — each adapter maps it to its native API.
@@ -152,20 +152,21 @@ The framework defines a `surface.Surface` interface with four egress actions and
 
 Implementations (TUI, web, Telegram, etc.) satisfy this interface at build time. The framework does not assume any specific rendering mechanism.
 
-### Orchestration
+### Three-Layer Architecture
 
-Above the Loop / Step, the framework provides two composable abstractions that separate **single-turn execution** from **multi-turn strategy**:
+Above the Loop / Step, the framework separates concerns into three layers:
 
-- **`loop.Step`** — executes one complete inference turn. It invokes the provider, optionally routes streaming deltas to the surface via a background goroutine, and then runs registered artifact handlers synchronously on the complete response. Handlers may mutate state (e.g., append `RoleTool` turns with tool results).
-- **`orchestrate.ReAct`** — an `Orchestrator` implementation that loops on `Step` while state changes. It reads events from a `Surface`, appends `RoleUser` turns, calls `Step.Turn()`, renders new turns via `RenderTurn()`, and loops again if a handler appended a `RoleTool` turn. Status updates ("thinking...", "calling tool...") are sent to the surface between iterations.
+- **`loop.Step`** — the transform layer. Executes one complete inference turn: invokes the provider, optionally emits streaming deltas as `OutputEvent` to a configured channel, and runs registered artifact handlers synchronously on the complete response. Handlers may mutate state (e.g., append `RoleTool` turns with tool results).
+- **`cognitive.ReAct`** — a pure cognitive pattern that implements the ReAct feedback loop. It repeatedly calls `Step.Turn()`, inspects the resulting state, and loops again if the last turn is not from the assistant (indicating pending tool results). It is surface-agnostic and stateless — it receives `state.State` as a parameter and returns it.
+- **Application-layer IO wiring** — the application (typically in `main()`) owns the `Surface`, reads `Surface.Events()`, appends user messages to state, invokes the cognitive pattern, subscribes to `Step`'s output events to route delta and turn events back to the surface, and manages status and interrupts.
 
-This separation means single-turn applications (e.g., a REST API endpoint) can use `Step` directly, while multi-turn agents (e.g., a TUI coding assistant) compose `Step` with `ReAct` or a custom `Orchestrator`.
+This three-layer separation means single-turn applications can use `Step` directly, multi-turn agents compose `Step` with `cognitive.ReAct`, and the application layer handles all surface-specific concerns.
 
 ### Agents / Applications
 
-An Agent (or Application) is a runnable assembly that composes loop.Step, a Provider Adapter, a set of Artifact Handlers and Extensions, one or more I/O Surfaces, and an Orchestrator into a concrete system.
+An Agent (or Application) is a runnable assembly that composes `loop.Step`, a Provider Adapter, a set of Artifact Handlers and Extensions, one or more I/O Surfaces, and a cognitive pattern into a concrete system.
 
-Crucially, the application layer is also where **strategy** happens. Step does not loop on its own. The application (via an Orchestrator) decides:
+Crucially, the application layer is also where **strategy** happens. Step does not loop on its own. The application (via a cognitive pattern or directly) decides:
 
 - When to call `Step.Turn()`
 - Whether to call it once (single-shot Q&A) or repeatedly (tool-calling agent)
@@ -202,9 +203,9 @@ This README remains a vision document, but the framework is now partially implem
 - `artifact/` — `Artifact` interface with `Text`, `ToolCall`, `ToolResult`, `Usage`, `Image`, `Reasoning`, and streaming delta types (`TextDelta`, `ReasoningDelta`, `ToolCallDelta`)
 - `state/` — `State` interface with `Turns()` and `Append()`, and an in-memory `Memory` implementation
 - `provider/` — `Provider` interface with `Invoke()`, `StreamingProvider` for channel-based delta emission, and `ToolProvider` for tool configuration
-- `loop/` — `Step` with `Turn()` method, `BeforeTurn` hook, optional streaming via surface, and artifact `Handler` interface for single-turn execution
+- `loop/` — `Step` with `Turn()` method, `BeforeTurn` hook, optional streaming via `OutputEvent` channel, and artifact `Handler` interface for single-turn execution
 - `tool/` — `Registry` for mapping tool names to Go functions, and `Handler` implementing `loop.Handler` for tool execution
-- `orchestrate/` — `Orchestrator` interface and `ReAct` implementation for multi-turn looping
+- `cognitive/` — `ReAct` cognitive pattern for multi-turn looping, surface-agnostic and stateless
 - `surface/` — `Surface` interface with ingress events and egress delta/turn/status rendering
 - `provider/openai/` — OpenAI-compatible adapter with streaming chat completions and tool calling support
 - `examples/single-turn-cli/` — Reference one-shot CLI application

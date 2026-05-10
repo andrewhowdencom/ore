@@ -9,10 +9,12 @@ import (
 	"os"
 	"sync"
 
+	"github.com/andrewhowdencom/tack/artifact"
+	"github.com/andrewhowdencom/tack/cognitive"
 	"github.com/andrewhowdencom/tack/loop"
-	"github.com/andrewhowdencom/tack/orchestrate"
 	"github.com/andrewhowdencom/tack/provider/openai"
 	"github.com/andrewhowdencom/tack/state"
+	"github.com/andrewhowdencom/tack/surface"
 	"github.com/andrewhowdencom/tack/surface/tui"
 )
 
@@ -53,38 +55,80 @@ func run() error {
 	}
 	prov := openai.New(apiKey, modelName, opts...)
 
-	// Tool calling example (uncomment this block and comment out the provider
-	// and step setup immediately above and below it):
-	//
-	//   registry := tool.NewRegistry()
-	//   registry.Register("calculator", func(ctx context.Context, args map[string]any) (any, error) {
-	//       return "42", nil
-	//   })
-	//   prov := openai.New(apiKey, modelName, opts...)
-	//   _ = prov.SetTools([]provider.Tool{
-	//       {Name: "calculator", Description: "A simple calculator", Schema: map[string]any{"type": "object"}},
-	//   })
-	//   st := loop.New(loop.WithSurface(s), loop.WithHandlers(registry.Handler()))
-	//
-	// The ReAct orchestrator automatically loops while tool calls are in flight.
-	// See examples/calculator for a standalone tool-calling example.
+	// Step with output events.
+	outputCh := make(chan loop.OutputEvent, 100)
+	st := loop.New(loop.WithOutput(outputCh))
 
-	// Compose framework layers.
-	st := loop.New(loop.WithSurface(s))
-	orchestrator := &orchestrate.ReAct{
-		State:    &state.Memory{},
+	// Goroutine: route Step output to TUI surface.
+	go func() {
+		for event := range outputCh {
+			switch e := event.(type) {
+			case loop.DeltaEvent:
+				if err := s.RenderDelta(ctx, e.Delta); err != nil {
+					slog.Error("render delta failed", "err", err)
+				}
+			case loop.TurnCompleteEvent:
+				if err := s.RenderTurn(ctx, e.Turn); err != nil {
+					slog.Error("render turn failed", "err", err)
+				}
+			}
+		}
+	}()
+
+	// Cognitive pattern.
+	react := &cognitive.ReAct{
 		Step:     st,
-		Surface:  s,
 		Provider: prov,
 	}
 
-	// Run orchestrator in a background goroutine.
+	// Conversation state.
+	mem := &state.Memory{}
+
+	// Event processing goroutine.
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := orchestrator.Run(ctx); err != nil {
-			slog.Error("orchestrator exited", "err", err)
+
+		var mu sync.Mutex
+		var cancelFunc context.CancelFunc
+
+		for event := range s.Events() {
+			switch e := event.(type) {
+			case surface.UserMessageEvent:
+				mem.Append(state.RoleUser, artifact.Text{Content: e.Content})
+				if err := s.SetStatus(ctx, "thinking..."); err != nil {
+					slog.Error("set status failed", "err", err)
+				}
+
+				opCtx, cancel := context.WithCancel(ctx)
+				mu.Lock()
+				cancelFunc = cancel
+				mu.Unlock()
+
+				result, err := react.Run(opCtx, mem)
+				// State is mutable, so result is the same pointer; reassign for clarity.
+				mem = result.(*state.Memory)
+
+				mu.Lock()
+				cancelFunc = nil
+				mu.Unlock()
+				cancel()
+
+				if err := s.SetStatus(ctx, ""); err != nil {
+					slog.Error("set status failed", "err", err)
+				}
+				if err != nil {
+					slog.Error("react failed", "err", err)
+				}
+
+			case surface.InterruptEvent:
+				mu.Lock()
+				if cancelFunc != nil {
+					cancelFunc()
+				}
+				mu.Unlock()
+			}
 		}
 	}()
 
@@ -93,7 +137,7 @@ func run() error {
 		return fmt.Errorf("tui exited: %w", err)
 	}
 
-	// Clean shutdown: cancel the orchestrator context and wait for it to finish.
+	// Clean shutdown: cancel the context and wait for the event loop to finish.
 	cancel()
 	wg.Wait()
 
