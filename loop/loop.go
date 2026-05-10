@@ -3,13 +3,11 @@ package loop
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"sync"
 
 	"github.com/andrewhowdencom/tack/artifact"
 	"github.com/andrewhowdencom/tack/provider"
 	"github.com/andrewhowdencom/tack/state"
-	"github.com/andrewhowdencom/tack/surface"
 )
 
 // BeforeTurn transforms state before the provider call.
@@ -44,7 +42,6 @@ func (e TurnCompleteEvent) Kind() string { return "turn_complete" }
 // optionally emits streaming deltas as OutputEvents, and runs
 // registered artifact handlers synchronously on the complete response.
 type Step struct {
-	surface     surface.Surface
 	output      chan<- OutputEvent
 	beforeTurns []BeforeTurn
 	handlers    []Handler
@@ -61,13 +58,6 @@ func New(opts ...Option) *Step {
 
 // Option configures a Step.
 type Option func(*Step)
-
-// WithSurface configures a surface for streaming delta rendering.
-func WithSurface(surf surface.Surface) Option {
-	return func(s *Step) {
-		s.surface = surf
-	}
-}
 
 // WithOutput configures an output channel for streaming delta and
 // turn completion events. The channel is written to during Turn();
@@ -97,7 +87,6 @@ func WithHandlers(handlers ...Handler) Option {
 // Turn performs one inference turn with the given provider.
 // If an output channel is configured and the provider supports streaming, deltas
 // are emitted as DeltaEvent to the channel in real-time via a background goroutine.
-// If a surface is configured, deltas are also routed to the surface.
 // After the turn completes, all registered handlers are invoked on each
 // artifact from the assistant turn. The operation is fully synchronous and
 // blocking.
@@ -112,7 +101,7 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider) (s
 	}
 
 	var deltasCh chan artifact.Artifact
-	if s.surface != nil || s.output != nil {
+	if s.output != nil {
 		deltasCh = make(chan artifact.Artifact, 100)
 	}
 
@@ -122,17 +111,10 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider) (s
 		go func() {
 			defer wg.Done()
 			for delta := range deltasCh {
-				if s.surface != nil {
-					if err := s.surface.RenderDelta(ctx, delta); err != nil {
-						slog.Error("render delta failed", "err", err, "kind", delta.Kind())
-					}
-				}
-				if s.output != nil {
-					select {
-					case s.output <- DeltaEvent{Delta: delta}:
-					case <-ctx.Done():
-						return
-					}
+				select {
+				case s.output <- DeltaEvent{Delta: delta}:
+				case <-ctx.Done():
+					return
 				}
 			}
 		}()
