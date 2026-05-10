@@ -554,6 +554,51 @@ func TestStep_Turn_OutputEventsWithHandler(t *testing.T) {
 	assert.Equal(t, state.RoleTool, turns[2].Role)
 }
 
+func TestStep_Turn_OutputEvents_NonStreamingProvider(t *testing.T) {
+	outputCh := make(chan OutputEvent, 10)
+	s := New(WithOutput(outputCh))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	// Regular provider (not StreamingProvider).
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world"},
+		},
+	}
+
+	result, err := s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+	assert.Same(t, mem, result)
+
+	close(outputCh)
+	var deltas []OutputEvent
+	var turnCompletes []OutputEvent
+	for event := range outputCh {
+		switch event.Kind() {
+		case "delta":
+			deltas = append(deltas, event)
+		case "turn_complete":
+			turnCompletes = append(turnCompletes, event)
+		}
+	}
+
+	// No deltas because provider doesn't stream.
+	assert.Len(t, deltas, 0)
+	// One TurnCompleteEvent with the complete turn.
+	require.Len(t, turnCompletes, 1)
+	assert.Equal(t, state.RoleAssistant, turnCompletes[0].(TurnCompleteEvent).Turn.Role)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+	last := turns[1]
+	assert.Equal(t, state.RoleAssistant, last.Role)
+	require.Len(t, last.Artifacts, 1)
+	text, ok := last.Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "world", text.Content)
+}
+
 func TestStep_Turn_NoOutputEventsWithoutChannel(t *testing.T) {
 	s := New()
 	mem := &state.Memory{}

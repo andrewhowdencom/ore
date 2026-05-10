@@ -2,6 +2,7 @@ package cognitive
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
@@ -57,6 +58,24 @@ func (p *countingProvider) InvokeStreaming(ctx context.Context, s state.State, d
 }
 
 var _ provider.StreamingProvider = (*countingProvider)(nil)
+
+// cancelCheckingProvider checks ctx.Err() before returning artifacts.
+type cancelCheckingProvider struct{}
+
+func (p *cancelCheckingProvider) Invoke(ctx context.Context, s state.State) ([]artifact.Artifact, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return []artifact.Artifact{
+		artifact.ToolCall{Name: "test", Arguments: "{}"},
+	}, nil
+}
+
+func (p *cancelCheckingProvider) InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact) ([]artifact.Artifact, error) {
+	return p.Invoke(ctx, s)
+}
+
+var _ provider.StreamingProvider = (*cancelCheckingProvider)(nil)
 
 // testHandler implements loop.Handler for testing.
 type testHandler struct {
@@ -150,4 +169,55 @@ func TestReAct_ProviderError(t *testing.T) {
 	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
 	_, err := r.Run(context.Background(), mem)
 	require.ErrorIs(t, err, wantErr)
+}
+
+func TestReAct_HandlerError(t *testing.T) {
+	mem := &state.Memory{}
+
+	wantErr := errors.New("handler failed")
+	toolHandler := &testHandler{
+		fn: func(ctx context.Context, art artifact.Artifact, s state.State) error {
+			if art.Kind() == "tool_call" {
+				return wantErr
+			}
+			return nil
+		},
+	}
+
+	s := loop.New(loop.WithHandlers(toolHandler))
+
+	prov := &simpleProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "calling tool"},
+			artifact.ToolCall{Name: "test", Arguments: "{}"},
+		},
+	}
+
+	r := &ReAct{
+		Step:     s,
+		Provider: prov,
+	}
+
+	mem.Append(state.RoleUser, artifact.Text{Content: "do something"})
+	_, err := r.Run(context.Background(), mem)
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestReAct_ContextCancellation(t *testing.T) {
+	mem := &state.Memory{}
+
+	prov := &cancelCheckingProvider{}
+	s := loop.New()
+	r := &ReAct{
+		Step:     s,
+		Provider: prov,
+	}
+
+	mem.Append(state.RoleUser, artifact.Text{Content: "do something"})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately.
+
+	_, err := r.Run(ctx, mem)
+	require.ErrorIs(t, err, context.Canceled)
 }

@@ -152,9 +152,9 @@ The framework defines a `surface.Surface` interface with four egress actions and
 
 Implementations (TUI, web, Telegram, etc.) satisfy this interface at build time. The framework does not assume any specific rendering mechanism.
 
-### Orchestration
+### Three-Layer Architecture
 
-Above the Loop / Step, the framework provides two composable abstractions that separate **single-turn execution** from **multi-turn strategy**:
+Above the Loop / Step, the framework separates concerns into three layers:
 
 - **`loop.Step`** — the transform layer. Executes one complete inference turn: invokes the provider, optionally emits streaming deltas as `OutputEvent` to a configured channel, and runs registered artifact handlers synchronously on the complete response. Handlers may mutate state (e.g., append `RoleTool` turns with tool results).
 - **`cognitive.ReAct`** — a pure cognitive pattern that implements the ReAct feedback loop. It repeatedly calls `Step.Turn()`, inspects the resulting state, and loops again if the last turn is not from the assistant (indicating pending tool results). It is surface-agnostic and stateless — it receives `state.State` as a parameter and returns it.
