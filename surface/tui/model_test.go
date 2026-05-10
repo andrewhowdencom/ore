@@ -9,6 +9,7 @@ import (
 	"github.com/andrewhowdencom/tack/surface"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -342,4 +343,70 @@ func TestModel_View_LongHistory_InputAtBottom(t *testing.T) {
 	lines := strings.Split(output, "\n")
 	lastLine := lines[len(lines)-1]
 	assert.Equal(t, "> _", lastLine)
+}
+
+func TestWrapText_NoWrap(t *testing.T) {
+	output := wrapText("hello", "You: ", "     ", 80)
+	assert.Equal(t, "You: hello", output)
+}
+
+func TestWrapText_WrapsLongLine(t *testing.T) {
+	text := strings.Repeat("a", 100)
+	output := wrapText(text, "You: ", "     ", 20)
+	lines := strings.Split(output, "\n")
+	assert.Greater(t, len(lines), 1, "long text should wrap to multiple lines")
+	assert.True(t, strings.HasPrefix(lines[0], "You: "), "first line should have label")
+	for i := 1; i < len(lines); i++ {
+		assert.True(t, strings.HasPrefix(lines[i], "     "), "continuation lines should have indent")
+	}
+}
+
+func TestWrapText_WidthZero(t *testing.T) {
+	output := wrapText("hello", "You: ", "     ", 0)
+	assert.Equal(t, "You: hello", output)
+}
+
+func TestWrapText_EmptyText(t *testing.T) {
+	output := wrapText("", "You: ", "     ", 80)
+	assert.Equal(t, "You: ", output)
+}
+
+func TestWrapText_Unicode(t *testing.T) {
+	// Japanese characters are typically 2 cells wide.
+	output := wrapText("こんにちは世界", "You: ", "     ", 12)
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		assert.LessOrEqual(t, lipgloss.Width(line), 12, "line %q exceeds width", line)
+	}
+}
+
+func TestWrapText_AnsiAware(t *testing.T) {
+	styledLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000")).Render("Label: ")
+	indent := strings.Repeat(" ", lipgloss.Width(styledLabel))
+	text := strings.Repeat("x", 100)
+	output := wrapText(text, styledLabel, indent, 30)
+	lines := strings.Split(output, "\n")
+	assert.Greater(t, len(lines), 1, "long text should wrap to multiple lines")
+	for _, line := range lines {
+		assert.LessOrEqual(t, lipgloss.Width(line), 30, "line %q exceeds width", line)
+	}
+}
+
+func TestModel_View_WrapsLongTurn(t *testing.T) {
+	m := model{
+		viewport: viewport.New(20, 5),
+		turns: []renderedTurn{
+			{role: state.RoleUser, text: strings.Repeat("word ", 10)},
+		},
+	}
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	hasContinuation := false
+	for _, line := range lines {
+		if strings.HasPrefix(line, "     ") {
+			hasContinuation = true
+			break
+		}
+	}
+	assert.True(t, hasContinuation, "long turn should wrap with continuation lines")
 }
