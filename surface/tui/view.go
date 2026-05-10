@@ -14,6 +14,8 @@ var (
 	assistantStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#6C8EBF"))
 	// statusStyle styles the status line faint and italic.
 	statusStyle = lipgloss.NewStyle().Faint(true).Italic(true)
+	// thinkingStyle styles reasoning/thinking content faint and italic.
+	thinkingStyle = lipgloss.NewStyle().Faint(true).Italic(true)
 )
 
 // wrapText wraps text to fit within the given terminal width, prefixing the
@@ -72,9 +74,17 @@ func (m *model) View() string {
 		b.WriteString("\n\n")
 	}
 
-	// Render the in-progress streaming response.
-	if m.streamBuffer.Len() > 0 {
-		b.WriteString(wrapText(m.streamBuffer.String(), assistantLabel, assistantIndent, width))
+	// Render the in-progress text stream.
+	if m.textStreamBuffer.Len() > 0 {
+		b.WriteString(wrapText(m.textStreamBuffer.String(), assistantLabel, assistantIndent, width))
+		b.WriteString("\n\n")
+	}
+
+	// Render the in-progress reasoning stream.
+	if m.reasoningStreamBuffer.Len() > 0 {
+		thinkingLabel := thinkingStyle.Render("Thinking: ")
+		thinkingIndent := strings.Repeat(" ", lipgloss.Width(thinkingLabel))
+		b.WriteString(wrapText(m.reasoningStreamBuffer.String(), thinkingLabel, thinkingIndent, width))
 		b.WriteString("\n\n")
 	}
 

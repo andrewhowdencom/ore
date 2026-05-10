@@ -18,14 +18,14 @@ func TestModel_Update_Delta_TextDelta(t *testing.T) {
 	m := model{}
 	newM, _ := m.Update(deltaMsg{delta: artifact.TextDelta{Content: "hello"}})
 	mm := newM.(*model)
-	assert.Equal(t, "hello", mm.streamBuffer.String())
+	assert.Equal(t, "hello", mm.textStreamBuffer.String())
 }
 
 func TestModel_Update_Delta_ReasoningDelta(t *testing.T) {
 	m := model{}
 	newM, _ := m.Update(deltaMsg{delta: artifact.ReasoningDelta{Content: "thinking"}})
 	mm := newM.(*model)
-	assert.Equal(t, "thinking", mm.streamBuffer.String())
+	assert.Equal(t, "thinking", mm.reasoningStreamBuffer.String())
 }
 
 func TestModel_Update_Turn(t *testing.T) {
@@ -41,12 +41,13 @@ func TestModel_Update_Turn(t *testing.T) {
 	require.Len(t, mm.turns, 1)
 	assert.Equal(t, state.RoleAssistant, mm.turns[0].role)
 	assert.Equal(t, "hello world", mm.turns[0].text)
-	assert.Empty(t, mm.streamBuffer.String())
+	assert.Empty(t, mm.textStreamBuffer.String())
+	assert.Empty(t, mm.reasoningStreamBuffer.String())
 }
 
 func TestModel_Update_Turn_ResetsStreamBuffer(t *testing.T) {
 	m := model{}
-	m.streamBuffer.WriteString("partial")
+	m.textStreamBuffer.WriteString("partial")
 
 	turn := state.Turn{
 		Role: state.RoleAssistant,
@@ -56,7 +57,8 @@ func TestModel_Update_Turn_ResetsStreamBuffer(t *testing.T) {
 	}
 	newM, _ := m.Update(turnMsg{turn: turn})
 	mm := newM.(*model)
-	assert.Empty(t, mm.streamBuffer.String())
+	assert.Empty(t, mm.textStreamBuffer.String())
+	assert.Empty(t, mm.reasoningStreamBuffer.String())
 }
 
 func TestModel_Update_Status(t *testing.T) {
@@ -210,7 +212,7 @@ func TestModel_View_ContainsStreaming(t *testing.T) {
 	m := model{
 		viewport: viewport.New(80, 20),
 	}
-	m.streamBuffer.WriteString("partial")
+	m.textStreamBuffer.WriteString("partial")
 	output := m.View()
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "partial")
@@ -325,7 +327,7 @@ func TestModel_Update_Delta_AutoScrollsViewport(t *testing.T) {
 	mm := newM.(*model)
 
 	assert.True(t, mm.viewport.AtBottom(), "delta should auto-scroll viewport to bottom")
-	assert.Equal(t, "new token", mm.streamBuffer.String())
+	assert.Equal(t, "new token", mm.textStreamBuffer.String())
 }
 
 func TestModel_View_LongHistory_InputAtBottom(t *testing.T) {
@@ -409,4 +411,24 @@ func TestModel_View_WrapsLongTurn(t *testing.T) {
 		}
 	}
 	assert.True(t, hasContinuation, "long turn should wrap with continuation lines")
+}
+
+// unknownArtifact is an artifact type not handled by the TUI model.
+type unknownArtifact struct{}
+
+func (unknownArtifact) Kind() string { return "unknown" }
+
+func TestModel_Update_Delta_UnknownArtifact(t *testing.T) {
+	m := model{}
+	newM, cmd := m.Update(deltaMsg{delta: unknownArtifact{}})
+	mm := newM.(*model)
+	assert.Empty(t, mm.textStreamBuffer.String())
+	assert.Empty(t, mm.reasoningStreamBuffer.String())
+	assert.Nil(t, cmd)
+}
+
+func TestWrapText_AvailableLEOne(t *testing.T) {
+	// "You: " has width 5, so width=6 gives available=1.
+	output := wrapText("hello", "You: ", "     ", 6)
+	assert.Equal(t, "You: hello", output)
 }

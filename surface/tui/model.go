@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"strings"
 
+
 	"github.com/andrewhowdencom/tack/artifact"
 	"github.com/andrewhowdencom/tack/state"
 	"github.com/andrewhowdencom/tack/surface"
@@ -12,7 +13,8 @@ import (
 )
 
 // deltaMsg carries an ephemeral delta artifact into the Bubble Tea message
-// loop so model.Update can append it to the streaming buffer.
+// loop so model.Update can append it to the appropriate streaming buffer
+// (text or reasoning).
 type deltaMsg struct {
 	delta artifact.Artifact
 }
@@ -29,6 +31,8 @@ type statusMsg struct {
 	status string
 }
 
+
+
 // model implements tea.Model. All state mutation happens in Update,
 // which runs on Bubble Tea's single goroutine, so no locks are needed.
 type model struct {
@@ -37,8 +41,13 @@ type model struct {
 	// Conversation history.
 	turns []renderedTurn
 
-	// Streaming buffer for the current assistant response.
-	streamBuffer strings.Builder
+	// textStreamBuffer holds the partial text content of the current assistant response.
+	textStreamBuffer strings.Builder
+
+	// reasoningStreamBuffer holds the partial reasoning/thinking content.
+	reasoningStreamBuffer strings.Builder
+
+
 
 	// Transient status line (e.g., "thinking...").
 	status string
@@ -73,9 +82,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case deltaMsg:
 		switch d := msg.delta.(type) {
 		case artifact.TextDelta:
-			m.streamBuffer.WriteString(d.Content)
+			m.textStreamBuffer.WriteString(d.Content)
 		case artifact.ReasoningDelta:
-			m.streamBuffer.WriteString(d.Content)
+			m.reasoningStreamBuffer.WriteString(d.Content)
 		}
 		m.viewport.GotoBottom()
 	case turnMsg:
@@ -89,7 +98,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			role: msg.turn.Role,
 			text: text.String(),
 		})
-		m.streamBuffer.Reset()
+		m.textStreamBuffer.Reset()
+		m.reasoningStreamBuffer.Reset()
 		m.viewport.GotoBottom()
 	case statusMsg:
 		m.status = msg.status
