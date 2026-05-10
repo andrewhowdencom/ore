@@ -13,25 +13,27 @@ import (
 
 func TestRenderMarkdown(t *testing.T) {
 	input := "# Hello\n\nSome **bold** text and `code`."
-	output, err := renderMarkdown(input, 80)
+	output, err := glamourMarkdownRenderer{}.Render(input, 80)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output)
-	// Output should differ from input (glamour adds formatting).
+	// Output should differ from input (glamour processes the markdown).
 	assert.NotEqual(t, input, output)
 }
 
 func TestRenderMarkdown_CodeBlock(t *testing.T) {
 	input := "```go\nfunc main() {\n    fmt.Println(\"hi\")\n}\n```"
-	output, err := renderMarkdown(input, 80)
+	output, err := glamourMarkdownRenderer{}.Render(input, 80)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output)
+	// Verify glamour processed the code block (output differs from input).
+	assert.NotEqual(t, input, output)
 }
 
 func TestRenderMarkdown_NegativeWidth(t *testing.T) {
 	// glamour.NewTermRenderer may accept any width; ensure we handle
 	// a negative width without panic.
 	input := "hello"
-	output, err := renderMarkdown(input, -1)
+	output, err := glamourMarkdownRenderer{}.Render(input, -1)
 	// We allow either success or error; the caller handles errors.
 	_ = output
 	_ = err

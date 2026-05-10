@@ -61,6 +61,19 @@ type model struct {
 
 	// Scrollable viewport for conversation history.
 	viewport viewport.Model
+
+	// md renders Markdown source into ANSI-styled terminal output. In
+	// production this is a glamourMarkdownRenderer; tests may inject a mock.
+	md markdownRenderer
+}
+
+// renderMarkdown delegates to the model's markdown renderer, falling back
+// to a default glamourMarkdownRenderer if none was injected.
+func (m *model) renderMarkdown(text string, width int) (string, error) {
+	if m.md == nil {
+		m.md = glamourMarkdownRenderer{}
+	}
+	return m.md.Render(text, width)
 }
 
 // renderedTurn represents a single turn in the conversation history.
@@ -100,7 +113,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			text: text.String(),
 		}
 		if msg.turn.Role == state.RoleAssistant {
-			rendered, err := renderMarkdown(text.String(), m.viewport.Width)
+			rendered, err := m.renderMarkdown(text.String(), m.viewport.Width)
 			if err == nil {
 				rt.rendered = rendered
 			}
@@ -158,7 +171,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Markdown output remains correctly wrapped.
 		for i, turn := range m.turns {
 			if turn.role == state.RoleAssistant && turn.text != "" {
-				rendered, err := renderMarkdown(turn.text, m.viewport.Width)
+				rendered, err := m.renderMarkdown(turn.text, m.viewport.Width)
 				if err == nil {
 					m.turns[i].rendered = rendered
 				}

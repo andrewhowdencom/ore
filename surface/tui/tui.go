@@ -26,6 +26,7 @@ func New() *TUI {
 	m := model{
 		eventsCh: eventsCh,
 		viewport: viewport.New(0, 0),
+		md:       glamourMarkdownRenderer{},
 	}
 	p := tea.NewProgram(&m, tea.WithAltScreen())
 	return &TUI{

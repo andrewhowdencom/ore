@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/andrewhowdencom/tack/state"
-	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/cellbuf"
 )
@@ -44,20 +43,6 @@ func wrapText(text, label, indent string, width int) string {
 		b.WriteString(line)
 	}
 	return b.String()
-}
-
-// renderMarkdown renders the given text as rich Markdown using glamour.
-// The width parameter controls the word-wrap width. If glamour fails, an
-// error is returned so the caller can fall back to plain text.
-func renderMarkdown(text string, width int) (string, error) {
-	r, err := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
-		glamour.WithWordWrap(width),
-	)
-	if err != nil {
-		return "", err
-	}
-	return r.Render(text)
 }
 
 // prefixLines prepends label to the first line and indent to every
