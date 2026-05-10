@@ -432,3 +432,62 @@ func TestWrapText_AvailableLEOne(t *testing.T) {
 	output := wrapText("hello", "You: ", "     ", 6)
 	assert.Equal(t, "You: hello", output)
 }
+
+func TestModel_Update_Turn_Assistant_PopulatesRendered(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+	}
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "# Hello\n\n**bold** text"},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+	require.Len(t, mm.turns, 1)
+	assert.Equal(t, state.RoleAssistant, mm.turns[0].role)
+	assert.NotEmpty(t, mm.turns[0].text)
+	assert.NotEmpty(t, mm.turns[0].rendered, "assistant turn should have rendered Markdown")
+}
+
+func TestModel_Update_Turn_User_LeavesRenderedEmpty(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+	}
+	turn := state.Turn{
+		Role: state.RoleUser,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "hello world"},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+	require.Len(t, mm.turns, 1)
+	assert.Equal(t, state.RoleUser, mm.turns[0].role)
+	assert.Empty(t, mm.turns[0].rendered, "user turn should not have rendered Markdown")
+}
+
+func TestModel_Update_WindowSize_RerendersAssistantTurns(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+	}
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "# Title\n\nThis is a longer paragraph that should definitely wrap differently at width forty versus width eighty."},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+	require.Len(t, mm.turns, 1)
+	initialRendered := mm.turns[0].rendered
+	assert.NotEmpty(t, initialRendered)
+
+	// Resize to a narrower width
+	newM2, _ := mm.Update(tea.WindowSizeMsg{Width: 40, Height: 20})
+	mm2 := newM2.(*model)
+	assert.NotEmpty(t, mm2.turns[0].rendered)
+	assert.NotEqual(t, initialRendered, mm2.turns[0].rendered,
+		"re-rendered output should differ after width change")
+}
