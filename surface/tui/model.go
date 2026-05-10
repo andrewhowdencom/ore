@@ -13,7 +13,8 @@ import (
 )
 
 // deltaMsg carries an ephemeral delta artifact into the Bubble Tea message
-// loop so model.Update can append it to the streaming buffer.
+// loop so model.Update can append it to the appropriate streaming buffer
+// (text or reasoning).
 type deltaMsg struct {
 	delta artifact.Artifact
 }

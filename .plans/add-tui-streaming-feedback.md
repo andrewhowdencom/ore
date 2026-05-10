@@ -6,23 +6,23 @@ Implement visual feedback during active streaming in the `surface/tui` package s
 
 ## Context
 
-Issue [#8](https://github.com/andrewhowdencom/tack/issues/8) (“TUI: Add streaming visual feedback”) identifies that during streaming responses, text appears character-by-character with no visual cue that generation is in progress. Additionally, `artifact.TextDelta` and `artifact.ReasoningDelta` are handled identically in the Bubble Tea model — both are appended to a single `streamBuffer` and rendered with the same `Assistant:` label.
+Issue [#8](https://github.com/andrewhowdencom/tack/issues/8) (“TUI: Add streaming visual feedback”) identifies that during streaming responses, text appears character-by-character with no visual cue that generation is in progress. Additionally, `artifact.TextDelta` and `artifact.ReasoningDelta` were handled identically in the Bubble Tea model — both were appended to a single `streamBuffer` and rendered with the same `Assistant:` label.
 
 **Relevant files discovered:**
 
-- `surface/tui/model.go` — Bubble Tea `tea.Model` implementation. `Update` handles `deltaMsg` by writing both `TextDelta` and `ReasoningDelta` into `m.streamBuffer`.
+- `surface/tui/model.go` — Bubble Tea `tea.Model` implementation. `Update` handled `deltaMsg` by writing both `TextDelta` and `ReasoningDelta` into `m.streamBuffer`.
 - `surface/tui/view.go` — Renders conversation history and the in-progress stream buffer with `assistantLabel` (subtle blue) for all assistant content. No animated or static indicator is appended.
-- `surface/tui/model_test.go` — Table-driven tests covering delta handling, turn finalization, viewport scrolling, and view output. All streaming tests reference the single `streamBuffer` field.
+- `surface/tui/model_test.go` — Table-driven tests covering delta handling, turn finalization, viewport scrolling, and view output. All streaming tests referenced the single `streamBuffer` field.
 - `surface/tui/tui.go` — Thin wrapper; no changes needed.
 - `artifact/artifact.go` — Defines `TextDelta` and `ReasoningDelta` as distinct artifact kinds.
 - `go.mod` — Already depends on `github.com/charmbracelet/bubbles v1.0.0`, which includes `spinner` and `viewport` bubbles.
 
 **Key observations:**
 
-1. The `streamBuffer` field must be split into `textStreamBuffer` and `reasoningStreamBuffer`.
+1. The `streamBuffer` field was split into `textStreamBuffer` and `reasoningStreamBuffer`.
 2. A blinking cursor (`▌`) toggled via `tea.Tick` is the simplest, most robust indicator because it is a single-width character with no ANSI sequences, so it does not interact with `cellbuf.Wrap`.
 3. Reasoning content should be rendered with a `Thinking:` label and a faint + italic `lipgloss.Style` (same family as the existing `statusStyle`).
-4. The indicator must disappear when `turnMsg` is received (`RenderTurn`), which already resets the stream buffer.
+4. The indicator must disappear when `turnMsg` is received (`RenderTurn`), which resets both stream buffers.
 5. The OpenAI provider’s `InvokeStreaming` currently emits only `TextDelta` and `ToolCallDelta`; it does **not** emit `ReasoningDelta` in the stream. The TUI change is provider-agnostic — it will display reasoning deltas correctly when any provider emits them.
 
 ## Architectural Blueprint
