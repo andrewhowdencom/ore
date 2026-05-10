@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -490,4 +491,94 @@ func TestModel_Update_WindowSize_RerendersAssistantTurns(t *testing.T) {
 	assert.NotEmpty(t, mm2.turns[0].rendered)
 	assert.NotEqual(t, initialRendered, mm2.turns[0].rendered,
 		"re-rendered output should differ after width change")
+}
+
+// mockMarkdownRenderer is a test double that returns fixed output or errors.
+type mockMarkdownRenderer struct {
+	output string
+	err    error
+}
+
+func (m mockMarkdownRenderer) Render(text string, width int) (string, error) {
+	return m.output, m.err
+}
+
+func TestModel_Update_Turn_Assistant_RenderError_Fallback(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+		md:       mockMarkdownRenderer{err: errors.New("render failed")},
+	}
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "# Hello"},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+	require.Len(t, mm.turns, 1)
+	assert.Empty(t, mm.turns[0].rendered, "render error should leave rendered empty")
+	assert.Equal(t, "# Hello", mm.turns[0].text, "raw text should still be stored")
+}
+
+func TestModel_View_AssistantTurn_RenderError_FallbackToPlainText(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+		md:       mockMarkdownRenderer{err: errors.New("render failed")},
+	}
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "plain fallback text"},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+	output := mm.View()
+	assert.Contains(t, output, "Assistant: ")
+	assert.Contains(t, output, "plain fallback text")
+}
+
+func TestModel_Update_WindowSize_RerenderError_KeepsOldCache(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+		md:       mockMarkdownRenderer{output: "initial-render"},
+	}
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "text"},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+	assert.Equal(t, "initial-render", mm.turns[0].rendered)
+
+	// Swap to an error-returning renderer and resize.
+	mm.md = mockMarkdownRenderer{err: errors.New("resize render failed")}
+	newM2, _ := mm.Update(tea.WindowSizeMsg{Width: 40, Height: 20})
+	mm2 := newM2.(*model)
+	assert.Equal(t, "initial-render", mm2.turns[0].rendered,
+		"old cache should be kept on re-render error")
+}
+
+func TestModel_Update_Turn_Assistant_EmptyText(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+		md:       mockMarkdownRenderer{output: "mock-empty-output"},
+	}
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: ""},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+	require.Len(t, mm.turns, 1)
+	assert.Empty(t, mm.turns[0].text)
+	assert.Equal(t, "mock-empty-output", mm.turns[0].rendered)
+	// View should not crash with empty text.
+	output := mm.View()
+	assert.Contains(t, output, "Assistant: ")
 }

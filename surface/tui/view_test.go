@@ -103,3 +103,24 @@ func TestModel_View_StreamingText_PlainText(t *testing.T) {
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "streaming text")
 }
+
+func TestRenderMarkdown_MalformedInput(t *testing.T) {
+	cases := []string{
+		"[link](<unfinished",
+		"**bold",
+		"```unclosed",
+	}
+	for _, input := range cases {
+		output, err := glamourMarkdownRenderer{}.Render(input, 80)
+		assert.NoError(t, err, "malformed markdown %q should not error", input)
+		assert.NotEmpty(t, output)
+	}
+}
+
+func TestRenderMarkdown_NarrowWidth(t *testing.T) {
+	for _, width := range []int{1, 2, 5} {
+		output, err := glamourMarkdownRenderer{}.Render("hello world", width)
+		assert.NoError(t, err, "narrow width %d should not panic", width)
+		assert.NotEmpty(t, output)
+	}
+}
