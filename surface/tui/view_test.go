@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/andrewhowdencom/tack/state"
+	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -62,4 +64,40 @@ func TestPrefixLines_WithANSI(t *testing.T) {
 	lines := strings.Split(output, "\n")
 	require.Len(t, lines, 2)
 	assert.True(t, strings.HasPrefix(lines[1], "   "))
+}
+
+func TestModel_View_AssistantTurn_WithRendered(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+		turns: []renderedTurn{
+			{role: state.RoleAssistant, text: "# Hello", rendered: "pre-rendered glamour output"},
+		},
+	}
+	output := m.View()
+	assert.Contains(t, output, "Assistant: ")
+	assert.Contains(t, output, "pre-rendered glamour output")
+	// Should not contain the raw Markdown source.
+	assert.NotContains(t, output, "# Hello")
+}
+
+func TestModel_View_AssistantTurn_FallbackToPlainText(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+		turns: []renderedTurn{
+			{role: state.RoleAssistant, text: "plain text", rendered: ""},
+		},
+	}
+	output := m.View()
+	assert.Contains(t, output, "Assistant: ")
+	assert.Contains(t, output, "plain text")
+}
+
+func TestModel_View_StreamingText_PlainText(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+	}
+	m.textStreamBuffer.WriteString("streaming text")
+	output := m.View()
+	assert.Contains(t, output, "Assistant: ")
+	assert.Contains(t, output, "streaming text")
 }

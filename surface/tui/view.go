@@ -103,7 +103,11 @@ func (m *model) View() string {
 		case state.RoleUser:
 			b.WriteString(wrapText(turn.text, userLabel, userIndent, width))
 		case state.RoleAssistant:
-			b.WriteString(wrapText(turn.text, assistantLabel, assistantIndent, width))
+			if turn.rendered != "" {
+				b.WriteString(prefixLines(turn.rendered, assistantLabel, assistantIndent))
+			} else {
+				b.WriteString(wrapText(turn.text, assistantLabel, assistantIndent, width))
+			}
 		case state.RoleTool:
 			b.WriteString(wrapText(turn.text, toolLabel, toolIndent, width))
 		}
