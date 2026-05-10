@@ -268,6 +268,7 @@ func (p *Provider) InvokeStreaming(ctx context.Context, s state.State, deltasCh 
 	stream := p.client.Chat.Completions.NewStreaming(ctx, params)
 
 	var textContent strings.Builder
+	var reasoningContent strings.Builder
 
 	type toolCallAccum struct {
 		id   string
@@ -289,6 +290,18 @@ func (p *Provider) InvokeStreaming(ctx context.Context, s state.State, deltasCh 
 			case deltasCh <- artifact.TextDelta{Content: delta.Content}:
 			case <-ctx.Done():
 				return nil, ctx.Err()
+			}
+		}
+
+		if field, ok := delta.JSON.ExtraFields["reasoning_content"]; ok {
+			var reasoning string
+			if err := json.Unmarshal([]byte(field.Raw()), &reasoning); err == nil && reasoning != "" {
+				reasoningContent.WriteString(reasoning)
+				select {
+				case deltasCh <- artifact.ReasoningDelta{Content: reasoning}:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
 			}
 		}
 
@@ -342,6 +355,10 @@ func (p *Provider) InvokeStreaming(ctx context.Context, s state.State, deltasCh 
 		}
 	} else if textContent.Len() > 0 {
 		artifacts = append(artifacts, artifact.Text{Content: textContent.String()})
+	}
+
+	if reasoningContent.Len() > 0 {
+		artifacts = append(artifacts, artifact.Reasoning{Content: reasoningContent.String()})
 	}
 
 	return artifacts, nil

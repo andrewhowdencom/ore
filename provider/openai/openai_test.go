@@ -366,6 +366,88 @@ func TestProviderInvokeStreaming_NilChannel(t *testing.T) {
 	assert.Equal(t, "Hello!", text.Content)
 }
 
+func TestProviderInvokeStreaming_WithReasoning(t *testing.T) {
+	sseBody := "data: {\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\",\"created\":1693583820,\"model\":\"o3-mini\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello\",\"reasoning_content\":\"Let me think\"},\"finish_reason\":null}]}\n\n" +
+		"data: {\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\",\"created\":1693583820,\"model\":\"o3-mini\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" world\",\"reasoning_content\":\" about this\"},\"finish_reason\":null}]}\n\n" +
+		"data: [DONE]\n\n"
+
+	resp := &http.Response{
+		StatusCode: 200,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(sseBody)),
+	}
+
+	transport := &mockTransport{response: resp}
+	p := New("test-key", "o3-mini", WithHTTPClient(mockClient(transport)))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	artifacts, err := p.InvokeStreaming(t.Context(), mem, ch)
+	require.NoError(t, err)
+
+	// Verify deltas were emitted.
+	require.Len(t, ch, 4)
+	d1 := <-ch
+	assert.Equal(t, "text_delta", d1.Kind())
+	assert.Equal(t, "Hello", d1.(artifact.TextDelta).Content)
+	d2 := <-ch
+	assert.Equal(t, "reasoning_delta", d2.Kind())
+	assert.Equal(t, "Let me think", d2.(artifact.ReasoningDelta).Content)
+	d3 := <-ch
+	assert.Equal(t, "text_delta", d3.Kind())
+	assert.Equal(t, " world", d3.(artifact.TextDelta).Content)
+	d4 := <-ch
+	assert.Equal(t, "reasoning_delta", d4.Kind())
+	assert.Equal(t, " about this", d4.(artifact.ReasoningDelta).Content)
+
+	// Verify complete artifacts.
+	require.Len(t, artifacts, 2)
+	text, ok := artifacts[0].(artifact.Text)
+	require.True(t, ok, "expected artifact.Text, got %T", artifacts[0])
+	assert.Equal(t, "Hello world", text.Content)
+
+	reasoning, ok := artifacts[1].(artifact.Reasoning)
+	require.True(t, ok, "expected artifact.Reasoning, got %T", artifacts[1])
+	assert.Equal(t, "Let me think about this", reasoning.Content)
+}
+
+func TestProviderInvokeStreaming_ReasoningOnly(t *testing.T) {
+	sseBody := "data: {\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\",\"created\":1693583820,\"model\":\"o3-mini\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"Let me analyze\"},\"finish_reason\":null}]}\n\n" +
+		"data: {\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\",\"created\":1693583820,\"model\":\"o3-mini\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" this request\"},\"finish_reason\":null}]}\n\n" +
+		"data: [DONE]\n\n"
+
+	resp := &http.Response{
+		StatusCode: 200,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(sseBody)),
+	}
+
+	transport := &mockTransport{response: resp}
+	p := New("test-key", "o3-mini", WithHTTPClient(mockClient(transport)))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	artifacts, err := p.InvokeStreaming(t.Context(), mem, ch)
+	require.NoError(t, err)
+
+	// Verify deltas were emitted.
+	require.Len(t, ch, 2)
+	d1 := <-ch
+	assert.Equal(t, "reasoning_delta", d1.Kind())
+	assert.Equal(t, "Let me analyze", d1.(artifact.ReasoningDelta).Content)
+	d2 := <-ch
+	assert.Equal(t, "reasoning_delta", d2.Kind())
+	assert.Equal(t, " this request", d2.(artifact.ReasoningDelta).Content)
+
+	// Verify complete artifacts.
+	require.Len(t, artifacts, 1)
+	reasoning, ok := artifacts[0].(artifact.Reasoning)
+	require.True(t, ok, "expected artifact.Reasoning, got %T", artifacts[0])
+	assert.Equal(t, "Let me analyze this request", reasoning.Content)
+}
+
 func TestProviderInvoke_ConcurrentSetTools(t *testing.T) {
 	transport := &concurrentMockTransport{
 		responseBody: `{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`,
