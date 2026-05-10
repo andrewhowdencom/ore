@@ -14,6 +14,8 @@ var (
 	assistantStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#6C8EBF"))
 	// statusStyle styles the status line faint and italic.
 	statusStyle = lipgloss.NewStyle().Faint(true).Italic(true)
+	// thinkingStyle styles reasoning/thinking content faint and italic.
+	thinkingStyle = lipgloss.NewStyle().Faint(true).Italic(true)
 )
 
 // wrapText wraps text to fit within the given terminal width, prefixing the
@@ -41,6 +43,27 @@ func wrapText(text, label, indent string, width int) string {
 		b.WriteString(line)
 	}
 	return b.String()
+}
+
+// renderStreamWithCursor wraps stream text with its label and indent, then
+// appends a blinking cursor to the last non-empty line when active.
+func renderStreamWithCursor(text, label, indent, cursor string, width int) string {
+	wrapped := wrapText(text, label, indent, width)
+	if cursor == "" {
+		return wrapped
+	}
+	lines := strings.Split(wrapped, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) != "" {
+			if lipgloss.Width(lines[i])+lipgloss.Width(cursor) <= width {
+				lines[i] = lines[i] + cursor
+			} else {
+				lines = append(lines, indent+cursor)
+			}
+			break
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // View renders the conversation history inside a scrollable viewport and
@@ -73,8 +96,32 @@ func (m *model) View() string {
 	}
 
 	// Render the in-progress streaming response.
-	if m.streamBuffer.Len() > 0 {
-		b.WriteString(wrapText(m.streamBuffer.String(), assistantLabel, assistantIndent, width))
+	cursor := ""
+	if m.streaming && m.cursorVisible {
+		cursor = "▌"
+	}
+
+	if m.textStreamBuffer.Len() > 0 {
+		b.WriteString(renderStreamWithCursor(
+			m.textStreamBuffer.String(),
+			assistantLabel,
+			assistantIndent,
+			cursor,
+			width,
+		))
+		b.WriteString("\n\n")
+	}
+
+	if m.reasoningStreamBuffer.Len() > 0 {
+		thinkingLabel := thinkingStyle.Render("Thinking: ")
+		thinkingIndent := strings.Repeat(" ", lipgloss.Width(thinkingLabel))
+		b.WriteString(renderStreamWithCursor(
+			m.reasoningStreamBuffer.String(),
+			thinkingLabel,
+			thinkingIndent,
+			cursor,
+			width,
+		))
 		b.WriteString("\n\n")
 	}
 

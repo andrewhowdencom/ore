@@ -3,6 +3,7 @@ package tui
 import (
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/andrewhowdencom/tack/artifact"
 	"github.com/andrewhowdencom/tack/state"
@@ -29,6 +30,9 @@ type statusMsg struct {
 	status string
 }
 
+// cursorTickMsg toggles the blinking cursor visibility.
+type cursorTickMsg struct{}
+
 // model implements tea.Model. All state mutation happens in Update,
 // which runs on Bubble Tea's single goroutine, so no locks are needed.
 type model struct {
@@ -37,8 +41,17 @@ type model struct {
 	// Conversation history.
 	turns []renderedTurn
 
-	// Streaming buffer for the current assistant response.
-	streamBuffer strings.Builder
+	// textStreamBuffer holds the partial text content of the current assistant response.
+	textStreamBuffer strings.Builder
+
+	// reasoningStreamBuffer holds the partial reasoning/thinking content.
+	reasoningStreamBuffer strings.Builder
+
+	// streaming is true while the assistant is actively generating a response.
+	streaming bool
+
+	// cursorVisible toggles the blinking cursor indicator.
+	cursorVisible bool
 
 	// Transient status line (e.g., "thinking...").
 	status string
@@ -71,13 +84,20 @@ func (m *model) Init() tea.Cmd {
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case deltaMsg:
+		wasEmpty := m.textStreamBuffer.Len() == 0 && m.reasoningStreamBuffer.Len() == 0
 		switch d := msg.delta.(type) {
 		case artifact.TextDelta:
-			m.streamBuffer.WriteString(d.Content)
+			m.textStreamBuffer.WriteString(d.Content)
 		case artifact.ReasoningDelta:
-			m.streamBuffer.WriteString(d.Content)
+			m.reasoningStreamBuffer.WriteString(d.Content)
 		}
+		m.streaming = true
 		m.viewport.GotoBottom()
+		if wasEmpty {
+			return m, tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
+				return cursorTickMsg{}
+			})
+		}
 	case turnMsg:
 		var text strings.Builder
 		for _, art := range msg.turn.Artifacts {
@@ -89,8 +109,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			role: msg.turn.Role,
 			text: text.String(),
 		})
-		m.streamBuffer.Reset()
+		m.textStreamBuffer.Reset()
+		m.reasoningStreamBuffer.Reset()
+		m.streaming = false
+		m.cursorVisible = false
 		m.viewport.GotoBottom()
+	case cursorTickMsg:
+		if m.streaming {
+			m.cursorVisible = !m.cursorVisible
+			return m, tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
+				return cursorTickMsg{}
+			})
+		}
 	case statusMsg:
 		m.status = msg.status
 	case tea.KeyMsg:

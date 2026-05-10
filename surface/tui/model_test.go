@@ -18,14 +18,14 @@ func TestModel_Update_Delta_TextDelta(t *testing.T) {
 	m := model{}
 	newM, _ := m.Update(deltaMsg{delta: artifact.TextDelta{Content: "hello"}})
 	mm := newM.(*model)
-	assert.Equal(t, "hello", mm.streamBuffer.String())
+	assert.Equal(t, "hello", mm.textStreamBuffer.String())
 }
 
 func TestModel_Update_Delta_ReasoningDelta(t *testing.T) {
 	m := model{}
 	newM, _ := m.Update(deltaMsg{delta: artifact.ReasoningDelta{Content: "thinking"}})
 	mm := newM.(*model)
-	assert.Equal(t, "thinking", mm.streamBuffer.String())
+	assert.Equal(t, "thinking", mm.reasoningStreamBuffer.String())
 }
 
 func TestModel_Update_Turn(t *testing.T) {
@@ -41,12 +41,13 @@ func TestModel_Update_Turn(t *testing.T) {
 	require.Len(t, mm.turns, 1)
 	assert.Equal(t, state.RoleAssistant, mm.turns[0].role)
 	assert.Equal(t, "hello world", mm.turns[0].text)
-	assert.Empty(t, mm.streamBuffer.String())
+	assert.Empty(t, mm.textStreamBuffer.String())
+	assert.Empty(t, mm.reasoningStreamBuffer.String())
 }
 
 func TestModel_Update_Turn_ResetsStreamBuffer(t *testing.T) {
 	m := model{}
-	m.streamBuffer.WriteString("partial")
+	m.textStreamBuffer.WriteString("partial")
 
 	turn := state.Turn{
 		Role: state.RoleAssistant,
@@ -56,7 +57,8 @@ func TestModel_Update_Turn_ResetsStreamBuffer(t *testing.T) {
 	}
 	newM, _ := m.Update(turnMsg{turn: turn})
 	mm := newM.(*model)
-	assert.Empty(t, mm.streamBuffer.String())
+	assert.Empty(t, mm.textStreamBuffer.String())
+	assert.Empty(t, mm.reasoningStreamBuffer.String())
 }
 
 func TestModel_Update_Status(t *testing.T) {
@@ -210,7 +212,7 @@ func TestModel_View_ContainsStreaming(t *testing.T) {
 	m := model{
 		viewport: viewport.New(80, 20),
 	}
-	m.streamBuffer.WriteString("partial")
+	m.textStreamBuffer.WriteString("partial")
 	output := m.View()
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "partial")
@@ -325,7 +327,7 @@ func TestModel_Update_Delta_AutoScrollsViewport(t *testing.T) {
 	mm := newM.(*model)
 
 	assert.True(t, mm.viewport.AtBottom(), "delta should auto-scroll viewport to bottom")
-	assert.Equal(t, "new token", mm.streamBuffer.String())
+	assert.Equal(t, "new token", mm.textStreamBuffer.String())
 }
 
 func TestModel_View_LongHistory_InputAtBottom(t *testing.T) {
@@ -409,4 +411,92 @@ func TestModel_View_WrapsLongTurn(t *testing.T) {
 		}
 	}
 	assert.True(t, hasContinuation, "long turn should wrap with continuation lines")
+}
+
+func TestModel_Update_Delta_StartsBlinking(t *testing.T) {
+	m := model{}
+	_, cmd := m.Update(deltaMsg{delta: artifact.TextDelta{Content: "hello"}})
+	require.NotNil(t, cmd, "first delta should start the blinking cursor")
+}
+
+func TestModel_Update_CursorTickMsg_TogglesCursor(t *testing.T) {
+	m := model{streaming: true}
+
+	// First tick: should toggle to true
+	newM, cmd := m.Update(cursorTickMsg{})
+	mm := newM.(*model)
+	assert.True(t, mm.cursorVisible, "cursor should be visible after first tick")
+	require.NotNil(t, cmd, "should return next tick command")
+
+	// Second tick: should toggle to false
+	newM2, cmd2 := mm.Update(cursorTickMsg{})
+	mm2 := newM2.(*model)
+	assert.False(t, mm2.cursorVisible, "cursor should be hidden after second tick")
+	require.NotNil(t, cmd2, "should return next tick command")
+}
+
+func TestModel_Update_Turn_StopsBlinking(t *testing.T) {
+	m := model{}
+	m.streaming = true
+	m.cursorVisible = true
+	m.textStreamBuffer.WriteString("partial")
+
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "complete"},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+	assert.False(t, mm.streaming, "streaming should be false after turn")
+	assert.False(t, mm.cursorVisible, "cursor should be hidden after turn")
+	assert.Empty(t, mm.textStreamBuffer.String())
+	assert.Empty(t, mm.reasoningStreamBuffer.String())
+}
+
+func TestModel_View_ContainsReasoningStream(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+	}
+	m.reasoningStreamBuffer.WriteString("analyzing patterns")
+	output := m.View()
+	assert.Contains(t, output, "Thinking: ")
+	assert.Contains(t, output, "analyzing patterns")
+}
+
+func TestModel_View_BlinkingCursorVisible(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+	}
+	m.streaming = true
+	m.cursorVisible = true
+	m.textStreamBuffer.WriteString("partial")
+	output := m.View()
+	assert.Contains(t, output, "partial")
+	assert.Contains(t, output, "▌")
+}
+
+func TestModel_View_BlinkingCursorHidden(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+	}
+	m.streaming = true
+	m.cursorVisible = false
+	m.textStreamBuffer.WriteString("partial")
+	output := m.View()
+	assert.Contains(t, output, "partial")
+	assert.NotContains(t, output, "▌")
+}
+
+func TestModel_View_NoCursorWhenNotStreaming(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+	}
+	m.streaming = false
+	m.cursorVisible = true
+	m.textStreamBuffer.WriteString("partial")
+	output := m.View()
+	assert.Contains(t, output, "partial")
+	assert.NotContains(t, output, "▌")
 }
