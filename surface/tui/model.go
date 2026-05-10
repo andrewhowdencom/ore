@@ -61,12 +61,26 @@ type model struct {
 
 	// Scrollable viewport for conversation history.
 	viewport viewport.Model
+
+	// md renders Markdown source into ANSI-styled terminal output. In
+	// production this is a glamourMarkdownRenderer; tests may inject a mock.
+	md markdownRenderer
+}
+
+// renderMarkdown delegates to the model's markdown renderer, falling back
+// to a default glamourMarkdownRenderer if none was injected.
+func (m *model) renderMarkdown(text string, width int) (string, error) {
+	if m.md == nil {
+		m.md = glamourMarkdownRenderer{}
+	}
+	return m.md.Render(text, width)
 }
 
 // renderedTurn represents a single turn in the conversation history.
 type renderedTurn struct {
-	role state.Role
-	text string
+	role     state.Role
+	text     string // original text (Markdown source for assistant turns)
+	rendered string // pre-rendered ANSI output (only for assistant turns)
 }
 
 // Init returns an initial command. No periodic ticks are needed because
@@ -94,10 +108,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				text.WriteString(t.Content)
 			}
 		}
-		m.turns = append(m.turns, renderedTurn{
+		rt := renderedTurn{
 			role: msg.turn.Role,
 			text: text.String(),
-		})
+		}
+		if msg.turn.Role == state.RoleAssistant {
+			rendered, err := m.renderMarkdown(text.String(), m.viewport.Width)
+			if err == nil {
+				rt.rendered = rendered
+			}
+		}
+		m.turns = append(m.turns, rt)
 		m.textStreamBuffer.Reset()
 		m.reasoningStreamBuffer.Reset()
 		m.viewport.GotoBottom()
@@ -146,6 +167,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.viewport.Width = msg.Width
 		m.viewport.Height = msg.Height - 1
+		// Re-render assistant turns with the new terminal width so cached
+		// Markdown output remains correctly wrapped.
+		for i, turn := range m.turns {
+			if turn.role == state.RoleAssistant && turn.text != "" {
+				rendered, err := m.renderMarkdown(turn.text, m.viewport.Width)
+				if err == nil {
+					m.turns[i].rendered = rendered
+				}
+			}
+		}
 	}
 	return m, nil
 }

@@ -45,6 +45,27 @@ func wrapText(text, label, indent string, width int) string {
 	return b.String()
 }
 
+// prefixLines prepends label to the first line and indent to every
+// subsequent line of text. It does not re-wrap text; the caller is
+// responsible for ensuring each line already fits within the desired width.
+func prefixLines(text, label, indent string) string {
+	if text == "" {
+		return label + text
+	}
+	lines := strings.Split(text, "\n")
+	var b strings.Builder
+	for i, line := range lines {
+		if i == 0 {
+			b.WriteString(label)
+		} else {
+			b.WriteString("\n")
+			b.WriteString(indent)
+		}
+		b.WriteString(line)
+	}
+	return b.String()
+}
+
 // View renders the conversation history inside a scrollable viewport and
 // anchors the input prompt at the bottom of the terminal.
 func (m *model) View() string {
@@ -67,7 +88,15 @@ func (m *model) View() string {
 		case state.RoleUser:
 			b.WriteString(wrapText(turn.text, userLabel, userIndent, width))
 		case state.RoleAssistant:
-			b.WriteString(wrapText(turn.text, assistantLabel, assistantIndent, width))
+			// Use pre-rendered ANSI output (from glamour) for finalized
+			// assistant turns. Falls back to plain text wrapText when
+			// rendered is empty, which happens for streaming text
+			// (incomplete markdown) or when glamour rendering failed.
+			if turn.rendered != "" {
+				b.WriteString(prefixLines(turn.rendered, assistantLabel, assistantIndent))
+			} else {
+				b.WriteString(wrapText(turn.text, assistantLabel, assistantIndent, width))
+			}
 		case state.RoleTool:
 			b.WriteString(wrapText(turn.text, toolLabel, toolIndent, width))
 		}
