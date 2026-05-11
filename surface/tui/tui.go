@@ -1,5 +1,5 @@
 // Package tui implements an opinionated terminal user interface surface for
-// the tack framework using Bubble Tea.
+// the ore framework using Bubble Tea.
 package tui
 
 import (

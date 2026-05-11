@@ -1,5 +1,5 @@
 // tui-chat is a reference application demonstrating a streaming chat REPL
-// using the tack framework with the surface/tui package.
+// using the ore framework with the surface/tui package.
 package main
 
 import (

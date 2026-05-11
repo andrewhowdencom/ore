@@ -1,4 +1,4 @@
-// calculator is a reference application demonstrating tool calling with tack.
+// calculator is a reference application demonstrating tool calling with ore.
 // It registers "add" and "multiply" tools, configures an OpenAI provider with
 // them, and runs a simple loop that continues while the assistant makes tool
 // calls.

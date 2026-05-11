@@ -1,16 +1,17 @@
-# tack
+# ore
 
-> Token Fastener — a minimal, composable agent harness for Go.
+> ore are the inputs to an agentic system.
+> forge is the agentic developer that builds with ore (and others, for that matter).
 
 ## Purpose
 
-tack is a Go-native framework for building agentic applications. It provides a minimal core inference primitive, provider-agnostic LLM adapters, composable I/O surfaces, and clean extension points implemented as Go interfaces.
+ore is a Go-native framework for building agentic applications. It provides a minimal core inference primitive, provider-agnostic LLM adapters, composable I/O surfaces, and clean extension points implemented as Go interfaces.
 
 This is a learning project and a conceptual exploration. It is inspired by [pi.dev](https://pi.dev)'s philosophy of minimal cores and aggressive extensibility, but reimagined in Go with different architectural priorities: first-class non-interactive surfaces, build-time composition via Go interfaces, and a narrower core that delegates all workflow opinions to extensions and applications.
 
 ## System Architecture
 
-tack is organized into layers. Each layer communicates through narrow interfaces. No layer knows more about the others than it needs to.
+ore is organized into layers. Each layer communicates through narrow interfaces. No layer knows more about the others than it needs to.
 
 ### Loop / Step
 
@@ -40,7 +41,7 @@ Provider Adapters are the bridge between Step and specific LLM APIs. They unders
 
 A provider adapter's job is:
 
-- **Serialize** tack's generic state into the provider's native request format
+- **Serialize** ore's generic state into the provider's native request format
 - **Invoke** the LLM through the provider's SDK or HTTP API
 - **Deserialize** the provider's native response into a generic, provider-agnostic artifact format that Step can append to state
 
@@ -174,7 +175,7 @@ Crucially, the application layer is also where **strategy** happens. Step does n
 - Whether to insert reflection messages between turns (Reflexion)
 - When to stop and return a result to the I/O Surface
 
-There is no single "tack" binary that does everything. Instead, there are compositions: a coding assistant with a TUI that loops on tool calls, a PR review bot that runs a single turn and posts to Slack, a scheduled log analyzer that chains three single-turn prompts together. Each is a Go program that imports the pieces it needs and wires them in `main`.
+There is no single "ore" binary that does everything. Instead, there are compositions: a coding assistant with a TUI that loops on tool calls, a PR review bot that runs a single turn and posts to Slack, a scheduled log analyzer that chains three single-turn prompts together. Each is a Go program that imports the pieces it needs and wires them in `main`.
 
 ## Design Principles
 
@@ -187,14 +188,14 @@ There is no single "tack" binary that does everything. Instead, there are compos
 
 ## Relationship to pi.dev
 
-[tack] is conceptually descended from [pi.dev](https://pi.dev), a mature TypeScript terminal coding harness. pi.dev's philosophy of "minimal core, aggressive extensibility" is the direct inspiration for this project.
+[ore] is conceptually descended from [pi.dev](https://pi.dev), a mature TypeScript terminal coding harness. pi.dev's philosophy of "minimal core, aggressive extensibility" is the direct inspiration for this project.
 
-Where tack diverges:
+Where ore diverges:
 
 - **Language** — Go instead of TypeScript. This is a learning exercise and an exploration of Go's deployment and runtime characteristics for agent systems.
-- **I/O Surfaces** — pi.dev is primarily a TUI-centric tool with other modes (print, JSON, RPC) as secondary interfaces. tack treats all ingress/egress adapters as first-class, equally valid surfaces.
-- **Extension Model** — pi.dev uses TypeScript modules and runtime package loading. tack uses Go interfaces and build-time composition.
-- **Scope** — pi.dev is a production coding agent. tack is a framework for building agents, not a specific agent implementation.
+- **I/O Surfaces** — pi.dev is primarily a TUI-centric tool with other modes (print, JSON, RPC) as secondary interfaces. ore treats all ingress/egress adapters as first-class, equally valid surfaces.
+- **Extension Model** — pi.dev uses TypeScript modules and runtime package loading. ore uses Go interfaces and build-time composition.
+- **Scope** — pi.dev is a production coding agent. ore is a framework for building agents, not a specific agent implementation.
 
 ## Project Status
 

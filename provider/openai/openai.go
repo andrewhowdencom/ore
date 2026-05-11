@@ -91,8 +91,8 @@ func (p *Provider) SetTools(tools []provider.Tool) error {
 	return nil
 }
 
-// serializeMessages converts tack state into OpenAI chat completion message
-// parameters. It maps tack roles to OpenAI message types and preserves
+// serializeMessages converts ore state into OpenAI chat completion message
+// parameters. It maps ore roles to OpenAI message types and preserves
 // ToolCall and ToolResult artifacts for tool calling conversations.
 func (p *Provider) serializeMessages(s state.State) []openai.ChatCompletionMessageParamUnion {
 	turns := s.Turns()

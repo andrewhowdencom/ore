@@ -1,10 +1,10 @@
-# tack Agent Conventions
+# ore Agent Conventions
 
-This file captures architectural conventions and design intent for agents working on the tack codebase. It complements the README's vision document with practical rules discovered during design.
+This file captures architectural conventions and design intent for agents working on the ore codebase. It complements the README's vision document with practical rules discovered during design.
 
 ## Project Philosophy
 
-tack is a **framework for building agentic applications**, not a specific agent implementation. The core is a minimal, provider-agnostic inference primitive. Everything else — provider adapters, artifact handlers, I/O surfaces, orchestration strategies — lives outside the core as composable, build-time extensions.
+ore is a **framework for building agentic applications**, not a specific agent implementation. The core is a minimal, provider-agnostic inference primitive. Everything else — provider adapters, artifact handlers, I/O surfaces, orchestration strategies — lives outside the core as composable, build-time extensions.
 
 ## Package Structure
 

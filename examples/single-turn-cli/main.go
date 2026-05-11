@@ -1,5 +1,5 @@
 // single-turn-cli is a reference application demonstrating composition of the
-// tack loop.Step with an OpenAI-compatible provider adapter.
+// ore loop.Step with an OpenAI-compatible provider adapter.
 package main
 
 import (

@@ -1,5 +1,5 @@
 // Package surface defines the Surface interface, the contract between I/O
-// frontends and the tack framework. Implementations (TUI, web, Telegram,
+// frontends and the ore framework. Implementations (TUI, web, Telegram,
 // etc.) provide ingress events and consume egress actions (delta rendering,
 // turn finalization, status updates).
 package surface
@@ -11,7 +11,7 @@ import (
 	"github.com/andrewhowdencom/ore/state"
 )
 
-// Surface is the contract between an I/O frontend and the tack framework.
+// Surface is the contract between an I/O frontend and the ore framework.
 // Concrete implementations are composed at build time; the framework does not
 // assume any specific rendering mechanism (terminal, HTML, chat messages).
 type Surface interface {
