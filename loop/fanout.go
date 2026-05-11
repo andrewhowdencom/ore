@@ -69,6 +69,9 @@ func (f *FanOut) send(event OutputEvent) {
 			case sub.ch <- event:
 			case <-f.done:
 				return
+			default:
+				// Subscriber's buffer is full — drop the event to prevent
+				// blocking the entire FanOut and stalling other subscribers.
 			}
 		}
 	}
@@ -98,8 +101,12 @@ func (f *FanOut) closeAll() {
 
 // Subscribe returns a receive-only channel that receives all OutputEvents
 // whose Kind() matches any of the given kinds. The channel is closed when
-// the FanOut is closed. The caller must read from the channel or provide
-// sufficient buffer capacity to avoid blocking the FanOut.
+// the FanOut is closed.
+//
+// Events are sent non-blocking with a fixed buffer of 100. If a subscriber
+// falls behind and its buffer fills, subsequent matching events are dropped
+// for that subscriber. The caller must read from the channel promptly to
+// avoid missing events.
 //
 // Subscribing to multiple kinds on one channel preserves ordering across
 // those event types — events are delivered in the order they were received

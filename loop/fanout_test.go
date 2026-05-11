@@ -3,6 +3,7 @@ package loop
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
@@ -182,6 +183,62 @@ func TestFanOut_MultipleKindsOneSubscriber(t *testing.T) {
 	require.Len(t, events, 2)
 	assert.Equal(t, "delta", events[0].Kind())
 	assert.Equal(t, "turn_complete", events[1].Kind())
+}
+
+func TestFanOut_SlowSubscriberDoesNotBlock(t *testing.T) {
+	src := make(chan OutputEvent, 200)
+	f := NewFanOut(src)
+	defer f.Close()
+
+	// Slow subscriber — never reads
+	_ = f.Subscribe("delta")
+
+	// Fill its buffer (100 events)
+	for i := 0; i < 100; i++ {
+		src <- DeltaEvent{Delta: artifact.TextDelta{Content: "filler"}}
+	}
+
+	// Send 50 more events — these should be dropped without blocking.
+	// If send() blocked on the full channel, the FanOut's run() goroutine
+	// would deadlock and f.Close() (via defer) would hang, failing the test.
+	for i := 0; i < 50; i++ {
+		src <- DeltaEvent{Delta: artifact.TextDelta{Content: "msg"}}
+	}
+
+	close(src)
+}
+
+func TestFanOut_SlowSubscriberDoesNotBlockOthers(t *testing.T) {
+	src := make(chan OutputEvent, 200)
+	f := NewFanOut(src)
+	defer f.Close()
+
+	_ = f.Subscribe("delta")
+
+	// Send 100 events to fill the slow subscriber's buffer
+	for i := 0; i < 100; i++ {
+		src <- DeltaEvent{Delta: artifact.TextDelta{Content: "filler"}}
+	}
+
+	// Give the FanOut time to process the initial batch before creating
+	// the fast subscriber, minimizing the chance fastCh receives filler.
+	time.Sleep(10 * time.Millisecond)
+
+	// Create fast subscriber
+	fastCh := f.Subscribe("delta")
+
+	// Send distinctive event
+	src <- DeltaEvent{Delta: artifact.TextDelta{Content: "after-full"}}
+	close(src)
+
+	// Fast subscriber should receive the distinctive event
+	found := false
+	for event := range fastCh {
+		if event.(DeltaEvent).Delta.(artifact.TextDelta).Content == "after-full" {
+			found = true
+		}
+	}
+	assert.True(t, found, "fast subscriber should receive event sent after slowCh was full")
 }
 
 func TestFanOut_MultipleSubscribersSameKind(t *testing.T) {
