@@ -1,14 +1,14 @@
-# Plan: Replace SetTools with Immutable Provider Clones
+# Plan: Replace SetTools with Per-Invocation InvokeOption
 
 ## Objective
 
-Eliminate all shared mutable state from the OpenAI provider adapter by removing `SetTools`, the `sync.RWMutex`, and the `provider.ToolProvider` capability interface. Replace them with immutable clone methods on the concrete provider type (`openai.Provider.WithTools`, `openai.Provider.WithTemperature`). The base `Provider` and `StreamingProvider` interfaces remain unchanged; `loop.Step.Turn` and `cognitive.ReAct` require no modifications. Each provider instance becomes a lightweight, immutable value object sharing only the underlying HTTP client infrastructure.
+Eliminate all shared mutable state from the OpenAI provider adapter by redesigning the `Provider` and `StreamingProvider` interfaces to accept per-invocation `InvokeOption` parameters. `ToolProvider.SetTools`, the `sync.RWMutex`, and the `ToolProvider` capability interface are removed. Tools, temperature, and future provider-specific configuration become per-invocation options. `loop.Step` gains the ability to carry pre-bound options so that `cognitive.ReAct` remains completely blind to provider specifics while advanced applications can pass options dynamically per-turn.
 
 ## Context
 
 The repository is an active Go module (`github.com/andrewhowdencom/ore`) with the following relevant structure:
 
-- **`provider/provider.go`** defines `Provider`, `StreamingProvider`, and `ToolProvider` interfaces. `ToolProvider` adds `SetTools(tools []Tool) error`.
+- **`provider/provider.go`** defines `Provider`, `StreamingProvider`, and `ToolProvider` interfaces. `Provider.Invoke` currently takes only `ctx` and `state`. `ToolProvider` adds `SetTools(tools []Tool) error`.
 - **`provider/openai/openai.go`** implements all three interfaces. It stores a mutable `tools []provider.Tool` slice protected by a `sync.RWMutex`. `SetTools` acquires a write lock; `Invoke` and `InvokeStreaming` acquire read locks around access.
 - **`loop/loop.go`** defines `Step.Turn(ctx, state, provider.Provider)` which calls `Provider.Invoke` or `StreamingProvider.InvokeStreaming`. It never references `ToolProvider`.
 - **`cognitive/react.go`** defines `ReAct.Run(ctx, state)` which loops calling `Step.Turn`. It never references `ToolProvider`.
@@ -16,92 +16,129 @@ The repository is an active Go module (`github.com/andrewhowdencom/ore`) with th
 - **`examples/single-turn-cli/main.go`** contains a commented block showing `SetTools` usage.
 - **Conventions (from `AGENTS.md`)**: functional options pattern for constructors, `fmt.Errorf("...: %w", err)` wrapping, table-driven tests, `go test -race ./...`.
 
-The `SetTools`/`mutex` pattern was introduced to allow dynamic tool configuration, but it creates a logical race in multi-session workloads: two goroutines sharing a provider instance can clobber each other's tool configuration. The selected design removes all mutable provider state, making each configuration change produce a new provider instance.
+The `SetTools`/`mutex` pattern was introduced to allow dynamic per-turn tool configuration, but it creates a logical race in multi-session workloads: two goroutines sharing a provider instance can clobber each other's tool configuration. The selected design removes all mutable provider state by passing configuration per-invocation through a generic `InvokeOption` interface.
 
 ## Architectural Blueprint
 
-### Selected Architecture: Immutable Provider Value Objects
+### Selected Architecture: Per-Invocation Options via Variadic `InvokeOption`
 
-The `openai.Provider` struct becomes a pure value object: all fields are set at construction or clone time and never mutated afterward.
+The base `Provider` interface grows a variadic `InvokeOption` parameter:
 
 ```go
-type Provider struct {
-    client      openai.Client
-    model       string
-    tools       []provider.Tool      // immutable after construction/clone
-    temperature float64              // immutable after construction/clone
+type InvokeOption interface {
+    IsInvokeOption()
 }
-```
 
-Clone methods derive a new provider sharing the expensive `client` while replacing configuration fields:
-
-```go
-func (p *Provider) WithTools(tools []provider.Tool) *Provider
-func (p *Provider) WithTemperature(t float64) *Provider
-```
-
-`Invoke` and `InvokeStreaming` read `p.tools` and `p.temperature` directly — no synchronization needed because the fields are immutable.
-
-The base interfaces remain unchanged:
-
-```go
 type Provider interface {
-    Invoke(ctx context.Context, s state.State) ([]artifact.Artifact, error)
+    Invoke(ctx context.Context, s state.State, opts ...InvokeOption) ([]artifact.Artifact, error)
 }
 
 type StreamingProvider interface {
     Provider
-    InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact) ([]artifact.Artifact, error)
+    InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact, opts ...InvokeOption) ([]artifact.Artifact, error)
 }
 ```
+
+`ToolProvider` and `SetTools` are deleted. The `Tool` struct remains in `provider/` because it is the provider-agnostic tool definition that option constructors reference.
+
+Provider sub-packages (e.g. `provider/openai`) define concrete option types and exported constructors:
+
+```go
+// In provider/openai
+func WithTools(tools []provider.Tool) provider.InvokeOption
+func WithTemperature(t float64) provider.InvokeOption
+```
+
+The `openai.Provider` reads these options locally inside `Invoke`/`InvokeStreaming` — no field mutation, no mutex. The underlying `openai.Client` (HTTP connection pool) remains shared.
+
+`loop.Step` gains a pre-bound options slice and a `WithInvokeOptions` functional option:
+
+```go
+func WithInvokeOptions(opts ...provider.InvokeOption) Option
+```
+
+`Step.Turn` accepts per-call options, prepends the pre-bound slice, and passes the merged slice to the provider:
+
+```go
+func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, opts ...provider.InvokeOption) (state.State, error)
+```
+
+This preserves `ReAct`'s blindness: `ReAct.Run` calls `Step.Turn(ctx, st, r.Provider)` with no extra arguments, and any pre-bound options configured by the application (e.g. tools) are carried by the `Step` itself. Applications that need dynamic per-turn options bypass `ReAct` and call `Step.Turn` directly.
 
 ### Evaluated Alternatives
 
 | Alternative | Why Not Selected |
 |---|---|
-| **`InvokeOption` variadic parameter on `Provider.Invoke`** | Over-abstracts provider-specific configuration (temperature, tools) through a generic interface. Forces `loop.Step.Turn` and all mock providers to accept and pass through opaque options. Adds indirection without clear benefit over direct clone methods. |
-| **Generic request config struct** | Would need to live in `provider/` and encompass all possible provider-specific fields, or be an `any`-typed bag. Either bloats the generic interface or loses type safety. Clone methods keep provider-specific types in the provider package where they belong. |
-| **`ToolProvider.WithTools` returning `provider.Provider` (Issue #18's deeper insight)** | Cleaner than `SetTools`, but still requires a capability interface (`ToolProvider`) that `loop` and `ReAct` don't need. With clone methods on the concrete type, no capability interface is needed at all. |
+| **Immutable provider factory** (`WithTools` returns new `Provider`) | Cleaner than `SetTools`, but requires allocating a new provider struct per turn. Passing options at the invocation boundary is more direct and generalizes to temperature, max-tokens, etc. without additional factory methods. |
+| **Tools in `State`** | Would require `state` to import `provider` for the `Tool` type, creating a cycle (`provider` already depends on `state`). Moving `Tool` to `artifact` is possible but pollutes the artifact package with a provider-concern. |
+| **Separate `InvokeWithTools` method on `ToolProvider`** | Bloats the interface surface; `Step.Turn` would need to know about `ToolProvider` to choose the right method, leaking tool awareness into the loop. |
+| **Generic request config struct** | Would need to live in `provider/` and encompass all possible provider-specific fields, or be an `any`-typed bag. Either bloats the generic interface or loses type safety. Options keep provider-specific types in provider sub-packages. |
 
 ## Requirements
 
-1. [explicit] Remove the `provider.ToolProvider` interface from `provider/provider.go`.
-2. [explicit] Remove `SetTools` method, `sync.RWMutex` field, and `var _ provider.ToolProvider = (*Provider)(nil)` compile-time check from `provider/openai/openai.go`.
-3. [explicit] Add `openai.Provider.WithTools(tools []provider.Tool) *Provider` clone method.
-4. [explicit] Add `openai.Provider.WithTemperature(t float64) *Provider` clone method.
-5. [explicit] Update `openai.Provider.Invoke` and `InvokeStreaming` to read `p.tools` and `p.temperature` directly (no locking).
-6. [explicit] Apply `p.temperature` to the chat completion request parameters when non-zero.
-7. [explicit] Update `provider/openai/openai_test.go`: remove `TestProviderInvoke_ConcurrentSetTools`, update tool tests to use `WithTools`, add temperature test, add test verifying cloned providers are independent.
-8. [explicit] Update `loop/loop_test.go`: remove `SetTools` stub methods and `provider.ToolProvider` compile-time checks from `mockProvider` and `mockStreamingProvider`.
-9. [explicit] Update `examples/calculator/main.go`: replace `prov.SetTools(tools)` with `prov.WithTools(tools)` before passing to `ReAct`.
-10. [explicit] Update `examples/single-turn-cli/main.go`: update commented tool example to show `WithTools` clone method.
-11. [explicit] Update `README.md`: remove all `ToolProvider`, `SetTools`, and mutex safety references; document the immutable clone pattern.
-12. [inferred] Verify `cognitive/react_test.go` compiles without changes (no `ToolProvider` references expected).
+1. [explicit] Add `provider.InvokeOption` interface with an exported marker method (`IsInvokeOption()`) so sub-packages can implement it.
+2. [explicit] Update `Provider.Invoke` signature to accept `...InvokeOption`.
+3. [explicit] Update `StreamingProvider.InvokeStreaming` signature to accept `...InvokeOption`.
+4. [explicit] Remove `ToolProvider` interface and all `SetTools` implementations.
+5. [explicit] Add `loop.WithInvokeOptions` functional option and `invokeOpts` field on `Step`.
+6. [explicit] Update `Step.Turn` to accept `...provider.InvokeOption`, merge pre-bound + per-call options, and pass them to `Provider.Invoke` / `StreamingProvider.InvokeStreaming`.
+7. [explicit] Add `openai.WithTools(tools []provider.Tool)` option constructor returning `provider.InvokeOption`.
+8. [explicit] Add `openai.WithTemperature(t float64)` option constructor (demonstrates generalization of the pattern).
+9. [explicit] Remove `sync.RWMutex`, `tools` field, and `SetTools` from `openai.Provider`.
+10. [explicit] Update `openai.Provider.Invoke` and `InvokeStreaming` to read tools and temperature from the options slice locally.
+11. [explicit] Update all mock providers in `loop/loop_test.go` and `cognitive/react_test.go` to match new interface signatures.
+12. [explicit] Update `examples/calculator/main.go` to pre-bind `openai.WithTools(tools)` to the `Step` via `loop.WithInvokeOptions`.
+13. [explicit] Update `examples/single-turn-cli/main.go` commented tool example to show `Turn` with `openai.WithTools` option.
+14. [explicit] Update `README.md` to remove `ToolProvider`/`SetTools` references and document the `InvokeOption` pattern.
+15. [inferred] Update `provider/openai/openai_test.go` to replace `SetTools`-based tests with option-based tests.
 
 ## Task Breakdown
 
-### Task 1: Atomic Cross-Cutting Refactor — Remove Mutable Provider State
-- **Goal**: Remove `ToolProvider`, `SetTools`, and the mutex; add immutable clone methods; update all implementations and mocks atomically so the module compiles.
+### Task 1: Atomic Cross-Cutting Provider Interface Refactor
+- **Goal**: Add `InvokeOption`, redesign `Provider`/`StreamingProvider`, remove `ToolProvider`, update all implementations, mocks, and call sites in a single atomic set of changes so the module compiles.
 - **Dependencies**: None.
 - **Files Affected**:
   - `provider/provider.go`
+  - `loop/loop.go`
+  - `loop/loop_test.go`
   - `provider/openai/openai.go`
   - `provider/openai/openai_test.go`
-  - `loop/loop_test.go`
+  - `cognitive/react_test.go`
 - **New Files**: None.
 - **Interfaces**:
-  - Deleted: `provider.ToolProvider` interface.
-  - Added: `func (p *Provider) WithTools(tools []provider.Tool) *Provider`
-  - Added: `func (p *Provider) WithTemperature(t float64) *Provider`
-- **Details**:
-  1. In `provider/provider.go`: delete the `ToolProvider` interface definition and its `SetTools` method.
-  2. In `provider/openai/openai.go`: remove the `mu sync.RWMutex` field from `Provider`. Add `temperature float64` field. Keep `tools []provider.Tool` (now immutable). Delete `SetTools` method and the `var _ provider.ToolProvider = (*Provider)(nil)` compile-time check. Add `WithTools` returning `&Provider{client: p.client, model: p.model, tools: tools, temperature: p.temperature}`. Add `WithTemperature` returning `&Provider{client: p.client, model: p.model, tools: p.tools, temperature: t}`. Update `Invoke` and `InvokeStreaming` to read `p.tools` directly instead of `p.mu.RLock(); tools := p.tools; p.mu.RUnlock()`. When `p.temperature != 0`, set the `Temperature` field on `openai.ChatCompletionNewParams`.
-  3. In `provider/openai/openai_test.go`: delete `TestProviderInvoke_ConcurrentSetTools` entirely (it tests mutex behavior that no longer exists). Update `TestProviderInvoke_ToolsWithDescription` to construct the provider normally then call `WithTools(tools)` before invoking. Add `TestProviderWithTemperature` verifying the temperature parameter is serialized into the request body. Add `TestProviderWithTools_Isolation` verifying that two providers cloned from the same base with different tool sets produce different request bodies (no shared mutable state).
-  4. In `loop/loop_test.go`: delete `SetTools` stub methods from `mockProvider` and `mockStreamingProvider`. Delete `var _ provider.ToolProvider = (*mockProvider)(nil)` and `var _ provider.ToolProvider = (*mockStreamingProvider)(nil)`.
-- **Validation**: `go build ./...` compiles with zero errors. `go test ./provider/openai` and `go test ./loop` pass.
+  ```go
+  type InvokeOption interface { IsInvokeOption() }
 
-### Task 2: Update Examples to Use Immutable Clone Methods
-- **Goal**: Migrate example applications from `SetTools` to `WithTools`.
+  type Provider interface {
+      Invoke(ctx context.Context, s state.State, opts ...InvokeOption) ([]artifact.Artifact, error)
+  }
+
+  type StreamingProvider interface {
+      Provider
+      InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact, opts ...InvokeOption) ([]artifact.Artifact, error)
+  }
+  ```
+  ```go
+  // loop/loop.go additions
+  func WithInvokeOptions(opts ...provider.InvokeOption) Option
+  func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, opts ...provider.InvokeOption) (state.State, error)
+  ```
+  ```go
+  // provider/openai/openai.go additions
+  func WithTools(tools []provider.Tool) provider.InvokeOption
+  func WithTemperature(t float64) provider.InvokeOption
+  ```
+- **Details**:
+  1. In `provider/provider.go`: add `InvokeOption` interface. Update `Provider.Invoke` and `StreamingProvider.InvokeStreaming` signatures. Delete `ToolProvider` interface entirely. Keep `Tool` struct.
+  2. In `loop/loop.go`: add `invokeOpts []provider.InvokeOption` field to `Step`. Add `WithInvokeOptions` option constructor. Update `Turn` signature to accept `...provider.InvokeOption`. Merge pre-bound and per-call options safely (`make` + double `append`), then pass the merged slice to `p.Invoke` and `sp.InvokeStreaming`.
+  3. In `loop/loop_test.go`: update `mockProvider.Invoke`, `mockStreamingProvider.Invoke` and `mockStreamingProvider.InvokeStreaming` to match new signatures (add `opts ...provider.InvokeOption`). Remove `SetTools` methods and `ToolProvider` compile-time checks. Update every `s.Turn(...)` call site — since options are variadic, most calls won't change, but the mock definitions must.
+  4. In `provider/openai/openai.go`: remove `mu sync.RWMutex` and `tools []provider.Tool` fields from `Provider`. Remove `SetTools` method. Delete `var _ provider.ToolProvider = (*Provider)(nil)` compile-time check. Add `toolOption` struct and `WithTools` constructor. Add `temperatureOption` struct and `WithTemperature` constructor. Update `Invoke` and `InvokeStreaming` to iterate the `opts` slice, type-assert against `toolOption` and `temperatureOption`, and use the extracted values locally for request construction. No field mutation.
+  5. In `provider/openai/openai_test.go`: delete `TestProviderInvoke_ConcurrentSetTools` (no longer relevant). Update `TestProviderInvoke_ToolsWithDescription` to pass `WithTools(tools)` as an option to `Invoke`. Add new table-driven tests verifying that `WithTools` and `WithTemperature` are correctly read and applied. Add a test verifying concurrent invocations with different option sets on the same provider instance (should be safe by design — no mutable state).
+  6. In `cognitive/react_test.go`: update `simpleProvider.Invoke`, `countingProvider.Invoke`, `cancelCheckingProvider.Invoke`, and their `InvokeStreaming` stubs to accept the new variadic option parameter. Remove any `SetTools` stubs.
+- **Validation**: `go build ./...` must compile with zero errors after this task. `go test -race ./...` must pass.
+
+### Task 2: Update Examples to Use InvokeOption Pattern
+- **Goal**: Migrate all example applications from `SetTools` to the options pattern.
 - **Dependencies**: Task 1.
 - **Files Affected**:
   - `examples/calculator/main.go`
@@ -109,12 +146,12 @@ type StreamingProvider interface {
 - **New Files**: None.
 - **Interfaces**: None.
 - **Details**:
-  1. In `examples/calculator/main.go`: after `prov := openai.New(apiKey, model, opts...)`, replace `if err := prov.SetTools(tools); err != nil { return err }` with `prov = prov.WithTools(tools)`. Pass `prov` to `ReAct` as before.
-  2. In `examples/single-turn-cli/main.go`: update the commented tool-calling block to show `p := openai.New(apiKey, model, opts...).WithTools([]provider.Tool{...})` instead of `p.SetTools`.
+  1. In `examples/calculator/main.go`: remove the `prov.SetTools(tools)` call. Instead, pre-bind the tools to the `Step` at construction time: `step := loop.New(loop.WithHandlers(registry.Handler()), loop.WithInvokeOptions(openai.WithTools(tools)))`. The `ReAct` and provider wiring remain unchanged.
+  2. In `examples/single-turn-cli/main.go`: update the commented tool-calling block to show passing `openai.WithTools` either to `step.Turn` directly or via `loop.WithInvokeOptions`. Remove the `p.SetTools(...)` commented code.
 - **Validation**: `go build ./examples/calculator` and `go build ./examples/single-turn-cli` compile cleanly.
 
 ### Task 3: Update README Documentation
-- **Goal**: Remove all references to `ToolProvider`, `SetTools`, and mutex safety; document the immutable clone pattern.
+- **Goal**: Remove all documentation referencing `ToolProvider`/`SetTools` and document the new `InvokeOption` pattern.
 - **Dependencies**: Task 2.
 - **Files Affected**:
   - `README.md`
@@ -126,8 +163,8 @@ type StreamingProvider interface {
   3. Remove the paragraph about "Adapters that implement `provider.ToolProvider`... expose `SetTools`".
   4. Remove or rewrite the "Dynamic tool configuration" paragraph and its `if tp, ok := prov.(provider.ToolProvider)` example.
   5. Remove the claim that "`SetTools` is safe for concurrent use".
-  6. Update the `provider/` package description in the project status section to remove `ToolProvider`.
-  7. Add a brief explanation of the immutable clone pattern: provider sub-packages expose clone methods (e.g. `openai.Provider.WithTools`) that return new provider instances sharing the underlying HTTP client. No mutex, no races, no cross-session leakage.
+  6. Update the `provider/` package description in the project status section to remove `ToolProvider` and mention `InvokeOption` instead.
+  7. Add a brief explanation of the `InvokeOption` pattern: provider sub-packages export option constructors (e.g. `openai.WithTools`), applications pass them to `Step.Turn` or pre-bind them via `loop.WithInvokeOptions`.
 - **Validation**: A manual read-through confirms no stale references to `SetTools`, `ToolProvider`, or mutex safety remain.
 
 ### Task 4: Validate Full Test Suite
@@ -152,10 +189,11 @@ Task 1 is a cross-cutting atomic refactor; all subsequent tasks depend on it. Ta
 
 | Risk | Impact | Likelihood | Mitigation |
 |---|---|---|---|
-| Breaking change to provider interface (removing `ToolProvider`) forces atomic update across multiple packages | High | Certain | Task 1 is defined as a single atomic commit touching all affected files. The builder must not commit partial changes. |
-| `tools` slice header is copied between clones, not deep-copied; external mutation of the underlying array could affect all clones | Low | Low | Document that callers should treat the passed `[]provider.Tool` as immutable after cloning. The `Tool` struct itself contains only value types (string, map) so the risk is minimal. |
-| `temperature` uses `0` as "unset" sentinel, preventing explicit `temperature: 0` (deterministic) from being sent to the API | Low | Medium | Document the convention. If needed in the future, change the field to `*float64` (pointer) where `nil` means unset. |
-| Existing external code importing `provider.ToolProvider` will break on upgrade | Medium | Low | This is a learning/experimental project; breaking changes are acceptable. The commit message should clearly flag the breaking change. |
+| `InvokeOption` interface with exported marker (`IsInvokeOption()`) allows any type to satisfy it, creating potential for accidental option collisions across provider sub-packages | Medium | Medium | Document that option types should be unexported structs in their provider sub-package; type assertions inside `Invoke`/`InvokeStreaming` only match the specific struct types defined in the same package. Collisions are harmless (unrecognized options are silently ignored). |
+| Unrecognized options silently ignored by a provider, causing user confusion | Medium | Low | Document the silent-ignore behavior. Future: consider a strict-mode option or provider-specific validation. |
+| Breaking change to `Provider` interface forces updating all implementations atomically; a partial implementation leaves the repo uncompilable | High | High | Task 1 is defined as a single atomic commit touching all affected files. The builder must not commit partial changes. |
+| `Step.Turn` variadic options could accidentally mutate the pre-bound `invokeOpts` slice if `append` is used incorrectly | Medium | Low | Use `make` + double `append` (or `slices.Concat` if Go 1.22+) to build a fresh merged slice, never mutating `s.invokeOpts`. |
+| Examples no longer demonstrate mid-session tool changes (previously done via `SetTools`) | Low | Medium | The README and example comments should clarify that per-turn dynamic options are achieved by calling `Step.Turn` directly with different option sets, bypassing `ReAct` when needed. |
 
 ## Validation Criteria
 
@@ -163,10 +201,8 @@ Task 1 is a cross-cutting atomic refactor; all subsequent tasks depend on it. Ta
 - [ ] `go test -race ./...` passes with no failures.
 - [ ] `go vet ./...` reports no issues.
 - [ ] `provider.ToolProvider` interface does not exist in `provider/provider.go`.
-- [ ] `provider/openai/openai.go` does not contain `SetTools`, `sync.RWMutex`, `mu`, or `ToolProvider` compile-time checks.
-- [ ] `openai.Provider.WithTools(tools)` exists and returns `*Provider`.
-- [ ] `openai.Provider.WithTemperature(t)` exists and returns `*Provider`.
-- [ ] `openai.Provider.Invoke` reads `p.tools` directly without locking.
-- [ ] `loop/loop_test.go` mock providers do not implement `SetTools` or reference `ToolProvider`.
-- [ ] `examples/calculator/main.go` compiles and uses `WithTools` instead of `SetTools`.
+- [ ] `provider/openai/openai.go` does not contain `SetTools`, `sync.RWMutex`, or a mutable `tools` field.
+- [ ] `openai.WithTools(tools)` returns `provider.InvokeOption` and is used in at least one test and one example.
+- [ ] `loop.Step.Turn` accepts `...provider.InvokeOption` and passes merged pre-bound + per-call options to the provider.
+- [ ] `cognitive.ReAct.Run` compiles without changes (it calls `Step.Turn` with no extra options).
 - [ ] `README.md` contains no references to `SetTools`, `ToolProvider`, or mutex safety.
