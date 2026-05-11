@@ -69,7 +69,7 @@ Multiple artifact handlers can fire on the same response. A response containing 
 
 Tool calling uses three mechanisms that compose through the extension point pattern:
 
-1. **Provider adapter** (`provider/openai/`) — configures tools via `provider.ToolProvider.SetTools()`, serializes them in requests, deserializes `ToolCall` from responses, and serializes `RoleTool` turns with `ToolResult` back to the provider
+1. **Provider adapter** (`provider/openai/`) — accepts tool configuration per-invocation via `openai.WithTools()`, serializes them in requests, deserializes `ToolCall` from responses, and serializes `RoleTool` turns with `ToolResult` back to the provider
 2. **Artifact Handler** (`tool/`) — a `tool.Registry` maps names to Go functions, and a `tool.Handler` implements `loop.Handler` to execute them
 3. **`BeforeTurn` hook** (optional) — a `loop.BeforeTurn` implementation can inject system prompts or tool usage instructions before the provider call
 
@@ -84,29 +84,32 @@ registry.Register("add", func(ctx context.Context, args map[string]any) (any, er
 })
 
 prov := openai.New(apiKey, model)
-prov.SetTools([]provider.Tool{
+
+tools := []provider.Tool{
     {Name: "add", Description: "Add two numbers", Schema: schema},
-})
+}
 
 // The concrete type tool.Handler implements loop.Handler.
-step := loop.New(loop.WithHandlers(registry.Handler()))
+// Pre-bind tool options to the Step so ReAct remains provider-agnostic.
+step := loop.New(
+    loop.WithHandlers(registry.Handler()),
+    loop.WithInvokeOptions(openai.WithTools(tools)),
+)
 
 // The cognitive.ReAct pattern automatically loops while tool calls are in flight.
 ```
 
-Adapters that implement `provider.ToolProvider` (e.g., the OpenAI adapter) expose `SetTools` to configure the tool list. The `provider.Tool` struct is provider-agnostic — each adapter maps it to its native API.
+The `provider.Tool` struct is provider-agnostic — each adapter maps it to its native API. Provider sub-packages expose option constructors such as `openai.WithTools` that return `provider.InvokeOption` values; these are passed to `Step.Turn` or pre-bound to the Step via `loop.WithInvokeOptions`.
 
-**Dynamic tool configuration.** The tool list can be evolved during a session by calling `SetTools` before each turn. This allows the application to prune, expand, or replace tools based on context, user permissions, or discovered capabilities:
+**Dynamic tool configuration.** The tool list can be evolved during a session by passing different `openai.WithTools` options to each `Step.Turn` call. This allows the application to prune, expand, or replace tools based on context, user permissions, or discovered capabilities:
 
 ```go
-// Before each turn, update the provider's tool list.
-if tp, ok := prov.(provider.ToolProvider); ok {
-    tp.SetTools(selectToolsForContext(ctx, state))
-}
-_, err := step.Turn(ctx, state, prov)
+// Pass different tool sets per-turn.
+tools := selectToolsForContext(ctx, state)
+_, err := step.Turn(ctx, state, prov, openai.WithTools(tools))
 ```
 
-`SetTools` is safe for concurrent use with `Invoke` and `InvokeStreaming` in the OpenAI adapter.
+Because tools are passed per-invocation through `InvokeOption`, there is no mutable provider state and no need for synchronization.
 
 #### Other Extension Points
 
@@ -203,7 +206,7 @@ This README remains a vision document, but the framework is now partially implem
 
 - `artifact/` — `Artifact` interface with `Text`, `ToolCall`, `ToolResult`, `Usage`, `Image`, `Reasoning`, and streaming delta types (`TextDelta`, `ReasoningDelta`, `ToolCallDelta`)
 - `state/` — `State` interface with `Turns()` and `Append()`, and an in-memory `Memory` implementation
-- `provider/` — `Provider` interface with `Invoke()`, `StreamingProvider` for channel-based delta emission, and `ToolProvider` for tool configuration
+- `provider/` — `Provider` interface with `Invoke()`, `StreamingProvider` for channel-based delta emission, and `InvokeOption` for per-invocation configuration (tools, temperature, etc.)
 - `loop/` — `Step` with `Turn()` method, `BeforeTurn` hook, optional streaming via `OutputEvent` channel, and artifact `Handler` interface for single-turn execution
 - `tool/` — `Registry` for mapping tool names to Go functions, and `Handler` implementing `loop.Handler` for tool execution
 - `cognitive/` — `ReAct` cognitive pattern for multi-turn looping, surface-agnostic and stateless
