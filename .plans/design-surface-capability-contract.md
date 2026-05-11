@@ -8,6 +8,8 @@ The ore framework's `surface.Surface` interface (`surface/surface.go`) currently
 
 The `Surface` interface is barely used as an interface value in the framework. Only `surface/tui/tui.go` claims to satisfy it. This makes the refactor low-risk.
 
+The `loop` package was recently refactored to embed `FanOut` directly inside `Step` (merged via `feat/refactor-surface-event-subscription`). `loop.New()` creates its own event channel and `FanOut`; `Step.Subscribe(kinds ...string)` returns subscriber channels; `Step.Close()` shuts down the `FanOut`. The provider interface was unified to a single `Invoke(ctx, state, provCh, opts)` where `provCh` receives both delta `artifact.Artifact` values (identified by the `artifact.Delta` marker interface) and complete artifacts. The TUI constructor was updated to `tui.New(eventsCh <-chan loop.OutputEvent)` — it receives the subscribed channel directly rather than a `*loop.FanOut`. An `ErrorEvent` was added to the `loop.OutputEvent` kinds. These loop-level changes do not affect the surface capability contract, but builders should be aware of the current event routing architecture.
+
 After ideation, we converged on a metadata-only capability model:
 - Capabilities are string tags (e.g., `"show-status"`, `"render-delta"`), not Go interfaces prescribing method signatures.
 - Surfaces declare capabilities via a package-level `Descriptor` variable.
