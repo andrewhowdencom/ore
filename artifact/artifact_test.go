@@ -14,6 +14,30 @@ var _ Artifact = Usage{}
 var _ Artifact = Image{}
 var _ Artifact = Reasoning{}
 
+var _ Delta = TextDelta{}
+var _ Delta = ReasoningDelta{}
+var _ Delta = ToolCallDelta{}
+
+func TestDeltaArtifacts(t *testing.T) {
+	// Delta types should satisfy the Delta interface.
+	assert.Implements(t, (*Delta)(nil), TextDelta{})
+	assert.Implements(t, (*Delta)(nil), ReasoningDelta{})
+	assert.Implements(t, (*Delta)(nil), ToolCallDelta{})
+
+	// Non-delta types should NOT satisfy the Delta interface.
+	assert.False(t, isDelta(Text{}))
+	assert.False(t, isDelta(ToolCall{}))
+	assert.False(t, isDelta(ToolResult{}))
+	assert.False(t, isDelta(Usage{}))
+	assert.False(t, isDelta(Image{}))
+	assert.False(t, isDelta(Reasoning{}))
+}
+
+func isDelta(a Artifact) bool {
+	_, ok := a.(Delta)
+	return ok
+}
+
 func TestArtifactKinds(t *testing.T) {
 	tests := []struct {
 		name string
