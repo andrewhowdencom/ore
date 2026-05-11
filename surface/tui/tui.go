@@ -13,10 +13,23 @@ import (
 )
 
 // TUI is a terminal user interface surface. It satisfies surface.Surface
-// and hides all Bubble Tea internals from callers.
+// (via Capable and Events) and hides all Bubble Tea internals from callers.
 type TUI struct {
 	eventsCh chan surface.Event
 	program  *tea.Program
+}
+
+// Descriptor enumerates the capabilities of the TUI surface.
+var Descriptor = surface.Descriptor{
+	Name:        "TUI",
+	Description: "Terminal user interface via Bubble Tea",
+	Capabilities: []surface.Capability{
+		surface.CapEventSource,
+		surface.CapShowStatus,
+		surface.CapRenderDelta,
+		surface.CapRenderTurn,
+		surface.CapRenderMarkdown,
+	},
 }
 
 // New creates a new TUI surface with an initialized events channel and
@@ -56,6 +69,21 @@ func New(eventsCh <-chan loop.OutputEvent) *TUI {
 // Events returns a read-only channel of user-generated events.
 func (t *TUI) Events() <-chan surface.Event {
 	return t.eventsCh
+}
+
+// Capabilities returns the full list of capabilities this TUI provides.
+func (t *TUI) Capabilities() []surface.Capability {
+	return Descriptor.Capabilities
+}
+
+// Can reports whether the TUI supports a specific capability.
+func (t *TUI) Can(cap surface.Capability) bool {
+	for _, c := range Descriptor.Capabilities {
+		if c == cap {
+			return true
+		}
+	}
+	return false
 }
 
 // SetStatus sends a status update into the Bubble Tea message loop. The
