@@ -33,17 +33,17 @@ func run() error {
 	defer cancel()
 
 	// Environment configuration.
-	apiKey := os.Getenv("TACK_API_KEY")
+	apiKey := os.Getenv("ORE_API_KEY")
 	if apiKey == "" {
-		return fmt.Errorf("TACK_API_KEY not set")
+		return fmt.Errorf("ORE_API_KEY not set")
 	}
 
-	modelName := os.Getenv("TACK_MODEL")
+	modelName := os.Getenv("ORE_MODEL")
 	if modelName == "" {
 		modelName = "gpt-4o"
 	}
 
-	baseURL := os.Getenv("TACK_BASE_URL")
+	baseURL := os.Getenv("ORE_BASE_URL")
 
 	// Create TUI surface.
 	s := tui.New()

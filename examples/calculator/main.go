@@ -61,17 +61,17 @@ func run() error {
 	}
 
 	// Environment configuration.
-	apiKey := os.Getenv("TACK_API_KEY")
+	apiKey := os.Getenv("ORE_API_KEY")
 	if apiKey == "" {
-		return fmt.Errorf("TACK_API_KEY not set")
+		return fmt.Errorf("ORE_API_KEY not set")
 	}
 
-	model := os.Getenv("TACK_MODEL")
+	model := os.Getenv("ORE_MODEL")
 	if model == "" {
 		model = "gpt-4o"
 	}
 
-	baseURL := os.Getenv("TACK_BASE_URL")
+	baseURL := os.Getenv("ORE_BASE_URL")
 
 	// Create tool registry with calculator functions.
 	registry := tool.NewRegistry()
