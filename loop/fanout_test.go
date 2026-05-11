@@ -163,6 +163,27 @@ func TestFanOut_ConcurrentSubscribeAndSend(t *testing.T) {
 	subWg.Wait()
 }
 
+func TestFanOut_MultipleKindsOneSubscriber(t *testing.T) {
+	src := make(chan OutputEvent, 10)
+	f := NewFanOut(src)
+	defer f.Close()
+
+	ch := f.Subscribe("delta", "turn_complete")
+
+	src <- DeltaEvent{Delta: artifact.TextDelta{Content: "hello"}}
+	src <- TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant}}
+	close(src)
+
+	var events []OutputEvent
+	for e := range ch {
+		events = append(events, e)
+	}
+
+	require.Len(t, events, 2)
+	assert.Equal(t, "delta", events[0].Kind())
+	assert.Equal(t, "turn_complete", events[1].Kind())
+}
+
 func TestFanOut_MultipleSubscribersSameKind(t *testing.T) {
 	src := make(chan OutputEvent, 10)
 	f := NewFanOut(src)

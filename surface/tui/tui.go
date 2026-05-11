@@ -35,19 +35,17 @@ func New(fanOut *loop.FanOut) *TUI {
 		program:  p,
 	}
 
-	// Subscribe to delta events and route them into the Bubble Tea program.
-	deltaCh := fanOut.Subscribe("delta")
+	// Subscribe to delta and turn_complete events on a single channel to
+	// preserve ordering across event types.
+	ch := fanOut.Subscribe("delta", "turn_complete")
 	go func() {
-		for event := range deltaCh {
-			t.program.Send(deltaMsg{delta: event.(loop.DeltaEvent).Delta})
-		}
-	}()
-
-	// Subscribe to turn complete events and route them into the Bubble Tea program.
-	turnCh := fanOut.Subscribe("turn_complete")
-	go func() {
-		for event := range turnCh {
-			t.program.Send(turnMsg{turn: event.(loop.TurnCompleteEvent).Turn})
+		for event := range ch {
+			switch e := event.(type) {
+			case loop.DeltaEvent:
+				t.program.Send(deltaMsg{delta: e.Delta})
+			case loop.TurnCompleteEvent:
+				t.program.Send(turnMsg{turn: e.Turn})
+			}
 		}
 	}()
 

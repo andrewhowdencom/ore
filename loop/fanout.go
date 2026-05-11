@@ -4,11 +4,18 @@ import (
 	"sync"
 )
 
+// subscription tracks a single subscriber's channel and the event kinds it
+// has requested.
+type subscription struct {
+	ch    chan OutputEvent
+	kinds map[string]struct{}
+}
+
 // FanOut distributes OutputEvent values from a source channel to multiple
 // subscribers, filtered by event kind.
 type FanOut struct {
 	src    <-chan OutputEvent
-	subs   map[string][]chan OutputEvent
+	subs   []subscription
 	mu     sync.Mutex
 	done   chan struct{}
 	once   sync.Once
@@ -22,7 +29,7 @@ type FanOut struct {
 func NewFanOut(src <-chan OutputEvent) *FanOut {
 	f := &FanOut{
 		src:  src,
-		subs: make(map[string][]chan OutputEvent),
+		subs: make([]subscription, 0),
 		done: make(chan struct{}),
 	}
 	f.wg.Add(1)
@@ -53,13 +60,16 @@ func (f *FanOut) run() {
 
 func (f *FanOut) send(event OutputEvent) {
 	f.mu.Lock()
-	chans := f.subs[event.Kind()]
+	subs := make([]subscription, len(f.subs))
+	copy(subs, f.subs)
 	f.mu.Unlock()
-	for _, ch := range chans {
-		select {
-		case ch <- event:
-		case <-f.done:
-			return
+	for _, sub := range subs {
+		if _, ok := sub.kinds[event.Kind()]; ok {
+			select {
+			case sub.ch <- event:
+			case <-f.done:
+				return
+			}
 		}
 	}
 }
@@ -80,27 +90,33 @@ func (f *FanOut) drain() {
 func (f *FanOut) closeAll() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	for _, chans := range f.subs {
-		for _, ch := range chans {
-			close(ch)
-		}
+	for _, sub := range f.subs {
+		close(sub.ch)
 	}
 	f.closed = true
 }
 
 // Subscribe returns a receive-only channel that receives all OutputEvents
-// whose Kind() matches the given kind. The channel is closed when the
-// FanOut is closed. The caller must read from the channel or provide
+// whose Kind() matches any of the given kinds. The channel is closed when
+// the FanOut is closed. The caller must read from the channel or provide
 // sufficient buffer capacity to avoid blocking the FanOut.
-func (f *FanOut) Subscribe(kind string) <-chan OutputEvent {
+//
+// Subscribing to multiple kinds on one channel preserves ordering across
+// those event types — events are delivered in the order they were received
+// from the source.
+func (f *FanOut) Subscribe(kinds ...string) <-chan OutputEvent {
 	ch := make(chan OutputEvent, 100)
+	kindSet := make(map[string]struct{}, len(kinds))
+	for _, k := range kinds {
+		kindSet[k] = struct{}{}
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.closed {
 		close(ch)
 		return ch
 	}
-	f.subs[kind] = append(f.subs[kind], ch)
+	f.subs = append(f.subs, subscription{ch: ch, kinds: kindSet})
 	return ch
 }
 
