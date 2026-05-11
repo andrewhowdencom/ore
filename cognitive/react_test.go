@@ -20,15 +20,18 @@ type simpleProvider struct {
 	err       error
 }
 
-func (p *simpleProvider) Invoke(ctx context.Context, s state.State, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
-	return p.artifacts, p.err
+func (p *simpleProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+	for _, art := range p.artifacts {
+		select {
+		case ch <- art:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return p.err
 }
 
-func (p *simpleProvider) InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
-	return p.Invoke(ctx, s, opts...)
-}
-
-var _ provider.StreamingProvider = (*simpleProvider)(nil)
+var _ provider.Provider = (*simpleProvider)(nil)
 
 // countingProvider returns different artifacts on successive calls.
 type countingProvider struct {
@@ -36,46 +39,50 @@ type countingProvider struct {
 	callCount int
 }
 
-func (p *countingProvider) Invoke(ctx context.Context, s state.State, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
+func (p *countingProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.callCount++
+	var artifacts []artifact.Artifact
 	switch p.callCount {
 	case 1:
-		return []artifact.Artifact{
+		artifacts = []artifact.Artifact{
 			artifact.Text{Content: "calling tool"},
 			artifact.ToolCall{Name: "test", Arguments: "{}"},
-		}, nil
+		}
 	default:
-		return []artifact.Artifact{
+		artifacts = []artifact.Artifact{
 			artifact.Text{Content: "done!"},
-		}, nil
+		}
 	}
+	for _, art := range artifacts {
+		select {
+		case ch <- art:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
 }
 
-func (p *countingProvider) InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
-	return p.Invoke(ctx, s, opts...)
-}
-
-var _ provider.StreamingProvider = (*countingProvider)(nil)
+var _ provider.Provider = (*countingProvider)(nil)
 
 // cancelCheckingProvider checks ctx.Err() before returning artifacts.
 type cancelCheckingProvider struct{}
 
-func (p *cancelCheckingProvider) Invoke(ctx context.Context, s state.State, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
+func (p *cancelCheckingProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return err
 	}
-	return []artifact.Artifact{
-		artifact.ToolCall{Name: "test", Arguments: "{}"},
-	}, nil
+	select {
+	case ch <- artifact.ToolCall{Name: "test", Arguments: "{}"}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return nil
 }
 
-func (p *cancelCheckingProvider) InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
-	return p.Invoke(ctx, s, opts...)
-}
-
-var _ provider.StreamingProvider = (*cancelCheckingProvider)(nil)
+var _ provider.Provider = (*cancelCheckingProvider)(nil)
 
 // testHandler implements loop.Handler for testing.
 type testHandler struct {

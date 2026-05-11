@@ -16,10 +16,10 @@ func TestFanOut_SingleSubscriber(t *testing.T) {
 	f := NewFanOut(src)
 	defer f.Close()
 
-	ch := f.Subscribe("delta")
+	ch := f.Subscribe("text_delta")
 
-	src <- DeltaEvent{Delta: artifact.TextDelta{Content: "hello"}}
-	src <- DeltaEvent{Delta: artifact.TextDelta{Content: "world"}}
+	src <- artifact.TextDelta{Content: "hello"}
+	src <- artifact.TextDelta{Content: "world"}
 	close(src)
 
 	var events []OutputEvent
@@ -28,9 +28,9 @@ func TestFanOut_SingleSubscriber(t *testing.T) {
 	}
 
 	require.Len(t, events, 2)
-	assert.Equal(t, "delta", events[0].Kind())
-	assert.Equal(t, "hello", events[0].(DeltaEvent).Delta.(artifact.TextDelta).Content)
-	assert.Equal(t, "world", events[1].(DeltaEvent).Delta.(artifact.TextDelta).Content)
+	assert.Equal(t, "text_delta", events[0].Kind())
+	assert.Equal(t, "hello", events[0].(artifact.TextDelta).Content)
+	assert.Equal(t, "world", events[1].(artifact.TextDelta).Content)
 }
 
 func TestFanOut_MultipleSubscribersDifferentKinds(t *testing.T) {
@@ -38,10 +38,10 @@ func TestFanOut_MultipleSubscribersDifferentKinds(t *testing.T) {
 	f := NewFanOut(src)
 	defer f.Close()
 
-	deltaCh := f.Subscribe("delta")
+	deltaCh := f.Subscribe("text_delta")
 	turnCh := f.Subscribe("turn_complete")
 
-	src <- DeltaEvent{Delta: artifact.TextDelta{Content: "hello"}}
+	src <- artifact.TextDelta{Content: "hello"}
 	src <- TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant}}
 	close(src)
 
@@ -55,7 +55,7 @@ func TestFanOut_MultipleSubscribersDifferentKinds(t *testing.T) {
 	}
 
 	require.Len(t, deltas, 1)
-	assert.Equal(t, "delta", deltas[0].Kind())
+	assert.Equal(t, "text_delta", deltas[0].Kind())
 
 	require.Len(t, turns, 1)
 	assert.Equal(t, "turn_complete", turns[0].Kind())
@@ -66,7 +66,7 @@ func TestFanOut_NoMatchingEvents(t *testing.T) {
 	f := NewFanOut(src)
 	defer f.Close()
 
-	ch := f.Subscribe("delta")
+	ch := f.Subscribe("text_delta")
 
 	src <- TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant}}
 	close(src)
@@ -83,7 +83,7 @@ func TestFanOut_Close(t *testing.T) {
 	src := make(chan OutputEvent, 10)
 	f := NewFanOut(src)
 
-	deltaCh := f.Subscribe("delta")
+	deltaCh := f.Subscribe("text_delta")
 	turnCh := f.Subscribe("turn_complete")
 
 	require.NoError(t, f.Close())
@@ -113,12 +113,12 @@ func TestFanOut_LateSubscribe(t *testing.T) {
 	// before run() drains the buffer, the late subscriber may receive buffered
 	// events. This is acceptable — subscribers should be created before events
 	// are produced.
-	src <- DeltaEvent{Delta: artifact.TextDelta{Content: "early"}}
+	src <- artifact.TextDelta{Content: "early"}
 
-	ch := f.Subscribe("delta")
+	ch := f.Subscribe("text_delta")
 
 	// Send events after subscribing.
-	src <- DeltaEvent{Delta: artifact.TextDelta{Content: "late"}}
+	src <- artifact.TextDelta{Content: "late"}
 	close(src)
 
 	var events []OutputEvent
@@ -128,7 +128,7 @@ func TestFanOut_LateSubscribe(t *testing.T) {
 
 	// The late subscriber receives at least the event sent after subscription.
 	require.GreaterOrEqual(t, len(events), 1)
-	assert.Equal(t, "late", events[len(events)-1].(DeltaEvent).Delta.(artifact.TextDelta).Content)
+	assert.Equal(t, "late", events[len(events)-1].(artifact.TextDelta).Content)
 }
 
 func TestFanOut_ConcurrentSubscribeAndSend(t *testing.T) {
@@ -142,7 +142,7 @@ func TestFanOut_ConcurrentSubscribeAndSend(t *testing.T) {
 	go func() {
 		defer sendWg.Done()
 		for i := 0; i < 50; i++ {
-			src <- DeltaEvent{Delta: artifact.TextDelta{Content: "msg"}}
+			src <- artifact.TextDelta{Content: "msg"}
 		}
 	}()
 
@@ -152,7 +152,7 @@ func TestFanOut_ConcurrentSubscribeAndSend(t *testing.T) {
 		subWg.Add(1)
 		go func() {
 			defer subWg.Done()
-			ch := f.Subscribe("delta")
+			ch := f.Subscribe("text_delta")
 			// Drain the channel.
 			for range ch {
 			}
@@ -169,9 +169,9 @@ func TestFanOut_MultipleKindsOneSubscriber(t *testing.T) {
 	f := NewFanOut(src)
 	defer f.Close()
 
-	ch := f.Subscribe("delta", "turn_complete")
+	ch := f.Subscribe("text_delta", "turn_complete")
 
-	src <- DeltaEvent{Delta: artifact.TextDelta{Content: "hello"}}
+	src <- artifact.TextDelta{Content: "hello"}
 	src <- TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant}}
 	close(src)
 
@@ -181,7 +181,7 @@ func TestFanOut_MultipleKindsOneSubscriber(t *testing.T) {
 	}
 
 	require.Len(t, events, 2)
-	assert.Equal(t, "delta", events[0].Kind())
+	assert.Equal(t, "text_delta", events[0].Kind())
 	assert.Equal(t, "turn_complete", events[1].Kind())
 }
 
@@ -191,18 +191,18 @@ func TestFanOut_SlowSubscriberDoesNotBlock(t *testing.T) {
 	defer f.Close()
 
 	// Slow subscriber — never reads
-	_ = f.Subscribe("delta")
+	_ = f.Subscribe("text_delta")
 
 	// Fill its buffer (100 events)
 	for i := 0; i < 100; i++ {
-		src <- DeltaEvent{Delta: artifact.TextDelta{Content: "filler"}}
+		src <- artifact.TextDelta{Content: "filler"}
 	}
 
 	// Send 50 more events — these should be dropped without blocking.
 	// If send() blocked on the full channel, the FanOut's run() goroutine
 	// would deadlock and f.Close() (via defer) would hang, failing the test.
 	for i := 0; i < 50; i++ {
-		src <- DeltaEvent{Delta: artifact.TextDelta{Content: "msg"}}
+		src <- artifact.TextDelta{Content: "msg"}
 	}
 
 	close(src)
@@ -213,11 +213,11 @@ func TestFanOut_SlowSubscriberDoesNotBlockOthers(t *testing.T) {
 	f := NewFanOut(src)
 	defer f.Close()
 
-	_ = f.Subscribe("delta")
+	_ = f.Subscribe("text_delta")
 
 	// Send 100 events to fill the slow subscriber's buffer
 	for i := 0; i < 100; i++ {
-		src <- DeltaEvent{Delta: artifact.TextDelta{Content: "filler"}}
+		src <- artifact.TextDelta{Content: "filler"}
 	}
 
 	// Give the FanOut time to process the initial batch before creating
@@ -225,16 +225,16 @@ func TestFanOut_SlowSubscriberDoesNotBlockOthers(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Create fast subscriber
-	fastCh := f.Subscribe("delta")
+	fastCh := f.Subscribe("text_delta")
 
 	// Send distinctive event
-	src <- DeltaEvent{Delta: artifact.TextDelta{Content: "after-full"}}
+	src <- artifact.TextDelta{Content: "after-full"}
 	close(src)
 
 	// Fast subscriber should receive the distinctive event
 	found := false
 	for event := range fastCh {
-		if event.(DeltaEvent).Delta.(artifact.TextDelta).Content == "after-full" {
+		if event.(artifact.TextDelta).Content == "after-full" {
 			found = true
 		}
 	}
@@ -246,17 +246,17 @@ func TestFanOut_MultipleSubscribersSameKind(t *testing.T) {
 	f := NewFanOut(src)
 	defer f.Close()
 
-	ch1 := f.Subscribe("delta")
-	ch2 := f.Subscribe("delta")
+	ch1 := f.Subscribe("text_delta")
+	ch2 := f.Subscribe("text_delta")
 
-	src <- DeltaEvent{Delta: artifact.TextDelta{Content: "hello"}}
+	src <- artifact.TextDelta{Content: "hello"}
 	close(src)
 
 	e1 := <-ch1
 	e2 := <-ch2
 
-	assert.Equal(t, "hello", e1.(DeltaEvent).Delta.(artifact.TextDelta).Content)
-	assert.Equal(t, "hello", e2.(DeltaEvent).Delta.(artifact.TextDelta).Content)
+	assert.Equal(t, "hello", e1.(artifact.TextDelta).Content)
+	assert.Equal(t, "hello", e2.(artifact.TextDelta).Content)
 
 	_, open1 := <-ch1
 	_, open2 := <-ch2

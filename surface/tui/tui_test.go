@@ -9,21 +9,15 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	src := make(chan loop.OutputEvent, 10)
-	fanOut := loop.NewFanOut(src)
-	defer fanOut.Close()
-
-	tui := New(fanOut)
+	ch := make(chan loop.OutputEvent, 10)
+	tui := New(ch)
 	require.NotNil(t, tui)
 	assert.NotNil(t, tui.Events())
 }
 
 func TestTUI_Events(t *testing.T) {
-	src := make(chan loop.OutputEvent, 10)
-	fanOut := loop.NewFanOut(src)
-	defer fanOut.Close()
-
-	tui := New(fanOut)
-	ch := tui.Events()
-	require.NotNil(t, ch)
+	ch := make(chan loop.OutputEvent, 10)
+	tui := New(ch)
+	eventsCh := tui.Events()
+	require.NotNil(t, eventsCh)
 }

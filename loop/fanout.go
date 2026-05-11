@@ -80,10 +80,11 @@ func (f *FanOut) send(event OutputEvent) {
 func (f *FanOut) drain() {
 	for {
 		select {
-		case _, ok := <-f.src:
+		case event, ok := <-f.src:
 			if !ok {
 				return
 			}
+			f.send(event)
 		default:
 			return
 		}
