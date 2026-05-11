@@ -86,34 +86,46 @@ func (m *model) View() string {
 	for _, turn := range m.turns {
 		switch turn.role {
 		case state.RoleUser:
-			b.WriteString(wrapText(turn.text, userLabel, userIndent, width))
+			for _, block := range turn.blocks {
+				if block.kind == "text" {
+					b.WriteString(wrapText(block.source, userLabel, userIndent, width))
+				}
+			}
 		case state.RoleAssistant:
-			// Use pre-rendered ANSI output (from glamour) for finalized
-			// assistant turns. Falls back to plain text wrapText when
-			// rendered is empty, which happens for streaming text
-			// (incomplete markdown) or when glamour rendering failed.
-			if turn.rendered != "" {
-				b.WriteString(prefixLines(turn.rendered, assistantLabel, assistantIndent))
-			} else {
-				b.WriteString(wrapText(turn.text, assistantLabel, assistantIndent, width))
+			for _, block := range turn.blocks {
+				switch block.kind {
+				case "text":
+					if block.rendered != "" {
+						b.WriteString(prefixLines(block.rendered, assistantLabel, assistantIndent))
+					} else {
+						b.WriteString(wrapText(block.source, assistantLabel, assistantIndent, width))
+					}
+				case "reasoning":
+					thinkingLabel := thinkingStyle.Render("Thinking: ")
+					thinkingIndent := strings.Repeat(" ", lipgloss.Width(thinkingLabel))
+					b.WriteString(wrapText(block.source, thinkingLabel, thinkingIndent, width))
+				}
 			}
 		case state.RoleTool:
-			b.WriteString(wrapText(turn.text, toolLabel, toolIndent, width))
+			for _, block := range turn.blocks {
+				if block.kind == "text" {
+					b.WriteString(wrapText(block.source, toolLabel, toolIndent, width))
+				}
+			}
 		}
 		b.WriteString("\n\n")
 	}
 
-	// Render the in-progress text stream.
-	if m.textStreamBuffer.Len() > 0 {
-		b.WriteString(wrapText(m.textStreamBuffer.String(), assistantLabel, assistantIndent, width))
-		b.WriteString("\n\n")
-	}
-
-	// Render the in-progress reasoning stream.
-	if m.reasoningStreamBuffer.Len() > 0 {
-		thinkingLabel := thinkingStyle.Render("Thinking: ")
-		thinkingIndent := strings.Repeat(" ", lipgloss.Width(thinkingLabel))
-		b.WriteString(wrapText(m.reasoningStreamBuffer.String(), thinkingLabel, thinkingIndent, width))
+	// Render the in-progress stream blocks in arrival order.
+	for _, block := range m.streamBlocks {
+		switch block.kind {
+		case "text":
+			b.WriteString(wrapText(block.content, assistantLabel, assistantIndent, width))
+		case "reasoning":
+			thinkingLabel := thinkingStyle.Render("Thinking: ")
+			thinkingIndent := strings.Repeat(" ", lipgloss.Width(thinkingLabel))
+			b.WriteString(wrapText(block.content, thinkingLabel, thinkingIndent, width))
+		}
 		b.WriteString("\n\n")
 	}
 
