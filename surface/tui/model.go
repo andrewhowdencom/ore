@@ -4,7 +4,6 @@ import (
 	"log/slog"
 	"strings"
 
-
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/surface"
@@ -31,7 +30,19 @@ type statusMsg struct {
 	status string
 }
 
+// streamBlock tracks an ordered piece of streaming content with its kind.
+type streamBlock struct {
+	kind    string // "text" or "reasoning"
+	content string
+}
 
+// renderedBlock tracks a finalized piece of turn content with its kind and
+// optional pre-rendered ANSI cache.
+type renderedBlock struct {
+	kind     string // "text" or "reasoning"
+	source   string // original content
+	rendered string // pre-rendered ANSI output (only for text blocks)
+}
 
 // model implements tea.Model. All state mutation happens in Update,
 // which runs on Bubble Tea's single goroutine, so no locks are needed.
@@ -41,13 +52,10 @@ type model struct {
 	// Conversation history.
 	turns []renderedTurn
 
-	// textStreamBuffer holds the partial text content of the current assistant response.
-	textStreamBuffer strings.Builder
-
-	// reasoningStreamBuffer holds the partial reasoning/thinking content.
-	reasoningStreamBuffer strings.Builder
-
-
+	// streamBlocks holds the ordered partial content of the current assistant
+	// response. Each block is either text or reasoning, preserving the
+	// arrival order from the provider.
+	streamBlocks []streamBlock
 
 	// Transient status line (e.g., "thinking...").
 	status string
@@ -67,6 +75,12 @@ type model struct {
 	md markdownRenderer
 }
 
+// renderedTurn represents a single turn in the conversation history.
+type renderedTurn struct {
+	role   state.Role
+	blocks []renderedBlock
+}
+
 // renderMarkdown delegates to the model's markdown renderer, falling back
 // to a default glamourMarkdownRenderer if none was injected.
 func (m *model) renderMarkdown(text string, width int) (string, error) {
@@ -74,13 +88,6 @@ func (m *model) renderMarkdown(text string, width int) (string, error) {
 		m.md = glamourMarkdownRenderer{}
 	}
 	return m.md.Render(text, width)
-}
-
-// renderedTurn represents a single turn in the conversation history.
-type renderedTurn struct {
-	role     state.Role
-	text     string // original text (Markdown source for assistant turns)
-	rendered string // pre-rendered ANSI output (only for assistant turns)
 }
 
 // Init returns an initial command. No periodic ticks are needed because
@@ -96,31 +103,42 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case deltaMsg:
 		switch d := msg.delta.(type) {
 		case artifact.TextDelta:
-			m.textStreamBuffer.WriteString(d.Content)
+			if len(m.streamBlocks) > 0 && m.streamBlocks[len(m.streamBlocks)-1].kind == "text" {
+				m.streamBlocks[len(m.streamBlocks)-1].content += d.Content
+			} else {
+				m.streamBlocks = append(m.streamBlocks, streamBlock{kind: "text", content: d.Content})
+			}
 		case artifact.ReasoningDelta:
-			m.reasoningStreamBuffer.WriteString(d.Content)
+			if len(m.streamBlocks) > 0 && m.streamBlocks[len(m.streamBlocks)-1].kind == "reasoning" {
+				m.streamBlocks[len(m.streamBlocks)-1].content += d.Content
+			} else {
+				m.streamBlocks = append(m.streamBlocks, streamBlock{kind: "reasoning", content: d.Content})
+			}
 		}
 		m.viewport.GotoBottom()
 	case turnMsg:
-		var text strings.Builder
+		var blocks []renderedBlock
 		for _, art := range msg.turn.Artifacts {
-			if t, ok := art.(artifact.Text); ok {
-				text.WriteString(t.Content)
+			switch a := art.(type) {
+			case artifact.Text:
+				block := renderedBlock{kind: "text", source: a.Content}
+				if msg.turn.Role == state.RoleAssistant {
+					rendered, err := m.renderMarkdown(a.Content, m.viewport.Width)
+					if err == nil {
+						block.rendered = rendered
+					}
+				}
+				blocks = append(blocks, block)
+			case artifact.Reasoning:
+				blocks = append(blocks, renderedBlock{kind: "reasoning", source: a.Content})
 			}
 		}
 		rt := renderedTurn{
-			role: msg.turn.Role,
-			text: text.String(),
-		}
-		if msg.turn.Role == state.RoleAssistant {
-			rendered, err := m.renderMarkdown(text.String(), m.viewport.Width)
-			if err == nil {
-				rt.rendered = rendered
-			}
+			role:   msg.turn.Role,
+			blocks: blocks,
 		}
 		m.turns = append(m.turns, rt)
-		m.textStreamBuffer.Reset()
-		m.reasoningStreamBuffer.Reset()
+		m.streamBlocks = nil
 		m.viewport.GotoBottom()
 	case statusMsg:
 		m.status = msg.status
@@ -134,8 +152,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.input.Len() > 0 {
 				content := m.input.String()
 				m.turns = append(m.turns, renderedTurn{
-					role: state.RoleUser,
-					text: content,
+					role:   state.RoleUser,
+					blocks: []renderedBlock{{kind: "text", source: content}},
 				})
 				m.input.Reset()
 				select {
@@ -167,13 +185,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.viewport.Width = msg.Width
 		m.viewport.Height = msg.Height - 1
-		// Re-render assistant turns with the new terminal width so cached
-		// Markdown output remains correctly wrapped.
+		// Re-render assistant turn text blocks with the new terminal width
+		// so cached Markdown output remains correctly wrapped.
 		for i, turn := range m.turns {
-			if turn.role == state.RoleAssistant && turn.text != "" {
-				rendered, err := m.renderMarkdown(turn.text, m.viewport.Width)
-				if err == nil {
-					m.turns[i].rendered = rendered
+			if turn.role == state.RoleAssistant {
+				for j, block := range turn.blocks {
+					if block.kind == "text" && block.source != "" {
+						rendered, err := m.renderMarkdown(block.source, m.viewport.Width)
+						if err == nil {
+							m.turns[i].blocks[j].rendered = rendered
+						}
+					}
 				}
 			}
 		}

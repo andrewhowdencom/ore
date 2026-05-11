@@ -72,7 +72,7 @@ func TestModel_View_AssistantTurn_WithRendered(t *testing.T) {
 	m := model{
 		viewport: viewport.New(80, 20),
 		turns: []renderedTurn{
-			{role: state.RoleAssistant, text: "# Hello", rendered: "pre-rendered glamour output"},
+			{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "# Hello", rendered: "pre-rendered glamour output"}}},
 		},
 	}
 	output := m.View()
@@ -86,7 +86,7 @@ func TestModel_View_AssistantTurn_FallbackToPlainText(t *testing.T) {
 	m := model{
 		viewport: viewport.New(80, 20),
 		turns: []renderedTurn{
-			{role: state.RoleAssistant, text: "plain text", rendered: ""},
+			{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "plain text"}}},
 		},
 	}
 	output := m.View()
@@ -97,11 +97,60 @@ func TestModel_View_AssistantTurn_FallbackToPlainText(t *testing.T) {
 func TestModel_View_StreamingText_PlainText(t *testing.T) {
 	m := model{
 		viewport: viewport.New(80, 20),
+		streamBlocks: []streamBlock{{kind: "text", content: "streaming text"}},
 	}
-	m.textStreamBuffer.WriteString("streaming text")
 	output := m.View()
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "streaming text")
+}
+
+func TestModel_View_StreamingReasoning(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+		streamBlocks: []streamBlock{{kind: "reasoning", content: "thinking..."}},
+	}
+	output := m.View()
+	assert.Contains(t, output, "Thinking: ")
+	assert.Contains(t, output, "thinking...")
+}
+
+func TestModel_View_InterleavedStreaming(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+		streamBlocks: []streamBlock{
+			{kind: "text", content: "first"},
+			{kind: "reasoning", content: "think"},
+			{kind: "text", content: "second"},
+		},
+	}
+	output := m.View()
+	// Verify text and reasoning appear interleaved in order.
+	idxFirst := strings.Index(output, "first")
+	idxThink := strings.Index(output, "think")
+	idxSecond := strings.Index(output, "second")
+	assert.Greater(t, idxThink, idxFirst, "reasoning should appear after first text")
+	assert.Greater(t, idxSecond, idxThink, "second text should appear after reasoning")
+}
+
+func TestModel_View_AssistantTurn_WithReasoning(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+		turns: []renderedTurn{
+			{role: state.RoleAssistant, blocks: []renderedBlock{
+				{kind: "text", source: "the answer"},
+				{kind: "reasoning", source: "because 2+2=4"},
+			}},
+		},
+	}
+	output := m.View()
+	assert.Contains(t, output, "Assistant: ")
+	assert.Contains(t, output, "the answer")
+	assert.Contains(t, output, "Thinking: ")
+	assert.Contains(t, output, "because 2+2=4")
+	// Verify order: text appears before reasoning.
+	idxAnswer := strings.Index(output, "the answer")
+	idxReason := strings.Index(output, "because 2+2=4")
+	assert.Greater(t, idxReason, idxAnswer, "reasoning should appear after text")
 }
 
 func TestRenderMarkdown_MalformedInput(t *testing.T) {

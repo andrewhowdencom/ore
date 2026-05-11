@@ -19,14 +19,33 @@ func TestModel_Update_Delta_TextDelta(t *testing.T) {
 	m := model{}
 	newM, _ := m.Update(deltaMsg{delta: artifact.TextDelta{Content: "hello"}})
 	mm := newM.(*model)
-	assert.Equal(t, "hello", mm.textStreamBuffer.String())
+	require.Len(t, mm.streamBlocks, 1)
+	assert.Equal(t, "text", mm.streamBlocks[0].kind)
+	assert.Equal(t, "hello", mm.streamBlocks[0].content)
 }
 
 func TestModel_Update_Delta_ReasoningDelta(t *testing.T) {
 	m := model{}
 	newM, _ := m.Update(deltaMsg{delta: artifact.ReasoningDelta{Content: "thinking"}})
 	mm := newM.(*model)
-	assert.Equal(t, "thinking", mm.reasoningStreamBuffer.String())
+	require.Len(t, mm.streamBlocks, 1)
+	assert.Equal(t, "reasoning", mm.streamBlocks[0].kind)
+	assert.Equal(t, "thinking", mm.streamBlocks[0].content)
+}
+
+func TestModel_Update_Delta_Interleaved(t *testing.T) {
+	m := model{}
+	newM, _ := m.Update(deltaMsg{delta: artifact.TextDelta{Content: "first"}})
+	newM, _ = newM.Update(deltaMsg{delta: artifact.ReasoningDelta{Content: "think"}})
+	newM, _ = newM.Update(deltaMsg{delta: artifact.TextDelta{Content: "second"}})
+	mm := newM.(*model)
+	require.Len(t, mm.streamBlocks, 3)
+	assert.Equal(t, "text", mm.streamBlocks[0].kind)
+	assert.Equal(t, "first", mm.streamBlocks[0].content)
+	assert.Equal(t, "reasoning", mm.streamBlocks[1].kind)
+	assert.Equal(t, "think", mm.streamBlocks[1].content)
+	assert.Equal(t, "text", mm.streamBlocks[2].kind)
+	assert.Equal(t, "second", mm.streamBlocks[2].content)
 }
 
 func TestModel_Update_Turn(t *testing.T) {
@@ -41,14 +60,36 @@ func TestModel_Update_Turn(t *testing.T) {
 	mm := newM.(*model)
 	require.Len(t, mm.turns, 1)
 	assert.Equal(t, state.RoleAssistant, mm.turns[0].role)
-	assert.Equal(t, "hello world", mm.turns[0].text)
-	assert.Empty(t, mm.textStreamBuffer.String())
-	assert.Empty(t, mm.reasoningStreamBuffer.String())
+	require.Len(t, mm.turns[0].blocks, 1)
+	assert.Equal(t, "text", mm.turns[0].blocks[0].kind)
+	assert.Equal(t, "hello world", mm.turns[0].blocks[0].source)
+	assert.Empty(t, mm.streamBlocks)
+}
+
+func TestModel_Update_Turn_PreservesReasoning(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+	}
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "the answer is 42"},
+			artifact.Reasoning{Content: "let me think..."},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+	require.Len(t, mm.turns, 1)
+	require.Len(t, mm.turns[0].blocks, 2)
+	assert.Equal(t, "text", mm.turns[0].blocks[0].kind)
+	assert.Equal(t, "the answer is 42", mm.turns[0].blocks[0].source)
+	assert.Equal(t, "reasoning", mm.turns[0].blocks[1].kind)
+	assert.Equal(t, "let me think...", mm.turns[0].blocks[1].source)
 }
 
 func TestModel_Update_Turn_ResetsStreamBuffer(t *testing.T) {
 	m := model{}
-	m.textStreamBuffer.WriteString("partial")
+	m.streamBlocks = []streamBlock{{kind: "text", content: "partial"}}
 
 	turn := state.Turn{
 		Role: state.RoleAssistant,
@@ -58,8 +99,7 @@ func TestModel_Update_Turn_ResetsStreamBuffer(t *testing.T) {
 	}
 	newM, _ := m.Update(turnMsg{turn: turn})
 	mm := newM.(*model)
-	assert.Empty(t, mm.textStreamBuffer.String())
-	assert.Empty(t, mm.reasoningStreamBuffer.String())
+	assert.Empty(t, mm.streamBlocks)
 }
 
 func TestModel_Update_Status(t *testing.T) {
@@ -108,7 +148,9 @@ func TestModel_Update_KeyEnter_WithInput(t *testing.T) {
 
 	require.Len(t, mm.turns, 1)
 	assert.Equal(t, state.RoleUser, mm.turns[0].role)
-	assert.Equal(t, "hello", mm.turns[0].text)
+	require.Len(t, mm.turns[0].blocks, 1)
+	assert.Equal(t, "text", mm.turns[0].blocks[0].kind)
+	assert.Equal(t, "hello", mm.turns[0].blocks[0].source)
 	assert.Empty(t, mm.input.String())
 
 	select {
@@ -177,7 +219,7 @@ func TestModel_View_ContainsTurn(t *testing.T) {
 	m := model{
 		viewport: viewport.New(80, 20),
 		turns: []renderedTurn{
-			{role: state.RoleUser, text: "hello"},
+			{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
 		},
 	}
 	output := m.View()
@@ -189,7 +231,7 @@ func TestModel_View_ContainsAssistantTurn(t *testing.T) {
 	m := model{
 		viewport: viewport.New(80, 20),
 		turns: []renderedTurn{
-			{role: state.RoleAssistant, text: "world"},
+			{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "world"}}},
 		},
 	}
 	output := m.View()
@@ -201,7 +243,7 @@ func TestModel_View_ContainsToolTurn(t *testing.T) {
 	m := model{
 		viewport: viewport.New(80, 20),
 		turns: []renderedTurn{
-			{role: state.RoleTool, text: "result"},
+			{role: state.RoleTool, blocks: []renderedBlock{{kind: "text", source: "result"}}},
 		},
 	}
 	output := m.View()
@@ -212,8 +254,8 @@ func TestModel_View_ContainsToolTurn(t *testing.T) {
 func TestModel_View_ContainsStreaming(t *testing.T) {
 	m := model{
 		viewport: viewport.New(80, 20),
+		streamBlocks: []streamBlock{{kind: "text", content: "partial"}},
 	}
-	m.textStreamBuffer.WriteString("partial")
 	output := m.View()
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "partial")
@@ -250,7 +292,7 @@ func TestModel_View_ContainsInputAtBottom(t *testing.T) {
 	m := model{
 		viewport: viewport.New(80, 20),
 		turns: []renderedTurn{
-			{role: state.RoleUser, text: "hello"},
+			{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
 		},
 	}
 	output := m.View()
@@ -328,7 +370,9 @@ func TestModel_Update_Delta_AutoScrollsViewport(t *testing.T) {
 	mm := newM.(*model)
 
 	assert.True(t, mm.viewport.AtBottom(), "delta should auto-scroll viewport to bottom")
-	assert.Equal(t, "new token", mm.textStreamBuffer.String())
+	require.Len(t, mm.streamBlocks, 1)
+	assert.Equal(t, "text", mm.streamBlocks[0].kind)
+	assert.Equal(t, "new token", mm.streamBlocks[0].content)
 }
 
 func TestModel_View_LongHistory_InputAtBottom(t *testing.T) {
@@ -339,7 +383,7 @@ func TestModel_View_LongHistory_InputAtBottom(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		m.turns = append(m.turns, renderedTurn{
 			role: state.RoleUser,
-			text: strings.Repeat("word ", 20),
+			blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 20)}},
 		})
 	}
 	output := m.View()
@@ -399,7 +443,7 @@ func TestModel_View_WrapsLongTurn(t *testing.T) {
 	m := model{
 		viewport: viewport.New(20, 5),
 		turns: []renderedTurn{
-			{role: state.RoleUser, text: strings.Repeat("word ", 10)},
+			{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 10)}}},
 		},
 	}
 	output := m.View()
@@ -423,8 +467,7 @@ func TestModel_Update_Delta_UnknownArtifact(t *testing.T) {
 	m := model{}
 	newM, cmd := m.Update(deltaMsg{delta: unknownArtifact{}})
 	mm := newM.(*model)
-	assert.Empty(t, mm.textStreamBuffer.String())
-	assert.Empty(t, mm.reasoningStreamBuffer.String())
+	assert.Empty(t, mm.streamBlocks)
 	assert.Nil(t, cmd)
 }
 
@@ -447,9 +490,9 @@ func TestModel_Update_Turn_Assistant_PopulatesRendered(t *testing.T) {
 	newM, _ := m.Update(turnMsg{turn: turn})
 	mm := newM.(*model)
 	require.Len(t, mm.turns, 1)
-	assert.Equal(t, state.RoleAssistant, mm.turns[0].role)
-	assert.NotEmpty(t, mm.turns[0].text)
-	assert.NotEmpty(t, mm.turns[0].rendered, "assistant turn should have rendered Markdown")
+	require.Len(t, mm.turns[0].blocks, 1)
+	assert.NotEmpty(t, mm.turns[0].blocks[0].source)
+	assert.NotEmpty(t, mm.turns[0].blocks[0].rendered, "assistant turn should have rendered Markdown")
 }
 
 func TestModel_Update_Turn_User_LeavesRenderedEmpty(t *testing.T) {
@@ -465,8 +508,8 @@ func TestModel_Update_Turn_User_LeavesRenderedEmpty(t *testing.T) {
 	newM, _ := m.Update(turnMsg{turn: turn})
 	mm := newM.(*model)
 	require.Len(t, mm.turns, 1)
-	assert.Equal(t, state.RoleUser, mm.turns[0].role)
-	assert.Empty(t, mm.turns[0].rendered, "user turn should not have rendered Markdown")
+	require.Len(t, mm.turns[0].blocks, 1)
+	assert.Empty(t, mm.turns[0].blocks[0].rendered, "user turn should not have rendered Markdown")
 }
 
 func TestModel_Update_WindowSize_RerendersAssistantTurns(t *testing.T) {
@@ -482,14 +525,14 @@ func TestModel_Update_WindowSize_RerendersAssistantTurns(t *testing.T) {
 	newM, _ := m.Update(turnMsg{turn: turn})
 	mm := newM.(*model)
 	require.Len(t, mm.turns, 1)
-	initialRendered := mm.turns[0].rendered
+	initialRendered := mm.turns[0].blocks[0].rendered
 	assert.NotEmpty(t, initialRendered)
 
 	// Resize to a narrower width
 	newM2, _ := mm.Update(tea.WindowSizeMsg{Width: 40, Height: 20})
 	mm2 := newM2.(*model)
-	assert.NotEmpty(t, mm2.turns[0].rendered)
-	assert.NotEqual(t, initialRendered, mm2.turns[0].rendered,
+	assert.NotEmpty(t, mm2.turns[0].blocks[0].rendered)
+	assert.NotEqual(t, initialRendered, mm2.turns[0].blocks[0].rendered,
 		"re-rendered output should differ after width change")
 }
 
@@ -517,8 +560,9 @@ func TestModel_Update_Turn_Assistant_RenderError_Fallback(t *testing.T) {
 	newM, _ := m.Update(turnMsg{turn: turn})
 	mm := newM.(*model)
 	require.Len(t, mm.turns, 1)
-	assert.Empty(t, mm.turns[0].rendered, "render error should leave rendered empty")
-	assert.Equal(t, "# Hello", mm.turns[0].text, "raw text should still be stored")
+	require.Len(t, mm.turns[0].blocks, 1)
+	assert.Empty(t, mm.turns[0].blocks[0].rendered, "render error should leave rendered empty")
+	assert.Equal(t, "# Hello", mm.turns[0].blocks[0].source, "raw text should still be stored")
 }
 
 func TestModel_View_AssistantTurn_RenderError_FallbackToPlainText(t *testing.T) {
@@ -552,13 +596,13 @@ func TestModel_Update_WindowSize_RerenderError_KeepsOldCache(t *testing.T) {
 	}
 	newM, _ := m.Update(turnMsg{turn: turn})
 	mm := newM.(*model)
-	assert.Equal(t, "initial-render", mm.turns[0].rendered)
+	assert.Equal(t, "initial-render", mm.turns[0].blocks[0].rendered)
 
 	// Swap to an error-returning renderer and resize.
 	mm.md = mockMarkdownRenderer{err: errors.New("resize render failed")}
 	newM2, _ := mm.Update(tea.WindowSizeMsg{Width: 40, Height: 20})
 	mm2 := newM2.(*model)
-	assert.Equal(t, "initial-render", mm2.turns[0].rendered,
+	assert.Equal(t, "initial-render", mm2.turns[0].blocks[0].rendered,
 		"old cache should be kept on re-render error")
 }
 
@@ -576,8 +620,9 @@ func TestModel_Update_Turn_Assistant_EmptyText(t *testing.T) {
 	newM, _ := m.Update(turnMsg{turn: turn})
 	mm := newM.(*model)
 	require.Len(t, mm.turns, 1)
-	assert.Empty(t, mm.turns[0].text)
-	assert.Equal(t, "mock-empty-output", mm.turns[0].rendered)
+	require.Len(t, mm.turns[0].blocks, 1)
+	assert.Empty(t, mm.turns[0].blocks[0].source)
+	assert.Equal(t, "mock-empty-output", mm.turns[0].blocks[0].rendered)
 	// View should not crash with empty text.
 	output := mm.View()
 	assert.Contains(t, output, "Assistant: ")
