@@ -103,11 +103,13 @@ func WithInvokeOptions(opts ...provider.InvokeOption) Option {
 }
 
 // Turn performs one inference turn with the given provider.
-// The provider emits artifacts to a channel; delta artifacts are forwarded
-// to the Step's FanOut subscribers immediately, while complete artifacts are
-// buffered and appended to state once the provider returns. After the turn
-// completes, all registered handlers are invoked on each artifact from the
-// assistant turn. The operation is fully synchronous and blocking.
+// The provider emits artifacts to a channel; all artifacts are forwarded to
+// the Step's FanOut subscribers immediately as they arrive. Delta artifacts
+// (satisfying artifact.Delta) are ephemeral and are not persisted to state,
+// while complete artifacts are buffered and appended to state once the
+// provider returns. After the turn completes, all registered handlers are
+// invoked on each artifact from the assistant turn. The operation is fully
+// synchronous and blocking.
 func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, opts ...provider.InvokeOption) (state.State, error) {
 	var err error
 
@@ -126,13 +128,12 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 	go func() {
 		defer wg.Done()
 		for art := range provCh {
-			if _, ok := art.(artifact.Delta); ok {
-				select {
-				case s.events <- art:
-				case <-ctx.Done():
-					return
-				}
-			} else {
+			select {
+			case s.events <- art:
+			case <-ctx.Done():
+				return
+			}
+			if _, ok := art.(artifact.Delta); !ok {
 				completeArtifacts = append(completeArtifacts, art)
 			}
 		}

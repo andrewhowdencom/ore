@@ -426,7 +426,7 @@ func TestStep_Turn_HandlerErrorAfterPartialProcessing(t *testing.T) {
 
 func TestStep_Turn_OutputEvents(t *testing.T) {
 	s := New()
-	ch := s.Subscribe("text_delta", "turn_complete")
+	ch := s.Subscribe("text_delta", "text", "turn_complete")
 	mem := &state.Memory{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -444,15 +444,19 @@ func TestStep_Turn_OutputEvents(t *testing.T) {
 
 	events := collectEvents(ch, 100*time.Millisecond)
 
-	require.Len(t, events, 3)
+	require.Len(t, events, 4)
 	assert.Equal(t, "text_delta", events[0].Kind())
 	assert.Equal(t, "wor", events[0].(artifact.TextDelta).Content)
 	assert.Equal(t, "text_delta", events[1].Kind())
 	assert.Equal(t, "ld", events[1].(artifact.TextDelta).Content)
-	assert.Equal(t, "turn_complete", events[2].Kind())
-	assert.Equal(t, state.RoleAssistant, events[2].(TurnCompleteEvent).Turn.Role)
-	require.Len(t, events[2].(TurnCompleteEvent).Turn.Artifacts, 1)
-	text, ok := events[2].(TurnCompleteEvent).Turn.Artifacts[0].(artifact.Text)
+	assert.Equal(t, "text", events[2].Kind())
+	text, ok := events[2].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "world!", text.Content)
+	assert.Equal(t, "turn_complete", events[3].Kind())
+	assert.Equal(t, state.RoleAssistant, events[3].(TurnCompleteEvent).Turn.Role)
+	require.Len(t, events[3].(TurnCompleteEvent).Turn.Artifacts, 1)
+	text, ok = events[3].(TurnCompleteEvent).Turn.Artifacts[0].(artifact.Text)
 	require.True(t, ok)
 	assert.Equal(t, "world!", text.Content)
 }
@@ -553,6 +557,74 @@ func TestStep_Turn_DeltasDroppedWithoutSubscriber(t *testing.T) {
 	text, ok := last.Artifacts[0].(artifact.Text)
 	require.True(t, ok)
 	assert.Equal(t, "world!", text.Content)
+}
+
+func TestStep_Turn_CompleteArtifactEvent(t *testing.T) {
+	s := New()
+	ch := s.Subscribe("text", "turn_complete")
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "hello"},
+		},
+	}
+
+	result, err := s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+	assert.Same(t, mem, result)
+
+	events := collectEvents(ch, 100*time.Millisecond)
+
+	require.Len(t, events, 2)
+	assert.Equal(t, "text", events[0].Kind())
+	text, ok := events[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "hello", text.Content)
+	assert.Equal(t, "turn_complete", events[1].Kind())
+	assert.Equal(t, state.RoleAssistant, events[1].(TurnCompleteEvent).Turn.Role)
+
+	// Complete artifact should also be in state.
+	turns := mem.Turns()
+	require.Len(t, turns, 2)
+	last := turns[1]
+	assert.Equal(t, state.RoleAssistant, last.Role)
+	require.Len(t, last.Artifacts, 1)
+	text, ok = last.Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "hello", text.Content)
+}
+
+func TestStep_Turn_ErrorEmitsCompleteArtifacts(t *testing.T) {
+	s := New()
+	ch := s.Subscribe("text", "error")
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	wantErr := errors.New("provider failed")
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "partial"},
+		},
+		err: wantErr,
+	}
+
+	_, err := s.Turn(context.Background(), mem, prov)
+	require.ErrorIs(t, err, wantErr)
+
+	events := collectEvents(ch, 100*time.Millisecond)
+
+	require.Len(t, events, 2)
+	assert.Equal(t, "text", events[0].Kind())
+	text, ok := events[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "partial", text.Content)
+	assert.Equal(t, "error", events[1].Kind())
+	assert.Equal(t, wantErr, events[1].(ErrorEvent).Err)
+
+	// State should not be mutated.
+	assert.Len(t, mem.Turns(), 1)
 }
 
 func TestStep_Turn_ErrorEvent(t *testing.T) {

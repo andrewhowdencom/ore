@@ -1,7 +1,7 @@
 // Package loop implements the single-turn execution primitive for ore.
-// It provides a Step type that invokes a provider, distributes streaming
-// artifacts to subscribers via an embedded FanOut, and runs registered
-// artifact handlers on the complete response.
+// It provides a Step type that invokes a provider, distributes all artifacts
+// (both delta and complete) to subscribers via an embedded FanOut, and runs
+// registered artifact handlers on the complete response.
 //
 // Options include:
 //
@@ -14,5 +14,7 @@
 //
 // Surfaces subscribe to specific artifact kinds via Step.Subscribe(),
 // receiving artifacts directly (which satisfy OutputEvent via Kind()) as
-// they are emitted by the provider.
+// they are emitted by the provider. The artifact.Delta marker interface
+// controls whether an artifact is persisted to state; it does NOT filter
+// event-stream visibility. All artifacts are forwarded to subscribers.
 package loop
