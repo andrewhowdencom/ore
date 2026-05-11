@@ -1,5 +1,5 @@
 // tui-chat is a reference application demonstrating a streaming chat REPL
-// using the tack framework with the surface/tui package.
+// using the ore framework with the surface/tui package.
 package main
 
 import (
@@ -9,13 +9,13 @@ import (
 	"os"
 	"sync"
 
-	"github.com/andrewhowdencom/tack/artifact"
-	"github.com/andrewhowdencom/tack/cognitive"
-	"github.com/andrewhowdencom/tack/loop"
-	"github.com/andrewhowdencom/tack/provider/openai"
-	"github.com/andrewhowdencom/tack/state"
-	"github.com/andrewhowdencom/tack/surface"
-	"github.com/andrewhowdencom/tack/surface/tui"
+	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/cognitive"
+	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/provider/openai"
+	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/surface"
+	"github.com/andrewhowdencom/ore/surface/tui"
 )
 
 func main() {
@@ -33,17 +33,17 @@ func run() error {
 	defer cancel()
 
 	// Environment configuration.
-	apiKey := os.Getenv("TACK_API_KEY")
+	apiKey := os.Getenv("ORE_API_KEY")
 	if apiKey == "" {
-		return fmt.Errorf("TACK_API_KEY not set")
+		return fmt.Errorf("ORE_API_KEY not set")
 	}
 
-	modelName := os.Getenv("TACK_MODEL")
+	modelName := os.Getenv("ORE_MODEL")
 	if modelName == "" {
 		modelName = "gpt-4o"
 	}
 
-	baseURL := os.Getenv("TACK_BASE_URL")
+	baseURL := os.Getenv("ORE_BASE_URL")
 
 	// Create TUI surface.
 	s := tui.New()

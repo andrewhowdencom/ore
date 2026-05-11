@@ -1,13 +1,13 @@
 // Package tui implements an opinionated terminal user interface surface for
-// the tack framework using Bubble Tea.
+// the ore framework using Bubble Tea.
 package tui
 
 import (
 	"context"
 
-	"github.com/andrewhowdencom/tack/artifact"
-	"github.com/andrewhowdencom/tack/state"
-	"github.com/andrewhowdencom/tack/surface"
+	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/surface"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )

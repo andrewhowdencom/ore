@@ -1,8 +1,8 @@
-// Package state defines the State interface and supporting types for tack's
+// Package state defines the State interface and supporting types for ore's
 // conversation history model.
 package state
 
-import "github.com/andrewhowdencom/tack/artifact"
+import "github.com/andrewhowdencom/ore/artifact"
 
 // Role represents the role of a participant in a conversation turn.
 type Role string

@@ -1,5 +1,5 @@
 // Package artifact defines the extensible Artifact interface and common concrete
-// types used throughout tack.
+// types used throughout ore.
 //
 // The Artifact interface exposes a public Kind() method to allow custom artifact
 // types to be defined in other packages. Private marker methods would prevent

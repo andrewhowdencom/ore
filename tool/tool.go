@@ -1,5 +1,5 @@
 // Package tool provides a provider-agnostic tool registry and artifact handler
-// for tack. A Registry maps tool names to Go functions, and a Handler
+// for ore. A Registry maps tool names to Go functions, and a Handler
 // implements loop.Handler to execute tool calls and append ToolResult turns.
 package tool
 

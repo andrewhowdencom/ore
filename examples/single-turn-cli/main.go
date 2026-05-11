@@ -1,5 +1,5 @@
 // single-turn-cli is a reference application demonstrating composition of the
-// tack loop.Step with an OpenAI-compatible provider adapter.
+// ore loop.Step with an OpenAI-compatible provider adapter.
 package main
 
 import (
@@ -10,10 +10,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/andrewhowdencom/tack/artifact"
-	"github.com/andrewhowdencom/tack/loop"
-	"github.com/andrewhowdencom/tack/provider/openai"
-	"github.com/andrewhowdencom/tack/state"
+	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/provider/openai"
+	"github.com/andrewhowdencom/ore/state"
 )
 
 func main() {
@@ -47,17 +47,17 @@ func run() error {
 	}
 
 	// Environment configuration.
-	apiKey := os.Getenv("TACK_API_KEY")
+	apiKey := os.Getenv("ORE_API_KEY")
 	if apiKey == "" {
-		return fmt.Errorf("TACK_API_KEY not set")
+		return fmt.Errorf("ORE_API_KEY not set")
 	}
 
-	model := os.Getenv("TACK_MODEL")
+	model := os.Getenv("ORE_MODEL")
 	if model == "" {
 		model = "gpt-4o"
 	}
 
-	baseURL := os.Getenv("TACK_BASE_URL")
+	baseURL := os.Getenv("ORE_BASE_URL")
 
 	// Build state with the user message.
 	mem := &state.Memory{}

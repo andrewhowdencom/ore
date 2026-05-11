@@ -6,10 +6,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/andrewhowdencom/tack/artifact"
-	"github.com/andrewhowdencom/tack/loop"
-	"github.com/andrewhowdencom/tack/provider"
-	"github.com/andrewhowdencom/tack/state"
+	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/provider"
+	"github.com/andrewhowdencom/ore/state"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

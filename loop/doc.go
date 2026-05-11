@@ -1,4 +1,4 @@
-// Package loop implements the single-turn execution primitive for tack.
+// Package loop implements the single-turn execution primitive for ore.
 // It provides a Step type that invokes a provider, optionally emits
 // streaming deltas as OutputEvents to a provided channel, and runs
 // registered artifact handlers on the complete response.

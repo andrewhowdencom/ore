@@ -5,8 +5,8 @@ package provider
 import (
 	"context"
 
-	"github.com/andrewhowdencom/tack/artifact"
-	"github.com/andrewhowdencom/tack/state"
+	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/state"
 )
 
 // Provider is the interface implemented by LLM provider adapters.

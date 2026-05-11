@@ -6,7 +6,7 @@ Implement visual feedback during active streaming in the `surface/tui` package s
 
 ## Context
 
-Issue [#8](https://github.com/andrewhowdencom/tack/issues/8) (“TUI: Add streaming visual feedback”) identifies that during streaming responses, text appears character-by-character with no visual cue that generation is in progress. Additionally, `artifact.TextDelta` and `artifact.ReasoningDelta` were handled identically in the Bubble Tea model — both were appended to a single `streamBuffer` and rendered with the same `Assistant:` label.
+Issue [#8](https://github.com/andrewhowdencom/ore/issues/8) (“TUI: Add streaming visual feedback”) identifies that during streaming responses, text appears character-by-character with no visual cue that generation is in progress. Additionally, `artifact.TextDelta` and `artifact.ReasoningDelta` were handled identically in the Bubble Tea model — both were appended to a single `streamBuffer` and rendered with the same `Assistant:` label.
 
 **Relevant files discovered:**
 

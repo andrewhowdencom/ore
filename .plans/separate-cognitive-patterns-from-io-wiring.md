@@ -2,7 +2,7 @@
 
 ## Objective
 
-Refactor tack's architecture to eliminate the conflation of cognitive patterns (ReAct feedback loop) with IO orchestration (surface event handling, rendering, status). `loop.Step` currently couples itself to `surface.Surface` for streaming delta rendering, while `orchestrate.ReAct` simultaneously owns both the ReAct feedback loop and the surface event loop. This plan separates three distinct concerns: `loop.Step` becomes a surface-agnostic transform node that emits output events; ReAct is extracted as a pure, stateless cognitive pattern under a new `cognitive/` package; and surface/IO wiring becomes the sole responsibility of application-level code.
+Refactor ore's architecture to eliminate the conflation of cognitive patterns (ReAct feedback loop) with IO orchestration (surface event handling, rendering, status). `loop.Step` currently couples itself to `surface.Surface` for streaming delta rendering, while `orchestrate.ReAct` simultaneously owns both the ReAct feedback loop and the surface event loop. This plan separates three distinct concerns: `loop.Step` becomes a surface-agnostic transform node that emits output events; ReAct is extracted as a pure, stateless cognitive pattern under a new `cognitive/` package; and surface/IO wiring becomes the sole responsibility of application-level code.
 
 ## Context
 
@@ -177,9 +177,9 @@ examples/      → application main() wires surface events → state → cogniti
 - **Interfaces**: None.
 - **Validation**:
   - `go test -race ./...` passes (no package at `orchestrate/` should be tested).
-  - `find /home/andrewhowdencom/Development/tack/orchestrate -type f | wc -l` should return `0`.
-  - `grep -r "orchestrate" /home/andrewhowdencom/Development/tack --include="*.go"` should find no imports (except possibly in `README.md`, which is handled in Task 7).
-- **Details**: Delete all three files. Delete the `orchestrate/` directory if it becomes empty. Verify no other Go files in the repository import `github.com/andrewhowdencom/tack/orchestrate`.
+  - `find /home/andrewhowdencom/Development/ore/orchestrate -type f | wc -l` should return `0`.
+  - `grep -r "orchestrate" /home/andrewhowdencom/Development/ore --include="*.go"` should find no imports (except possibly in `README.md`, which is handled in Task 7).
+- **Details**: Delete all three files. Delete the `orchestrate/` directory if it becomes empty. Verify no other Go files in the repository import `github.com/andrewhowdencom/ore/orchestrate`.
 
 ### Task 6: Remove surface Dependency from loop/
 - **Goal**: Strip the remaining surface awareness from `loop.Step` by removing `WithSurface()`, the `surface` field, and the `surface/` import.
@@ -197,8 +197,8 @@ examples/      → application main() wires surface events → state → cogniti
 - **Validation**:
   - `go build ./...` passes with no errors.
   - `go test -race ./...` passes.
-  - `grep -n "surface" /home/andrewhowdencom/Development/tack/loop/loop.go` should find no matches.
-  - `grep -n "surface" /home/andrewhowdencom/Development/tack/loop/loop_test.go` should find no matches.
+  - `grep -n "surface" /home/andrewhowdencom/Development/ore/loop/loop.go` should find no matches.
+  - `grep -n "surface" /home/andrewhowdencom/Development/ore/loop/loop_test.go` should find no matches.
 - **Details**: Update `loop/loop_test.go` to remove all `mockSurface` code and tests that depend on `WithSurface()`. The output-event tests added in Task 1 remain and now cover the sole streaming mechanism. Update `loop/doc.go` to remove references to "optionally routes streaming deltas to a surface" — replace with "optionally emits streaming deltas as OutputEvent to a provided channel".
 
 ### Task 7: Update README.md Architecture Documentation
@@ -209,9 +209,9 @@ examples/      → application main() wires surface events → state → cogniti
 - **New Files**: None.
 - **Interfaces**: None.
 - **Validation**:
-  - `grep -c "orchestrate" /home/andrewhowdencom/Development/tack/README.md` should return `0`.
-  - `grep -c "Orchestrator" /home/andrewhowdencom/Development/tack/README.md` should return `0`.
-  - `grep -c "WithSurface" /home/andrewhowdencom/Development/tack/README.md` should return `0`.
+  - `grep -c "orchestrate" /home/andrewhowdencom/Development/ore/README.md` should return `0`.
+  - `grep -c "Orchestrator" /home/andrewhowdencom/Development/ore/README.md` should return `0`.
+  - `grep -c "WithSurface" /home/andrewhowdencom/Development/ore/README.md` should return `0`.
 - **Details**: Update the "System Architecture" section to describe the three layers (Transform, Cognitive, IO Wiring) instead of the old core/step/orchestrate split. Replace code examples that reference `orchestrate.ReAct` and `WithSurface` with examples using `cognitive.ReAct` and `WithOutput`. Update the package listing to include `cognitive/` and remove `orchestrate/`. Update the description of `loop.Step` to describe output events instead of surface rendering.
 
 ## Dependency Graph

@@ -1,4 +1,4 @@
-module github.com/andrewhowdencom/tack
+module github.com/andrewhowdencom/ore
 
 go 1.26.2
 

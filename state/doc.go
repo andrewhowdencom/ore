@@ -1,4 +1,4 @@
-// Package state defines the State interface and supporting types for tack's
+// Package state defines the State interface and supporting types for ore's
 // conversation history model.
 //
 // State is a mutable interface: Append() mutates in place. Turns() returns a

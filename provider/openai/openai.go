@@ -10,10 +10,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/andrewhowdencom/tack/artifact"
-	"github.com/andrewhowdencom/tack/provider"
+	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/provider"
 	"github.com/openai/openai-go/packages/param"
-	"github.com/andrewhowdencom/tack/state"
+	"github.com/andrewhowdencom/ore/state"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 )
@@ -91,8 +91,8 @@ func (p *Provider) SetTools(tools []provider.Tool) error {
 	return nil
 }
 
-// serializeMessages converts tack state into OpenAI chat completion message
-// parameters. It maps tack roles to OpenAI message types and preserves
+// serializeMessages converts ore state into OpenAI chat completion message
+// parameters. It maps ore roles to OpenAI message types and preserves
 // ToolCall and ToolResult artifacts for tool calling conversations.
 func (p *Provider) serializeMessages(s state.State) []openai.ChatCompletionMessageParamUnion {
 	turns := s.Turns()
