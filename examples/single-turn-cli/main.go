@@ -78,10 +78,10 @@ func run() error {
 	//       return "42", nil
 	//   })
 	//   p := openai.New(apiKey, model, opts...)
-	//   _ = p.SetTools([]provider.Tool{
+	//   tools := []provider.Tool{
 	//       {Name: "calculator", Description: "A simple calculator", Schema: map[string]any{"type": "object"}},
-	//   })
-	//   s := loop.New(loop.WithHandlers(registry.Handler()))
+	//   }
+	//   s := loop.New(loop.WithHandlers(registry.Handler()), loop.WithInvokeOptions(openai.WithTools(tools)))
 	//
 	// Note: to use tools, loop until the assistant responds with text rather
 	// than a single turn. See examples/calculator for a complete example.

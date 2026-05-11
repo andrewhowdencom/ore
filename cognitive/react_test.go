@@ -20,12 +20,12 @@ type simpleProvider struct {
 	err       error
 }
 
-func (p *simpleProvider) Invoke(ctx context.Context, s state.State) ([]artifact.Artifact, error) {
+func (p *simpleProvider) Invoke(ctx context.Context, s state.State, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
 	return p.artifacts, p.err
 }
 
-func (p *simpleProvider) InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact) ([]artifact.Artifact, error) {
-	return p.Invoke(ctx, s)
+func (p *simpleProvider) InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
+	return p.Invoke(ctx, s, opts...)
 }
 
 var _ provider.StreamingProvider = (*simpleProvider)(nil)
@@ -36,7 +36,7 @@ type countingProvider struct {
 	callCount int
 }
 
-func (p *countingProvider) Invoke(ctx context.Context, s state.State) ([]artifact.Artifact, error) {
+func (p *countingProvider) Invoke(ctx context.Context, s state.State, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.callCount++
@@ -53,8 +53,8 @@ func (p *countingProvider) Invoke(ctx context.Context, s state.State) ([]artifac
 	}
 }
 
-func (p *countingProvider) InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact) ([]artifact.Artifact, error) {
-	return p.Invoke(ctx, s)
+func (p *countingProvider) InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
+	return p.Invoke(ctx, s, opts...)
 }
 
 var _ provider.StreamingProvider = (*countingProvider)(nil)
@@ -62,7 +62,7 @@ var _ provider.StreamingProvider = (*countingProvider)(nil)
 // cancelCheckingProvider checks ctx.Err() before returning artifacts.
 type cancelCheckingProvider struct{}
 
-func (p *cancelCheckingProvider) Invoke(ctx context.Context, s state.State) ([]artifact.Artifact, error) {
+func (p *cancelCheckingProvider) Invoke(ctx context.Context, s state.State, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -71,8 +71,8 @@ func (p *cancelCheckingProvider) Invoke(ctx context.Context, s state.State) ([]a
 	}, nil
 }
 
-func (p *cancelCheckingProvider) InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact) ([]artifact.Artifact, error) {
-	return p.Invoke(ctx, s)
+func (p *cancelCheckingProvider) InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
+	return p.Invoke(ctx, s, opts...)
 }
 
 var _ provider.StreamingProvider = (*cancelCheckingProvider)(nil)

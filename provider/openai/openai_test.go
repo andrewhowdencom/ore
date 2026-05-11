@@ -448,7 +448,7 @@ func TestProviderInvokeStreaming_ReasoningOnly(t *testing.T) {
 	assert.Equal(t, "Let me analyze this request", reasoning.Content)
 }
 
-func TestProviderInvoke_ConcurrentSetTools(t *testing.T) {
+func TestProviderInvoke_ConcurrentOptions(t *testing.T) {
 	transport := &concurrentMockTransport{
 		responseBody: `{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`,
 	}
@@ -458,28 +458,34 @@ func TestProviderInvoke_ConcurrentSetTools(t *testing.T) {
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	var wg sync.WaitGroup
-
-	// Goroutine A: continuously updates tools.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 100; i++ {
-			_ = p.SetTools([]provider.Tool{
-				{Name: fmt.Sprintf("tool-%d", i), Description: "test", Schema: map[string]any{"type": "object"}},
-			})
-		}
-	}()
-
-	// Goroutine B: continuously invokes the provider.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 100; i++ {
-			_, _ = p.Invoke(t.Context(), mem)
-		}
-	}()
-
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			tools := []provider.Tool{{Name: fmt.Sprintf("tool-%d", idx), Description: "test", Schema: map[string]any{"type": "object"}}}
+			_, _ = p.Invoke(t.Context(), mem, WithTools(tools))
+		}(i)
+	}
 	wg.Wait()
+}
+
+func TestProviderInvoke_WithTemperature(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponse(200, `{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`),
+	}
+
+	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	_, err := p.Invoke(t.Context(), mem, WithTemperature(0.7))
+	require.NoError(t, err)
+
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+	assert.InDelta(t, 0.7, reqBody["temperature"], 0.001)
 }
 
 func TestProviderInvoke_MixedAssistantTextAndToolCalls(t *testing.T) {
@@ -571,11 +577,10 @@ func TestProviderInvoke_ToolsWithDescription(t *testing.T) {
 	}
 
 	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
-	require.NoError(t, p.SetTools(tools))
 	mem := &state.Memory{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
-	_, err := p.Invoke(t.Context(), mem)
+	_, err := p.Invoke(t.Context(), mem, WithTools(tools))
 	require.NoError(t, err)
 
 	require.NotNil(t, transport.request)
