@@ -18,17 +18,12 @@ type mockProvider struct {
 	err       error
 }
 
-func (m *mockProvider) Invoke(ctx context.Context, s state.State) ([]artifact.Artifact, error) {
+func (m *mockProvider) Invoke(ctx context.Context, s state.State, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
 	return m.artifacts, m.err
-}
-
-func (m *mockProvider) SetTools(tools []provider.Tool) error {
-	return nil
 }
 
 // Compile-time interface checks.
 var _ provider.Provider = (*mockProvider)(nil)
-var _ provider.ToolProvider = (*mockProvider)(nil)
 
 // mockStreamingProvider implements provider.StreamingProvider for testing.
 type mockStreamingProvider struct {
@@ -37,24 +32,19 @@ type mockStreamingProvider struct {
 	err       error
 }
 
-func (m *mockStreamingProvider) Invoke(ctx context.Context, s state.State) ([]artifact.Artifact, error) {
+func (m *mockStreamingProvider) Invoke(ctx context.Context, s state.State, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
 	return m.artifacts, m.err
 }
 
-func (m *mockStreamingProvider) InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact) ([]artifact.Artifact, error) {
+func (m *mockStreamingProvider) InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
 	for _, d := range m.deltas {
 		deltasCh <- d
 	}
 	return m.artifacts, m.err
 }
 
-func (m *mockStreamingProvider) SetTools(tools []provider.Tool) error {
-	return nil
-}
-
 // Compile-time interface checks.
 var _ provider.StreamingProvider = (*mockStreamingProvider)(nil)
-var _ provider.ToolProvider = (*mockStreamingProvider)(nil)
 
 // mockHandler implements Handler for testing.
 type mockHandler struct {

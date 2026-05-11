@@ -45,6 +45,7 @@ type Step struct {
 	output      chan<- OutputEvent
 	beforeTurns []BeforeTurn
 	handlers    []Handler
+	invokeOpts  []provider.InvokeOption
 }
 
 // New creates a Step with the given options.
@@ -84,13 +85,21 @@ func WithHandlers(handlers ...Handler) Option {
 	}
 }
 
+// WithInvokeOptions configures pre-bound provider invocation options that are
+// automatically passed to every provider call made by this Step.
+func WithInvokeOptions(opts ...provider.InvokeOption) Option {
+	return func(s *Step) {
+		s.invokeOpts = opts
+	}
+}
+
 // Turn performs one inference turn with the given provider.
 // If an output channel is configured and the provider supports streaming, deltas
 // are emitted as DeltaEvent to the channel in real-time via a background goroutine.
 // After the turn completes, all registered handlers are invoked on each
 // artifact from the assistant turn. The operation is fully synchronous and
 // blocking.
-func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider) (state.State, error) {
+func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, opts ...provider.InvokeOption) (state.State, error) {
 	var err error
 
 	for _, bt := range s.beforeTurns {
@@ -120,16 +129,20 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider) (s
 		}()
 	}
 
+	allOpts := make([]provider.InvokeOption, 0, len(s.invokeOpts)+len(opts))
+	allOpts = append(allOpts, s.invokeOpts...)
+	allOpts = append(allOpts, opts...)
+
 	var artifacts []artifact.Artifact
 
 	if deltasCh != nil {
 		if sp, ok := p.(provider.StreamingProvider); ok {
-			artifacts, err = sp.InvokeStreaming(ctx, st, deltasCh)
+			artifacts, err = sp.InvokeStreaming(ctx, st, deltasCh, allOpts...)
 		} else {
-			artifacts, err = p.Invoke(ctx, st)
+			artifacts, err = p.Invoke(ctx, st, allOpts...)
 		}
 	} else {
-		artifacts, err = p.Invoke(ctx, st)
+		artifacts, err = p.Invoke(ctx, st, allOpts...)
 	}
 
 	if deltasCh != nil {

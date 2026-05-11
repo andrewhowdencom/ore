@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/provider"
@@ -23,8 +22,32 @@ import (
 type Provider struct {
 	client openai.Client
 	model  string
-	mu     sync.RWMutex
-	tools  []provider.Tool
+}
+
+// toolOption is a per-invocation option that configures available tools.
+type toolOption struct {
+	tools []provider.Tool
+}
+
+func (toolOption) IsInvokeOption() {}
+
+// WithTools returns an InvokeOption that configures the set of available tools
+// for a single provider invocation.
+func WithTools(tools []provider.Tool) provider.InvokeOption {
+	return toolOption{tools: tools}
+}
+
+// temperatureOption is a per-invocation option that sets the sampling temperature.
+type temperatureOption struct {
+	t float64
+}
+
+func (temperatureOption) IsInvokeOption() {}
+
+// WithTemperature returns an InvokeOption that sets the sampling temperature
+// for a single provider invocation.
+func WithTemperature(t float64) provider.InvokeOption {
+	return temperatureOption{t: t}
 }
 
 // config holds the build-time configuration for the Provider.
@@ -80,16 +103,6 @@ func New(apiKey, model string, opts ...Option) *Provider {
 // Compile-time interface checks.
 var _ provider.Provider = (*Provider)(nil)
 var _ provider.StreamingProvider = (*Provider)(nil)
-var _ provider.ToolProvider = (*Provider)(nil)
-
-// SetTools updates the set of available tools for the provider. It is safe
-// for concurrent use with Invoke and InvokeStreaming.
-func (p *Provider) SetTools(tools []provider.Tool) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.tools = tools
-	return nil
-}
 
 // serializeMessages converts ore state into OpenAI chat completion message
 // parameters. It maps ore roles to OpenAI message types and preserves
@@ -186,12 +199,19 @@ func concatText(artifacts []artifact.Artifact) string {
 
 // Invoke serializes state into an OpenAI chat completions request via the SDK,
 // calls the API, and deserializes the response into artifacts.
-func (p *Provider) Invoke(ctx context.Context, s state.State) ([]artifact.Artifact, error) {
+func (p *Provider) Invoke(ctx context.Context, s state.State, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
 	messages := p.serializeMessages(s)
 
-	p.mu.RLock()
-	tools := p.tools
-	p.mu.RUnlock()
+	var tools []provider.Tool
+	var temperature float64
+	for _, opt := range opts {
+		if to, ok := opt.(toolOption); ok {
+			tools = to.tools
+		}
+		if temp, ok := opt.(temperatureOption); ok {
+			temperature = temp.t
+		}
+	}
 
 	params := openai.ChatCompletionNewParams{
 		Model:    openai.ChatModel(p.model),
@@ -199,6 +219,9 @@ func (p *Provider) Invoke(ctx context.Context, s state.State) ([]artifact.Artifa
 	}
 	if len(tools) > 0 {
 		params.Tools = p.serializeTools(tools)
+	}
+	if temperature != 0 {
+		params.Temperature = param.NewOpt(temperature)
 	}
 
 	resp, err := p.client.Chat.Completions.New(ctx, params)
@@ -246,16 +269,23 @@ func (p *Provider) Invoke(ctx context.Context, s state.State) ([]artifact.Artifa
 // InvokeStreaming serializes state into an OpenAI streaming chat completions
 // request, emits partial delta artifacts to deltasCh as they arrive, and
 // returns the complete buffered artifacts when the stream finishes.
-func (p *Provider) InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact) ([]artifact.Artifact, error) {
+func (p *Provider) InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
 	if deltasCh == nil {
-		return p.Invoke(ctx, s)
+		return p.Invoke(ctx, s, opts...)
 	}
 
 	messages := p.serializeMessages(s)
 
-	p.mu.RLock()
-	tools := p.tools
-	p.mu.RUnlock()
+	var tools []provider.Tool
+	var temperature float64
+	for _, opt := range opts {
+		if to, ok := opt.(toolOption); ok {
+			tools = to.tools
+		}
+		if temp, ok := opt.(temperatureOption); ok {
+			temperature = temp.t
+		}
+	}
 
 	params := openai.ChatCompletionNewParams{
 		Model:    openai.ChatModel(p.model),
@@ -263,6 +293,9 @@ func (p *Provider) InvokeStreaming(ctx context.Context, s state.State, deltasCh 
 	}
 	if len(tools) > 0 {
 		params.Tools = p.serializeTools(tools)
+	}
+	if temperature != 0 {
+		params.Temperature = param.NewOpt(temperature)
 	}
 
 	stream := p.client.Chat.Completions.NewStreaming(ctx, params)

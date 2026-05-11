@@ -121,18 +121,15 @@ func run() error {
 	}
 	prov := openai.New(apiKey, model, opts...)
 
-	// Configure tools on the provider. The tool list can be changed
-	// mid-session by calling SetTools again before any turn.
-	if err := prov.SetTools(tools); err != nil {
-		return err
-	}
-
 	// Build state with the user message.
 	mem := &state.Memory{}
 	mem.Append(state.RoleUser, artifact.Text{Content: message})
 
-	// Create step with tool handler.
-	step := loop.New(loop.WithHandlers(registry.Handler()))
+	// Create step with tool handler and pre-bound tool options.
+	step := loop.New(
+		loop.WithHandlers(registry.Handler()),
+		loop.WithInvokeOptions(openai.WithTools(tools)),
+	)
 
 	// Run the cognitive pattern.
 	react := &cognitive.ReAct{
