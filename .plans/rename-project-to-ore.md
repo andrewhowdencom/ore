@@ -1,28 +1,28 @@
-# Plan: Rename Project from "tack" to "ore"
+# Plan: Rename Project from "ore" to "ore"
 
 ## Objective
 
-Rename the entire Go module, all import paths, documentation, and environment variables from "tack" to "ore", ensuring the codebase compiles and all tests pass after the rename.
+Rename the entire Go module, all import paths, documentation, and environment variables from "ore" to "ore", ensuring the codebase compiles and all tests pass after the rename.
 
 ## Context
 
-The project is currently named **tack** with Go module path `github.com/andrewhowdencom/tack`. The string "tack" appears in three broad categories:
+The project is currently named **ore** with Go module path `github.com/andrewhowdencom/ore`. The string "ore" appears in three broad categories:
 
 1. **Go module system**: `go.mod` module declaration and import paths in 23+ `.go` and `_test.go` files across all packages (`artifact/`, `state/`, `provider/`, `loop/`, `tool/`, `surface/`, `cognitive/`, `examples/*/`).
 2. **Human-readable references**: `README.md`, `AGENTS.md`, package doc comments (`doc.go` files and inline comments), and example file header comments.
 3. **Runtime configuration**: Environment variables `TACK_API_KEY`, `TACK_MODEL`, and `TACK_BASE_URL` in the three example applications.
 
-Additionally, four stale compiled binaries (`calculator`, `main`, `single-turn-cli`, `tui-chat`) exist in the working tree but are untracked by git. Seven existing `.plans/*.md` historical plan files also contain "tack" references and should be updated for consistency.
+Additionally, four stale compiled binaries (`calculator`, `main`, `single-turn-cli`, `tui-chat`) exist in the working tree but are untracked by git. Seven existing `.plans/*.md` historical plan files also contain "ore" references and should be updated for consistency.
 
 ## Architectural Blueprint
 
-This is a mechanical, non-architectural rename. There is only one viable path: perform a global, coordinated replacement of "tack" → "ore" and `TACK_` → `ORE_` across all relevant files, then verify compilation and tests. The `go.mod` module declaration and all import paths must be changed together — neither compiles without the other.
+This is a mechanical, non-architectural rename. There is only one viable path: perform a global, coordinated replacement of "ore" → "ore" and `TACK_` → `ORE_` across all relevant files, then verify compilation and tests. The `go.mod` module declaration and all import paths must be changed together — neither compiles without the other.
 
 ## Requirements
 
-- [R1] The Go module path must change from `github.com/andrewhowdencom/tack` to `github.com/andrewhowdencom/ore`.
+- [R1] The Go module path must change from `github.com/andrewhowdencom/ore` to `github.com/andrewhowdencom/ore`.
 - [R2] All import paths must be updated accordingly across all `.go` and `_test.go` files.
-- [R3] All package documentation (`doc.go` and inline comments) referencing "tack" must be updated to "ore".
+- [R3] All package documentation (`doc.go` and inline comments) referencing "ore" must be updated to "ore".
 - [R4] `README.md` and `AGENTS.md` must be updated to reference "ore".
 - [R5] Environment variables must change from `TACK_*` to `ORE_*` in example applications.
 - [R6] Stale compiled binaries must be removed from the working tree.
@@ -33,7 +33,7 @@ This is a mechanical, non-architectural rename. There is only one viable path: p
 ## Task Breakdown
 
 ### Task 1: Rename Go Module and All Import Paths
-- **Goal**: Update `go.mod` module declaration and every `github.com/andrewhowdencom/tack` import path to `github.com/andrewhowdencom/ore` across all Go source and test files.
+- **Goal**: Update `go.mod` module declaration and every `github.com/andrewhowdencom/ore` import path to `github.com/andrewhowdencom/ore` across all Go source and test files.
 - **Dependencies**: None
 - **Files Affected**:
   - `go.mod`
@@ -65,13 +65,13 @@ This is a mechanical, non-architectural rename. There is only one viable path: p
   - `go mod tidy` runs cleanly
   - `go build ./...` compiles successfully
 - **Details**:
-  1. Edit `go.mod` line 1: `module github.com/andrewhowdencom/tack` → `module github.com/andrewhowdencom/ore`
-  2. Globally replace `github.com/andrewhowdencom/tack` with `github.com/andrewhowdencom/ore` in every `.go` and `_test.go` file
+  1. Edit `go.mod` line 1: `module github.com/andrewhowdencom/ore` → `module github.com/andrewhowdencom/ore`
+  2. Globally replace `github.com/andrewhowdencom/ore` with `github.com/andrewhowdencom/ore` in every `.go` and `_test.go` file
   3. Run `go mod tidy` to regenerate `go.sum`
   4. Run `go build ./...` to verify compilation
 
 ### Task 2: Update Documentation and Package Comments
-- **Goal**: Replace all human-readable "tack" references with "ore" in `README.md`, `AGENTS.md`, package doc comments, and inline comments.
+- **Goal**: Replace all human-readable "ore" references with "ore" in `README.md`, `AGENTS.md`, package doc comments, and inline comments.
 - **Dependencies**: Task 1
 - **Files Affected**:
   - `README.md`
@@ -84,7 +84,7 @@ This is a mechanical, non-architectural rename. There is only one viable path: p
   - `surface/surface.go`
   - `surface/tui/tui.go`
   - `tool/tool.go`
-  - `provider/openai/openai.go` (inline comments: "converts tack state", "maps tack roles")
+  - `provider/openai/openai.go` (inline comments: "converts ore state", "maps ore roles")
   - `examples/single-turn-cli/main.go` (header comment)
   - `examples/tui-chat/main.go` (header comment)
   - `examples/calculator/main.go` (header comment)
@@ -95,12 +95,12 @@ This is a mechanical, non-architectural rename. There is only one viable path: p
   - `go build ./...` still compiles
 - **Details**:
   1. Update `README.md`:
-     - Title: `# tack` → `# ore`
+     - Title: `# ore` → `# ore`
      - Tagline: replace the current "Token Fastener" tagline with a conceptual framing that explains: **ore** are the inputs to an agentic system, and **forge** is the agentic developer that builds with ore (and with other materials too). Add this as a short conceptual preamble near the top of the README, e.g. between the title and the Purpose section.
-     - Update all remaining body references from "tack" to "ore"
-  2. Update `AGENTS.md`: title `# tack Agent Conventions` → `# ore Agent Conventions`, update body references
+     - Update all remaining body references from "ore" to "ore"
+  2. Update `AGENTS.md`: title `# ore Agent Conventions` → `# ore Agent Conventions`, update body references
   3. Update package doc comments in `artifact/doc.go`, `artifact/artifact.go`, `state/doc.go`, `state/state.go`, `loop/doc.go`
-  4. Update comments in `surface/surface.go` ("the tack framework"), `surface/tui/tui.go` ("the tack framework"), `tool/tool.go` ("for tack")
+  4. Update comments in `surface/surface.go` ("the ore framework"), `surface/tui/tui.go` ("the ore framework"), `tool/tool.go` ("for ore")
   5. Update inline comments in `provider/openai/openai.go`
   6. Update example header comments in all three `examples/*/main.go` files
 
@@ -122,7 +122,7 @@ This is a mechanical, non-architectural rename. There is only one viable path: p
   3. Replace `TACK_BASE_URL` with `ORE_BASE_URL` (6 occurrences across 3 files)
 
 ### Task 4: Update Historical Plan Files
-- **Goal**: Update existing `.plans/*.md` files to reference "ore" instead of "tack" for consistency.
+- **Goal**: Update existing `.plans/*.md` files to reference "ore" instead of "ore" for consistency.
 - **Dependencies**: Task 2
 - **Files Affected**:
   - `.plans/add-tool-calling-with-extension-points.md`
@@ -136,9 +136,9 @@ This is a mechanical, non-architectural rename. There is only one viable path: p
 - **Interfaces**: No interface changes
 - **Validation**: No build validation; verify by reading or grep
 - **Details**:
-  1. Globally replace "tack" with "ore" in each affected `.plans/*.md` file
-  2. Update any `github.com/andrewhowdencom/tack` module references in code blocks within the plans to `github.com/andrewhowdencom/ore`
-  3. Leave `.plans/add-openai-streaming-reasoning-delta.md` and `.plans/add-tui-markdown-rendering.md` alone if they do not contain "tack" (verify with grep)
+  1. Globally replace "ore" with "ore" in each affected `.plans/*.md` file
+  2. Update any `github.com/andrewhowdencom/ore` module references in code blocks within the plans to `github.com/andrewhowdencom/ore`
+  3. Leave `.plans/add-openai-streaming-reasoning-delta.md` and `.plans/add-tui-markdown-rendering.md` alone if they do not contain "ore" (verify with grep)
 
 ### Task 5: Remove Stale Binaries and Final Verification
 - **Goal**: Remove untracked compiled binaries and run the full test suite to confirm the rename is complete and the repository is healthy.
@@ -154,13 +154,13 @@ This is a mechanical, non-architectural rename. There is only one viable path: p
   - `go build ./...` passes
   - `go test -race ./...` passes
   - `go vet ./...` passes
-  - `grep -ri "tack\|TACK" --not-match-dir=.git --not-match-dir=.pi .` returns no matches in source files
+  - `grep -ri "ore\|TACK" --not-match-dir=.git --not-match-dir=.pi .` returns no matches in source files
 - **Details**:
   1. Remove untracked binaries: `rm calculator main single-turn-cli tui-chat`
   2. Run `go build ./...`
   3. Run `go test -race ./...`
   4. Run `go vet ./...`
-  5. Run a final grep sweep to confirm no "tack" or "TACK" references remain in any tracked source, documentation, or example files
+  5. Run a final grep sweep to confirm no "ore" or "TACK" references remain in any tracked source, documentation, or example files
 
 ## Dependency Graph
 
@@ -192,8 +192,8 @@ Task 1 ─┬─→ Task 2 ──→ Task 4
 - [ ] `go test -race ./...` passes
 - [ ] `go vet ./...` is clean
 - [ ] No `TACK_` environment variable references remain in any `.go` file
-- [ ] No `github.com/andrewhowdencom/tack` import paths remain in any `.go` file
-- [ ] No human-readable "tack" references remain in `README.md`, `AGENTS.md`, or package `doc.go` comments
+- [ ] No `github.com/andrewhowdencom/ore` import paths remain in any `.go` file
+- [ ] No human-readable "ore" references remain in `README.md`, `AGENTS.md`, or package `doc.go` comments
 - [ ] `README.md` contains the conceptual framing: ore as inputs to an agentic system, forge as the agentic developer that builds with ore (and others)
 - [ ] Stale binaries (`calculator`, `main`, `single-turn-cli`, `tui-chat`) are removed from the working tree
-- [ ] All `.plans/*.md` files are updated for consistency (where they previously contained "tack")
+- [ ] All `.plans/*.md` files are updated for consistency (where they previously contained "ore")

@@ -2,7 +2,7 @@
 
 ## Objective
 
-Implement a provider-agnostic tool calling system for tack that validates the `loop.Step` extension point pattern. This involves adding a `BeforeTurn` hook interface for state preparation, extending artifacts with tool calling primitives (`ToolCall.ID`, `ToolResult`), defining provider capability interfaces (`provider.ToolProvider`), building a tool registry and handler package, updating the OpenAI adapter for native tool support, and delivering a working calculator example with cross-provider test infrastructure.
+Implement a provider-agnostic tool calling system for ore that validates the `loop.Step` extension point pattern. This involves adding a `BeforeTurn` hook interface for state preparation, extending artifacts with tool calling primitives (`ToolCall.ID`, `ToolResult`), defining provider capability interfaces (`provider.ToolProvider`), building a tool registry and handler package, updating the OpenAI adapter for native tool support, and delivering a working calculator example with cross-provider test infrastructure.
 
 ## Context
 
