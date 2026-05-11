@@ -10,10 +10,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/andrewhowdencom/tack/artifact"
-	"github.com/andrewhowdencom/tack/provider"
+	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/provider"
 	"github.com/openai/openai-go/packages/param"
-	"github.com/andrewhowdencom/tack/state"
+	"github.com/andrewhowdencom/ore/state"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 )

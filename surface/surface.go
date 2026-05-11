@@ -7,8 +7,8 @@ package surface
 import (
 	"context"
 
-	"github.com/andrewhowdencom/tack/artifact"
-	"github.com/andrewhowdencom/tack/state"
+	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/state"
 )
 
 // Surface is the contract between an I/O frontend and the tack framework.

@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/andrewhowdencom/tack/artifact"
-	"github.com/andrewhowdencom/tack/loop"
-	"github.com/andrewhowdencom/tack/state"
+	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/state"
 )
 
 // Handler implements loop.Handler for executing tool calls.

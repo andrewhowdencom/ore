@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/andrewhowdencom/tack/loop"
-	"github.com/andrewhowdencom/tack/provider"
-	"github.com/andrewhowdencom/tack/state"
+	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/provider"
+	"github.com/andrewhowdencom/ore/state"
 )
 
 // ReAct is a cognitive pattern that implements the ReAct feedback loop:

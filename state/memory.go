@@ -1,6 +1,6 @@
 package state
 
-import "github.com/andrewhowdencom/tack/artifact"
+import "github.com/andrewhowdencom/ore/artifact"
 
 // Memory is a simple in-memory implementation of State.
 // It is not safe for concurrent use.

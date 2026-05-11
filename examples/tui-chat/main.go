@@ -9,13 +9,13 @@ import (
 	"os"
 	"sync"
 
-	"github.com/andrewhowdencom/tack/artifact"
-	"github.com/andrewhowdencom/tack/cognitive"
-	"github.com/andrewhowdencom/tack/loop"
-	"github.com/andrewhowdencom/tack/provider/openai"
-	"github.com/andrewhowdencom/tack/state"
-	"github.com/andrewhowdencom/tack/surface"
-	"github.com/andrewhowdencom/tack/surface/tui"
+	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/cognitive"
+	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/provider/openai"
+	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/surface"
+	"github.com/andrewhowdencom/ore/surface/tui"
 )
 
 func main() {

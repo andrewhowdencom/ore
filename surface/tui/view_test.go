@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/andrewhowdencom/tack/state"
+	"github.com/andrewhowdencom/ore/state"
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"

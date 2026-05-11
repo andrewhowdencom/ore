@@ -12,13 +12,13 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/andrewhowdencom/tack/artifact"
-	"github.com/andrewhowdencom/tack/cognitive"
-	"github.com/andrewhowdencom/tack/loop"
-	"github.com/andrewhowdencom/tack/provider"
-	"github.com/andrewhowdencom/tack/provider/openai"
-	"github.com/andrewhowdencom/tack/state"
-	"github.com/andrewhowdencom/tack/tool"
+	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/cognitive"
+	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/provider"
+	"github.com/andrewhowdencom/ore/provider/openai"
+	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/tool"
 )
 
 func main() {

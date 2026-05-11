@@ -10,10 +10,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/andrewhowdencom/tack/artifact"
-	"github.com/andrewhowdencom/tack/loop"
-	"github.com/andrewhowdencom/tack/provider/openai"
-	"github.com/andrewhowdencom/tack/state"
+	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/provider/openai"
+	"github.com/andrewhowdencom/ore/state"
 )
 
 func main() {

@@ -3,8 +3,8 @@ package loop
 import (
 	"context"
 
-	"github.com/andrewhowdencom/tack/artifact"
-	"github.com/andrewhowdencom/tack/state"
+	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/state"
 )
 
 // Handler processes individual artifacts from an assistant turn.
