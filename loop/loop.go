@@ -21,14 +21,6 @@ type OutputEvent interface {
 	Kind() string
 }
 
-// DeltaEvent is emitted for each streaming delta artifact.
-type DeltaEvent struct {
-	Delta artifact.Artifact
-}
-
-// Kind returns the event kind identifier.
-func (e DeltaEvent) Kind() string { return "delta" }
-
 // TurnCompleteEvent is emitted when an assistant turn has been fully
 // appended to state and all handlers have run.
 type TurnCompleteEvent struct {
@@ -38,11 +30,20 @@ type TurnCompleteEvent struct {
 // Kind returns the event kind identifier.
 func (e TurnCompleteEvent) Kind() string { return "turn_complete" }
 
+// ErrorEvent is emitted when a turn fails due to a provider or handler error.
+type ErrorEvent struct {
+	Err error
+}
+
+// Kind returns the event kind identifier.
+func (e ErrorEvent) Kind() string { return "error" }
+
 // Step executes a single complete inference turn: it invokes the provider,
-// optionally emits streaming deltas as OutputEvents, and runs
-// registered artifact handlers synchronously on the complete response.
+// distributes streaming artifacts to subscribers via an embedded FanOut, and
+// runs registered artifact handlers synchronously on the complete response.
 type Step struct {
-	output      chan<- OutputEvent
+	events      chan OutputEvent
+	fanOut      *FanOut
 	beforeTurns []BeforeTurn
 	handlers    []Handler
 	invokeOpts  []provider.InvokeOption
@@ -50,24 +51,32 @@ type Step struct {
 
 // New creates a Step with the given options.
 func New(opts ...Option) *Step {
-	s := &Step{}
+	events := make(chan OutputEvent, 100)
+	s := &Step{
+		events: events,
+		fanOut: NewFanOut(events),
+	}
 	for _, opt := range opts {
 		opt(s)
 	}
 	return s
 }
 
+// Subscribe returns a receive-only channel of OutputEvents whose Kind()
+// matches any of the given kinds. The channel is closed when the Step's
+// FanOut is closed. Events are delivered non-blocking; slow subscribers
+// may drop events.
+func (s *Step) Subscribe(kinds ...string) <-chan OutputEvent {
+	return s.fanOut.Subscribe(kinds...)
+}
+
+// Close stops the Step's FanOut and closes all subscriber channels.
+func (s *Step) Close() error {
+	return s.fanOut.Close()
+}
+
 // Option configures a Step.
 type Option func(*Step)
-
-// WithOutput configures an output channel for streaming delta and
-// turn completion events. The channel is written to during Turn();
-// the caller must read from it or provide sufficient buffer capacity.
-func WithOutput(ch chan<- OutputEvent) Option {
-	return func(s *Step) {
-		s.output = ch
-	}
-}
 
 // WithBeforeTurn configures before-turn hooks that run before the provider
 // call. Hooks run in registration order; each receives the state returned by
@@ -94,11 +103,11 @@ func WithInvokeOptions(opts ...provider.InvokeOption) Option {
 }
 
 // Turn performs one inference turn with the given provider.
-// If an output channel is configured and the provider supports streaming, deltas
-// are emitted as DeltaEvent to the channel in real-time via a background goroutine.
-// After the turn completes, all registered handlers are invoked on each
-// artifact from the assistant turn. The operation is fully synchronous and
-// blocking.
+// The provider emits artifacts to a channel; delta artifacts are forwarded
+// to the Step's FanOut subscribers immediately, while complete artifacts are
+// buffered and appended to state once the provider returns. After the turn
+// completes, all registered handlers are invoked on each artifact from the
+// assistant turn. The operation is fully synchronous and blocking.
 func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, opts ...provider.InvokeOption) (state.State, error) {
 	var err error
 
@@ -109,52 +118,43 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 		}
 	}
 
-	var deltasCh chan artifact.Artifact
-	if s.output != nil {
-		deltasCh = make(chan artifact.Artifact, 100)
-	}
+	provCh := make(chan artifact.Artifact, 100)
+	var completeArtifacts []artifact.Artifact
 
 	var wg sync.WaitGroup
-	if deltasCh != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for delta := range deltasCh {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for art := range provCh {
+			if _, ok := art.(artifact.Delta); ok {
 				select {
-				case s.output <- DeltaEvent{Delta: delta}:
+				case s.events <- art:
 				case <-ctx.Done():
 					return
 				}
+			} else {
+				completeArtifacts = append(completeArtifacts, art)
 			}
-		}()
-	}
+		}
+	}()
 
 	allOpts := make([]provider.InvokeOption, 0, len(s.invokeOpts)+len(opts))
 	allOpts = append(allOpts, s.invokeOpts...)
 	allOpts = append(allOpts, opts...)
 
-	var artifacts []artifact.Artifact
-
-	if deltasCh != nil {
-		if sp, ok := p.(provider.StreamingProvider); ok {
-			artifacts, err = sp.InvokeStreaming(ctx, st, deltasCh, allOpts...)
-		} else {
-			artifacts, err = p.Invoke(ctx, st, allOpts...)
-		}
-	} else {
-		artifacts, err = p.Invoke(ctx, st, allOpts...)
-	}
-
-	if deltasCh != nil {
-		close(deltasCh)
-		wg.Wait()
-	}
+	err = p.Invoke(ctx, st, provCh, allOpts...)
+	close(provCh)
+	wg.Wait()
 
 	if err != nil {
+		select {
+		case s.events <- ErrorEvent{Err: err}:
+		case <-ctx.Done():
+		}
 		return st, fmt.Errorf("turn failed: %w", err)
 	}
 
-	st.Append(state.RoleAssistant, artifacts...)
+	st.Append(state.RoleAssistant, completeArtifacts...)
 
 	turns := st.Turns()
 	if len(turns) == 0 {
@@ -174,11 +174,9 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 		}
 	}
 
-	if s.output != nil {
-		select {
-		case s.output <- TurnCompleteEvent{Turn: last}:
-		case <-ctx.Done():
-		}
+	select {
+	case s.events <- TurnCompleteEvent{Turn: last}:
+	case <-ctx.Done():
 	}
 
 	return st, nil

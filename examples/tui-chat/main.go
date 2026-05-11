@@ -52,16 +52,13 @@ func run() error {
 	}
 	prov := openai.New(apiKey, modelName, opts...)
 
-	// Step with output events.
-	outputCh := make(chan loop.OutputEvent, 100)
-	st := loop.New(loop.WithOutput(outputCh))
-
-	// FanOut distributes Step output to the TUI surface via subscriptions.
-	fanOut := loop.NewFanOut(outputCh)
-	defer fanOut.Close()
+	// Step with embedded FanOut for event distribution.
+	st := loop.New()
+	defer st.Close()
 
 	// Create TUI surface subscribed to the event stream.
-	s := tui.New(fanOut)
+	ch := st.Subscribe("text_delta", "reasoning_delta", "tool_call_delta", "turn_complete")
+	s := tui.New(ch)
 
 	// Cognitive pattern.
 	react := &cognitive.ReAct{

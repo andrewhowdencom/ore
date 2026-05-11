@@ -8,6 +8,13 @@ type Artifact interface {
 	Kind() string
 }
 
+// Delta marks artifacts that are ephemeral streaming fragments.
+// These must never be persisted to state; only complete artifacts should be.
+type Delta interface {
+	Artifact
+	IsDelta()
+}
+
 // Text represents a text content artifact.
 type Text struct {
 	Content string
@@ -70,6 +77,9 @@ type TextDelta struct {
 // Kind returns the artifact kind identifier.
 func (t TextDelta) Kind() string { return "text_delta" }
 
+// IsDelta marks TextDelta as an ephemeral streaming fragment.
+func (t TextDelta) IsDelta() {}
+
 // ReasoningDelta represents a partial chunk of reasoning content for streaming.
 type ReasoningDelta struct {
 	Content string
@@ -77,6 +87,9 @@ type ReasoningDelta struct {
 
 // Kind returns the artifact kind identifier.
 func (r ReasoningDelta) Kind() string { return "reasoning_delta" }
+
+// IsDelta marks ReasoningDelta as an ephemeral streaming fragment.
+func (r ReasoningDelta) IsDelta() {}
 
 // ToolCallDelta represents a partial chunk of a tool invocation for streaming.
 type ToolCallDelta struct {
@@ -87,3 +100,6 @@ type ToolCallDelta struct {
 
 // Kind returns the artifact kind identifier.
 func (t ToolCallDelta) Kind() string { return "tool_call_delta" }
+
+// IsDelta marks ToolCallDelta as an ephemeral streaming fragment.
+func (t ToolCallDelta) IsDelta() {}

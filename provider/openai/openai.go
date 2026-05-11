@@ -100,9 +100,8 @@ func New(apiKey, model string, opts ...Option) *Provider {
 	}
 }
 
-// Compile-time interface checks.
+// Compile-time interface check.
 var _ provider.Provider = (*Provider)(nil)
-var _ provider.StreamingProvider = (*Provider)(nil)
 
 // serializeMessages converts ore state into OpenAI chat completion message
 // parameters. It maps ore roles to OpenAI message types and preserves
@@ -197,83 +196,10 @@ func concatText(artifacts []artifact.Artifact) string {
 	return content
 }
 
-// Invoke serializes state into an OpenAI chat completions request via the SDK,
-// calls the API, and deserializes the response into artifacts.
-func (p *Provider) Invoke(ctx context.Context, s state.State, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
-	messages := p.serializeMessages(s)
-
-	var tools []provider.Tool
-	var temperature float64
-	for _, opt := range opts {
-		if to, ok := opt.(toolOption); ok {
-			tools = to.tools
-		}
-		if temp, ok := opt.(temperatureOption); ok {
-			temperature = temp.t
-		}
-	}
-
-	params := openai.ChatCompletionNewParams{
-		Model:    openai.ChatModel(p.model),
-		Messages: messages,
-	}
-	if len(tools) > 0 {
-		params.Tools = p.serializeTools(tools)
-	}
-	if temperature != 0 {
-		params.Temperature = param.NewOpt(temperature)
-	}
-
-	resp, err := p.client.Chat.Completions.New(ctx, params)
-	if err != nil {
-		return nil, fmt.Errorf("chat completion: %w", err)
-	}
-
-	if len(resp.Choices) == 0 {
-		return nil, fmt.Errorf("no choices in response")
-	}
-
-	msg := resp.Choices[0].Message
-	artifacts := make([]artifact.Artifact, 0)
-
-	if len(msg.ToolCalls) > 0 {
-		for _, tc := range msg.ToolCalls {
-			artifacts = append(artifacts, artifact.ToolCall{
-				ID:        tc.ID,
-				Name:      tc.Function.Name,
-				Arguments: tc.Function.Arguments,
-			})
-		}
-	} else {
-		artifacts = append(artifacts, artifact.Text{Content: msg.Content})
-	}
-
-	if field, ok := msg.JSON.ExtraFields["reasoning_content"]; ok {
-		var reasoning string
-		if err := json.Unmarshal([]byte(field.Raw()), &reasoning); err == nil && reasoning != "" {
-			artifacts = append(artifacts, artifact.Reasoning{Content: reasoning})
-		}
-	}
-
-	if resp.Usage.PromptTokens > 0 || resp.Usage.CompletionTokens > 0 || resp.Usage.TotalTokens > 0 {
-		artifacts = append(artifacts, artifact.Usage{
-			PromptTokens:     int(resp.Usage.PromptTokens),
-			CompletionTokens: int(resp.Usage.CompletionTokens),
-			TotalTokens:      int(resp.Usage.TotalTokens),
-		})
-	}
-
-	return artifacts, nil
-}
-
-// InvokeStreaming serializes state into an OpenAI streaming chat completions
-// request, emits partial delta artifacts to deltasCh as they arrive, and
-// returns the complete buffered artifacts when the stream finishes.
-func (p *Provider) InvokeStreaming(ctx context.Context, s state.State, deltasCh chan<- artifact.Artifact, opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
-	if deltasCh == nil {
-		return p.Invoke(ctx, s, opts...)
-	}
-
+// Invoke serializes state into an OpenAI streaming chat completions request
+// via the SDK, emits partial delta artifacts to ch as they arrive, and
+// emits the complete buffered artifacts when the stream finishes.
+func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	messages := p.serializeMessages(s)
 
 	var tools []provider.Tool
@@ -320,9 +246,9 @@ func (p *Provider) InvokeStreaming(ctx context.Context, s state.State, deltasCh 
 		if delta.Content != "" {
 			textContent.WriteString(delta.Content)
 			select {
-			case deltasCh <- artifact.TextDelta{Content: delta.Content}:
+			case ch <- artifact.TextDelta{Content: delta.Content}:
 			case <-ctx.Done():
-				return nil, ctx.Err()
+				return ctx.Err()
 			}
 		}
 
@@ -331,9 +257,9 @@ func (p *Provider) InvokeStreaming(ctx context.Context, s state.State, deltasCh 
 			if err := json.Unmarshal([]byte(field.Raw()), &reasoning); err == nil && reasoning != "" {
 				reasoningContent.WriteString(reasoning)
 				select {
-				case deltasCh <- artifact.ReasoningDelta{Content: reasoning}:
+				case ch <- artifact.ReasoningDelta{Content: reasoning}:
 				case <-ctx.Done():
-					return nil, ctx.Err()
+					return ctx.Err()
 				}
 			}
 		}
@@ -355,22 +281,20 @@ func (p *Provider) InvokeStreaming(ctx context.Context, s state.State, deltasCh 
 			}
 
 			select {
-			case deltasCh <- artifact.ToolCallDelta{
+			case ch <- artifact.ToolCallDelta{
 				ID:        acc.id,
 				Name:      tc.Function.Name,
 				Arguments: tc.Function.Arguments,
 			}:
 			case <-ctx.Done():
-				return nil, ctx.Err()
+				return ctx.Err()
 			}
 		}
 	}
 
 	if err := stream.Err(); err != nil {
-		return nil, fmt.Errorf("streaming chat completion: %w", err)
+		return fmt.Errorf("streaming chat completion: %w", err)
 	}
-
-	var artifacts []artifact.Artifact
 
 	if len(toolCalls) > 0 {
 		indices := make([]int64, 0, len(toolCalls))
@@ -380,22 +304,36 @@ func (p *Provider) InvokeStreaming(ctx context.Context, s state.State, deltasCh 
 		sort.Slice(indices, func(i, j int) bool { return indices[i] < indices[j] })
 		for _, idx := range indices {
 			acc := toolCalls[idx]
-			artifacts = append(artifacts, artifact.ToolCall{
+			select {
+			case ch <- artifact.ToolCall{
 				ID:        acc.id,
 				Name:      acc.name.String(),
 				Arguments: acc.args.String(),
-			})
+			}:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
 	} else if textContent.Len() > 0 {
-		artifacts = append(artifacts, artifact.Text{Content: textContent.String()})
+		select {
+		case ch <- artifact.Text{Content: textContent.String()}:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 
 	if reasoningContent.Len() > 0 {
-		artifacts = append(artifacts, artifact.Reasoning{Content: reasoningContent.String()})
+		select {
+		case ch <- artifact.Reasoning{Content: reasoningContent.String()}:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 
-	return artifacts, nil
+	return nil
 }
+
+
 
 // serializeTools converts provider-agnostic tool definitions into OpenAI SDK
 // tool parameters.

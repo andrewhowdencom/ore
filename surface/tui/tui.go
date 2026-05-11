@@ -5,6 +5,7 @@ package tui
 import (
 	"context"
 
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/surface"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -20,31 +21,31 @@ type TUI struct {
 
 // New creates a new TUI surface with an initialized events channel and
 // Bubble Tea program configured with the alternate screen buffer.
-// The TUI subscribes to delta and turn_complete events from the provided
-// FanOut and routes them into the Bubble Tea message loop.
-func New(fanOut *loop.FanOut) *TUI {
-	eventsCh := make(chan surface.Event, 10)
+// The TUI reads artifacts and turn completion events from the provided
+// channel and routes them into the Bubble Tea message loop.
+func New(eventsCh <-chan loop.OutputEvent) *TUI {
+	surfEventsCh := make(chan surface.Event, 10)
 	m := model{
-		eventsCh: eventsCh,
+		eventsCh: surfEventsCh,
 		viewport: viewport.New(0, 0),
 		md:       glamourMarkdownRenderer{},
 	}
 	p := tea.NewProgram(&m, tea.WithAltScreen())
 	t := &TUI{
-		eventsCh: eventsCh,
+		eventsCh: surfEventsCh,
 		program:  p,
 	}
 
-	// Subscribe to delta and turn_complete events on a single channel to
-	// preserve ordering across event types.
-	ch := fanOut.Subscribe("delta", "turn_complete")
 	go func() {
-		for event := range ch {
+		for event := range eventsCh {
 			switch e := event.(type) {
-			case loop.DeltaEvent:
-				t.program.Send(deltaMsg{delta: e.Delta})
+			case artifact.Artifact:
+				t.program.Send(deltaMsg{delta: e})
 			case loop.TurnCompleteEvent:
 				t.program.Send(turnMsg{turn: e.Turn})
+			case loop.ErrorEvent:
+				// Errors are surfaced via status updates rather than the
+				// message loop; the application goroutine handles them.
 			}
 		}
 	}()
