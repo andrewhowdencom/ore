@@ -5,8 +5,7 @@ package tui
 import (
 	"context"
 
-	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/surface"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -21,7 +20,9 @@ type TUI struct {
 
 // New creates a new TUI surface with an initialized events channel and
 // Bubble Tea program configured with the alternate screen buffer.
-func New() *TUI {
+// The TUI subscribes to delta and turn_complete events from the provided
+// FanOut and routes them into the Bubble Tea message loop.
+func New(fanOut *loop.FanOut) *TUI {
 	eventsCh := make(chan surface.Event, 10)
 	m := model{
 		eventsCh: eventsCh,
@@ -29,30 +30,33 @@ func New() *TUI {
 		md:       glamourMarkdownRenderer{},
 	}
 	p := tea.NewProgram(&m, tea.WithAltScreen())
-	return &TUI{
+	t := &TUI{
 		eventsCh: eventsCh,
 		program:  p,
 	}
+
+	// Subscribe to delta events and route them into the Bubble Tea program.
+	deltaCh := fanOut.Subscribe("delta")
+	go func() {
+		for event := range deltaCh {
+			t.program.Send(deltaMsg{delta: event.(loop.DeltaEvent).Delta})
+		}
+	}()
+
+	// Subscribe to turn complete events and route them into the Bubble Tea program.
+	turnCh := fanOut.Subscribe("turn_complete")
+	go func() {
+		for event := range turnCh {
+			t.program.Send(turnMsg{turn: event.(loop.TurnCompleteEvent).Turn})
+		}
+	}()
+
+	return t
 }
 
 // Events returns a read-only channel of user-generated events.
 func (t *TUI) Events() <-chan surface.Event {
 	return t.eventsCh
-}
-
-// RenderDelta sends a delta artifact into the Bubble Tea message loop for
-// incremental rendering. The actual state mutation happens in model.Update.
-func (t *TUI) RenderDelta(ctx context.Context, delta artifact.Artifact) error {
-	t.program.Send(deltaMsg{delta: delta})
-	return nil
-}
-
-// RenderTurn sends a complete turn into the Bubble Tea message loop for
-// finalization in the conversation history. The actual state mutation happens
-// in model.Update.
-func (t *TUI) RenderTurn(ctx context.Context, turn state.Turn) error {
-	t.program.Send(turnMsg{turn: turn})
-	return nil
 }
 
 // SetStatus sends a status update into the Bubble Tea message loop. The

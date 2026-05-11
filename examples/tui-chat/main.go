@@ -45,9 +45,6 @@ func run() error {
 
 	baseURL := os.Getenv("ORE_BASE_URL")
 
-	// Create TUI surface.
-	s := tui.New()
-
 	// Build OpenAI provider.
 	var opts []openai.Option
 	if baseURL != "" {
@@ -59,21 +56,12 @@ func run() error {
 	outputCh := make(chan loop.OutputEvent, 100)
 	st := loop.New(loop.WithOutput(outputCh))
 
-	// Goroutine: route Step output to TUI surface.
-	go func() {
-		for event := range outputCh {
-			switch e := event.(type) {
-			case loop.DeltaEvent:
-				if err := s.RenderDelta(ctx, e.Delta); err != nil {
-					slog.Error("render delta failed", "err", err)
-				}
-			case loop.TurnCompleteEvent:
-				if err := s.RenderTurn(ctx, e.Turn); err != nil {
-					slog.Error("render turn failed", "err", err)
-				}
-			}
-		}
-	}()
+	// FanOut distributes Step output to the TUI surface via subscriptions.
+	fanOut := loop.NewFanOut(outputCh)
+	defer fanOut.Close()
+
+	// Create TUI surface subscribed to the event stream.
+	s := tui.New(fanOut)
 
 	// Cognitive pattern.
 	react := &cognitive.ReAct{

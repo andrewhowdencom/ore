@@ -56,7 +56,11 @@ func (f *FanOut) send(event OutputEvent) {
 	chans := f.subs[event.Kind()]
 	f.mu.Unlock()
 	for _, ch := range chans {
-		ch <- event
+		select {
+		case ch <- event:
+		case <-f.done:
+			return
+		}
 	}
 }
 
