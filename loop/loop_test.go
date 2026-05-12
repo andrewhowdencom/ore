@@ -895,3 +895,104 @@ func TestStep_Submit_EmptyArtifacts(t *testing.T) {
 	assert.Equal(t, state.RoleUser, last.Role)
 	assert.Empty(t, last.Artifacts)
 }
+
+func TestStep_Submit_ToolRole(t *testing.T) {
+	s := New()
+	mem := &state.Memory{}
+
+	result, err := s.Submit(context.Background(), mem, state.RoleTool, artifact.Text{Content: "tool result"})
+	require.NoError(t, err)
+	assert.Same(t, mem, result)
+
+	turns := mem.Turns()
+	require.Len(t, turns, 1)
+
+	last := turns[0]
+	assert.Equal(t, state.RoleTool, last.Role)
+	require.Len(t, last.Artifacts, 1)
+	assert.Equal(t, "text", last.Artifacts[0].Kind())
+	text, ok := last.Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "tool result", text.Content)
+}
+
+func TestStep_Submit_HandlerErrorAfterPartialProcessing(t *testing.T) {
+	h := &mockHandler{
+		fn: func(ctx context.Context, art artifact.Artifact, s state.State) error {
+			if art.Kind() == "text" {
+				return nil
+			}
+			return errors.New("handler failed on second artifact")
+		},
+	}
+	s := New(WithHandlers(h))
+	mem := &state.Memory{}
+
+	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"}, artifact.ToolCall{Name: "test"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "handler failed on second artifact")
+
+	require.Len(t, h.called, 2)
+	assert.Equal(t, "text", h.called[0].Kind())
+	assert.Equal(t, "tool_call", h.called[1].Kind())
+
+	// State should still have the turn appended (finalizeTurn appends
+	// before running handlers).
+	turns := mem.Turns()
+	require.Len(t, turns, 1)
+	assert.Equal(t, state.RoleUser, turns[0].Role)
+	require.Len(t, turns[0].Artifacts, 2)
+}
+
+func TestStep_Submit_Multiple_EventsInOrder(t *testing.T) {
+	s := New()
+	ch := s.Subscribe("turn_complete")
+	mem := &state.Memory{}
+
+	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "first"})
+	require.NoError(t, err)
+
+	_, err = s.Submit(context.Background(), mem, state.RoleSystem, artifact.Text{Content: "second"})
+	require.NoError(t, err)
+
+	_, err = s.Submit(context.Background(), mem, state.RoleTool, artifact.Text{Content: "third"})
+	require.NoError(t, err)
+
+	events := collectEvents(ch, 100*time.Millisecond)
+
+	require.Len(t, events, 3)
+	assert.Equal(t, state.RoleUser, events[0].(TurnCompleteEvent).Turn.Role)
+	assert.Equal(t, state.RoleSystem, events[1].(TurnCompleteEvent).Turn.Role)
+	assert.Equal(t, state.RoleTool, events[2].(TurnCompleteEvent).Turn.Role)
+}
+
+func TestStep_Submit_EmptyArtifacts_ByRole(t *testing.T) {
+	tests := []struct {
+		name string
+		role state.Role
+	}{
+		{"system", state.RoleSystem},
+		{"tool", state.RoleTool},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := New()
+			ch := s.Subscribe("turn_complete")
+			mem := &state.Memory{}
+
+			_, err := s.Submit(context.Background(), mem, tt.role)
+			require.NoError(t, err)
+
+			turns := mem.Turns()
+			require.Len(t, turns, 1)
+			assert.Equal(t, tt.role, turns[0].Role)
+			assert.Empty(t, turns[0].Artifacts)
+
+			events := collectEvents(ch, 100*time.Millisecond)
+			require.Len(t, events, 1)
+			assert.Equal(t, "turn_complete", events[0].Kind())
+			assert.Equal(t, tt.role, events[0].(TurnCompleteEvent).Turn.Role)
+		})
+	}
+}
