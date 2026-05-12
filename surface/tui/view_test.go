@@ -153,6 +153,31 @@ func TestModel_View_AssistantTurn_WithReasoning(t *testing.T) {
 	assert.Greater(t, idxReason, idxAnswer, "reasoning should appear after text")
 }
 
+func TestModel_View_AssistantTurn_MultiBlockSpacing(t *testing.T) {
+	m := model{
+		viewport: viewport.New(80, 20),
+		turns: []renderedTurn{
+			{role: state.RoleAssistant, blocks: []renderedBlock{
+				{kind: "reasoning", source: "let me think..."},
+				{kind: "text", source: "the answer"},
+			}},
+		},
+	}
+	output := m.View()
+	assert.Contains(t, output, "Thinking: ")
+	assert.Contains(t, output, "let me think...")
+	assert.Contains(t, output, "Assistant: ")
+	assert.Contains(t, output, "the answer")
+	// Verify order: reasoning precedes the answer (typical provider ordering).
+	idxThink := strings.Index(output, "let me think...")
+	idxAnswer := strings.Index(output, "the answer")
+	require.Greater(t, idxAnswer, idxThink, "answer should appear after reasoning")
+	// Verify that the blocks are on separate lines (not adjacent as in the
+	// buggy behavior where turn-level rendering omitted intra-turn separators).
+	segment := output[idxThink+len("let me think...") : idxAnswer]
+	assert.Contains(t, segment, "\n", "reasoning and answer blocks should be on separate lines")
+}
+
 func TestRenderMarkdown_MalformedInput(t *testing.T) {
 	cases := []string{
 		"[link](<unfinished",
