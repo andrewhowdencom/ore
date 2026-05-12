@@ -52,13 +52,13 @@ func New(eventsCh <-chan loop.OutputEvent) *TUI {
 	go func() {
 		for event := range eventsCh {
 			switch e := event.(type) {
-			case artifact.Artifact:
-				t.program.Send(deltaMsg{delta: e})
 			case loop.TurnCompleteEvent:
 				t.program.Send(turnMsg{turn: e.Turn})
 			case loop.ErrorEvent:
 				// Errors are surfaced via status updates rather than the
 				// message loop; the application goroutine handles them.
+			case artifact.Artifact:
+				t.program.Send(deltaMsg{delta: e})
 			}
 		}
 	}()

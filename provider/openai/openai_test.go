@@ -85,15 +85,6 @@ func reasoningOnlySSE(parts ...string) string {
 	return sb.String()
 }
 
-func multiChunkSSE(contents ...string) string {
-	var sb strings.Builder
-	for i, content := range contents {
-		sb.WriteString(fmt.Sprintf("data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":%d,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"content\":%q},\"finish_reason\":null}]}\n\n", i+1, content))
-	}
-	sb.WriteString("data: [DONE]\n\n")
-	return sb.String()
-}
-
 func emptyChoicesSSE() string {
 	return "data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"choices\":[]}\n\ndata: [DONE]\n\n"
 }
@@ -121,12 +112,10 @@ func TestProviderInvoke_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	artifacts := drainArtifacts(ch)
-	// Delta + complete
-	require.Len(t, artifacts, 2)
+	// Only delta emitted; no complete artifact at end.
+	require.Len(t, artifacts, 1)
 	assert.Equal(t, "text_delta", artifacts[0].Kind())
 	assert.Equal(t, "Hello, world!", artifacts[0].(artifact.TextDelta).Content)
-	assert.Equal(t, "text", artifacts[1].Kind())
-	assert.Equal(t, "Hello, world!", artifacts[1].(artifact.Text).Content)
 }
 
 func TestProviderInvoke_HTTPError(t *testing.T) {
@@ -254,10 +243,11 @@ func TestProviderInvoke_MultipleChoices(t *testing.T) {
 	require.NoError(t, err)
 
 	artifacts := drainArtifacts(ch)
-	require.Len(t, artifacts, 2)
-	text, ok := artifacts[1].(artifact.Text)
+	// Only delta emitted; no complete artifact at end.
+	require.Len(t, artifacts, 1)
+	delta, ok := artifacts[0].(artifact.TextDelta)
 	require.True(t, ok)
-	assert.Equal(t, "first", text.Content)
+	assert.Equal(t, "first", delta.Content)
 }
 
 func TestProviderInvoke_MalformedJSON(t *testing.T) {
@@ -322,16 +312,12 @@ func TestProviderInvoke_WithReasoning(t *testing.T) {
 	require.NoError(t, err)
 
 	artifacts := drainArtifacts(ch)
-	// text_delta, reasoning_delta, text, reasoning
-	require.Len(t, artifacts, 4)
+	// text_delta, reasoning_delta — only deltas emitted.
+	require.Len(t, artifacts, 2)
 	assert.Equal(t, "text_delta", artifacts[0].Kind())
 	assert.Equal(t, "Hello, world!", artifacts[0].(artifact.TextDelta).Content)
 	assert.Equal(t, "reasoning_delta", artifacts[1].Kind())
 	assert.Equal(t, "Let me analyze this...", artifacts[1].(artifact.ReasoningDelta).Content)
-	assert.Equal(t, "text", artifacts[2].Kind())
-	assert.Equal(t, "Hello, world!", artifacts[2].(artifact.Text).Content)
-	assert.Equal(t, "reasoning", artifacts[3].Kind())
-	assert.Equal(t, "Let me analyze this...", artifacts[3].(artifact.Reasoning).Content)
 }
 
 func TestProviderInvoke_EmptyReasoning(t *testing.T) {
@@ -348,10 +334,9 @@ func TestProviderInvoke_EmptyReasoning(t *testing.T) {
 	require.NoError(t, err)
 
 	artifacts := drainArtifacts(ch)
-	// text_delta, text (empty reasoning is skipped)
-	require.Len(t, artifacts, 2)
+	// text_delta only — empty reasoning is skipped, no complete artifact at end.
+	require.Len(t, artifacts, 1)
 	assert.Equal(t, "text_delta", artifacts[0].Kind())
-	assert.Equal(t, "text", artifacts[1].Kind())
 }
 
 func TestProviderInvoke_ReasoningOnly(t *testing.T) {
@@ -368,14 +353,12 @@ func TestProviderInvoke_ReasoningOnly(t *testing.T) {
 	require.NoError(t, err)
 
 	artifacts := drainArtifacts(ch)
-	// reasoning_delta x2, reasoning
-	require.Len(t, artifacts, 3)
+	// reasoning_delta x2 — only deltas emitted.
+	require.Len(t, artifacts, 2)
 	assert.Equal(t, "reasoning_delta", artifacts[0].Kind())
 	assert.Equal(t, "Let me analyze", artifacts[0].(artifact.ReasoningDelta).Content)
 	assert.Equal(t, "reasoning_delta", artifacts[1].Kind())
 	assert.Equal(t, " this request", artifacts[1].(artifact.ReasoningDelta).Content)
-	assert.Equal(t, "reasoning", artifacts[2].Kind())
-	assert.Equal(t, "Let me analyze this request", artifacts[2].(artifact.Reasoning).Content)
 }
 
 func TestProviderInvoke_RoleMapping(t *testing.T) {
