@@ -20,9 +20,10 @@ type InvokeOption interface {
 // Provider is the interface implemented by LLM provider adapters.
 type Provider interface {
 	// Invoke serializes the given state, calls the LLM API, and emits
-	// deserialized response artifacts to the provided channel. The adapter is
-	// responsible for buffering deltas internally and emitting complete artifacts
-	// once the stream finishes. The channel must not be closed by the adapter.
+	// deserialized response artifacts to the provided channel. The adapter emits
+	// canonical artifact types in native API arrival order, accumulating only
+	// when the native format does not map directly to an ore artifact type.
+	// The channel must not be closed by the adapter.
 	Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...InvokeOption) error
 }
 
