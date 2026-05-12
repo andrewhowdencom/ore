@@ -460,6 +460,53 @@ func TestProviderInvoke_WithTemperature(t *testing.T) {
 	assert.InDelta(t, 0.7, reqBody["temperature"], 0.001)
 }
 
+func TestProviderInvoke_WithReasoningEffort(t *testing.T) {
+	tests := []struct {
+		name       string
+		effort     string
+		wantAbsent bool
+	}{
+		{"low", "low", false},
+		{"medium", "medium", false},
+		{"high", "high", false},
+		{"absent when not provided", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			transport := &mockTransport{
+				response: mockResponseSSE(simpleSSE("ok")),
+			}
+
+			p := New("test-key", "o3-mini", WithHTTPClient(mockClient(transport)))
+			mem := &state.Memory{}
+			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+			ch := make(chan artifact.Artifact, 10)
+			if tt.wantAbsent {
+				_ = p.Invoke(t.Context(), mem, ch)
+			} else {
+				_ = p.Invoke(t.Context(), mem, ch, WithReasoningEffort(tt.effort))
+			}
+			close(ch)
+			for range ch {
+			}
+
+			require.NotNil(t, transport.request)
+			body, _ := io.ReadAll(transport.request.Body)
+			var reqBody map[string]any
+			require.NoError(t, json.Unmarshal(body, &reqBody))
+
+			if tt.wantAbsent {
+				_, ok := reqBody["reasoning_effort"]
+				assert.False(t, ok, "reasoning_effort should not be present")
+			} else {
+				assert.Equal(t, tt.effort, reqBody["reasoning_effort"])
+			}
+		})
+	}
+}
+
 func TestProviderInvoke_MixedAssistantTextAndToolCalls(t *testing.T) {
 	transport := &mockTransport{
 		response: mockResponseSSE(simpleSSE("ok")),
