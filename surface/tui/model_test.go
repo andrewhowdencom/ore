@@ -48,6 +48,26 @@ func TestModel_Update_Delta_Interleaved(t *testing.T) {
 	assert.Equal(t, "second", mm.streamBlocks[2].content)
 }
 
+func TestModel_Update_Delta_AdjacentTextMerges(t *testing.T) {
+	m := model{}
+	newM, _ := m.Update(deltaMsg{delta: artifact.TextDelta{Content: "Hello"}})
+	newM, _ = newM.Update(deltaMsg{delta: artifact.TextDelta{Content: " world"}})
+	mm := newM.(*model)
+	require.Len(t, mm.streamBlocks, 1)
+	assert.Equal(t, "text", mm.streamBlocks[0].kind)
+	assert.Equal(t, "Hello world", mm.streamBlocks[0].content)
+}
+
+func TestModel_Update_Delta_AdjacentReasoningMerges(t *testing.T) {
+	m := model{}
+	newM, _ := m.Update(deltaMsg{delta: artifact.ReasoningDelta{Content: "think"}})
+	newM, _ = newM.Update(deltaMsg{delta: artifact.ReasoningDelta{Content: "...done"}})
+	mm := newM.(*model)
+	require.Len(t, mm.streamBlocks, 1)
+	assert.Equal(t, "reasoning", mm.streamBlocks[0].kind)
+	assert.Equal(t, "think...done", mm.streamBlocks[0].content)
+}
+
 func TestModel_Update_Turn(t *testing.T) {
 	m := model{}
 	turn := state.Turn{
