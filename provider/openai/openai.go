@@ -197,8 +197,9 @@ func concatText(artifacts []artifact.Artifact) string {
 }
 
 // Invoke serializes state into an OpenAI streaming chat completions request
-// via the SDK, emits partial delta artifacts to ch as they arrive, and
-// emits the complete buffered artifacts when the stream finishes.
+// via the SDK and emits canonical artifact types in native SSE arrival order.
+// Tool call fragments are assembled into complete ToolCall artifacts;
+// text and reasoning deltas are emitted directly without accumulation.
 func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	messages := p.serializeMessages(s)
 
@@ -226,9 +227,6 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 
 	stream := p.client.Chat.Completions.NewStreaming(ctx, params)
 
-	var textContent strings.Builder
-	var reasoningContent strings.Builder
-
 	type toolCallAccum struct {
 		id   string
 		name strings.Builder
@@ -244,7 +242,6 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 
 		delta := chunk.Choices[0].Delta
 		if delta.Content != "" {
-			textContent.WriteString(delta.Content)
 			select {
 			case ch <- artifact.TextDelta{Content: delta.Content}:
 			case <-ctx.Done():
@@ -255,7 +252,6 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		if field, ok := delta.JSON.ExtraFields["reasoning_content"]; ok {
 			var reasoning string
 			if err := json.Unmarshal([]byte(field.Raw()), &reasoning); err == nil && reasoning != "" {
-				reasoningContent.WriteString(reasoning)
 				select {
 				case ch <- artifact.ReasoningDelta{Content: reasoning}:
 				case <-ctx.Done():
@@ -313,20 +309,6 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 			case <-ctx.Done():
 				return ctx.Err()
 			}
-		}
-	} else if textContent.Len() > 0 {
-		select {
-		case ch <- artifact.Text{Content: textContent.String()}:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-
-	if reasoningContent.Len() > 0 {
-		select {
-		case ch <- artifact.Reasoning{Content: reasoningContent.String()}:
-		case <-ctx.Done():
-			return ctx.Err()
 		}
 	}
 
