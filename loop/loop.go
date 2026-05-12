@@ -15,8 +15,11 @@ type BeforeTurn interface {
 	BeforeTurn(ctx context.Context, s state.State) (state.State, error)
 }
 
-// OutputEvent is emitted by Step during Turn() to notify subscribers of
-// streaming progress and completed turns.
+// OutputEvent represents any event emitted by a Step. Artifacts
+// (e.g. TextDelta, ReasoningDelta) and turn-related events
+// (TurnCompleteEvent, ErrorEvent) all implement this interface via
+// their Kind() method, allowing subscribers to filter the event
+// stream by kind (e.g. "text_delta", "turn_complete", "error").
 type OutputEvent interface {
 	Kind() string
 }
