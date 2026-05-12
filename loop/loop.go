@@ -174,7 +174,14 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 		return st, fmt.Errorf("turn failed: %w", err)
 	}
 
-	st.Append(state.RoleAssistant, accumulatedArtifacts...)
+	return s.finalizeTurn(ctx, st, state.RoleAssistant, accumulatedArtifacts)
+}
+
+// finalizeTurn appends a turn to state, runs registered handlers on each
+// artifact, and emits a TurnCompleteEvent to all subscribers. It is the shared
+// post-processing pipeline used by both Turn() and Submit().
+func (s *Step) finalizeTurn(ctx context.Context, st state.State, role state.Role, artifacts []artifact.Artifact) (state.State, error) {
+	st.Append(role, artifacts...)
 
 	turns := st.Turns()
 	if len(turns) == 0 {
@@ -182,7 +189,7 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 	}
 
 	last := turns[len(turns)-1]
-	if last.Role != state.RoleAssistant {
+	if last.Role != role {
 		return st, nil
 	}
 
