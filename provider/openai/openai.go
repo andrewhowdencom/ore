@@ -50,6 +50,21 @@ func WithTemperature(t float64) provider.InvokeOption {
 	return temperatureOption{t: t}
 }
 
+// reasoningEffortOption is a per-invocation option that sets the reasoning
+// effort for models that support it (e.g. o3-mini).
+type reasoningEffortOption struct {
+	effort string
+}
+
+func (reasoningEffortOption) IsInvokeOption() {}
+
+// WithReasoningEffort returns an InvokeOption that sets the reasoning effort
+// for a single provider invocation. Supported values are "low", "medium", and
+// "high".
+func WithReasoningEffort(effort string) provider.InvokeOption {
+	return reasoningEffortOption{effort: effort}
+}
+
 // config holds the build-time configuration for the Provider.
 type config struct {
 	apiKey     string
@@ -204,12 +219,16 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 
 	var tools []provider.Tool
 	var temperature float64
+	var reasoningEffort string
 	for _, opt := range opts {
 		if to, ok := opt.(toolOption); ok {
 			tools = to.tools
 		}
 		if temp, ok := opt.(temperatureOption); ok {
 			temperature = temp.t
+		}
+		if re, ok := opt.(reasoningEffortOption); ok {
+			reasoningEffort = re.effort
 		}
 	}
 
@@ -222,6 +241,9 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	}
 	if temperature != 0 {
 		params.Temperature = param.NewOpt(temperature)
+	}
+	if reasoningEffort != "" {
+		params.ReasoningEffort = openai.ReasoningEffort(reasoningEffort)
 	}
 
 	stream := p.client.Chat.Completions.NewStreaming(ctx, params)
