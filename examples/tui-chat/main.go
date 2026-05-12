@@ -81,7 +81,12 @@ func run() error {
 		for event := range s.Events() {
 			switch e := event.(type) {
 			case surface.UserMessageEvent:
-				mem.Append(state.RoleUser, artifact.Text{Content: e.Content})
+				result, err := react.Step.Submit(ctx, mem, state.RoleUser, artifact.Text{Content: e.Content})
+				if err != nil {
+					slog.Error("submit failed", "err", err)
+					continue
+				}
+				mem = result.(*state.Memory)
 				if err := s.SetStatus(ctx, "thinking..."); err != nil {
 					slog.Error("set status failed", "err", err)
 				}
@@ -91,7 +96,7 @@ func run() error {
 				cancelFunc = cancel
 				mu.Unlock()
 
-				result, err := react.Run(opCtx, mem)
+				result, err = react.Run(opCtx, mem)
 				// State is mutable, so result is the same pointer; reassign for clarity.
 				mem = result.(*state.Memory)
 
