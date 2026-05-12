@@ -102,6 +102,28 @@ func TestModel_Update_Turn_ResetsStreamBuffer(t *testing.T) {
 	assert.Empty(t, mm.streamBlocks)
 }
 
+func TestModel_Update_Turn_Interleaved(t *testing.T) {
+	m := model{}
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "Hello"},
+			artifact.Reasoning{Content: "think"},
+			artifact.Text{Content: " world"},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+	require.Len(t, mm.turns, 1)
+	require.Len(t, mm.turns[0].blocks, 3)
+	assert.Equal(t, "text", mm.turns[0].blocks[0].kind)
+	assert.Equal(t, "Hello", mm.turns[0].blocks[0].source)
+	assert.Equal(t, "reasoning", mm.turns[0].blocks[1].kind)
+	assert.Equal(t, "think", mm.turns[0].blocks[1].source)
+	assert.Equal(t, "text", mm.turns[0].blocks[2].kind)
+	assert.Equal(t, " world", mm.turns[0].blocks[2].source)
+}
+
 func TestModel_Update_Status(t *testing.T) {
 	m := model{}
 	newM, _ := m.Update(statusMsg{status: "thinking..."})
