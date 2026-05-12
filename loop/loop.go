@@ -78,8 +78,9 @@ func (s *Step) Close() error {
 // Option configures a Step.
 type Option func(*Step)
 
-// WithBeforeTurn configures before-turn hooks that run before the provider
-// call. Hooks run in registration order; each receives the state returned by
+// WithBeforeTurn configures before-turn hooks that run before any turn,
+// including both inference turns (Turn) and submitted turns (Submit).
+// Hooks run in registration order; each receives the state returned by
 // the previous hook. An error from any hook aborts the turn.
 func WithBeforeTurn(beforeTurns ...BeforeTurn) Option {
 	return func(s *Step) {
@@ -175,6 +176,23 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 	}
 
 	return s.finalizeTurn(ctx, st, state.RoleAssistant, accumulatedArtifacts)
+}
+
+// Submit records a non-inference turn into state, runs registered handlers,
+// and emits a TurnCompleteEvent to all subscribers. It is the canonical
+// mechanism for user, system, or tool turns to enter the same artifact stream
+// as assistant responses from Turn().
+func (s *Step) Submit(ctx context.Context, st state.State, role state.Role, artifacts ...artifact.Artifact) (state.State, error) {
+	var err error
+
+	for _, bt := range s.beforeTurns {
+		st, err = bt.BeforeTurn(ctx, st)
+		if err != nil {
+			return st, fmt.Errorf("before turn hook failed: %w", err)
+		}
+	}
+
+	return s.finalizeTurn(ctx, st, role, artifacts)
 }
 
 // finalizeTurn appends a turn to state, runs registered handlers on each
