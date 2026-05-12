@@ -615,3 +615,79 @@ func TestProviderInvoke_ToolsWithDescription(t *testing.T) {
 	assert.Equal(t, "multiply", fn2["name"])
 	assert.Equal(t, "Multiply two numbers together", fn2["description"])
 }
+
+func TestProviderInvoke_InterleavedTextReasoningChunks(t *testing.T) {
+	interleavedBody := "data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"o3-mini\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello\"},\"finish_reason\":null}]}\n\n" +
+		"data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":2,\"model\":\"o3-mini\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\",\"reasoning_content\":\"think\"},\"finish_reason\":null}]}\n\n" +
+		"data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":3,\"model\":\"o3-mini\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" world\"},\"finish_reason\":null}]}\n\n" +
+		"data: [DONE]\n\n"
+
+	transport := &mockTransport{
+		response: mockResponseSSE(interleavedBody),
+	}
+
+	p := New("test-key", "o3-mini", WithHTTPClient(mockClient(transport)))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	err := p.Invoke(t.Context(), mem, ch)
+	require.NoError(t, err)
+
+	artifacts := drainArtifacts(ch)
+	// TextDelta, ReasoningDelta, TextDelta — three separate chunks in arrival order.
+	require.Len(t, artifacts, 3)
+	assert.Equal(t, "text_delta", artifacts[0].Kind())
+	assert.Equal(t, "Hello", artifacts[0].(artifact.TextDelta).Content)
+	assert.Equal(t, "reasoning_delta", artifacts[1].Kind())
+	assert.Equal(t, "think", artifacts[1].(artifact.ReasoningDelta).Content)
+	assert.Equal(t, "text_delta", artifacts[2].Kind())
+	assert.Equal(t, " world", artifacts[2].(artifact.TextDelta).Content)
+}
+
+func TestProviderInvoke_ToolCallDeltaAccumulation(t *testing.T) {
+	toolCallBody := "data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"search\",\"arguments\":\"first_\"}}]},\"finish_reason\":null}]}\n\n" +
+		"data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":2,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"second\"}}]},\"finish_reason\":null}]}\n\n" +
+		"data: [DONE]\n\n"
+
+	transport := &mockTransport{
+		response: mockResponseSSE(toolCallBody),
+	}
+
+	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	err := p.Invoke(t.Context(), mem, ch)
+	require.NoError(t, err)
+
+	artifacts := drainArtifacts(ch)
+	// ToolCallDelta x2, ToolCall — fragments accumulated into complete artifact.
+	require.Len(t, artifacts, 3)
+
+	// First chunk: full ID and Name, partial Arguments.
+	assert.Equal(t, "tool_call_delta", artifacts[0].Kind())
+	td0, ok := artifacts[0].(artifact.ToolCallDelta)
+	require.True(t, ok)
+	assert.Equal(t, "call_1", td0.ID)
+	assert.Equal(t, "search", td0.Name)
+	assert.Equal(t, "first_", td0.Arguments)
+
+	// Second chunk: empty ID/Name (not present in this chunk), partial Arguments.
+	// ID is carried over from accumulated state in the provider.
+	assert.Equal(t, "tool_call_delta", artifacts[1].Kind())
+	td1, ok := artifacts[1].(artifact.ToolCallDelta)
+	require.True(t, ok)
+	assert.Equal(t, "call_1", td1.ID)
+	assert.Empty(t, td1.Name)
+	assert.Equal(t, "second", td1.Arguments)
+
+	// Complete artifact after stream ends.
+	assert.Equal(t, "tool_call", artifacts[2].Kind())
+	tc, ok := artifacts[2].(artifact.ToolCall)
+	require.True(t, ok)
+	assert.Equal(t, "call_1", tc.ID)
+	assert.Equal(t, "search", tc.Name)
+	assert.Equal(t, "first_second", tc.Arguments)
+}
