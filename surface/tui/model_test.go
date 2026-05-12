@@ -168,11 +168,9 @@ func TestModel_Update_KeyEnter_WithInput(t *testing.T) {
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	mm := newM.(*model)
 
-	require.Len(t, mm.turns, 1)
-	assert.Equal(t, state.RoleUser, mm.turns[0].role)
-	require.Len(t, mm.turns[0].blocks, 1)
-	assert.Equal(t, "text", mm.turns[0].blocks[0].kind)
-	assert.Equal(t, "hello", mm.turns[0].blocks[0].source)
+	// User turns no longer render directly on KeyEnter; they arrive via
+	// turnMsg from the loop's FanOut.
+	assert.Empty(t, mm.turns)
 	assert.Empty(t, mm.input.String())
 
 	select {

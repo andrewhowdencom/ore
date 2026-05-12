@@ -151,10 +151,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyEnter:
 			if m.input.Len() > 0 {
 				content := m.input.String()
-				m.turns = append(m.turns, renderedTurn{
-					role:   state.RoleUser,
-					blocks: []renderedBlock{{kind: "text", source: content}},
-				})
 				m.input.Reset()
 				select {
 				case m.eventsCh <- surface.UserMessageEvent{Content: content}:
