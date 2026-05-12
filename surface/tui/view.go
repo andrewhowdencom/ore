@@ -86,13 +86,16 @@ func (m *model) View() string {
 	for _, turn := range m.turns {
 		switch turn.role {
 		case state.RoleUser:
-			for _, block := range turn.blocks {
+			for i, block := range turn.blocks {
 				if block.kind == "text" {
 					b.WriteString(wrapText(block.source, userLabel, userIndent, width))
 				}
+				if i < len(turn.blocks)-1 {
+					b.WriteString("\n\n")
+				}
 			}
 		case state.RoleAssistant:
-			for _, block := range turn.blocks {
+			for i, block := range turn.blocks {
 				switch block.kind {
 				case "text":
 					if block.rendered != "" {
@@ -105,11 +108,17 @@ func (m *model) View() string {
 					thinkingIndent := strings.Repeat(" ", lipgloss.Width(thinkingLabel))
 					b.WriteString(wrapText(block.source, thinkingLabel, thinkingIndent, width))
 				}
+				if i < len(turn.blocks)-1 {
+					b.WriteString("\n\n")
+				}
 			}
 		case state.RoleTool:
-			for _, block := range turn.blocks {
+			for i, block := range turn.blocks {
 				if block.kind == "text" {
 					b.WriteString(wrapText(block.source, toolLabel, toolIndent, width))
+				}
+				if i < len(turn.blocks)-1 {
+					b.WriteString("\n\n")
 				}
 			}
 		}
