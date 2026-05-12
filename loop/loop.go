@@ -142,7 +142,7 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 						continue
 					}
 				}
-				accumulatedArtifacts = append(accumulatedArtifacts, artifact.Text{Content: d.Content})
+				accumulatedArtifacts = append(accumulatedArtifacts, artifact.Text(d))
 			case artifact.ReasoningDelta:
 				if len(accumulatedArtifacts) > 0 {
 					if last, ok := accumulatedArtifacts[len(accumulatedArtifacts)-1].(artifact.Reasoning); ok {
@@ -151,7 +151,7 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 						continue
 					}
 				}
-				accumulatedArtifacts = append(accumulatedArtifacts, artifact.Reasoning{Content: d.Content})
+				accumulatedArtifacts = append(accumulatedArtifacts, artifact.Reasoning(d))
 			default:
 				accumulatedArtifacts = append(accumulatedArtifacts, art)
 			}

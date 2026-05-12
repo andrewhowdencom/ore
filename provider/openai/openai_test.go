@@ -85,15 +85,6 @@ func reasoningOnlySSE(parts ...string) string {
 	return sb.String()
 }
 
-func multiChunkSSE(contents ...string) string {
-	var sb strings.Builder
-	for i, content := range contents {
-		sb.WriteString(fmt.Sprintf("data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":%d,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"content\":%q},\"finish_reason\":null}]}\n\n", i+1, content))
-	}
-	sb.WriteString("data: [DONE]\n\n")
-	return sb.String()
-}
-
 func emptyChoicesSSE() string {
 	return "data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"choices\":[]}\n\ndata: [DONE]\n\n"
 }
