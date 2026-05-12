@@ -104,12 +104,12 @@ func WithInvokeOptions(opts ...provider.InvokeOption) Option {
 
 // Turn performs one inference turn with the given provider.
 // The provider emits artifacts to a channel; all artifacts are forwarded to
-// the Step's FanOut subscribers immediately as they arrive. Delta artifacts
-// (satisfying artifact.Delta) are ephemeral and are not persisted to state,
-// while complete artifacts are buffered and appended to state once the
-// provider returns. After the turn completes, all registered handlers are
-// invoked on each artifact from the assistant turn. The operation is fully
-// synchronous and blocking.
+// the Step's FanOut subscribers immediately as they arrive. Artifacts are
+// accumulated into ordered blocks within the current turn: same-kind adjacent
+// deltas merge into one block, and a kind switch starts a new block. The
+// accumulated turn is appended to state once the provider returns. After the
+// turn completes, all registered handlers are invoked on each artifact from
+// the assistant turn. The operation is fully synchronous and blocking.
 func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, opts ...provider.InvokeOption) (state.State, error) {
 	var err error
 
@@ -121,7 +121,7 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 	}
 
 	provCh := make(chan artifact.Artifact, 100)
-	var completeArtifacts []artifact.Artifact
+	var accumulatedArtifacts []artifact.Artifact
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -133,8 +133,27 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 			case <-ctx.Done():
 				return
 			}
-			if _, ok := art.(artifact.Delta); !ok {
-				completeArtifacts = append(completeArtifacts, art)
+			switch d := art.(type) {
+			case artifact.TextDelta:
+				if len(accumulatedArtifacts) > 0 {
+					if last, ok := accumulatedArtifacts[len(accumulatedArtifacts)-1].(artifact.Text); ok {
+						last.Content += d.Content
+						accumulatedArtifacts[len(accumulatedArtifacts)-1] = last
+						continue
+					}
+				}
+				accumulatedArtifacts = append(accumulatedArtifacts, artifact.Text{Content: d.Content})
+			case artifact.ReasoningDelta:
+				if len(accumulatedArtifacts) > 0 {
+					if last, ok := accumulatedArtifacts[len(accumulatedArtifacts)-1].(artifact.Reasoning); ok {
+						last.Content += d.Content
+						accumulatedArtifacts[len(accumulatedArtifacts)-1] = last
+						continue
+					}
+				}
+				accumulatedArtifacts = append(accumulatedArtifacts, artifact.Reasoning{Content: d.Content})
+			default:
+				accumulatedArtifacts = append(accumulatedArtifacts, art)
 			}
 		}
 	}()
@@ -155,7 +174,7 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 		return st, fmt.Errorf("turn failed: %w", err)
 	}
 
-	st.Append(state.RoleAssistant, completeArtifacts...)
+	st.Append(state.RoleAssistant, accumulatedArtifacts...)
 
 	turns := st.Turns()
 	if len(turns) == 0 {

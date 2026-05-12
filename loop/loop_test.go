@@ -455,10 +455,86 @@ func TestStep_Turn_OutputEvents(t *testing.T) {
 	assert.Equal(t, "world!", text.Content)
 	assert.Equal(t, "turn_complete", events[3].Kind())
 	assert.Equal(t, state.RoleAssistant, events[3].(TurnCompleteEvent).Turn.Role)
-	require.Len(t, events[3].(TurnCompleteEvent).Turn.Artifacts, 1)
+	// Deltas are accumulated into ordered blocks: Text{"wor"} merges with
+	// Text{"ld"} into Text{"world"}, then Text{"world!"} starts a new block.
+	require.Len(t, events[3].(TurnCompleteEvent).Turn.Artifacts, 2)
 	text, ok = events[3].(TurnCompleteEvent).Turn.Artifacts[0].(artifact.Text)
 	require.True(t, ok)
+	assert.Equal(t, "world", text.Content)
+	text, ok = events[3].(TurnCompleteEvent).Turn.Artifacts[1].(artifact.Text)
+	require.True(t, ok)
 	assert.Equal(t, "world!", text.Content)
+}
+
+func TestStep_Turn_AccumulatesInterleavedDeltas(t *testing.T) {
+	s := New()
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+			artifact.ReasoningDelta{Content: "think"},
+			artifact.TextDelta{Content: " world"},
+		},
+	}
+
+	result, err := s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+	assert.Same(t, mem, result)
+
+	turns := mem.Turns()
+	require.Len(t, turns, 2)
+
+	last := turns[1]
+	assert.Equal(t, state.RoleAssistant, last.Role)
+	require.Len(t, last.Artifacts, 3)
+
+	text, ok := last.Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "Hello", text.Content)
+
+	reasoning, ok := last.Artifacts[1].(artifact.Reasoning)
+	require.True(t, ok)
+	assert.Equal(t, "think", reasoning.Content)
+
+	text, ok = last.Artifacts[2].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, " world", text.Content)
+}
+
+func TestStep_Turn_AccumulatesAdjacentDeltas(t *testing.T) {
+	s := New()
+	mem := &state.Memory{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+			artifact.TextDelta{Content: " world"},
+			artifact.ReasoningDelta{Content: "think"},
+			artifact.ReasoningDelta{Content: "...done"},
+		},
+	}
+
+	result, err := s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+	assert.Same(t, mem, result)
+
+	turns := mem.Turns()
+	require.Len(t, turns, 2)
+
+	last := turns[1]
+	assert.Equal(t, state.RoleAssistant, last.Role)
+	require.Len(t, last.Artifacts, 2)
+
+	text, ok := last.Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "Hello world", text.Content)
+
+	reasoning, ok := last.Artifacts[1].(artifact.Reasoning)
+	require.True(t, ok)
+	assert.Equal(t, "think...done", reasoning.Content)
 }
 
 func TestStep_Turn_OutputEventsWithHandler(t *testing.T) {
@@ -548,13 +624,16 @@ func TestStep_Turn_DeltasDroppedWithoutSubscriber(t *testing.T) {
 	assert.Same(t, mem, result)
 
 	// No subscribers, so deltas are dropped by the FanOut.
-	// Complete artifact is still appended to state.
+	// Deltas are still accumulated into state alongside complete artifacts.
 	turns := mem.Turns()
 	require.Len(t, turns, 2)
 	last := turns[1]
 	assert.Equal(t, state.RoleAssistant, last.Role)
-	require.Len(t, last.Artifacts, 1)
+	require.Len(t, last.Artifacts, 2)
 	text, ok := last.Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "wor", text.Content)
+	text, ok = last.Artifacts[1].(artifact.Text)
 	require.True(t, ok)
 	assert.Equal(t, "world!", text.Content)
 }
