@@ -1,33 +1,40 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	stdhttp "net/http"
 	"strings"
 
-	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
 )
+
+// MessageHandler processes a user message within a locked session.
+// It receives the session (with its Step and State), the parsed message
+// content, and the request context. The handler may call session.Step().Submit(),
+// session.Step().Turn(), or run any cognitive pattern. Events emitted by the
+// Step's FanOut are streamed to the client automatically by the Handler.
+// The handler runs in a goroutine; it should return when processing is complete.
+type MessageHandler func(ctx context.Context, session *Session, content string) error
 
 // Handler provides HTTP endpoints for the ore framework's conversation
 // primitives. It is mounted on an http.ServeMux via ServeMux().
 type Handler struct {
-	provider provider.Provider
-	newStep  func() *loop.Step
-	store    *SessionStore
+	newStep        func() *loop.Step
+	messageHandler MessageHandler
+	store          *SessionStore
 }
 
-// NewHandler creates a new Handler with the given provider and Step factory.
+// NewHandler creates a new Handler with the given Step factory and message handler.
 // The Step factory is called once per session to create an isolated Step
-// with its own FanOut.
-func NewHandler(p provider.Provider, newStep func() *loop.Step) *Handler {
+// with its own FanOut. The messageHandler processes each incoming user message
+// within a locked session; events emitted by the Step's FanOut are streamed
+// to the client as NDJSON.
+func NewHandler(newStep func() *loop.Step, messageHandler MessageHandler) *Handler {
 	return &Handler{
-		provider: p,
-		newStep:  newStep,
-		store:    NewSessionStore(),
+		newStep:        newStep,
+		messageHandler: messageHandler,
+		store:          NewSessionStore(),
 	}
 }
 
@@ -74,8 +81,8 @@ func (h *Handler) deleteSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	w.WriteHeader(stdhttp.StatusNoContent)
 }
 
-// sendMessage handles POST /sessions/{id}/messages by submitting the user message,
-// running the full server-side ReAct loop, and streaming events as NDJSON.
+// sendMessage handles POST /sessions/{id}/messages by invoking the
+// configured messageHandler and streaming events as NDJSON.
 func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	id := r.PathValue("id")
 	session, ok := h.store.Get(id)
@@ -105,18 +112,18 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		req.Kinds = []string{"text_delta", "reasoning_delta", "tool_call_delta", "turn_complete", "error"}
 	}
 
-	// Capture turn count before submitting so we can return all new turns.
+	// Capture turn count before the messageHandler runs so we can return all new turns.
 	beforeCount := len(session.state.Turns())
 
-	// Subscribe to the session's FanOut before submitting, so we capture
-	// all events from Submit and the subsequent ReAct loop.
+	// Subscribe to the session's FanOut before the goroutine starts.
 	subCh := session.step.Subscribe(req.Kinds...)
 
-	// Submit the user message as a non-inference turn.
-	if _, err := session.step.Submit(r.Context(), session.state, state.RoleUser, artifact.Text{Content: req.Content}); err != nil {
-		w.WriteHeader(stdhttp.StatusInternalServerError)
-		return
-	}
+	// Run the messageHandler in a goroutine so the main goroutine can stream
+	// events from the subscription channel.
+	done := make(chan error, 1)
+	go func() {
+		done <- h.messageHandler(r.Context(), session, req.Content)
+	}()
 
 	// Setup NDJSON writer.
 	nw, err := newNDJSONWriter(w)
@@ -126,19 +133,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 	w.Header().Set("Content-Type", "application/x-ndjson")
 
-	// Run the ReAct loop in a goroutine so the main goroutine can stream
-	// events from the subscription channel.
-	done := make(chan error, 1)
-	go func() {
-		react := &cognitive.ReAct{
-			Step:     session.step,
-			Provider: h.provider,
-		}
-		_, err := react.Run(r.Context(), session.state)
-		done <- err
-	}()
-
-	// Stream events from the subscription until the ReAct loop completes.
+	// Stream events from the subscription until the messageHandler completes.
 	for {
 		select {
 		case event := <-subCh:
@@ -154,7 +149,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		case err := <-done:
 			// Drain any remaining events from the subscription buffer.
 			drainSubscription(subCh, nw)
-			// Stream a final error event if the ReAct loop failed.
+			// Stream a final error event if the handler failed.
 			if err != nil {
 				data, _ := MarshalOutputEvent(loop.ErrorEvent{Err: err})
 				_ = nw.WriteEvent(data)

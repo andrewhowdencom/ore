@@ -38,9 +38,12 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/provider/openai"
+	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/tool"
 
 	httpc "github.com/andrewhowdencom/ore/conduit/http"
@@ -134,8 +137,23 @@ func run() error {
 		)
 	}
 
+	// Message handler: the application composes the ReAct cognitive pattern
+	// just like the TUI example does. The library handles HTTP and streaming;
+	// the application decides what to do with each message.
+	messageHandler := func(ctx context.Context, session *httpc.Session, content string) error {
+		if _, err := session.Step().Submit(ctx, session.State(), state.RoleUser, artifact.Text{Content: content}); err != nil {
+			return err
+		}
+		react := &cognitive.ReAct{
+			Step:     session.Step(),
+			Provider: prov,
+		}
+		_, err := react.Run(ctx, session.State())
+		return err
+	}
+
 	// Create the HTTP conduit handler.
-	handler := httpc.NewHandler(prov, stepFactory)
+	handler := httpc.NewHandler(stepFactory, messageHandler)
 
 	// Start the HTTP server.
 	server := &http.Server{

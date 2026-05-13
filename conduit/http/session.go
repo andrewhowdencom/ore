@@ -26,6 +26,15 @@ type Session struct {
 	busy  bool
 }
 
+// ID returns the session's unique identifier.
+func (s *Session) ID() string { return s.id }
+
+// Step returns the loop.Step associated with this session.
+func (s *Session) Step() *loop.Step { return s.step }
+
+// State returns the session's conversation state.
+func (s *Session) State() state.State { return s.state }
+
 // Lock attempts to mark the session as busy. It returns true if the session
 // was not already busy and is now locked, or false if the session is already
 // processing a turn. The caller must call Unlock when finished.

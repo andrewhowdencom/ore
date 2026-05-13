@@ -56,18 +56,39 @@ func (w *noFlusherWriter) WriteHeader(code int) {
 	w.code = code
 }
 
+// simpleMessageHandler returns a MessageHandler that only submits the user
+// message as a non-inference turn. It does not invoke the provider.
+func simpleMessageHandler() MessageHandler {
+	return func(ctx context.Context, session *Session, content string) error {
+		_, err := session.Step().Submit(ctx, session.State(), state.RoleUser, artifact.Text{Content: content})
+		return err
+	}
+}
+
+// turnMessageHandler returns a MessageHandler that submits the user message
+// and then runs a single Step.Turn with the given provider.
+func turnMessageHandler(p provider.Provider) MessageHandler {
+	return func(ctx context.Context, session *Session, content string) error {
+		if _, err := session.Step().Submit(ctx, session.State(), state.RoleUser, artifact.Text{Content: content}); err != nil {
+			return err
+		}
+		_, err := session.Step().Turn(ctx, session.State(), p)
+		return err
+	}
+}
+
 func TestNewHandler(t *testing.T) {
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(&mockProvider{}, newStep)
+	h := NewHandler(newStep, simpleMessageHandler())
 	require.NotNil(t, h)
-	assert.NotNil(t, h.provider)
 	assert.NotNil(t, h.newStep)
+	assert.NotNil(t, h.messageHandler)
 	assert.NotNil(t, h.store)
 }
 
 func TestHandler_ServeMux_Routing(t *testing.T) {
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(&mockProvider{}, newStep)
+	h := NewHandler(newStep, simpleMessageHandler())
 	server := httptest.NewServer(h.ServeMux())
 	defer server.Close()
 
@@ -98,7 +119,7 @@ func TestHandler_ServeMux_Routing(t *testing.T) {
 
 func TestHandler_CreateSession(t *testing.T) {
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(&mockProvider{}, newStep)
+	h := NewHandler(newStep, simpleMessageHandler())
 
 	req := httptest.NewRequest("POST", "/sessions", nil)
 	rr := httptest.NewRecorder()
@@ -119,7 +140,7 @@ func TestHandler_CreateSession(t *testing.T) {
 
 func TestHandler_CreateSession_StoresStep(t *testing.T) {
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(&mockProvider{}, newStep)
+	h := NewHandler(newStep, simpleMessageHandler())
 
 	req := httptest.NewRequest("POST", "/sessions", nil)
 	rr := httptest.NewRecorder()
@@ -142,7 +163,7 @@ func TestHandler_CreateSession_RandFailure(t *testing.T) {
 	defer func() { randRead = old }()
 
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(&mockProvider{}, newStep)
+	h := NewHandler(newStep, simpleMessageHandler())
 
 	req := httptest.NewRequest("POST", "/sessions", nil)
 	rr := httptest.NewRecorder()
@@ -153,7 +174,7 @@ func TestHandler_CreateSession_RandFailure(t *testing.T) {
 
 func TestHandler_DeleteSession(t *testing.T) {
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(&mockProvider{}, newStep)
+	h := NewHandler(newStep, simpleMessageHandler())
 
 	// Create a session first.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -180,7 +201,7 @@ func TestHandler_DeleteSession(t *testing.T) {
 
 func TestHandler_DeleteSession_NotFound(t *testing.T) {
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(&mockProvider{}, newStep)
+	h := NewHandler(newStep, simpleMessageHandler())
 
 	req := httptest.NewRequest("DELETE", "/sessions/nonexistent", nil)
 	rr := httptest.NewRecorder()
@@ -197,7 +218,7 @@ func TestHandler_SendMessage(t *testing.T) {
 		},
 	}
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(prov, newStep)
+	h := NewHandler(newStep, turnMessageHandler(prov))
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -245,7 +266,7 @@ func TestHandler_SendMessage(t *testing.T) {
 
 func TestHandler_SendMessage_NotFound(t *testing.T) {
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(&mockProvider{}, newStep)
+	h := NewHandler(newStep, simpleMessageHandler())
 
 	body := `{"content": "hi"}`
 	req := httptest.NewRequest("POST", "/sessions/nonexistent/messages", strings.NewReader(body))
@@ -262,7 +283,7 @@ func TestHandler_SendMessage_NoKinds(t *testing.T) {
 		},
 	}
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(prov, newStep)
+	h := NewHandler(newStep, turnMessageHandler(prov))
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -306,7 +327,7 @@ func TestSSEWriter(t *testing.T) {
 
 func TestHandler_SessionEvents_NotFound(t *testing.T) {
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(&mockProvider{}, newStep)
+	h := NewHandler(newStep, simpleMessageHandler())
 
 	req := httptest.NewRequest("GET", "/sessions/nonexistent/events", nil)
 	rr := httptest.NewRecorder()
@@ -317,7 +338,7 @@ func TestHandler_SessionEvents_NotFound(t *testing.T) {
 
 func TestHandler_SessionEvents_ContextCancel(t *testing.T) {
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(&mockProvider{}, newStep)
+	h := NewHandler(newStep, simpleMessageHandler())
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -350,7 +371,7 @@ func TestHandler_SendMessage_Concurrent(t *testing.T) {
 		},
 	}
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(prov, newStep)
+	h := NewHandler(newStep, turnMessageHandler(prov))
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -380,7 +401,7 @@ func TestHandler_SendMessage_Concurrent(t *testing.T) {
 
 func TestHandler_SendMessage_MalformedJSON(t *testing.T) {
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(&mockProvider{}, newStep)
+	h := NewHandler(newStep, simpleMessageHandler())
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -409,7 +430,7 @@ func TestHandler_SendMessage_ProviderError(t *testing.T) {
 		err: fmt.Errorf("provider failure"),
 	}
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(prov, newStep)
+	h := NewHandler(newStep, turnMessageHandler(prov))
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -472,7 +493,7 @@ func TestSSEWriter_NoFlusher(t *testing.T) {
 
 func TestHandler_ServeMux_UnknownPaths(t *testing.T) {
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(&mockProvider{}, newStep)
+	h := NewHandler(newStep, simpleMessageHandler())
 
 	tests := []struct {
 		name       string
