@@ -32,6 +32,8 @@ func NewHandler(p provider.Provider, newStep func() *loop.Step) *Handler {
 }
 
 // ServeMux returns an http.ServeMux with all HTTP conduit routes registered.
+// Routes use Go 1.22+ METHOD path patterns (e.g. "POST /sessions",
+// "DELETE /sessions/{id}").
 func (h *Handler) ServeMux() *stdhttp.ServeMux {
 	mux := stdhttp.NewServeMux()
 	mux.HandleFunc("POST /sessions", h.createSession)
@@ -42,6 +44,9 @@ func (h *Handler) ServeMux() *stdhttp.ServeMux {
 }
 
 // createSession handles POST /sessions by creating a new ephemeral session.
+// On success it responds with 201 Created and a JSON body:
+//
+//	{"id": "<session-id>", "events_url": "/sessions/<session-id>/events"}
 func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	step := h.newStep()
 	session, err := h.store.Create(step)

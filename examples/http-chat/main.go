@@ -8,16 +8,17 @@
 //	export ORE_MODEL=gpt-4o
 //	go run ./examples/http-chat
 //
-// Create a session:
+// Create a session and capture the ID:
 //
-//	curl -X POST http://localhost:8080/sessions
+//	SESSION_ID=$(curl -s -X POST http://localhost:8080/sessions | jq -r '.id')
 //
 // Send a message (stream NDJSON):
 //
 //	curl -N -X POST http://localhost:8080/sessions/$SESSION_ID/messages \
+//	  -H "Content-Type: application/json" \
 //	  -d '{"content": "What is 2 + 3?"}'
 //
-// Subscribe to SSE events:
+// Subscribe to SSE events (using the events_url from creation):
 //
 //	curl -N http://localhost:8080/sessions/$SESSION_ID/events?kinds=text_delta,turn_complete
 //

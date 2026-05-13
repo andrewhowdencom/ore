@@ -55,6 +55,9 @@ type completeEventJSON struct {
 // --- Marshal functions ---
 
 // MarshalArtifact serializes an artifact.Artifact to JSON bytes.
+// It supports all core artifact kinds (text, text_delta, reasoning,
+// reasoning_delta, tool_call, tool_call_delta, tool_result, usage, image).
+// Returns an error for unsupported kinds.
 func MarshalArtifact(art artifact.Artifact) ([]byte, error) {
 	dto := artifactToJSON(art)
 	if dto == nil {
@@ -64,6 +67,7 @@ func MarshalArtifact(art artifact.Artifact) ([]byte, error) {
 }
 
 // artifactToJSON converts a framework artifact to its JSON DTO.
+// Returns nil for unsupported kinds.
 func artifactToJSON(art artifact.Artifact) *artifactJSON {
 	switch a := art.(type) {
 	case artifact.Text:
@@ -96,6 +100,7 @@ func artifactToJSON(art artifact.Artifact) *artifactJSON {
 
 // MarshalOutputEvent serializes a loop.OutputEvent to JSON bytes.
 // It handles TurnCompleteEvent, ErrorEvent, and all artifact.Artifact types.
+// Returns an error for unsupported event or artifact kinds.
 func MarshalOutputEvent(event loop.OutputEvent) ([]byte, error) {
 	switch e := event.(type) {
 	case loop.TurnCompleteEvent:
@@ -118,6 +123,7 @@ func MarshalOutputEvent(event loop.OutputEvent) ([]byte, error) {
 }
 
 // turnToJSON converts a state.Turn to its JSON DTO.
+// Returns an error if any artifact in the turn has an unsupported kind.
 func turnToJSON(t state.Turn) (turnJSON, error) {
 	artifacts := make([]artifactJSON, len(t.Artifacts))
 	for i, art := range t.Artifacts {
@@ -133,7 +139,9 @@ func turnToJSON(t state.Turn) (turnJSON, error) {
 	}, nil
 }
 
-// MarshalCompleteEvent serializes a complete event carrying all new turns.
+// MarshalCompleteEvent serializes a complete event carrying all new turns
+// produced during a message handler invocation. The returned JSON has
+// kind "complete" and a "turns" array.
 func MarshalCompleteEvent(turns []state.Turn) ([]byte, error) {
 	turnsJSON := make([]turnJSON, len(turns))
 	for i, t := range turns {
@@ -152,6 +160,8 @@ func MarshalCompleteEvent(turns []state.Turn) ([]byte, error) {
 // --- Unmarshal functions ---
 
 // UnmarshalArtifact deserializes JSON bytes into an artifact.Artifact.
+// It supports all core artifact kinds. Returns an error for unsupported
+// kinds or malformed JSON.
 func UnmarshalArtifact(data []byte) (artifact.Artifact, error) {
 	var dto artifactJSON
 	if err := json.Unmarshal(data, &dto); err != nil {
@@ -161,6 +171,7 @@ func UnmarshalArtifact(data []byte) (artifact.Artifact, error) {
 }
 
 // artifactFromJSON converts an artifactJSON DTO to a framework artifact.
+// Returns an error for unsupported kinds.
 func artifactFromJSON(dto artifactJSON) (artifact.Artifact, error) {
 	switch dto.Kind {
 	case "text":
@@ -187,6 +198,8 @@ func artifactFromJSON(dto artifactJSON) (artifact.Artifact, error) {
 }
 
 // UnmarshalOutputEvent deserializes JSON bytes into a loop.OutputEvent.
+// It handles "turn_complete", "error", and all artifact kinds.
+// Returns an error for unsupported kinds or malformed JSON.
 func UnmarshalOutputEvent(data []byte) (loop.OutputEvent, error) {
 	var peek struct {
 		Kind string `json:"kind"`
@@ -219,6 +232,7 @@ func UnmarshalOutputEvent(data []byte) (loop.OutputEvent, error) {
 }
 
 // turnFromJSON converts a turnJSON DTO to a state.Turn.
+// Returns an error if any artifact in the turn has an unsupported kind.
 func turnFromJSON(dto turnJSON) (state.Turn, error) {
 	artifacts := make([]artifact.Artifact, len(dto.Artifacts))
 	for i, artDTO := range dto.Artifacts {
