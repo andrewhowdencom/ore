@@ -26,9 +26,22 @@
 //
 //	curl -N http://localhost:8080/sessions/$SESSION_ID/events?kinds=text_delta,turn_complete
 //
+// Attach to an existing conversation:
+//
+//	curl -s -X POST http://localhost:8080/sessions \
+//	  -d '{"conversation_id": "<uuid>"}' | jq -r '.id'
+//
+// List all conversations:
+//
+//	curl -s http://localhost:8080/conversations | jq '.'
+//
 // Delete the session:
 //
 //	curl -X DELETE http://localhost:8080/sessions/$SESSION_ID
+//
+// With persistent JSON store:
+//
+//	STORE_DIR=/tmp/ore-store go run ./examples/http-chat
 //
 // The server optionally registers calculator tools (add, multiply) to
 // demonstrate server-side ReAct loop execution. See package tool for details
@@ -160,8 +173,19 @@ func run() error {
 		return err
 	}
 
+	// Create the conversation store.
+	var convStore conversation.Store
+	if storeDir := os.Getenv("STORE_DIR"); storeDir != "" {
+		var err error
+		convStore, err = conversation.NewJSONStore(storeDir)
+		if err != nil {
+			return fmt.Errorf("create JSON store: %w", err)
+		}
+	} else {
+		convStore = conversation.NewMemoryStore()
+	}
+
 	// Create the HTTP conduit handler.
-	convStore := conversation.NewMemoryStore()
 	handler := httpc.NewHandler(convStore, stepFactory, messageHandler, httpc.WithUI())
 
 	// Start the HTTP server.
