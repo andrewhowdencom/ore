@@ -514,3 +514,36 @@ func TestHandler_ServeMux_UnknownPaths(t *testing.T) {
 		})
 	}
 }
+
+func TestHandler_WithUI_StaticFiles(t *testing.T) {
+	newStep := func() *loop.Step { return loop.New() }
+	h := NewHandler(newStep, simpleMessageHandler(), WithUI())
+
+	t.Run("GET / returns text/html", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		rr := httptest.NewRecorder()
+		h.ServeMux().ServeHTTP(rr, req)
+		assert.Equal(t, 200, rr.Code)
+		assert.Equal(t, "text/html; charset=utf-8", rr.Header().Get("Content-Type"))
+		assert.Contains(t, rr.Body.String(), "ore chat")
+	})
+
+	t.Run("GET /chat.js returns application/javascript", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/chat.js", nil)
+		rr := httptest.NewRecorder()
+		h.ServeMux().ServeHTTP(rr, req)
+		assert.Equal(t, 200, rr.Code)
+		assert.Equal(t, "application/javascript; charset=utf-8", rr.Header().Get("Content-Type"))
+		assert.Contains(t, rr.Body.String(), "ore chat loaded")
+	})
+}
+
+func TestHandler_WithoutUI_Root404(t *testing.T) {
+	newStep := func() *loop.Step { return loop.New() }
+	h := NewHandler(newStep, simpleMessageHandler())
+
+	req := httptest.NewRequest("GET", "/", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+	assert.Equal(t, 404, rr.Code)
+}

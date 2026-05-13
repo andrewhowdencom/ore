@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	stdhttp "net/http"
 	"strings"
@@ -17,12 +18,23 @@ import (
 // The handler runs in a goroutine; it should return when processing is complete.
 type MessageHandler func(ctx context.Context, session *Session, content string) error
 
+// Option configures a Handler.
+type Option func(*Handler)
+
+// WithUI enables serving of an embedded HTML/JS chat client at GET /.
+func WithUI() Option {
+	return func(h *Handler) {
+		h.withUI = true
+	}
+}
+
 // Handler provides HTTP endpoints for the ore framework's conversation
 // primitives. It is mounted on an http.ServeMux via ServeMux().
 type Handler struct {
 	newStep        func() *loop.Step
 	messageHandler MessageHandler
 	store          *SessionStore
+	withUI         bool
 }
 
 // NewHandler creates a new Handler with the given Step factory and message handler.
@@ -30,12 +42,16 @@ type Handler struct {
 // with its own FanOut. The messageHandler processes each incoming user message
 // within a locked session; events emitted by the Step's FanOut are streamed
 // to the client as NDJSON.
-func NewHandler(newStep func() *loop.Step, messageHandler MessageHandler) *Handler {
-	return &Handler{
+func NewHandler(newStep func() *loop.Step, messageHandler MessageHandler, opts ...Option) *Handler {
+	h := &Handler{
 		newStep:        newStep,
 		messageHandler: messageHandler,
 		store:          NewSessionStore(),
 	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // ServeMux returns an http.ServeMux with all HTTP conduit routes registered.
@@ -47,6 +63,10 @@ func (h *Handler) ServeMux() *stdhttp.ServeMux {
 	mux.HandleFunc("DELETE /sessions/{id}", h.deleteSession)
 	mux.HandleFunc("POST /sessions/{id}/messages", h.sendMessage)
 	mux.HandleFunc("GET /sessions/{id}/events", h.sessionEvents)
+	if h.withUI {
+		mux.HandleFunc("GET /", h.serveUI)
+		mux.HandleFunc("GET /chat.js", h.serveUI)
+	}
 	return mux
 }
 
@@ -243,5 +263,31 @@ func (h *Handler) sessionEvents(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		case <-r.Context().Done():
 			return
 		}
+	}
+}
+
+// serveUI serves the embedded static files (index.html and chat.js) for the
+// web chat client. It is registered at GET / and GET /chat.js when WithUI()
+// is enabled.
+func (h *Handler) serveUI(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+	switch r.URL.Path {
+	case "/":
+		data, err := staticFS.ReadFile("static/index.html")
+		if err != nil {
+			w.WriteHeader(stdhttp.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(data)
+	case "/chat.js":
+		data, err := staticFS.ReadFile("static/chat.js")
+		if err != nil {
+			w.WriteHeader(stdhttp.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		_, _ = w.Write(data)
+	default:
+		w.WriteHeader(stdhttp.StatusNotFound)
 	}
 }
