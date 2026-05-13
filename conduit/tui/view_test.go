@@ -69,11 +69,10 @@ func TestPrefixLines_WithANSI(t *testing.T) {
 }
 
 func TestModel_View_AssistantTurn_WithRendered(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-		turns: []renderedTurn{
-			{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "# Hello", rendered: "pre-rendered glamour output"}}},
-		},
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.turns = []renderedTurn{
+		{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "# Hello", rendered: "pre-rendered glamour output"}}},
 	}
 	output := m.View()
 	assert.Contains(t, output, "Assistant: ")
@@ -83,11 +82,10 @@ func TestModel_View_AssistantTurn_WithRendered(t *testing.T) {
 }
 
 func TestModel_View_AssistantTurn_FallbackToPlainText(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-		turns: []renderedTurn{
-			{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "plain text"}}},
-		},
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.turns = []renderedTurn{
+		{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "plain text"}}},
 	}
 	output := m.View()
 	assert.Contains(t, output, "Assistant: ")
@@ -95,33 +93,30 @@ func TestModel_View_AssistantTurn_FallbackToPlainText(t *testing.T) {
 }
 
 func TestModel_View_StreamingText_PlainText(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-		streamBlocks: []streamBlock{{kind: "text", content: "streaming text"}},
-	}
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.streamBlocks = []streamBlock{{kind: "text", content: "streaming text"}}
 	output := m.View()
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "streaming text")
 }
 
 func TestModel_View_StreamingReasoning(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-		streamBlocks: []streamBlock{{kind: "reasoning", content: "thinking..."}},
-	}
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.streamBlocks = []streamBlock{{kind: "reasoning", content: "thinking..."}}
 	output := m.View()
 	assert.Contains(t, output, "Thinking: ")
 	assert.Contains(t, output, "thinking...")
 }
 
 func TestModel_View_InterleavedStreaming(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-		streamBlocks: []streamBlock{
-			{kind: "text", content: "first"},
-			{kind: "reasoning", content: "think"},
-			{kind: "text", content: "second"},
-		},
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.streamBlocks = []streamBlock{
+		{kind: "text", content: "first"},
+		{kind: "reasoning", content: "think"},
+		{kind: "text", content: "second"},
 	}
 	output := m.View()
 	// Verify text and reasoning appear interleaved in order.
@@ -133,14 +128,13 @@ func TestModel_View_InterleavedStreaming(t *testing.T) {
 }
 
 func TestModel_View_AssistantTurn_WithReasoning(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-		turns: []renderedTurn{
-			{role: state.RoleAssistant, blocks: []renderedBlock{
-				{kind: "text", source: "the answer"},
-				{kind: "reasoning", source: "because 2+2=4"},
-			}},
-		},
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.turns = []renderedTurn{
+		{role: state.RoleAssistant, blocks: []renderedBlock{
+			{kind: "text", source: "the answer"},
+			{kind: "reasoning", source: "because 2+2=4"},
+		}},
 	}
 	output := m.View()
 	assert.Contains(t, output, "Assistant: ")
@@ -154,14 +148,13 @@ func TestModel_View_AssistantTurn_WithReasoning(t *testing.T) {
 }
 
 func TestModel_View_AssistantTurn_MultiBlockSpacing(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-		turns: []renderedTurn{
-			{role: state.RoleAssistant, blocks: []renderedBlock{
-				{kind: "reasoning", source: "let me think..."},
-				{kind: "text", source: "the answer"},
-			}},
-		},
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.turns = []renderedTurn{
+		{role: state.RoleAssistant, blocks: []renderedBlock{
+			{kind: "reasoning", source: "let me think..."},
+			{kind: "text", source: "the answer"},
+		}},
 	}
 	output := m.View()
 	assert.Contains(t, output, "Thinking: ")

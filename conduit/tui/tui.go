@@ -8,6 +8,8 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/conduit"
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -38,9 +40,19 @@ var Descriptor = conduit.Descriptor{
 // channel and routes them into the Bubble Tea message loop.
 func New(eventsCh <-chan loop.OutputEvent) *TUI {
 	surfEventsCh := make(chan conduit.Event, 10)
+
+	ta := textarea.New()
+	ta.ShowLineNumbers = false
+	ta.Prompt = "> "
+	// Note: bubbletea v1.3.10 does not support Shift modifier detection.
+	// Alt+Enter is used as the practical alternative for newline insertion.
+	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("alt+enter"))
+	ta.Focus()
+
 	m := model{
 		eventsCh: surfEventsCh,
 		viewport: viewport.New(0, 0),
+		textarea: ta,
 		md:       glamourMarkdownRenderer{},
 	}
 	p := tea.NewProgram(&m, tea.WithAltScreen())

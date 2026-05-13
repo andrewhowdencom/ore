@@ -10,6 +10,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/conduit"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -64,8 +65,8 @@ type model struct {
 	// Transient status line (e.g., "thinking...").
 	status string
 
-	// User input buffer.
-	input strings.Builder
+	// User input widget.
+	textarea textarea.Model
 
 	// Terminal dimensions.
 	width  int
@@ -94,6 +95,46 @@ func (m *model) renderMarkdown(text string, width int) (string, error) {
 		m.md = glamourMarkdownRenderer{}
 	}
 	return m.md.Render(text, width)
+}
+
+// recalcLayout adjusts the textarea height based on its current content
+// and resizes the viewport to fill the remaining terminal space above the
+// horizontal separator.
+func (m *model) recalcLayout() {
+	if m.height == 0 {
+		return
+	}
+
+	value := m.textarea.Value()
+	contentWidth := m.textarea.Width()
+	if contentWidth <= 0 {
+		contentWidth = m.width
+	}
+	if contentWidth <= 0 {
+		contentWidth = 80
+	}
+
+	logicalLines := strings.Split(value, "\n")
+	displayLines := 0
+	for _, line := range logicalLines {
+		if line == "" {
+			displayLines++
+		} else {
+			// Rough estimate of wrapped lines.
+			wrappedLineCount := len(line)/contentWidth + 1
+			displayLines += wrappedLineCount
+		}
+	}
+
+	maxHeight := max(3, m.height/3)
+	desiredHeight := min(displayLines, maxHeight)
+	desiredHeight = max(desiredHeight, 1)
+
+	m.textarea.SetHeight(desiredHeight)
+	m.viewport.Height = m.height - m.textarea.Height() - 1 // -1 for separator
+	if m.viewport.Height < 1 {
+		m.viewport.Height = 1
+	}
 }
 
 // Init returns an initial command. No periodic ticks are needed because
@@ -154,44 +195,48 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.viewport, cmd = m.viewport.Update(msg)
 			return m, cmd
-		// On Enter, send the completed user input as a UserMessageEvent to
-		// the conduit's event channel, then clear the input buffer. The turn
-		// will be rendered when it arrives back via turnMsg from the loop's
-		// FanOut.
 		case tea.KeyEnter:
-			if m.input.Len() > 0 {
-				content := m.input.String()
-				m.input.Reset()
-				select {
-				case m.eventsCh <- conduit.UserMessageEvent{Content: content}:
-				default:
-					slog.Warn("event channel full, dropping user message")
+			if !msg.Alt {
+				if m.textarea.Value() != "" {
+					content := m.textarea.Value()
+					m.textarea.Reset()
+					m.recalcLayout()
+					select {
+					case m.eventsCh <- conduit.UserMessageEvent{Content: content}:
+					default:
+						slog.Warn("event channel full, dropping user message")
+					}
 				}
+				return m, nil
 			}
-		// Propagate Ctrl+C as an interrupt to cancel the ongoing inference.
+			// Alt+Enter: pass to textarea for newline insertion.
+			var cmd tea.Cmd
+			m.textarea, cmd = m.textarea.Update(msg)
+			m.recalcLayout()
+			return m, cmd
 		case tea.KeyCtrlC:
 			select {
 			case m.eventsCh <- conduit.InterruptEvent{}:
 			default:
 			}
 			return m, tea.Quit
-		case tea.KeyBackspace:
-			s := m.input.String()
-			if len(s) > 0 {
-				runes := []rune(s)
-				m.input.Reset()
-				m.input.WriteString(string(runes[:len(runes)-1]))
-			}
 		case tea.KeySpace:
-			m.input.WriteString(" ")
-		case tea.KeyRunes:
-			m.input.WriteString(string(msg.Runes))
+			var cmd tea.Cmd
+			m.textarea, cmd = m.textarea.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+			m.recalcLayout()
+			return m, cmd
+		default:
+			var cmd tea.Cmd
+			m.textarea, cmd = m.textarea.Update(msg)
+			m.recalcLayout()
+			return m, cmd
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport.Width = msg.Width
-		m.viewport.Height = msg.Height - 1
+		m.textarea.SetWidth(msg.Width)
+		m.recalcLayout()
 		// Re-render assistant turn text blocks with the new terminal width
 		// so cached Markdown output remains correctly wrapped.
 		for i, turn := range m.turns {
