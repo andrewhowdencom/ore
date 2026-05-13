@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	stdhttp "net/http"
+	"strings"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
@@ -183,7 +184,56 @@ func drainSubscription(subCh <-chan loop.OutputEvent, nw *ndjsonWriter) {
 	}
 }
 
-// sessionEvents handles GET /sessions/{id}/events. Stub: returns 501 Not Implemented.
+// sessionEvents handles GET /sessions/{id}/events by establishing a persistent
+// SSE connection that streams events from the session's FanOut.
 func (h *Handler) sessionEvents(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-	w.WriteHeader(stdhttp.StatusNotImplemented)
+	id := r.PathValue("id")
+	session, ok := h.store.Get(id)
+	if !ok {
+		w.WriteHeader(stdhttp.StatusNotFound)
+		return
+	}
+
+	// Parse kinds from query parameter.
+	var kinds []string
+	if k := r.URL.Query().Get("kinds"); k != "" {
+		kinds = strings.Split(k, ",")
+	}
+	// Default event kinds when none specified.
+	if len(kinds) == 0 {
+		kinds = []string{"text_delta", "reasoning_delta", "tool_call_delta", "turn_complete", "error"}
+	}
+
+	// Subscribe to the session's FanOut.
+	subCh := session.step.Subscribe(kinds...)
+
+	// Setup SSE writer.
+	sw, err := newSSEWriter(w)
+	if err != nil {
+		w.WriteHeader(stdhttp.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	// Read from subscription until client disconnects or session closes.
+	for {
+		select {
+		case event, ok := <-subCh:
+			if !ok {
+				// Subscription channel closed (session deleted).
+				return
+			}
+			data, err := MarshalOutputEvent(event)
+			if err != nil {
+				continue
+			}
+			if err := sw.WriteEvent(event.Kind(), data); err != nil {
+				return
+			}
+		case <-r.Context().Done():
+			return
+		}
+	}
 }

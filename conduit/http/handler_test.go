@@ -56,7 +56,7 @@ func TestHandler_ServeMux_Routing(t *testing.T) {
 		{"create session", "POST", "/sessions", 201},
 		{"delete session not found", "DELETE", "/sessions/abc-123", 404},
 		{"send message not found", "POST", "/sessions/abc-123/messages", 404},
-		{"session events stub", "GET", "/sessions/abc-123/events", 501},
+		{"session events not found", "GET", "/sessions/abc-123/events", 404},
 		{"get sessions method not allowed", "GET", "/sessions", 405},
 		{"post to session root method not allowed", "POST", "/sessions/abc-123", 405},
 		{"put method not allowed", "PUT", "/sessions/abc-123", 405},
@@ -250,6 +250,58 @@ func TestHandler_SendMessage_NoKinds(t *testing.T) {
 	var complete completeEventJSON
 	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &complete))
 	assert.Equal(t, "complete", complete.Kind)
+}
+
+func TestSSEWriter(t *testing.T) {
+	rr := httptest.NewRecorder()
+	sw, err := newSSEWriter(rr)
+	require.NoError(t, err)
+
+	data := []byte(`{"kind":"text_delta","content":"hello"}`)
+	require.NoError(t, sw.WriteEvent("text_delta", data))
+
+	body := rr.Body.String()
+	assert.Contains(t, body, "event: text_delta\n")
+	assert.Contains(t, body, "data: {\"kind\":\"text_delta\",\"content\":\"hello\"}\n\n")
+}
+
+func TestHandler_SessionEvents_NotFound(t *testing.T) {
+	newStep := func() *loop.Step { return loop.New() }
+	h := NewHandler(&mockProvider{}, newStep)
+
+	req := httptest.NewRequest("GET", "/sessions/nonexistent/events", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	assert.Equal(t, 404, rr.Code)
+}
+
+func TestHandler_SessionEvents_ContextCancel(t *testing.T) {
+	newStep := func() *loop.Step { return loop.New() }
+	h := NewHandler(&mockProvider{}, newStep)
+
+	// Create a session.
+	createReq := httptest.NewRequest("POST", "/sessions", nil)
+	createRr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(createRr, createReq)
+	require.Equal(t, 201, createRr.Code)
+
+	var createResp map[string]string
+	require.NoError(t, json.Unmarshal(createRr.Body.Bytes(), &createResp))
+	sessionID := createResp["id"]
+
+	// Start SSE handler with an already-cancelled context.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	req := httptest.NewRequest("GET", "/sessions/"+sessionID+"/events", nil).WithContext(ctx)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	assert.Equal(t, 200, rr.Code)
+	assert.Equal(t, "text/event-stream", rr.Header().Get("Content-Type"))
+	assert.Equal(t, "no-cache", rr.Header().Get("Cache-Control"))
+	assert.Equal(t, "keep-alive", rr.Header().Get("Connection"))
 }
 
 func TestHandler_ServeMux_UnknownPaths(t *testing.T) {
