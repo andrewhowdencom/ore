@@ -74,3 +74,20 @@ Use the functional options pattern for constructors with optional parameters (e.
 - **Commands** (`cmd/`) are maintained, first-class applications with longer lifespans and stronger operational requirements.
 
 Do not conflate the two. If a binary is a validation tool or tutorial, it belongs in `examples/`. If it is a product or service, it belongs in `cmd/`.
+
+## Conduit/Library vs. Application Boundary
+
+Conduit and handler libraries (`conduit/tui/`, `conduit/http/`, and future I/O adapters) provide **infrastructure only**:
+
+- Transport adaptation (HTTP request/response, terminal rendering)
+- Event streaming (channels, NDJSON, SSE)
+- Session management (when the transport requires it, e.g. HTTP)
+
+They **MUST NOT**:
+- Import `cognitive/` or embed specific cognitive patterns (ReAct, Chain-of-Thought, etc.)
+- Invoke the provider directly
+- Manage the conversation turn loop
+
+Cognitive patterns, provider invocation, and conversation orchestration are **application-level concerns**, composed in `examples/` or `cmd/` packages. The library exposes its `Session`, `Step`, and `State` via exported accessors so the application can call `Step.Submit()`, `Step.Turn()`, or run a full `cognitive.ReAct` loop as needed.
+
+This mirrors the TUI pattern: `conduit/tui/` is a dumb pipe; `examples/tui-chat/main.go` composes the ReAct loop. The HTTP conduit must follow the same separation.
