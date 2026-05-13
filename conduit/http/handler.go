@@ -142,6 +142,10 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 				// Skip events that can't be marshaled.
 				continue
 			}
+			if data == nil {
+				// Skip unknown artifact kinds (e.g., custom extensions).
+				continue
+			}
 			if err := nw.WriteEvent(data); err != nil {
 				// Client likely disconnected.
 				return
@@ -175,6 +179,10 @@ func drainSubscription(subCh <-chan loop.OutputEvent, nw *ndjsonWriter) {
 		case event := <-subCh:
 			data, err := MarshalOutputEvent(event)
 			if err != nil {
+				continue
+			}
+			if data == nil {
+				// Skip unknown artifact kinds (e.g., custom extensions).
 				continue
 			}
 			_ = nw.WriteEvent(data)

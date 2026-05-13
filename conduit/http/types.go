@@ -57,50 +57,51 @@ type completeEventJSON struct {
 // MarshalArtifact serializes an artifact.Artifact to JSON bytes.
 // It supports all core artifact kinds (text, text_delta, reasoning,
 // reasoning_delta, tool_call, tool_call_delta, tool_result, usage, image).
-// Returns an error for unsupported kinds.
+// Unknown artifact kinds are silently skipped (returns nil, nil).
 func MarshalArtifact(art artifact.Artifact) ([]byte, error) {
-	dto := artifactToJSON(art)
-	if dto == nil {
-		return nil, fmt.Errorf("unsupported artifact kind: %s", art.Kind())
+	dto, ok := artifactToJSON(art)
+	if !ok {
+		return nil, nil
 	}
 	return json.Marshal(dto)
 }
 
 // artifactToJSON converts a framework artifact to its JSON DTO.
-// Returns nil for unsupported kinds.
-func artifactToJSON(art artifact.Artifact) *artifactJSON {
+// Returns false for unsupported kinds, signaling the caller to skip.
+func artifactToJSON(art artifact.Artifact) (*artifactJSON, bool) {
 	switch a := art.(type) {
 	case artifact.Text:
-		return &artifactJSON{Kind: "text", Content: a.Content}
+		return &artifactJSON{Kind: "text", Content: a.Content}, true
 	case artifact.TextDelta:
-		return &artifactJSON{Kind: "text_delta", Content: a.Content}
+		return &artifactJSON{Kind: "text_delta", Content: a.Content}, true
 	case artifact.Reasoning:
-		return &artifactJSON{Kind: "reasoning", Content: a.Content}
+		return &artifactJSON{Kind: "reasoning", Content: a.Content}, true
 	case artifact.ReasoningDelta:
-		return &artifactJSON{Kind: "reasoning_delta", Content: a.Content}
+		return &artifactJSON{Kind: "reasoning_delta", Content: a.Content}, true
 	case artifact.ToolCall:
-		return &artifactJSON{Kind: "tool_call", ID: a.ID, Name: a.Name, Arguments: a.Arguments}
+		return &artifactJSON{Kind: "tool_call", ID: a.ID, Name: a.Name, Arguments: a.Arguments}, true
 	case artifact.ToolCallDelta:
-		return &artifactJSON{Kind: "tool_call_delta", ID: a.ID, Name: a.Name, Arguments: a.Arguments}
+		return &artifactJSON{Kind: "tool_call_delta", ID: a.ID, Name: a.Name, Arguments: a.Arguments}, true
 	case artifact.ToolResult:
-		return &artifactJSON{Kind: "tool_result", ToolCallID: a.ToolCallID, Content: a.Content, IsError: a.IsError}
+		return &artifactJSON{Kind: "tool_result", ToolCallID: a.ToolCallID, Content: a.Content, IsError: a.IsError}, true
 	case artifact.Usage:
 		return &artifactJSON{
 			Kind:             "usage",
 			PromptTokens:     a.PromptTokens,
 			CompletionTokens: a.CompletionTokens,
 			TotalTokens:      a.TotalTokens,
-		}
+		}, true
 	case artifact.Image:
-		return &artifactJSON{Kind: "image", URL: a.URL}
+		return &artifactJSON{Kind: "image", URL: a.URL}, true
 	default:
-		return nil
+		return nil, false
 	}
 }
 
 // MarshalOutputEvent serializes a loop.OutputEvent to JSON bytes.
 // It handles TurnCompleteEvent, ErrorEvent, and all artifact.Artifact types.
-// Returns an error for unsupported event or artifact kinds.
+// Unknown artifact kinds are silently skipped (returns nil, nil).
+// Returns an error only for unsupported event kinds.
 func MarshalOutputEvent(event loop.OutputEvent) ([]byte, error) {
 	switch e := event.(type) {
 	case loop.TurnCompleteEvent:
@@ -112,9 +113,9 @@ func MarshalOutputEvent(event loop.OutputEvent) ([]byte, error) {
 	case loop.ErrorEvent:
 		return json.Marshal(errorEventJSON{Kind: "error", Message: e.Err.Error()})
 	case artifact.Artifact:
-		dto := artifactToJSON(e)
-		if dto == nil {
-			return nil, fmt.Errorf("unsupported artifact kind: %s", e.Kind())
+		dto, ok := artifactToJSON(e)
+		if !ok {
+			return nil, nil
 		}
 		return json.Marshal(dto)
 	default:
@@ -123,15 +124,15 @@ func MarshalOutputEvent(event loop.OutputEvent) ([]byte, error) {
 }
 
 // turnToJSON converts a state.Turn to its JSON DTO.
-// Returns an error if any artifact in the turn has an unsupported kind.
+// Artifacts with unsupported kinds are silently skipped.
 func turnToJSON(t state.Turn) (turnJSON, error) {
-	artifacts := make([]artifactJSON, len(t.Artifacts))
-	for i, art := range t.Artifacts {
-		dto := artifactToJSON(art)
-		if dto == nil {
-			return turnJSON{}, fmt.Errorf("unsupported artifact kind at index %d: %s", i, art.Kind())
+	var artifacts []artifactJSON
+	for _, art := range t.Artifacts {
+		dto, ok := artifactToJSON(art)
+		if !ok {
+			continue // skip unknown artifact kinds
 		}
-		artifacts[i] = *dto
+		artifacts = append(artifacts, *dto)
 	}
 	return turnJSON{
 		Role:      string(t.Role),

@@ -76,7 +76,8 @@ func TestArtifactToJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := artifactToJSON(tt.art)
+			got, ok := artifactToJSON(tt.art)
+			require.True(t, ok)
 			require.NotNil(t, got)
 			assert.Equal(t, tt.wantDTO, *got)
 			assert.Equal(t, tt.wantKind, tt.art.Kind())
@@ -85,9 +86,9 @@ func TestArtifactToJSON(t *testing.T) {
 }
 
 func TestArtifactToJSON_Unsupported(t *testing.T) {
-	// A custom artifact type not known to the serializer.
-	got := artifactToJSON(&unknownArtifact{})
-	assert.Nil(t, got)
+	// A custom artifact type not known to the serializer is skipped.
+	_, ok := artifactToJSON(&unknownArtifact{})
+	assert.False(t, ok)
 }
 
 type unknownArtifact struct{}
@@ -112,20 +113,20 @@ func TestMarshalArtifact(t *testing.T) {
 			want: `{"kind":"tool_result","tool_call_id":"1","content":"42","is_error":true}`,
 		},
 		{
-			name:    "unsupported",
-			art:     &unknownArtifact{},
-			wantErr: true,
+			name: "unsupported",
+			art:  &unknownArtifact{},
+			want: "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := MarshalArtifact(tt.art)
-			if tt.wantErr {
-				require.Error(t, err)
+			require.NoError(t, err)
+			if tt.want == "" {
+				assert.Nil(t, got)
 				return
 			}
-			require.NoError(t, err)
 			assert.JSONEq(t, tt.want, string(got))
 		})
 	}
@@ -256,20 +257,20 @@ func TestMarshalOutputEvent(t *testing.T) {
 			want:  `{"kind":"text_delta","content":"he"}`,
 		},
 		{
-			name:    "unsupported_event",
-			event:   &unknownOutputEvent{},
-			wantErr: true,
+			name:  "unsupported_artifact",
+			event: &unknownOutputEvent{},
+			want:  "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := MarshalOutputEvent(tt.event)
-			if tt.wantErr {
-				require.Error(t, err)
+			require.NoError(t, err)
+			if tt.want == "" {
+				assert.Nil(t, got)
 				return
 			}
-			require.NoError(t, err)
 			assert.JSONEq(t, tt.want, string(got))
 		})
 	}
@@ -309,15 +310,16 @@ func TestTurnToJSON(t *testing.T) {
 	assert.Equal(t, artifactJSON{Kind: "usage", PromptTokens: 1, CompletionTokens: 2, TotalTokens: 3}, got.Artifacts[1])
 }
 
-func TestTurnToJSON_UnsupportedArtifact(t *testing.T) {
+func TestTurnToJSON_SkipsUnknownArtifact(t *testing.T) {
 	turn := state.Turn{
 		Role:      state.RoleAssistant,
 		Artifacts: []artifact.Artifact{&unknownArtifact{}},
 	}
 
-	_, err := turnToJSON(turn)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported artifact kind")
+	got, err := turnToJSON(turn)
+	require.NoError(t, err)
+	assert.Equal(t, "assistant", got.Role)
+	assert.Empty(t, got.Artifacts)
 }
 
 func TestUnmarshalOutputEvent(t *testing.T) {
