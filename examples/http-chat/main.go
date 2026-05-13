@@ -1,6 +1,10 @@
-// http-chat is a reference application demonstrating the ore HTTP conduit.
-// It exposes a stateful chat server over HTTP with NDJSON streaming and
-// an optional SSE ambient channel, backed by an OpenAI-compatible provider.
+// Package main provides a reference HTTP-chat application demonstrating the
+// ore HTTP conduit. It exposes a stateful chat server over HTTP with NDJSON
+// streaming and an optional SSE ambient channel, backed by an OpenAI-compatible
+// provider.
+//
+// A built-in web chat UI is served at http://localhost:8080/ when the
+// application starts. Open a browser to interact without curl.
 //
 // Usage:
 //
@@ -27,7 +31,8 @@
 //	curl -X DELETE http://localhost:8080/sessions/$SESSION_ID
 //
 // The server optionally registers calculator tools (add, multiply) to
-// demonstrate server-side ReAct loop execution.
+// demonstrate server-side ReAct loop execution. See package tool for details
+// on the registry.
 package main
 
 import (
@@ -59,6 +64,8 @@ func main() {
 	}
 }
 
+// run parses configuration, builds the provider and tool registry, and starts
+// the HTTP server.
 func run() error {
 	ctx := context.Background()
 	_ = ctx // used by tool functions
@@ -152,8 +159,8 @@ func run() error {
 		return err
 	}
 
-	// Create the HTTP conduit handler.
-	handler := httpc.NewHandler(stepFactory, messageHandler)
+	// Create the HTTP conduit handler with the embedded web UI enabled.
+	handler := httpc.NewHandler(stepFactory, messageHandler, httpc.WithUI())
 
 	// Start the HTTP server.
 	server := &http.Server{
