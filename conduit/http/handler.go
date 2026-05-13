@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/json"
 	stdhttp "net/http"
 
 	"github.com/andrewhowdencom/ore/loop"
@@ -36,14 +37,32 @@ func (h *Handler) ServeMux() *stdhttp.ServeMux {
 	return mux
 }
 
-// createSession handles POST /sessions. Stub: returns 501 Not Implemented.
+// createSession handles POST /sessions by creating a new ephemeral session.
 func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-	w.WriteHeader(stdhttp.StatusNotImplemented)
+	step := h.newStep()
+	session, err := h.store.Create(step)
+	if err != nil {
+		w.WriteHeader(stdhttp.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(stdhttp.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"id":         session.id,
+		"events_url": "/sessions/" + session.id + "/events",
+	})
 }
 
-// deleteSession handles DELETE /sessions/{id}. Stub: returns 501 Not Implemented.
+// deleteSession handles DELETE /sessions/{id} by removing the session and
+// closing its Step.
 func (h *Handler) deleteSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-	w.WriteHeader(stdhttp.StatusNotImplemented)
+	id := r.PathValue("id")
+	if ok := h.store.Delete(id); !ok {
+		w.WriteHeader(stdhttp.StatusNotFound)
+		return
+	}
+	w.WriteHeader(stdhttp.StatusNoContent)
 }
 
 // sendMessage handles POST /sessions/{id}/messages. Stub: returns 501 Not Implemented.
