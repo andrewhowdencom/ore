@@ -22,6 +22,11 @@ type JSONStore struct {
 // NewJSONStore creates a new JSONStore backed by the given directory.
 // The directory is created if it does not exist. Existing conversations
 // are loaded from disk into the in-memory cache.
+//
+// Malformed or unreadable .json files are silently skipped during the
+// initial directory scan. This prevents a single corrupted file from
+// aborting startup, but means data loss for that specific conversation
+// is not reported.
 func NewJSONStore(dir string) (*JSONStore, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("create store directory: %w", err)
@@ -117,7 +122,9 @@ func (s *JSONStore) Get(id string) (*Conversation, bool) {
 	return conv, true
 }
 
-// Save writes the conversation to disk atomically and updates the cache.
+// Save writes the conversation to disk atomically (via a temporary file
+// and os.Rename) and updates the in-memory cache. The conversation's
+// UpdatedAt timestamp is also advanced.
 func (s *JSONStore) Save(conv *Conversation) error {
 	data, err := json.Marshal(conv)
 	if err != nil {

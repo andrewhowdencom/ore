@@ -1,3 +1,7 @@
+// Package conversation (serialize.go) provides JSON marshaling and
+// unmarshaling for Conversation turns and artifacts. Only non-delta
+// artifact types can be persisted; attempts to serialize a delta
+// artifact (TextDelta, ReasoningDelta, ToolCallDelta) return an error.
 package conversation
 
 import (
@@ -8,6 +12,9 @@ import (
 	"github.com/andrewhowdencom/ore/state"
 )
 
+// artifactRegistry maps artifact Kind() strings to factory functions
+// that produce the corresponding concrete type. It is used during
+// unmarshaling to instantiate the correct artifact struct.
 var artifactRegistry = map[string]func() artifact.Artifact{
 	"text":        func() artifact.Artifact { return &artifact.Text{} },
 	"tool_call":   func() artifact.Artifact { return &artifact.ToolCall{} },
@@ -29,6 +36,9 @@ type turnWrapper struct {
 	Artifacts json.RawMessage `json:"artifacts"`
 }
 
+// isDelta reports whether the artifact implements artifact.Delta,
+// indicating it is an ephemeral streaming fragment that must not be
+// persisted to state.
 func isDelta(a artifact.Artifact) bool {
 	_, ok := a.(artifact.Delta)
 	return ok

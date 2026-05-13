@@ -9,28 +9,41 @@ import (
 	"github.com/andrewhowdencom/ore/state"
 )
 
-// Store defines the interface for conversation persistence.
+// Store abstracts persistence for Conversation instances.
+// Implementations must be safe for concurrent use.
 type Store interface {
+	// Create generates a new Conversation with a random UUID and stores it.
 	Create() (*Conversation, error)
+	// Get retrieves a Conversation by ID. The second return value is false
+	// if the conversation does not exist.
 	Get(id string) (*Conversation, bool)
+	// Save persists the given Conversation, updating its UpdatedAt timestamp.
 	Save(conv *Conversation) error
+	// Delete removes a Conversation by ID and returns true if it existed.
 	Delete(id string) bool
+	// List returns all stored Conversations.
 	List() ([]*Conversation, error)
 }
 
 // Conversation represents a persistent conversation with identity,
-// state, and locking.
+// state, and per-conversation locking.
 type Conversation struct {
-	ID        string
-	State     *state.Memory
+	// ID is the unique identifier for this conversation (random UUID).
+	ID string
+	// State holds the mutable conversation turn history.
+	// It is not safe for concurrent use; callers must hold the lock.
+	State *state.Memory
+	// CreatedAt is set when the conversation is first created.
 	CreatedAt time.Time
+	// UpdatedAt is advanced on every successful Save.
 	UpdatedAt time.Time
 	mu        sync.Mutex
 	busy      bool
 }
 
-// Lock attempts to acquire the conversation lock.
-// Returns false if the conversation is already busy.
+// Lock attempts to acquire the conversation lock in a non-blocking manner.
+// Returns true if the lock was acquired, or false if the conversation is
+// already busy (another conduit holds the lock).
 func (c *Conversation) Lock() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()

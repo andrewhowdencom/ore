@@ -169,6 +169,10 @@ frontends: HTTP, TUI, and future frontends all attach to the same
 `Conversation` via a shared `Store`. A conversation started in the HTTP
 example can be resumed in the TUI by passing its UUID via `--conversation`.
 
+Only non-delta artifacts can be persisted; delta streaming fragments
+(`TextDelta`, `ReasoningDelta`, `ToolCallDelta`) are rejected during
+serialization to prevent ephemeral data from entering stored state.
+
 ### Three-Layer Architecture
 
 Above the Loop / Step, the framework separates concerns into three layers:
@@ -219,7 +223,7 @@ This README remains a vision document, but the framework is now partially implem
 
 - `artifact/` — `Artifact` interface with `Text`, `ToolCall`, `ToolResult`, `Usage`, `Image`, `Reasoning`, and streaming delta types (`TextDelta`, `ReasoningDelta`, `ToolCallDelta`)
 - `state/` — `State` interface with `Turns()` and `Append()`, and an in-memory `Memory` implementation
-- `conversation/` — `Store` interface with `Create`, `Get`, `Save`, `Delete`, and `List`. `Conversation` struct with UUID, `*state.Memory`, timestamps, and per-conversation locking. `MemoryStore` (ephemeral) and `JSONStore` (persisted to `{uuid}.json` files) implementations.
+- `conversation/` — `Store` interface with `Create`, `Get`, `Save`, `Delete`, and `List`. `Conversation` struct with UUID, `*state.Memory`, timestamps, and per-conversation locking. `MemoryStore` (ephemeral) and `JSONStore` (persisted to `{uuid}.json` files) implementations. Delta artifacts cannot be persisted; serialization rejects them.
 - `provider/` — `Provider` interface with `Invoke()`, `StreamingProvider` for channel-based delta emission, and `InvokeOption` for per-invocation configuration (tools, temperature, etc.)
 - `loop/` — `Step` with `Turn()` method, `BeforeTurn` hook, optional streaming via `OutputEvent` channel, and artifact `Handler` interface for single-turn execution
 - `tool/` — `Registry` for mapping tool names to Go functions, and `Handler` implementing `loop.Handler` for tool execution
