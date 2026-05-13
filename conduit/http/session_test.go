@@ -4,32 +4,32 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/andrewhowdencom/ore/conversation"
+	"github.com/andrewhowdencom/ore/thread"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewSession(t *testing.T) {
-	conv, err := conversation.NewMemoryStore().Create()
+	thread, err := thread.NewMemoryStore().Create()
 	require.NoError(t, err)
 	step := loop.New()
 
 	session := &Session{
-		id:   conv.ID,
-		conv: conv,
-		step: step,
+		id:     thread.ID,
+		thread: thread,
+		step:   step,
 	}
 
-	assert.Equal(t, conv.ID, session.ID())
+	assert.Equal(t, thread.ID, session.ID())
 	assert.Equal(t, step, session.Step())
-	assert.Equal(t, conv.State, session.State())
+	assert.Equal(t, thread.State, session.State())
 }
 
 func TestSession_Lock(t *testing.T) {
-	conv, err := conversation.NewMemoryStore().Create()
+	thread, err := thread.NewMemoryStore().Create()
 	require.NoError(t, err)
-	session := &Session{conv: conv}
+	session := &Session{thread: thread}
 
 	assert.True(t, session.Lock())
 	assert.False(t, session.Lock(), "second lock should fail")
@@ -40,9 +40,9 @@ func TestSession_Lock(t *testing.T) {
 }
 
 func TestSession_Lock_Concurrent(t *testing.T) {
-	conv, err := conversation.NewMemoryStore().Create()
+	thread, err := thread.NewMemoryStore().Create()
 	require.NoError(t, err)
-	session := &Session{conv: conv}
+	session := &Session{thread: thread}
 
 	var maxConcurrent int
 	var current int

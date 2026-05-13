@@ -1,4 +1,4 @@
-package conversation
+package thread
 
 import (
 	"encoding/json"
@@ -12,27 +12,27 @@ import (
 	"github.com/andrewhowdencom/ore/state"
 )
 
-// JSONStore persists conversations as individual JSON files in a directory.
+// JSONStore persists threads as individual JSON files in a directory.
 type JSONStore struct {
 	dir   string
 	mu    sync.RWMutex
-	cache map[string]*Conversation
+	cache map[string]*Thread
 }
 
 // NewJSONStore creates a new JSONStore backed by the given directory.
-// The directory is created if it does not exist. Existing conversations
+// The directory is created if it does not exist. Existing threads
 // are loaded from disk into the in-memory cache.
 //
 // Malformed or unreadable .json files are silently skipped during the
 // initial directory scan. This prevents a single corrupted file from
-// aborting startup, but means data loss for that specific conversation
+// aborting startup, but means data loss for that specific thread
 // is not reported.
 func NewJSONStore(dir string) (*JSONStore, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("create store directory: %w", err)
 	}
 
-	cache := make(map[string]*Conversation)
+	cache := make(map[string]*Thread)
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -55,11 +55,11 @@ func NewJSONStore(dir string) (*JSONStore, error) {
 			continue
 		}
 
-		conv := &Conversation{}
-		if err := json.Unmarshal(data, conv); err != nil {
+		thread := &Thread{}
+		if err := json.Unmarshal(data, thread); err != nil {
 			continue
 		}
-		cache[id] = conv
+		cache[id] = thread
 	}
 
 	return &JSONStore{
@@ -68,36 +68,36 @@ func NewJSONStore(dir string) (*JSONStore, error) {
 	}, nil
 }
 
-// Create generates a new Conversation with a random ID and persists it.
-func (s *JSONStore) Create() (*Conversation, error) {
+// Create generates a new Thread with a random ID and persists it.
+func (s *JSONStore) Create() (*Thread, error) {
 	id, err := generateID()
 	if err != nil {
-		return nil, fmt.Errorf("generate conversation id: %w", err)
+		return nil, fmt.Errorf("generate thread id: %w", err)
 	}
 
-	conv := &Conversation{
+	thread := &Thread{
 		ID:        id,
 		State:     &state.Memory{},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 
-	if err := s.Save(conv); err != nil {
-		return nil, fmt.Errorf("save new conversation: %w", err)
+	if err := s.Save(thread); err != nil {
+		return nil, fmt.Errorf("save new thread: %w", err)
 	}
 
-	return conv, nil
+	return thread, nil
 }
 
-// Get retrieves a conversation by ID. If not in cache, it attempts to
+// Get retrieves a thread by ID. If not in cache, it attempts to
 // load from disk.
-func (s *JSONStore) Get(id string) (*Conversation, bool) {
+func (s *JSONStore) Get(id string) (*Thread, bool) {
 	s.mu.RLock()
-	conv, ok := s.cache[id]
+	thread, ok := s.cache[id]
 	s.mu.RUnlock()
 
 	if ok {
-		return conv, true
+		return thread, true
 	}
 
 	// Attempt to load from disk.
@@ -107,8 +107,8 @@ func (s *JSONStore) Get(id string) (*Conversation, bool) {
 		return nil, false
 	}
 
-	conv = &Conversation{}
-	if err := json.Unmarshal(data, conv); err != nil {
+	thread = &Thread{}
+	if err := json.Unmarshal(data, thread); err != nil {
 		return nil, false
 	}
 
@@ -118,21 +118,21 @@ func (s *JSONStore) Get(id string) (*Conversation, bool) {
 	if existing, ok := s.cache[id]; ok {
 		return existing, true
 	}
-	s.cache[id] = conv
-	return conv, true
+	s.cache[id] = thread
+	return thread, true
 }
 
-// Save writes the conversation to disk atomically (via a temporary file
-// and os.Rename) and updates the in-memory cache. The conversation's
+// Save writes the thread to disk atomically (via a temporary file
+// and os.Rename) and updates the in-memory cache. The thread's
 // UpdatedAt timestamp is also advanced.
-func (s *JSONStore) Save(conv *Conversation) error {
-	data, err := json.Marshal(conv)
+func (s *JSONStore) Save(thread *Thread) error {
+	data, err := json.Marshal(thread)
 	if err != nil {
-		return fmt.Errorf("marshal conversation: %w", err)
+		return fmt.Errorf("marshal thread: %w", err)
 	}
 
-	tmpPath := filepath.Join(s.dir, conv.ID+".tmp")
-	finalPath := filepath.Join(s.dir, conv.ID+".json")
+	tmpPath := filepath.Join(s.dir, thread.ID+".tmp")
+	finalPath := filepath.Join(s.dir, thread.ID+".json")
 
 	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
 		return fmt.Errorf("write temp file: %w", err)
@@ -144,12 +144,12 @@ func (s *JSONStore) Save(conv *Conversation) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	conv.UpdatedAt = time.Now()
-	s.cache[conv.ID] = conv
+	thread.UpdatedAt = time.Now()
+	s.cache[thread.ID] = thread
 	return nil
 }
 
-// Delete removes a conversation from the cache and deletes its file.
+// Delete removes a thread from the cache and deletes its file.
 func (s *JSONStore) Delete(id string) bool {
 	path := filepath.Join(s.dir, id+".json")
 
@@ -160,20 +160,20 @@ func (s *JSONStore) Delete(id string) bool {
 	delete(s.cache, id)
 
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		// File removal error is non-fatal; the conversation is already
+		// File removal error is non-fatal; the thread is already
 		// removed from the cache.
 	}
 
 	return ok
 }
 
-// List returns all conversations in the store.
-func (s *JSONStore) List() ([]*Conversation, error) {
+// List returns all threads in the store.
+func (s *JSONStore) List() ([]*Thread, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	result := make([]*Conversation, 0, len(s.cache))
-	for _, conv := range s.cache {
-		result = append(result, conv)
+	result := make([]*Thread, 0, len(s.cache))
+	for _, thread := range s.cache {
+		result = append(result, thread)
 	}
 	return result, nil
 }

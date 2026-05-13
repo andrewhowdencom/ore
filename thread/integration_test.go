@@ -1,4 +1,4 @@
-package conversation
+package thread
 
 import (
 	"encoding/json"
@@ -14,31 +14,31 @@ import (
 func TestJSONStore_CrossConduitContinuity(t *testing.T) {
 	dir := t.TempDir()
 
-	// Step 1: Create a JSONStore and conversation.
+	// Step 1: Create a JSONStore and thread.
 	store1, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	conv, err := store1.Create()
+	thread, err := store1.Create()
 	require.NoError(t, err)
-	createdAt := conv.CreatedAt
+	createdAt := thread.CreatedAt
 
 	// Step 2: Append user and assistant turns.
-	conv.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
-	conv.State.Append(state.RoleAssistant, artifact.Text{Content: "hi there"})
+	thread.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	thread.State.Append(state.RoleAssistant, artifact.Text{Content: "hi there"})
 
-	// Step 3: Save the conversation.
+	// Step 3: Save the thread.
 	time.Sleep(1 * time.Millisecond) // ensure time advances
-	err = store1.Save(conv)
+	err = store1.Save(thread)
 	require.NoError(t, err)
 
 	// Step 4: Create a new JSONStore instance (simulating restart).
 	store2, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	// Step 5: Load the conversation and verify turns.
-	got, ok := store2.Get(conv.ID)
+	// Step 5: Load the thread and verify turns.
+	got, ok := store2.Get(thread.ID)
 	require.True(t, ok)
-	assert.Equal(t, conv.ID, got.ID)
+	assert.Equal(t, thread.ID, got.ID)
 
 	turns := got.State.Turns()
 	require.Len(t, turns, 2)
@@ -58,26 +58,26 @@ func TestJSONStore_CrossConduitContinuity(t *testing.T) {
 	assert.True(t, got.UpdatedAt.After(createdAt), "UpdatedAt should reflect the save")
 }
 
-func TestConversation_MarshalJSON(t *testing.T) {
-	conv := &Conversation{
+func TestThread_MarshalJSON(t *testing.T) {
+	thread := &Thread{
 		ID:        "test-id",
 		State:     &state.Memory{},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	conv.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
-	conv.State.Append(state.RoleAssistant, artifact.Text{Content: "hi there"})
+	thread.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	thread.State.Append(state.RoleAssistant, artifact.Text{Content: "hi there"})
 
-	data, err := json.Marshal(conv)
+	data, err := json.Marshal(thread)
 	require.NoError(t, err)
 
-	got := &Conversation{}
+	got := &Thread{}
 	err = json.Unmarshal(data, got)
 	require.NoError(t, err)
 
-	assert.Equal(t, conv.ID, got.ID)
-	assert.True(t, conv.CreatedAt.Equal(got.CreatedAt))
-	assert.True(t, conv.UpdatedAt.Equal(got.UpdatedAt))
+	assert.Equal(t, thread.ID, got.ID)
+	assert.True(t, thread.CreatedAt.Equal(got.CreatedAt))
+	assert.True(t, thread.UpdatedAt.Equal(got.UpdatedAt))
 	turns := got.State.Turns()
 	require.Len(t, turns, 2)
 	assert.Equal(t, state.RoleUser, turns[0].Role)

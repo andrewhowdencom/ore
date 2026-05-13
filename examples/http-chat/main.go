@@ -26,14 +26,14 @@
 //
 //	curl -N http://localhost:8080/sessions/$SESSION_ID/events?kinds=text_delta,turn_complete
 //
-// Attach to an existing conversation:
+// Attach to an existing thread:
 //
 //	curl -s -X POST http://localhost:8080/sessions \
-//	  -d '{"conversation_id": "<uuid>"}' | jq -r '.id'
+//	  -d '{"thread_id": "<uuid>"}' | jq -r '.id'
 //
-// List all conversations:
+// List all threads:
 //
-//	curl -s http://localhost:8080/conversations | jq '.'
+//	curl -s http://localhost:8080/threads | jq '.'
 //
 // Delete the session:
 //
@@ -58,7 +58,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
-	"github.com/andrewhowdencom/ore/conversation"
+	"github.com/andrewhowdencom/ore/thread"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/provider/openai"
@@ -173,20 +173,20 @@ func run() error {
 		return err
 	}
 
-	// Create the conversation store.
-	var convStore conversation.Store
+	// Create the thread store.
+	var threadStore thread.Store
 	if storeDir := os.Getenv("STORE_DIR"); storeDir != "" {
 		var err error
-		convStore, err = conversation.NewJSONStore(storeDir)
+		threadStore, err = thread.NewJSONStore(storeDir)
 		if err != nil {
 			return fmt.Errorf("create JSON store: %w", err)
 		}
 	} else {
-		convStore = conversation.NewMemoryStore()
+		threadStore = thread.NewMemoryStore()
 	}
 
 	// Create the HTTP conduit handler.
-	handler := httpc.NewHandler(convStore, stepFactory, messageHandler, httpc.WithUI())
+	handler := httpc.NewHandler(threadStore, stepFactory, messageHandler, httpc.WithUI())
 
 	// Start the HTTP server.
 	server := &http.Server{

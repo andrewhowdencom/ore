@@ -1,8 +1,8 @@
-// Package conversation (serialize.go) provides JSON marshaling and
-// unmarshaling for Conversation turns and artifacts. Only non-delta
+// Package thread (serialize.go) provides JSON marshaling and
+// unmarshaling for Thread turns and artifacts. Only non-delta
 // artifact types can be persisted; attempts to serialize a delta
 // artifact (TextDelta, ReasoningDelta, ToolCallDelta) return an error.
-package conversation
+package thread
 
 import (
 	"encoding/json"

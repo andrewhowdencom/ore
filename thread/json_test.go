@@ -1,4 +1,4 @@
-package conversation
+package thread
 
 import (
 	"encoding/json"
@@ -20,10 +20,10 @@ func TestJSONStore_CreateCreatesFile(t *testing.T) {
 	store, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	conv, err := store.Create()
+	thread, err := store.Create()
 	require.NoError(t, err)
 
-	path := filepath.Join(dir, conv.ID+".json")
+	path := filepath.Join(dir, thread.ID+".json")
 	_, err = os.Stat(path)
 	require.NoError(t, err, "expected file to exist after Create")
 }
@@ -33,19 +33,19 @@ func TestJSONStore_SaveUpdatesFile(t *testing.T) {
 	store, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	conv, err := store.Create()
+	thread, err := store.Create()
 	require.NoError(t, err)
 
 	// Append a turn and save.
-	conv.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
-	err = store.Save(conv)
+	thread.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	err = store.Save(thread)
 	require.NoError(t, err)
 
 	// Verify by loading into a new store (simulating restart).
 	store2, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	got, ok := store2.Get(conv.ID)
+	got, ok := store2.Get(thread.ID)
 	require.True(t, ok)
 	turns := got.State.Turns()
 	require.Len(t, turns, 1)
@@ -59,18 +59,18 @@ func TestJSONStore_GetLoadsFromDisk(t *testing.T) {
 	store, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	conv, err := store.Create()
+	thread, err := store.Create()
 	require.NoError(t, err)
-	conv.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
-	require.NoError(t, store.Save(conv))
+	thread.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	require.NoError(t, store.Save(thread))
 
 	// Create a fresh store pointing at the same directory.
 	store2, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	got, ok := store2.Get(conv.ID)
+	got, ok := store2.Get(thread.ID)
 	require.True(t, ok)
-	assert.Equal(t, conv.ID, got.ID)
+	assert.Equal(t, thread.ID, got.ID)
 	assert.Len(t, got.State.Turns(), 1)
 }
 
@@ -79,49 +79,49 @@ func TestJSONStore_DeleteRemovesFile(t *testing.T) {
 	store, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	conv, err := store.Create()
+	thread, err := store.Create()
 	require.NoError(t, err)
 
-	path := filepath.Join(dir, conv.ID+".json")
+	path := filepath.Join(dir, thread.ID+".json")
 	_, err = os.Stat(path)
 	require.NoError(t, err)
 
-	ok := store.Delete(conv.ID)
+	ok := store.Delete(thread.ID)
 	assert.True(t, ok)
 
 	_, err = os.Stat(path)
 	assert.True(t, os.IsNotExist(err), "expected file to be removed")
 
-	_, ok = store.Get(conv.ID)
+	_, ok = store.Get(thread.ID)
 	assert.False(t, ok)
 }
 
-func TestJSONStore_RestartRecoversConversations(t *testing.T) {
+func TestJSONStore_RestartRecoversThreads(t *testing.T) {
 	dir := t.TempDir()
 
 	// First store instance.
 	store1, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	conv1, err := store1.Create()
+	thread1, err := store1.Create()
 	require.NoError(t, err)
-	conv1.State.Append(state.RoleUser, artifact.Text{Content: "msg1"})
-	require.NoError(t, store1.Save(conv1))
+	thread1.State.Append(state.RoleUser, artifact.Text{Content: "msg1"})
+	require.NoError(t, store1.Save(thread1))
 
-	conv2, err := store1.Create()
+	thread2, err := store1.Create()
 	require.NoError(t, err)
-	conv2.State.Append(state.RoleUser, artifact.Text{Content: "msg2"})
-	require.NoError(t, store1.Save(conv2))
+	thread2.State.Append(state.RoleUser, artifact.Text{Content: "msg2"})
+	require.NoError(t, store1.Save(thread2))
 
 	// Second store instance (simulating process restart).
 	store2, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	got1, ok := store2.Get(conv1.ID)
+	got1, ok := store2.Get(thread1.ID)
 	require.True(t, ok)
 	assert.Len(t, got1.State.Turns(), 1)
 
-	got2, ok := store2.Get(conv2.ID)
+	got2, ok := store2.Get(thread2.ID)
 	require.True(t, ok)
 	assert.Len(t, got2.State.Turns(), 1)
 }
@@ -131,18 +131,18 @@ func TestJSONStore_CreatedAtPreserved(t *testing.T) {
 	store1, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	conv, err := store1.Create()
+	thread, err := store1.Create()
 	require.NoError(t, err)
-	createdAt := conv.CreatedAt
+	createdAt := thread.CreatedAt
 
 	time.Sleep(1 * time.Millisecond)
-	conv.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
-	require.NoError(t, store1.Save(conv))
+	thread.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	require.NoError(t, store1.Save(thread))
 
 	store2, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	got, ok := store2.Get(conv.ID)
+	got, ok := store2.Get(thread.ID)
 	require.True(t, ok)
 	assert.True(t, createdAt.Equal(got.CreatedAt))
 	assert.True(t, got.UpdatedAt.After(createdAt))
@@ -153,9 +153,9 @@ func TestJSONStore_List(t *testing.T) {
 	store, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	conv1, err := store.Create()
+	thread1, err := store.Create()
 	require.NoError(t, err)
-	conv2, err := store.Create()
+	thread2, err := store.Create()
 	require.NoError(t, err)
 
 	list, err := store.List()
@@ -163,11 +163,11 @@ func TestJSONStore_List(t *testing.T) {
 	require.Len(t, list, 2)
 
 	ids := make(map[string]bool)
-	for _, conv := range list {
-		ids[conv.ID] = true
+	for _, thread := range list {
+		ids[thread.ID] = true
 	}
-	assert.True(t, ids[conv1.ID])
-	assert.True(t, ids[conv2.ID])
+	assert.True(t, ids[thread1.ID])
+	assert.True(t, ids[thread2.ID])
 }
 
 func TestJSONStore_ConcurrentCreate(t *testing.T) {
@@ -194,8 +194,8 @@ func TestJSONStore_CorruptedFile(t *testing.T) {
 	err := os.WriteFile(filepath.Join(dir, "bad.json"), []byte("not json"), 0644)
 	require.NoError(t, err)
 
-	// Write a valid conversation file.
-	valid := &Conversation{
+	// Write a valid thread file.
+	valid := &Thread{
 		ID:        "good",
 		State:     &state.Memory{},
 		CreatedAt: time.Now(),
@@ -237,19 +237,19 @@ func TestJSONStore_ConcurrentCreateSaveGet(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			conv, err := store.Create()
+			thread, err := store.Create()
 			require.NoError(t, err)
-			conv.State.Append(state.RoleUser, artifact.Text{Content: fmt.Sprintf("msg-%d", i)})
-			require.NoError(t, store.Save(conv))
+			thread.State.Append(state.RoleUser, artifact.Text{Content: fmt.Sprintf("msg-%d", i)})
+			require.NoError(t, store.Save(thread))
 
-			got, ok := store.Get(conv.ID)
+			got, ok := store.Get(thread.ID)
 			require.True(t, ok)
 			assert.Len(t, got.State.Turns(), 1)
 		}(i)
 	}
 	wg.Wait()
 
-	// Verify all 50 conversations exist.
+	// Verify all 50 threads exist.
 	list, err := store.List()
 	require.NoError(t, err)
 	assert.Len(t, list, 50)

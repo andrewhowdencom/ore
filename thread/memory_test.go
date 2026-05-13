@@ -1,4 +1,4 @@
-package conversation
+package thread
 
 import (
 	"sync"
@@ -13,27 +13,27 @@ import (
 
 func TestMemoryStore_Create(t *testing.T) {
 	store := NewMemoryStore()
-	conv, err := store.Create()
+	thread, err := store.Create()
 	require.NoError(t, err)
-	assert.NotEmpty(t, conv.ID)
-	assert.NotNil(t, conv.State)
-	assert.False(t, conv.CreatedAt.IsZero())
-	assert.False(t, conv.UpdatedAt.IsZero())
+	assert.NotEmpty(t, thread.ID)
+	assert.NotNil(t, thread.State)
+	assert.False(t, thread.CreatedAt.IsZero())
+	assert.False(t, thread.UpdatedAt.IsZero())
 
 	// Second creation should have a different ID.
-	conv2, err := store.Create()
+	thread2, err := store.Create()
 	require.NoError(t, err)
-	assert.NotEqual(t, conv.ID, conv2.ID)
+	assert.NotEqual(t, thread.ID, thread2.ID)
 }
 
 func TestMemoryStore_Get(t *testing.T) {
 	store := NewMemoryStore()
-	conv, err := store.Create()
+	thread, err := store.Create()
 	require.NoError(t, err)
 
-	got, ok := store.Get(conv.ID)
+	got, ok := store.Get(thread.ID)
 	assert.True(t, ok)
-	assert.Equal(t, conv.ID, got.ID)
+	assert.Equal(t, thread.ID, got.ID)
 
 	_, ok = store.Get("nonexistent")
 	assert.False(t, ok)
@@ -41,18 +41,18 @@ func TestMemoryStore_Get(t *testing.T) {
 
 func TestMemoryStore_Save(t *testing.T) {
 	store := NewMemoryStore()
-	conv, err := store.Create()
+	thread, err := store.Create()
 	require.NoError(t, err)
 
-	originalUpdatedAt := conv.UpdatedAt
+	originalUpdatedAt := thread.UpdatedAt
 	time.Sleep(1 * time.Millisecond) // ensure time advances
 
 	// Append a turn and save.
-	conv.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
-	err = store.Save(conv)
+	thread.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	err = store.Save(thread)
 	require.NoError(t, err)
 
-	got, ok := store.Get(conv.ID)
+	got, ok := store.Get(thread.ID)
 	require.True(t, ok)
 	assert.True(t, got.UpdatedAt.After(originalUpdatedAt), "UpdatedAt should advance after Save")
 	assert.Len(t, got.State.Turns(), 1)
@@ -60,35 +60,35 @@ func TestMemoryStore_Save(t *testing.T) {
 
 func TestMemoryStore_Delete(t *testing.T) {
 	store := NewMemoryStore()
-	conv, err := store.Create()
+	thread, err := store.Create()
 	require.NoError(t, err)
 
-	ok := store.Delete(conv.ID)
+	ok := store.Delete(thread.ID)
 	assert.True(t, ok)
 
-	_, ok = store.Get(conv.ID)
+	_, ok = store.Get(thread.ID)
 	assert.False(t, ok)
 
-	ok = store.Delete(conv.ID)
+	ok = store.Delete(thread.ID)
 	assert.False(t, ok)
 }
 
-func TestConversation_Lock(t *testing.T) {
-	conv := &Conversation{}
+func TestThread_Lock(t *testing.T) {
+	thread := &Thread{}
 
-	assert.True(t, conv.Lock())
-	assert.False(t, conv.Lock(), "second lock should fail")
+	assert.True(t, thread.Lock())
+	assert.False(t, thread.Lock(), "second lock should fail")
 
-	conv.Unlock()
-	assert.True(t, conv.Lock(), "lock after unlock should succeed")
-	conv.Unlock()
+	thread.Unlock()
+	assert.True(t, thread.Lock(), "lock after unlock should succeed")
+	thread.Unlock()
 }
 
 func TestMemoryStore_List(t *testing.T) {
 	store := NewMemoryStore()
-	conv1, err := store.Create()
+	thread1, err := store.Create()
 	require.NoError(t, err)
-	conv2, err := store.Create()
+	thread2, err := store.Create()
 	require.NoError(t, err)
 
 	list, err := store.List()
@@ -96,11 +96,11 @@ func TestMemoryStore_List(t *testing.T) {
 	require.Len(t, list, 2)
 
 	ids := make(map[string]bool)
-	for _, conv := range list {
-		ids[conv.ID] = true
+	for _, thread := range list {
+		ids[thread.ID] = true
 	}
-	assert.True(t, ids[conv1.ID])
-	assert.True(t, ids[conv2.ID])
+	assert.True(t, ids[thread1.ID])
+	assert.True(t, ids[thread2.ID])
 }
 
 func TestMemoryStore_ConcurrentCreate(t *testing.T) {
@@ -117,8 +117,8 @@ func TestMemoryStore_ConcurrentCreate(t *testing.T) {
 	wg.Wait()
 }
 
-func TestConversation_Lock_HighContention(t *testing.T) {
-	conv, err := NewMemoryStore().Create()
+func TestThread_Lock_HighContention(t *testing.T) {
+	thread, err := NewMemoryStore().Create()
 	require.NoError(t, err)
 
 	var maxConcurrent int
@@ -130,7 +130,7 @@ func TestConversation_Lock_HighContention(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if !conv.Lock() {
+			if !thread.Lock() {
 				return
 			}
 
@@ -147,7 +147,7 @@ func TestConversation_Lock_HighContention(t *testing.T) {
 			mu.Lock()
 			current--
 			mu.Unlock()
-			conv.Unlock()
+			thread.Unlock()
 		}()
 	}
 	wg.Wait()

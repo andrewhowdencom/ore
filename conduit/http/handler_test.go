@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/conversation"
+	"github.com/andrewhowdencom/ore/thread"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
@@ -93,27 +93,27 @@ func turnMessageHandler(p provider.Provider) MessageHandler {
 // errStore is a Store that always returns an error from Create.
 type errStore struct{}
 
-func (e *errStore) Create() (*conversation.Conversation, error) {
+func (e *errStore) Create() (*thread.Thread, error) {
 	return nil, fmt.Errorf("store error")
 }
-func (e *errStore) Get(string) (*conversation.Conversation, bool)  { return nil, false }
-func (e *errStore) Save(*conversation.Conversation) error           { return nil }
+func (e *errStore) Get(string) (*thread.Thread, bool)  { return nil, false }
+func (e *errStore) Save(*thread.Thread) error           { return nil }
 func (e *errStore) Delete(string) bool                               { return false }
-func (e *errStore) List() ([]*conversation.Conversation, error)       { return nil, nil }
+func (e *errStore) List() ([]*thread.Thread, error)       { return nil, nil }
 
 func TestNewHandler(t *testing.T) {
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler())
 	require.NotNil(t, h)
 	assert.NotNil(t, h.newStep)
 	assert.NotNil(t, h.messageHandler)
-	assert.NotNil(t, h.convStore)
+	assert.NotNil(t, h.threadStore)
 	assert.NotNil(t, h.sessions)
 }
 
 func TestHandler_ServeMux_Routing(t *testing.T) {
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler())
 	server := httptest.NewServer(h.ServeMux())
@@ -129,7 +129,7 @@ func TestHandler_ServeMux_Routing(t *testing.T) {
 		{"delete session not found", "DELETE", "/sessions/abc-123", 404},
 		{"send message not found", "POST", "/sessions/abc-123/messages", 404},
 		{"session events not found", "GET", "/sessions/abc-123/events", 404},
-		{"list conversations", "GET", "/conversations", 200},
+		{"list threads", "GET", "/threads", 200},
 		{"get sessions method not allowed", "GET", "/sessions", 405},
 		{"post to session root method not allowed", "POST", "/sessions/abc-123", 405},
 		{"put method not allowed", "PUT", "/sessions/abc-123", 405},
@@ -146,7 +146,7 @@ func TestHandler_ServeMux_Routing(t *testing.T) {
 }
 
 func TestHandler_CreateSession(t *testing.T) {
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler())
 
@@ -162,13 +162,13 @@ func TestHandler_CreateSession(t *testing.T) {
 	require.NotEmpty(t, resp["id"])
 	assert.Equal(t, "/sessions/"+resp["id"]+"/events", resp["events_url"])
 
-	// Verify the conversation exists in the store.
+	// Verify the thread exists in the store.
 	_, ok := store.Get(resp["id"])
 	assert.True(t, ok)
 }
 
 func TestHandler_CreateSession_StoresStep(t *testing.T) {
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler())
 
@@ -184,7 +184,7 @@ func TestHandler_CreateSession_StoresStep(t *testing.T) {
 	session, ok := h.sessions[resp["id"]]
 	require.True(t, ok)
 	assert.NotNil(t, session.step)
-	assert.NotNil(t, session.conv)
+	assert.NotNil(t, session.thread)
 }
 
 func TestHandler_CreateSession_StoreError(t *testing.T) {
@@ -200,16 +200,16 @@ func TestHandler_CreateSession_StoreError(t *testing.T) {
 }
 
 func TestHandler_CreateSession_AttachExisting(t *testing.T) {
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler())
 
-	// Create a conversation directly in the store.
-	conv, err := store.Create()
+	// Create a thread directly in the store.
+	thread, err := store.Create()
 	require.NoError(t, err)
 
-	// Attach to the existing conversation.
-	body := fmt.Sprintf(`{"conversation_id": "%s"}`, conv.ID)
+	// Attach to the existing thread.
+	body := fmt.Sprintf(`{"thread_id": "%s"}`, thread.ID)
 	req := httptest.NewRequest("POST", "/sessions", strings.NewReader(body))
 	rr := httptest.NewRecorder()
 	h.ServeMux().ServeHTTP(rr, req)
@@ -218,20 +218,20 @@ func TestHandler_CreateSession_AttachExisting(t *testing.T) {
 
 	var resp map[string]string
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-	assert.Equal(t, conv.ID, resp["id"])
+	assert.Equal(t, thread.ID, resp["id"])
 
-	// Verify the session references the same conversation.
-	session, ok := h.sessions[conv.ID]
+	// Verify the session references the same thread.
+	session, ok := h.sessions[thread.ID]
 	require.True(t, ok)
-	assert.Equal(t, conv.ID, session.conv.ID)
+	assert.Equal(t, thread.ID, session.thread.ID)
 }
 
 func TestHandler_CreateSession_AttachNotFound(t *testing.T) {
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler())
 
-	body := `{"conversation_id": "nonexistent"}`
+	body := `{"thread_id": "nonexistent"}`
 	req := httptest.NewRequest("POST", "/sessions", strings.NewReader(body))
 	rr := httptest.NewRecorder()
 	h.ServeMux().ServeHTTP(rr, req)
@@ -240,7 +240,7 @@ func TestHandler_CreateSession_AttachNotFound(t *testing.T) {
 }
 
 func TestHandler_DeleteSession(t *testing.T) {
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler())
 
@@ -266,13 +266,13 @@ func TestHandler_DeleteSession(t *testing.T) {
 	_, ok := h.sessions[sessionID]
 	assert.False(t, ok)
 
-	// Verify the conversation still exists in the store.
+	// Verify the thread still exists in the store.
 	_, ok = store.Get(sessionID)
 	assert.True(t, ok)
 }
 
 func TestHandler_DeleteSession_NotFound(t *testing.T) {
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler())
 
@@ -290,7 +290,7 @@ func TestHandler_SendMessage(t *testing.T) {
 			artifact.TextDelta{Content: " world"},
 		},
 	}
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, turnMessageHandler(prov))
 
@@ -339,7 +339,7 @@ func TestHandler_SendMessage(t *testing.T) {
 }
 
 func TestHandler_SendMessage_NotFound(t *testing.T) {
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler())
 
@@ -357,7 +357,7 @@ func TestHandler_SendMessage_NoKinds(t *testing.T) {
 			artifact.TextDelta{Content: "Hello"},
 		},
 	}
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, turnMessageHandler(prov))
 
@@ -402,7 +402,7 @@ func TestSSEWriter(t *testing.T) {
 }
 
 func TestHandler_SessionEvents_NotFound(t *testing.T) {
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler())
 
@@ -414,7 +414,7 @@ func TestHandler_SessionEvents_NotFound(t *testing.T) {
 }
 
 func TestHandler_SessionEvents_ContextCancel(t *testing.T) {
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler())
 
@@ -448,7 +448,7 @@ func TestHandler_SendMessage_Concurrent(t *testing.T) {
 			artifact.TextDelta{Content: "Hello"},
 		},
 	}
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, turnMessageHandler(prov))
 
@@ -479,7 +479,7 @@ func TestHandler_SendMessage_Concurrent(t *testing.T) {
 }
 
 func TestHandler_SendMessage_MalformedJSON(t *testing.T) {
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler())
 
@@ -509,7 +509,7 @@ func TestHandler_SendMessage_ProviderError(t *testing.T) {
 		},
 		err: fmt.Errorf("provider failure"),
 	}
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, turnMessageHandler(prov))
 
@@ -554,12 +554,12 @@ func TestHandler_SendMessage_ProviderError(t *testing.T) {
 	assert.Equal(t, "complete", complete.Kind)
 }
 
-func TestHandler_ListConversations(t *testing.T) {
-	store := conversation.NewMemoryStore()
+func TestHandler_ListThreads(t *testing.T) {
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler())
 
-	// Create a session (which also creates a conversation).
+	// Create a session (which also creates a thread).
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
 	createRr := httptest.NewRecorder()
 	h.ServeMux().ServeHTTP(createRr, createReq)
@@ -568,7 +568,7 @@ func TestHandler_ListConversations(t *testing.T) {
 	var createResp map[string]string
 	require.NoError(t, json.Unmarshal(createRr.Body.Bytes(), &createResp))
 
-	req := httptest.NewRequest("GET", "/conversations", nil)
+	req := httptest.NewRequest("GET", "/threads", nil)
 	rr := httptest.NewRecorder()
 	h.ServeMux().ServeHTTP(rr, req)
 
@@ -600,7 +600,7 @@ func TestSSEWriter_NoFlusher(t *testing.T) {
 }
 
 func TestHandler_ServeMux_UnknownPaths(t *testing.T) {
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler())
 
@@ -702,37 +702,37 @@ func boomMessageHandler() MessageHandler {
 // saveErrStore is a Store whose Save always returns an error.
 // All other methods delegate to a real MemoryStore.
 type saveErrStore struct {
-	inner conversation.Store
+	inner thread.Store
 }
 
 func newSaveErrStore() *saveErrStore {
-	return &saveErrStore{inner: conversation.NewMemoryStore()}
+	return &saveErrStore{inner: thread.NewMemoryStore()}
 }
 
-func (s *saveErrStore) Create() (*conversation.Conversation, error) {
+func (s *saveErrStore) Create() (*thread.Thread, error) {
 	return s.inner.Create()
 }
-func (s *saveErrStore) Get(id string) (*conversation.Conversation, bool) {
+func (s *saveErrStore) Get(id string) (*thread.Thread, bool) {
 	return s.inner.Get(id)
 }
-func (s *saveErrStore) Save(conv *conversation.Conversation) error {
+func (s *saveErrStore) Save(thread *thread.Thread) error {
 	return fmt.Errorf("save failed")
 }
 func (s *saveErrStore) Delete(id string) bool {
 	return s.inner.Delete(id)
 }
-func (s *saveErrStore) List() ([]*conversation.Conversation, error) {
+func (s *saveErrStore) List() ([]*thread.Thread, error) {
 	return s.inner.List()
 }
 
 // listErrStore is a Store whose List always returns an error.
 type listErrStore struct{}
 
-func (s *listErrStore) Create() (*conversation.Conversation, error) { return nil, nil }
-func (s *listErrStore) Get(string) (*conversation.Conversation, bool) { return nil, false }
-func (s *listErrStore) Save(*conversation.Conversation) error       { return nil }
+func (s *listErrStore) Create() (*thread.Thread, error) { return nil, nil }
+func (s *listErrStore) Get(string) (*thread.Thread, bool) { return nil, false }
+func (s *listErrStore) Save(*thread.Thread) error       { return nil }
 func (s *listErrStore) Delete(string) bool                            { return false }
-func (s *listErrStore) List() ([]*conversation.Conversation, error) {
+func (s *listErrStore) List() ([]*thread.Thread, error) {
 	return nil, fmt.Errorf("list failed")
 }
 
@@ -788,7 +788,7 @@ func TestHandler_SendMessage_SaveError(t *testing.T) {
 }
 
 func TestHandler_SendMessage_HandlerError(t *testing.T) {
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, boomMessageHandler())
 
@@ -838,12 +838,12 @@ func TestHandler_SendMessage_HandlerError(t *testing.T) {
 	assert.Equal(t, "complete", complete.Kind)
 }
 
-func TestHandler_ListConversations_StoreError(t *testing.T) {
+func TestHandler_ListThreads_StoreError(t *testing.T) {
 	store := &listErrStore{}
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler())
 
-	req := httptest.NewRequest("GET", "/conversations", nil)
+	req := httptest.NewRequest("GET", "/threads", nil)
 	rr := httptest.NewRecorder()
 	h.ServeMux().ServeHTTP(rr, req)
 
@@ -851,11 +851,11 @@ func TestHandler_ListConversations_StoreError(t *testing.T) {
 }
 
 func TestHandler_CreateSession_MalformedJSON(t *testing.T) {
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler())
 
-	body := `{"conversation_id": "`
+	body := `{"thread_id": "`
 	req := httptest.NewRequest("POST", "/sessions", strings.NewReader(body))
 	rr := httptest.NewRecorder()
 	h.ServeMux().ServeHTTP(rr, req)

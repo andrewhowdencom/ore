@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/andrewhowdencom/ore/conversation"
+	"github.com/andrewhowdencom/ore/thread"
 	"github.com/andrewhowdencom/ore/loop"
 )
 
@@ -33,16 +33,16 @@ func WithUI() Option {
 	}
 }
 
-// Handler provides HTTP endpoints for the ore framework's conversation
+// Handler provides HTTP endpoints for the ore framework's thread
 // primitives. It is mounted on an http.ServeMux via ServeMux().
 type Handler struct {
-	// convStore is the shared conversation persistence layer.
-	convStore conversation.Store
+	// threadStore is the shared thread persistence layer.
+	threadStore thread.Store
 	// newStep is called once per session to create an isolated Step.
 	newStep func() *loop.Step
 	// messageHandler processes each incoming user message within a locked session.
 	messageHandler MessageHandler
-	// sessions tracks active HTTP sessions keyed by conversation ID.
+	// sessions tracks active HTTP sessions keyed by thread ID.
 	sessions map[string]*Session
 	// mu protects the sessions map.
 	mu sync.RWMutex
@@ -50,11 +50,11 @@ type Handler struct {
 	withUI         bool
 }
 
-// NewHandler creates a new Handler with the given conversation store,
+// NewHandler creates a new Handler with the given thread store,
 // Step factory, and message handler.
-func NewHandler(store conversation.Store, newStep func() *loop.Step, messageHandler MessageHandler, opts ...Option) *Handler {
+func NewHandler(store thread.Store, newStep func() *loop.Step, messageHandler MessageHandler, opts ...Option) *Handler {
 	h := &Handler{
-		convStore:      store,
+		threadStore:      store,
 		newStep:        newStep,
 		messageHandler: messageHandler,
 		sessions:       make(map[string]*Session),
@@ -72,7 +72,7 @@ func (h *Handler) ServeMux() *stdhttp.ServeMux {
 	mux.HandleFunc("DELETE /sessions/{id}", h.deleteSession)
 	mux.HandleFunc("POST /sessions/{id}/messages", h.sendMessage)
 	mux.HandleFunc("GET /sessions/{id}/events", h.sessionEvents)
-	mux.HandleFunc("GET /conversations", h.listConversations)
+	mux.HandleFunc("GET /threads", h.listThreads)
 	if h.withUI {
 		mux.HandleFunc("GET /", h.serveUI)
 		mux.HandleFunc("GET /chat.js", h.serveUI)
@@ -81,14 +81,14 @@ func (h *Handler) ServeMux() *stdhttp.ServeMux {
 }
 
 // createSession handles POST /sessions by creating a new ephemeral session.
-// If a "conversation_id" is provided in the JSON body, the session attaches
-// to an existing conversation. On success it responds with 201 Created and a
+// If a "thread_id" is provided in the JSON body, the session attaches
+// to an existing thread. On success it responds with 201 Created and a
 // JSON body:
 //
 //	{"id": "<session-id>", "events_url": "/sessions/<session-id>/events"}
 func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	var req struct {
-		ConversationID string `json:"conversation_id"`
+		ThreadID string `json:"thread_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		// An empty body is valid (creates a new session).
@@ -99,18 +99,18 @@ func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		}
 	}
 
-	var conv *conversation.Conversation
+	var thread *thread.Thread
 	var err error
 
-	if req.ConversationID != "" {
+	if req.ThreadID != "" {
 		var ok bool
-		conv, ok = h.convStore.Get(req.ConversationID)
+		thread, ok = h.threadStore.Get(req.ThreadID)
 		if !ok {
 			w.WriteHeader(stdhttp.StatusNotFound)
 			return
 		}
 	} else {
-		conv, err = h.convStore.Create()
+		thread, err = h.threadStore.Create()
 		if err != nil {
 			w.WriteHeader(stdhttp.StatusInternalServerError)
 			return
@@ -119,13 +119,13 @@ func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 
 	step := h.newStep()
 	session := &Session{
-		id:   conv.ID,
-		conv: conv,
-		step: step,
+		id:     thread.ID,
+		thread: thread,
+		step:   step,
 	}
 
 	h.mu.Lock()
-	h.sessions[conv.ID] = session
+	h.sessions[thread.ID] = session
 	h.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -137,7 +137,7 @@ func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 }
 
 // deleteSession handles DELETE /sessions/{id} by removing the session and
-// closing its Step. The conversation is NOT deleted from the store.
+// closing its Step. The thread is NOT deleted from the store.
 func (h *Handler) deleteSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	id := r.PathValue("id")
 
@@ -239,8 +239,8 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 				data, _ := MarshalOutputEvent(loop.ErrorEvent{Err: err})
 				_ = nw.WriteEvent(data)
 			}
-			// Save conversation state; stream an error if persistence fails.
-			if saveErr := h.convStore.Save(session.conv); saveErr != nil {
+			// Save thread state; stream an error if persistence fails.
+			if saveErr := h.threadStore.Save(session.thread); saveErr != nil {
 				data, _ := MarshalOutputEvent(loop.ErrorEvent{Err: saveErr})
 				_ = nw.WriteEvent(data)
 			}
@@ -363,10 +363,10 @@ func (h *Handler) serveUI(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 }
 
-// listConversations handles GET /conversations by returning all conversations
+// listThreads handles GET /threads by returning all threads
 // in the store as a JSON array.
-func (h *Handler) listConversations(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-	convs, err := h.convStore.List()
+func (h *Handler) listThreads(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+	threads, err := h.threadStore.List()
 	if err != nil {
 		w.WriteHeader(stdhttp.StatusInternalServerError)
 		return
@@ -378,12 +378,12 @@ func (h *Handler) listConversations(w stdhttp.ResponseWriter, r *stdhttp.Request
 		UpdatedAt time.Time `json:"updated_at"`
 	}
 
-	result := make([]summary, len(convs))
-	for i, conv := range convs {
+	result := make([]summary, len(threads))
+	for i, thread := range threads {
 		result[i] = summary{
-			ID:        conv.ID,
-			CreatedAt: conv.CreatedAt,
-			UpdatedAt: conv.UpdatedAt,
+			ID:        thread.ID,
+			CreatedAt: thread.CreatedAt,
+			UpdatedAt: thread.UpdatedAt,
 		}
 	}
 

@@ -1,4 +1,4 @@
-package conversation
+package thread
 
 import (
 	"testing"

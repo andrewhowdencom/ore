@@ -7,9 +7,9 @@
 //
 //	go run ./examples/tui-chat
 //
-// Resume an existing conversation:
+// Resume an existing thread:
 //
-//	go run ./examples/tui-chat --conversation <uuid>
+//	go run ./examples/tui-chat --thread <uuid>
 //
 // With persistent JSON store:
 //
@@ -26,7 +26,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
-	"github.com/andrewhowdencom/ore/conversation"
+	"github.com/andrewhowdencom/ore/thread"
 	"github.com/andrewhowdencom/ore/conduit"
 	"github.com/andrewhowdencom/ore/conduit/tui"
 	"github.com/andrewhowdencom/ore/loop"
@@ -49,8 +49,8 @@ func run() error {
 	defer cancel()
 
 	// Parse command-line flags.
-	var conversationID string
-	flag.StringVar(&conversationID, "conversation", "", "existing conversation UUID to resume")
+	var threadID string
+	flag.StringVar(&threadID, "thread", "", "existing thread UUID to resume")
 	flag.Parse()
 
 	// Environment configuration.
@@ -66,33 +66,33 @@ func run() error {
 
 	baseURL := os.Getenv("ORE_BASE_URL")
 
-	// Create conversation store.
-	var store conversation.Store
+	// Create thread store.
+	var store thread.Store
 	if storeDir := os.Getenv("STORE_DIR"); storeDir != "" {
 		var err error
-		store, err = conversation.NewJSONStore(storeDir)
+		store, err = thread.NewJSONStore(storeDir)
 		if err != nil {
 			return fmt.Errorf("create JSON store: %w", err)
 		}
 	} else {
-		store = conversation.NewMemoryStore()
+		store = thread.NewMemoryStore()
 	}
 
-	// Create or load conversation.
-	var conv *conversation.Conversation
-	if conversationID != "" {
+	// Create or load thread.
+	var thread *thread.Thread
+	if threadID != "" {
 		var ok bool
-		conv, ok = store.Get(conversationID)
+		thread, ok = store.Get(threadID)
 		if !ok {
-			return fmt.Errorf("conversation %q not found", conversationID)
+			return fmt.Errorf("thread %q not found", threadID)
 		}
 	} else {
 		var err error
-		conv, err = store.Create()
+		thread, err = store.Create()
 		if err != nil {
-			return fmt.Errorf("create conversation: %w", err)
+			return fmt.Errorf("create thread: %w", err)
 		}
-		slog.Info("conversation started", "id", conv.ID)
+		slog.Info("thread started", "id", thread.ID)
 	}
 
 	// Build OpenAI provider.
@@ -130,12 +130,12 @@ func run() error {
 			case conduit.UserMessageEvent:
 				// Record the user's message as a non-inference turn so it
 				// appears in the same artifact stream as assistant responses.
-				result, err := react.Step.Submit(ctx, conv.State, state.RoleUser, artifact.Text{Content: e.Content})
+				result, err := react.Step.Submit(ctx, thread.State, state.RoleUser, artifact.Text{Content: e.Content})
 				if err != nil {
 					slog.Error("submit failed", "err", err)
 					continue
 				}
-				_ = result // conv.State is mutated in place
+				_ = result // thread.State is mutated in place
 				if err := s.SetStatus(ctx, "thinking..."); err != nil {
 					slog.Error("set status failed", "err", err)
 				}
@@ -145,13 +145,13 @@ func run() error {
 				cancelFunc = cancel
 				mu.Unlock()
 
-				result, err = react.Run(opCtx, conv.State)
+				result, err = react.Run(opCtx, thread.State)
 				// State is mutable, so result is the same pointer.
 				_ = result
 
-				// Save conversation state after each turn.
-				if err := store.Save(conv); err != nil {
-					slog.Error("save conversation failed", "err", err)
+				// Save thread state after each turn.
+				if err := store.Save(thread); err != nil {
+					slog.Error("save thread failed", "err", err)
 				}
 
 				mu.Lock()
