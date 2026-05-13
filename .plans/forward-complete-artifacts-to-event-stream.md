@@ -2,16 +2,16 @@
 
 ## Objective
 
-Fix `loop.Turn()` so that all artifacts (both delta and complete) emitted by the provider are forwarded to the embedded `FanOut` event stream. The `artifact.Delta` marker interface should only control whether an artifact is persisted to state, not whether it is visible to subscribers. This aligns the implementation with the plan's stated intent that "artifact.Artifact values are emitted directly as OutputEvent" and with the `surface/tui` design, which type-switches on `artifact.Artifact` generically.
+Fix `loop.Turn()` so that all artifacts (both delta and complete) emitted by the provider are forwarded to the embedded `FanOut` event stream. The `artifact.Delta` marker interface should only control whether an artifact is persisted to state, not whether it is visible to subscribers. This aligns the implementation with the plan's stated intent that "artifact.Artifact values are emitted directly as OutputEvent" and with the `conduit/tui` design, which type-switches on `artifact.Artifact` generically.
 
 ## Context
 
 From ideation and discovery of the ore codebase:
 
 - **`loop/loop.go`** (`Turn()` method): The goroutine that reads from the provider channel currently type-asserts `artifact.Delta` to decide whether to forward to `s.events`. Only delta artifacts are emitted; complete artifacts are silently buffered in `completeArtifacts` and never reach subscribers.
-- **`surface/tui/tui.go`**: The TUI surface's event-reading goroutine type-switches on `artifact.Artifact` (the base interface), structurally prepared to receive any artifact type. The fact that it never receives complete artifacts from `loop.Turn()` is a latent mismatch.
+- **`conduit/tui/tui.go`**: The TUI conduit's event-reading goroutine type-switches on `artifact.Artifact` (the base interface), structurally prepared to receive any artifact type. The fact that it never receives complete artifacts from `loop.Turn()` is a latent mismatch.
 - **`loop/loop_test.go`**: Tests such as `TestStep_Turn_OutputEvents` subscribe to delta kinds and verify delta delivery. They do not assert that complete artifacts are also emitted — because they currently are not. `TestStep_Turn_OutputEvents_OnlyCompletes` subscribes to `"text_delta"` and `"turn_complete"`, so a complete `Text` artifact is dropped by the `FanOut` (no matching subscriber) — masking the fact that `loop.Turn()` never sent it.
-- **`.plans/unify-provider-streaming.md`**: States "artifact.Artifact values are emitted directly as OutputEvent (they already satisfy `Kind() string`)." and "The loop uses this [Delta interface] to route ephemeral content to surfaces immediately while buffering complete artifacts for state." The implementation interpreted the second sentence as filtering the event stream, but the design intent was dual-path: all artifacts to surfaces, only non-deltas to state.
+- **`.plans/unify-provider-streaming.md`**: States "artifact.Artifact values are emitted directly as OutputEvent (they already satisfy `Kind() string`)." and "The loop uses this [Delta interface] to route ephemeral content to conduits immediately while buffering complete artifacts for state." The implementation interpreted the second sentence as filtering the event stream, but the design intent was dual-path: all artifacts to conduits, only non-deltas to state.
 - **`provider/openai/openai.go`**: The OpenAI adapter already emits complete artifacts (e.g., `Text`, `Reasoning`, `ToolCall`) to the provider channel at the end of streaming. They simply never reach subscribers because `loop.Turn()` absorbs them.
 
 ## Architectural Blueprint
@@ -20,7 +20,7 @@ The fix is a single, focused change to the artifact-routing logic in `loop.Turn(
 
 1. **All artifacts flow to the event stream**: The goroutine reading from the provider channel forwards every artifact to `s.events` immediately as it arrives.
 2. **Delta marker controls state only**: The `artifact.Delta` type assertion is still used, but only to decide whether the artifact is also buffered in `completeArtifacts` for the batched `st.Append()` at the end. Deltas are forwarded but not buffered; complete artifacts are forwarded AND buffered.
-3. **No change to signatures or interfaces**: `Step`, `Turn()`, `Subscribe()`, `FanOut`, `Provider`, and `Handler` interfaces remain unchanged. Surfaces that already subscribe to specific `Kind()`s continue to work. Surfaces that want to receive complete artifacts can subscribe to their kinds (e.g., `"text"`, `"tool_call"`, `"usage"`).
+3. **No change to signatures or interfaces**: `Step`, `Turn()`, `Subscribe()`, `FanOut`, `Provider`, and `Handler` interfaces remain unchanged. Conduits that already subscribe to specific `Kind()`s continue to work. Conduits that want to receive complete artifacts can subscribe to their kinds (e.g., `"text"`, `"tool_call"`, `"usage"`).
 4. **Ordering preserved**: Because the provider emits deltas first (during streaming) and completes last (after assembly), subscribers that subscribe to both delta and complete kinds will see deltas before the corresponding complete artifact — which is the correct temporal ordering.
 
 ## Requirements
@@ -74,7 +74,7 @@ The fix is a single, focused change to the artifact-routing logic in `loop.Turn(
 
 | Risk | Impact | Likelihood | Mitigation |
 |---|---|---|---|
-| Surfaces subscribing to both delta and complete kinds receive redundant content | Low | Medium | By design — surfaces control their subscription. The TUI already subscribes only to delta kinds and accumulates content itself. No surfaces in the current codebase subscribe to complete artifact kinds. |
+| Conduits subscribing to both delta and complete kinds receive redundant content | Low | Medium | By design — conduits control their subscription. The TUI already subscribes only to delta kinds and accumulates content itself. No conduits in the current codebase subscribe to complete artifact kinds. |
 | Complete artifacts dropped by FanOut if no subscriber asked for that kind | Low | High | Same behavior as deltas today. The FanOut already documents non-blocking delivery with fixed buffer and kind-based filtering. |
 | Test changes accidentally alter assertions for unrelated behavior | Medium | Low | Keep existing tests unchanged where possible. Only add new assertions or new test cases. Run `go test -race ./...` before and after. |
 | Provider adapters rely on loop's buffering order for side effects | Low | Low | Provider adapters have no visibility into loop buffering. They only write to a channel. The change is purely in loop routing. |

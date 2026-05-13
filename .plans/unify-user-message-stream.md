@@ -12,7 +12,7 @@ The ore framework (`github.com/andrewhowdencom/ore`) is a minimal provider-agnos
 - `state/` — defines `State` interface with `Turns() []Turn` and `Append(role Role, artifacts ...Artifact)`. `state.Memory` is the in-memory implementation.
 - `provider/` — minimal `Invoke(ctx, State, chan<- Artifact, ...InvokeOption) error` contract.
 - `loop/` — `Step` orchestrates inference turns: `Turn(ctx, State, Provider) (State, error)`. Contains an embedded `FanOut` that distributes `OutputEvent` values to subscribers by kind.
-- `surface/tui/` — Bubble Tea TUI surface that subscribes to the loop's `FanOut` and renders deltas/turns.
+- `conduit/tui/` — Bubble Tea TUI conduit that subscribes to the loop's `FanOut` and renders deltas/turns.
 - `examples/tui-chat/` — reference application demonstrating the dual-path problem.
 
 ### Current dual-path architecture
@@ -21,12 +21,12 @@ The ore framework (`github.com/andrewhowdencom/ore`) is a minimal provider-agnos
 `loop.Step.Turn()` → provider emits `Artifact` deltas to `provCh` → accumulate into blocks → `events` channel → `FanOut` → TUI renders via `deltaMsg`/`turnMsg` → `st.Append(RoleAssistant, ...)` → handlers run → `TurnCompleteEvent` emitted.
 
 **User path (ad-hoc, direct):**
-TUI `KeyEnter` → **directly mutates** `m.turns` with `renderedTurn{role: RoleUser}` AND emits `surface.UserMessageEvent` → app goroutine → **directly calls** `mem.Append(RoleUser, ...)` → then invokes `react.Run()` which triggers assistant `Turn()`.
+TUI `KeyEnter` → **directly mutates** `m.turns` with `renderedTurn{role: RoleUser}` AND emits `conduit.UserMessageEvent` → app goroutine → **directly calls** `mem.Append(RoleUser, ...)` → then invokes `react.Run()` which triggers assistant `Turn()`.
 
 ### Observed during discovery
 
 - `loop/loop.go` — `Step.Turn()` has the post-append pipeline (append → handlers → `TurnCompleteEvent` emission) embedded directly after provider accumulation. No shared method.
-- `surface/tui/model.go` — `KeyEnter` contains the direct `m.turns` mutation for user turns. The `turnMsg` handler already uses `msg.turn.Role` and correctly renders user turns (confirmed by `TestModel_Update_Turn_User_LeavesRenderedEmpty`).
+- `conduit/tui/model.go` — `KeyEnter` contains the direct `m.turns` mutation for user turns. The `turnMsg` handler already uses `msg.turn.Role` and correctly renders user turns (confirmed by `TestModel_Update_Turn_User_LeavesRenderedEmpty`).
 - `examples/tui-chat/main.go` — `mem.Append(state.RoleUser, ...)` is called directly in the event goroutine, bypassing the loop entirely.
 - `examples/single-turn-cli/main.go` and `examples/calculator/main.go` — also use `mem.Append(RoleUser, ...)` directly, but these are non-interactive CLI examples with no artifact stream subscribers. They are out of scope for this plan; `Submit()` will be available for future use but no changes are required.
 - `cognitive/react.go` — `ReAct.Run()` only calls `Step.Turn()`. No changes needed; the example app will call `Step.Submit()` directly via `react.Step.Submit()`.
@@ -49,7 +49,7 @@ The unified architecture restructures the loop so that **all** observable state 
 User types message
        │
        ▼
-TUI KeyEnter ──► resets input, emits surface.UserMessageEvent
+TUI KeyEnter ──► resets input, emits conduit.UserMessageEvent
        │                          (NO direct m.turns mutation)
        ▼
 App goroutine receives UserMessageEvent
@@ -123,11 +123,11 @@ react.Run(ctx, mem)
 ### Task 3: Remove direct TUI m.turns mutation on KeyEnter
 - **Goal**: Stop the TUI from directly appending a user turn to `m.turns` when `KeyEnter` is pressed. User turns must render exclusively through the `turnMsg` path from the loop's `FanOut`.
 - **Dependencies**: Task 2
-- **Files Affected**: `surface/tui/model.go`, `surface/tui/model_test.go`
+- **Files Affected**: `conduit/tui/model.go`, `conduit/tui/model_test.go`
 - **New Files**: None
 - **Interfaces**: None new; behavior change in `model.Update()` `KeyEnter` handling
-- **Validation**: `go test ./surface/tui/...` passes. `TestModel_Update_KeyEnter_WithInput` updated to assert `mm.turns` is empty after `KeyEnter` (since no `turnMsg` has arrived yet), while still asserting `eventsCh` receives the `UserMessageEvent` and `m.input` is reset.
-- **Details**: In `model.go`, remove the `m.turns = append(m.turns, renderedTurn{role: state.RoleUser, ...})` block from `KeyEnter`. The `m.eventsCh <- surface.UserMessageEvent{Content: content}` emission stays. In `model_test.go`, update `TestModel_Update_KeyEnter_WithInput` to remove assertions on `mm.turns` length and content after `KeyEnter`; instead assert `mm.turns` is empty and the event was emitted. The existing `TestModel_Update_Turn_User_LeavesRenderedEmpty` already validates that `turnMsg` with `RoleUser` renders correctly.
+- **Validation**: `go test ./conduit/tui/...` passes. `TestModel_Update_KeyEnter_WithInput` updated to assert `mm.turns` is empty after `KeyEnter` (since no `turnMsg` has arrived yet), while still asserting `eventsCh` receives the `UserMessageEvent` and `m.input` is reset.
+- **Details**: In `model.go`, remove the `m.turns = append(m.turns, renderedTurn{role: state.RoleUser, ...})` block from `KeyEnter`. The `m.eventsCh <- conduit.UserMessageEvent{Content: content}` emission stays. In `model_test.go`, update `TestModel_Update_KeyEnter_WithInput` to remove assertions on `mm.turns` length and content after `KeyEnter`; instead assert `mm.turns` is empty and the event was emitted. The existing `TestModel_Update_Turn_User_LeavesRenderedEmpty` already validates that `turnMsg` with `RoleUser` renders correctly.
 
 ### Task 4: Update tui-chat example to use Step.Submit()
 - **Goal**: Replace the ad-hoc `mem.Append(state.RoleUser, ...)` call in `examples/tui-chat/main.go` with `react.Step.Submit()` to route user turns through the loop infrastructure.
@@ -190,7 +190,7 @@ Task 1 ──► Task 2 ──► Task 3 ──► Task 5
 
 - [ ] `go test -race ./loop/...` passes after Task 1 (pure refactor, no regressions)
 - [ ] `go test -race ./loop/...` passes after Task 2, including new `Submit()` tests
-- [ ] `go test -race ./surface/tui/...` passes after Task 3, with updated `KeyEnter` test
+- [ ] `go test -race ./conduit/tui/...` passes after Task 3, with updated `KeyEnter` test
 - [ ] `go build ./examples/tui-chat/...` succeeds after Task 4
 - [ ] `go test -race ./...` passes after Task 5
 - [ ] `go build ./...` passes after Task 5

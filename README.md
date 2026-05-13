@@ -5,9 +5,9 @@
 
 ## Purpose
 
-ore is a Go-native framework for building agentic applications. It provides a minimal core inference primitive, provider-agnostic LLM adapters, composable I/O surfaces, and clean extension points implemented as Go interfaces.
+ore is a Go-native framework for building agentic applications. It provides a minimal core inference primitive, provider-agnostic LLM adapters, composable I/O conduits, and clean extension points implemented as Go interfaces.
 
-This is a learning project and a conceptual exploration. It is inspired by [pi.dev](https://pi.dev)'s philosophy of minimal cores and aggressive extensibility, but reimagined in Go with different architectural priorities: first-class non-interactive surfaces, build-time composition via Go interfaces, and a narrower core that delegates all workflow opinions to extensions and applications.
+This is a learning project and a conceptual exploration. It is inspired by [pi.dev](https://pi.dev)'s philosophy of minimal cores and aggressive extensibility, but reimagined in Go with different architectural priorities: first-class non-interactive conduits, build-time composition via Go interfaces, and a narrower core that delegates all workflow opinions to extensions and applications.
 
 ## System Architecture
 
@@ -133,11 +133,11 @@ Because tools are passed per-invocation through `InvokeOption`, there is no muta
 
 Extensions compose. They do not mutate the core.
 
-### I/O Surfaces
+### I/O Conduits
 
-I/O Surfaces are adapters that translate external events into triggers for the application layer and route outputs to external systems. They are **not** "UIs" in the narrow sense.
+I/O Conduits are adapters that translate external events into triggers for the application layer and route outputs to external systems. They are **not** "UIs" in the narrow sense.
 
-An I/O Surface can be:
+An I/O Conduit can be:
 
 - **Interactive** — TUI, web interface, Telegram or Discord bot
 - **Event-driven** — Webhook receiver, message queue consumer, alert processor (e.g., PagerDuty → analysis → Slack notification)
@@ -145,9 +145,9 @@ An I/O Surface can be:
 - **Service-oriented** — REST or gRPC endpoint, CLI one-shot, RPC over stdio
 - **Streaming** — WebSocket server, SSE endpoint, log tailer
 
-A Surface's contract with the application layer is about **ingress events** and **egress actions**, not about rendering chat windows.
+A Conduit's contract with the application layer is about **ingress events** and **egress actions**, not about rendering chat windows.
 
-The framework defines a `surface.Surface` interface with four egress actions and one ingress source:
+The framework defines a `conduit.Conduit` interface with four egress actions and one ingress source:
 
 - `Events() <-chan Event` — read-only channel of user-generated events (`UserMessageEvent`, `InterruptEvent`, etc.)
 - `RenderDelta(ctx, artifact.Artifact) error` — render an ephemeral delta artifact incrementally (e.g., `TextDelta` chunks)
@@ -161,14 +161,14 @@ Implementations (TUI, web, Telegram, etc.) satisfy this interface at build time.
 Above the Loop / Step, the framework separates concerns into three layers:
 
 - **`loop.Step`** — the transform layer. Executes one complete inference turn: invokes the provider, optionally emits streaming deltas as `OutputEvent` to a configured channel, and runs registered artifact handlers synchronously on the complete response. Handlers may mutate state (e.g., append `RoleTool` turns with tool results).
-- **`cognitive.ReAct`** — a pure cognitive pattern that implements the ReAct feedback loop. It repeatedly calls `Step.Turn()`, inspects the resulting state, and loops again if the last turn is not from the assistant (indicating pending tool results). It is surface-agnostic and stateless — it receives `state.State` as a parameter and returns it.
-- **Application-layer IO wiring** — the application (typically in `main()`) owns the `Surface`, reads `Surface.Events()`, appends user messages to state, invokes the cognitive pattern, subscribes to `Step`'s output events to route delta and turn events back to the surface, and manages status and interrupts.
+- **`cognitive.ReAct`** — a pure cognitive pattern that implements the ReAct feedback loop. It repeatedly calls `Step.Turn()`, inspects the resulting state, and loops again if the last turn is not from the assistant (indicating pending tool results). It is conduit-agnostic and stateless — it receives `state.State` as a parameter and returns it.
+- **Application-layer IO wiring** — the application (typically in `main()`) owns the `Conduit`, reads `Conduit.Events()`, appends user messages to state, invokes the cognitive pattern, subscribes to `Step`'s output events to route delta and turn events back to the conduit, and manages status and interrupts.
 
-This three-layer separation means single-turn applications can use `Step` directly, multi-turn agents compose `Step` with `cognitive.ReAct`, and the application layer handles all surface-specific concerns.
+This three-layer separation means single-turn applications can use `Step` directly, multi-turn agents compose `Step` with `cognitive.ReAct`, and the application layer handles all conduit-specific concerns.
 
 ### Agents / Applications
 
-An Agent (or Application) is a runnable assembly that composes `loop.Step`, a Provider Adapter, a set of Artifact Handlers and Extensions, one or more I/O Surfaces, and a cognitive pattern into a concrete system.
+An Agent (or Application) is a runnable assembly that composes `loop.Step`, a Provider Adapter, a set of Artifact Handlers and Extensions, one or more I/O Conduits, and a cognitive pattern into a concrete system.
 
 Crucially, the application layer is also where **strategy** happens. Step does not loop on its own. The application (via a cognitive pattern or directly) decides:
 
@@ -176,15 +176,15 @@ Crucially, the application layer is also where **strategy** happens. Step does n
 - Whether to call it once (single-shot Q&A) or repeatedly (tool-calling agent)
 - Whether to fork state and run multiple loops in parallel (Tree-of-Thought)
 - Whether to insert reflection messages between turns (Reflexion)
-- When to stop and return a result to the I/O Surface
+- When to stop and return a result to the I/O Conduit
 
 There is no single "ore" binary that does everything. Instead, there are compositions: a coding assistant with a TUI that loops on tool calls, a PR review bot that runs a single turn and posts to Slack, a scheduled log analyzer that chains three single-turn prompts together. Each is a Go program that imports the pieces it needs and wires them in `main`.
 
 ## Design Principles
 
 1. **Simplicity** — Step does as little as possible. It is a stateful inference primitive. Every feature that can live outside the core does.
-2. **Composability** — Components connect through narrow interfaces. A Step, an OpenAI adapter, a tool handler, and a TUI surface compose the same way as a Step, an Anthropic adapter, an image handler, and a webhook surface.
-3. **I/O Agnosticism** — Step does not know whether it is running in an interactive terminal or responding to a 3 AM PagerDuty alert. Surfaces handle the world; Step handles one inference turn.
+2. **Composability** — Components connect through narrow interfaces. A Step, an OpenAI adapter, a tool handler, and a TUI conduit compose the same way as a Step, an Anthropic adapter, an image handler, and a webhook conduit.
+3. **I/O Agnosticism** — Step does not know whether it is running in an interactive terminal or responding to a 3 AM PagerDuty alert. Conduits handle the world; Step handles one inference turn.
 4. **Build-time Extension** — Extensions are Go packages composed at build time, not runtime plugins. This keeps deployment simple and interfaces type-safe.
 5. **Defer Specifics** — Patterns like memory, reflection, planning, reasoning strategies (ReAct, ToT, CoT), multi-agent orchestration, and tool calling are enabled by Step's extensibility but are not designed in the core. They emerge as artifact handlers, orchestrators, and applications that control how turns are invoked, not as alternative core implementations.
 6. **Treat Tool Calling as an Extension** — Tool calling is a common and important capability, but it is not privileged. It is one artifact handler among many. This ensures the architecture can absorb future LLM capabilities (images, audio, video, structured output) without core changes.
@@ -196,7 +196,7 @@ There is no single "ore" binary that does everything. Instead, there are composi
 Where ore diverges:
 
 - **Language** — Go instead of TypeScript. This is a learning exercise and an exploration of Go's deployment and runtime characteristics for agent systems.
-- **I/O Surfaces** — pi.dev is primarily a TUI-centric tool with other modes (print, JSON, RPC) as secondary interfaces. ore treats all ingress/egress adapters as first-class, equally valid surfaces.
+- **I/O Conduits** — pi.dev is primarily a TUI-centric tool with other modes (print, JSON, RPC) as secondary interfaces. ore treats all ingress/egress adapters as first-class, equally valid conduits.
 - **Extension Model** — pi.dev uses TypeScript modules and runtime package loading. ore uses Go interfaces and build-time composition.
 - **Scope** — pi.dev is a production coding agent. ore is a framework for building agents, not a specific agent implementation.
 
@@ -209,11 +209,11 @@ This README remains a vision document, but the framework is now partially implem
 - `provider/` — `Provider` interface with `Invoke()`, `StreamingProvider` for channel-based delta emission, and `InvokeOption` for per-invocation configuration (tools, temperature, etc.)
 - `loop/` — `Step` with `Turn()` method, `BeforeTurn` hook, optional streaming via `OutputEvent` channel, and artifact `Handler` interface for single-turn execution
 - `tool/` — `Registry` for mapping tool names to Go functions, and `Handler` implementing `loop.Handler` for tool execution
-- `cognitive/` — `ReAct` cognitive pattern for multi-turn looping, surface-agnostic and stateless
-- `surface/` — `Surface` interface with ingress events and egress delta/turn/status rendering. The TUI surface renders assistant turns as rich Markdown via `charmbracelet/glamour` (syntax-highlighted code blocks, headings, bold/italic); streaming text stays plain text so incomplete Markdown never breaks.
+- `cognitive/` — `ReAct` cognitive pattern for multi-turn looping, conduit-agnostic and stateless
+- `conduit/` — `Conduit` interface with ingress events and egress delta/turn/status rendering. The TUI conduit renders assistant turns as rich Markdown via `charmbracelet/glamour` (syntax-highlighted code blocks, headings, bold/italic); streaming text stays plain text so incomplete Markdown never breaks.
 - `provider/openai/` — OpenAI-compatible adapter with streaming chat completions and tool calling support
 - `examples/single-turn-cli/` — Reference one-shot CLI application
 - `examples/tui-chat/` — Reference streaming chat REPL using Bubble Tea
 - `examples/calculator/` — Reference tool-calling application with add and multiply
 
-Remaining work: additional provider adapters (Anthropic, Gemini), additional artifact handlers (image, structured output), additional lifecycle hooks, and more I/O surface implementations (web, Telegram, webhook).
+Remaining work: additional provider adapters (Anthropic, Gemini), additional artifact handlers (image, structured output), additional lifecycle hooks, and more I/O conduit implementations (web, Telegram, webhook).

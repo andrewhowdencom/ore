@@ -7,9 +7,9 @@
 //
 //   - ReAct — implements the ReAct feedback loop via Run(ctx, state.State).
 //
-// Cognitive patterns are surface-agnostic and stateless. They receive
+// Cognitive patterns are conduit-agnostic and stateless. They receive
 // state.State as a parameter and return it, without embedding it. The caller
 // (typically application-level code) is responsible for IO wiring: reading
-// surface events, appending user messages, routing output events to a
-// surface, and managing status.
+// conduit events, appending user messages, routing output events to a
+// conduit, and managing status.
 package cognitive

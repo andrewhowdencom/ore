@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/surface"
+	"github.com/andrewhowdencom/ore/conduit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,8 +25,8 @@ func TestTUI_Events(t *testing.T) {
 
 // Compile-time interface checks.
 var (
-	_ surface.Surface = (*TUI)(nil)
-	_ surface.Capable = (*TUI)(nil)
+	_ conduit.Conduit = (*TUI)(nil)
+	_ conduit.Capable = (*TUI)(nil)
 )
 
 func TestTUI_Capabilities(t *testing.T) {
@@ -35,17 +35,17 @@ func TestTUI_Capabilities(t *testing.T) {
 
 	assert.Equal(t, Descriptor.Capabilities, caps)
 
-	expected := []surface.Capability{
-		surface.CapEventSource,
-		surface.CapShowStatus,
-		surface.CapRenderDelta,
-		surface.CapRenderTurn,
-		surface.CapRenderMarkdown,
+	expected := []conduit.Capability{
+		conduit.CapEventSource,
+		conduit.CapShowStatus,
+		conduit.CapRenderDelta,
+		conduit.CapRenderTurn,
+		conduit.CapRenderMarkdown,
 	}
 	assert.Equal(t, expected, caps)
 
-	assert.NotContains(t, caps, surface.CapRenderImage)
-	assert.NotContains(t, caps, surface.CapAcceptVoice)
+	assert.NotContains(t, caps, conduit.CapRenderImage)
+	assert.NotContains(t, caps, conduit.CapAcceptVoice)
 }
 
 func TestTUI_Can(t *testing.T) {
@@ -53,18 +53,18 @@ func TestTUI_Can(t *testing.T) {
 
 	tests := []struct {
 		name string
-		cap  surface.Capability
+		cap  conduit.Capability
 		want bool
 	}{
-		{"event-source", surface.CapEventSource, true},
-		{"show-status", surface.CapShowStatus, true},
-		{"render-delta", surface.CapRenderDelta, true},
-		{"render-turn", surface.CapRenderTurn, true},
-		{"render-markdown", surface.CapRenderMarkdown, true},
-		{"render-image", surface.CapRenderImage, false},
-		{"accept-voice", surface.CapAcceptVoice, false},
-		{"unknown", surface.Capability("unknown"), false},
-		{"empty", surface.Capability(""), false},
+		{"event-source", conduit.CapEventSource, true},
+		{"show-status", conduit.CapShowStatus, true},
+		{"render-delta", conduit.CapRenderDelta, true},
+		{"render-turn", conduit.CapRenderTurn, true},
+		{"render-markdown", conduit.CapRenderMarkdown, true},
+		{"render-image", conduit.CapRenderImage, false},
+		{"accept-voice", conduit.CapAcceptVoice, false},
+		{"unknown", conduit.Capability("unknown"), false},
+		{"empty", conduit.Capability(""), false},
 	}
 
 	for _, tt := range tests {

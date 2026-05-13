@@ -8,13 +8,13 @@ Refactor the ore provider contract and OpenAI adapter so that streaming artifact
 
 The current provider contract (`provider/provider.go`) states: "The adapter is responsible for buffering deltas internally and emitting complete artifacts once the stream finishes." This forces the OpenAI adapter (`provider/openai/openai.go`) to accumulate all `TextDelta` chunks into a single `Text` artifact and all `ReasoningDelta` chunks into a single `Reasoning` artifact, then emit them at stream end in a hardcoded order (text first, reasoning second).
 
-The loop (`loop/loop.go`) separates the mixed delta/complete stream: deltas are forwarded to the `FanOut` for real-time TUI rendering, while complete artifacts are buffered and appended to state after the provider returns. The TUI (`surface/tui/model.go`) accumulates deltas into `streamBlocks` in arrival order, then on `TurnCompleteEvent` renders `msg.turn.Artifacts` in slice order. Because the provider's committed artifacts are reordered, the visual output "jumps" when the turn finalizes.
+The loop (`loop/loop.go`) separates the mixed delta/complete stream: deltas are forwarded to the `FanOut` for real-time TUI rendering, while complete artifacts are buffered and appended to state after the provider returns. The TUI (`conduit/tui/model.go`) accumulates deltas into `streamBlocks` in arrival order, then on `TurnCompleteEvent` renders `msg.turn.Artifacts` in slice order. Because the provider's committed artifacts are reordered, the visual output "jumps" when the turn finalizes.
 
 Key files and their current behavior:
 - `provider/provider.go` — Interface contract requires internal buffering
 - `provider/openai/openai.go` — `strings.Builder` accumulates text/reasoning; hardcoded emission order at stream end
 - `loop/loop.go` — Goroutine separates deltas from complete artifacts via `artifact.Delta` type assertion
-- `surface/tui/model.go` — `deltaMsg` handler merges same-kind deltas into `streamBlocks`; `turnMsg` renders `msg.turn.Artifacts` in slice order
+- `conduit/tui/model.go` — `deltaMsg` handler merges same-kind deltas into `streamBlocks`; `turnMsg` renders `msg.turn.Artifacts` in slice order
 - `artifact/artifact.go` — `Text`, `Reasoning`, `TextDelta`, `ReasoningDelta`, `ToolCall`, `ToolCallDelta` types already exist
 
 ## Architectural Blueprint
@@ -86,10 +86,10 @@ The TUI receives the same ordered blocks through both paths: deltas via `FanOut`
 ### Task 4: Align TUI turn rendering with artifact slice order
 - **Goal**: Verify the TUI's `turnMsg` handler renders `msg.turn.Artifacts` in slice order without hardcoded reasoning-before-text logic.
 - **Dependencies**: Task 2, Task 3.
-- **Files Affected**: `surface/tui/model.go`
+- **Files Affected**: `conduit/tui/model.go`
 - **New Files**: None.
 - **Interfaces**: `model.Update(turnMsg)` already iterates `msg.turn.Artifacts` in order. The `switch a := art.(type)` cases for `artifact.Text` and `artifact.Reasoning` are already in slice order. No hardcoded reordering is present. This task is primarily verification and minor cleanup if any implicit ordering assumptions are found.
-- **Validation**: `go test ./surface/tui/...` passes. `TestModel_Update_Delta_Interleaved` already verifies interleaved delta handling. Add or update a test that verifies `turnMsg` with interleaved `[Text, Reasoning, Text]` renders blocks in that order.
+- **Validation**: `go test ./conduit/tui/...` passes. `TestModel_Update_Delta_Interleaved` already verifies interleaved delta handling. Add or update a test that verifies `turnMsg` with interleaved `[Text, Reasoning, Text]` renders blocks in that order.
 - **Details**:
   - Review `model.Update(turnMsg)` to confirm the artifact switch is purely slice-order driven.
   - If any implicit ordering (e.g., reasoning always rendered before text) exists in `view.go` or rendering logic, remove it.
@@ -98,14 +98,14 @@ The TUI receives the same ordered blocks through both paths: deltas via `FanOut`
 ### Task 5: Update and add tests
 - **Goal**: Ensure all tests reflect the new provider/loop behavior and verify the ordering fix.
 - **Dependencies**: Task 2, Task 3, Task 4.
-- **Files Affected**: `loop/loop_test.go`, `provider/openai/openai_test.go` (if exists), `surface/tui/model_test.go`
+- **Files Affected**: `loop/loop_test.go`, `provider/openai/openai_test.go` (if exists), `conduit/tui/model_test.go`
 - **New Files**: None.
 - **Interfaces**: Test assertions change from expecting monolithic `Text`/`Reasoning` complete artifacts to expecting interleaved `Text`/`Reasoning` blocks.
 - **Validation**: `go test -race ./...` passes.
 - **Details**:
   - `loop/loop_test.go`: Update `TestStep_Turn_AppendsArtifacts`, `TestStep_Turn_AppendsReasoningArtifact`, `TestStep_Turn_OutputEvents`, and other tests that assert on `last.Artifacts` order. The tests currently expect `[Text, ToolCall]` or `[Text, Reasoning]`; with the mock provider emitting in a specific order, the accumulated turn should match that order.
   - `loop/loop_test.go`: Add `TestStep_Turn_AccumulatesInterleavedDeltas` verifying `TextDelta → ReasoningDelta → TextDelta` produces `[Text, Reasoning, Text]`.
-  - `surface/tui/model_test.go`: Add `TestModel_Update_Turn_Interleaved` (or update existing `TestModel_Update_Turn` / `TestModel_Update_Turn_PreservesReasoning`).
+  - `conduit/tui/model_test.go`: Add `TestModel_Update_Turn_Interleaved` (or update existing `TestModel_Update_Turn` / `TestModel_Update_Turn_PreservesReasoning`).
   - Provider tests: If `provider/openai/openai_test.go` exists, update SSE mock tests to assert delta emission order. If not, this task may be minimal for the provider package.
 
 ### Task 6: End-to-end validation

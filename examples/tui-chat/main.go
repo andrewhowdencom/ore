@@ -1,6 +1,6 @@
 // Package main provides a streaming chat REPL demonstrating the ore
 // framework. It wires together the ReAct cognitive pattern, the loop.Step
-// primitive for turn orchestration, and the surface/tui package for
+// primitive for turn orchestration, and the conduit/tui package for
 // terminal interaction.
 package main
 
@@ -16,8 +16,8 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider/openai"
 	"github.com/andrewhowdencom/ore/state"
-	"github.com/andrewhowdencom/ore/surface"
-	"github.com/andrewhowdencom/ore/surface/tui"
+	"github.com/andrewhowdencom/ore/conduit"
+	"github.com/andrewhowdencom/ore/conduit/tui"
 )
 
 func main() {
@@ -51,8 +51,8 @@ func run() error {
 	//   * `react` (cognitive.ReAct) drives the inference loop using the
 	//     provider and the Step primitive.
 	//   * `Step` emits streaming artifacts and turn-complete events that
-	//     the TUI surface consumes.
-	//   * The TUI surface forwards user input back as UserMessageEvents,
+	//     the TUI conduit consumes.
+	//   * The TUI conduit forwards user input back as UserMessageEvents,
 	//     which are fed into `Step.Submit` to keep the conversation
 	//     history consistent.
 
@@ -67,7 +67,7 @@ func run() error {
 	st := loop.New()
 	defer st.Close()
 
-	// Create TUI surface subscribed to the event stream.
+	// Create TUI conduit subscribed to the event stream.
 	ch := st.Subscribe("text_delta", "reasoning_delta", "tool_call_delta", "turn_complete")
 	s := tui.New(ch)
 
@@ -91,7 +91,7 @@ func run() error {
 
 		for event := range s.Events() {
 			switch e := event.(type) {
-			case surface.UserMessageEvent:
+			case conduit.UserMessageEvent:
 				// Record the user's message as a non-inference turn so it
 				// appears in the same artifact stream as assistant responses.
 				result, err := react.Step.Submit(ctx, mem, state.RoleUser, artifact.Text{Content: e.Content})
@@ -125,7 +125,7 @@ func run() error {
 					slog.Error("react failed", "err", err)
 				}
 
-			case surface.InterruptEvent:
+			case conduit.InterruptEvent:
 				// Propagate a Ctrl+C cancellation to the ongoing inference turn.
 				mu.Lock()
 				if cancelFunc != nil {

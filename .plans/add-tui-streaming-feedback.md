@@ -2,7 +2,7 @@
 
 ## Objective
 
-Implement visual feedback during active streaming in the `surface/tui` package so that users can see when the assistant is generating a response, and so that reasoning/thinking deltas are visually distinguished from final text output.
+Implement visual feedback during active streaming in the `conduit/tui` package so that users can see when the assistant is generating a response, and so that reasoning/thinking deltas are visually distinguished from final text output.
 
 ## Context
 
@@ -10,10 +10,10 @@ Issue [#8](https://github.com/andrewhowdencom/ore/issues/8) (“TUI: Add streami
 
 **Relevant files discovered:**
 
-- `surface/tui/model.go` — Bubble Tea `tea.Model` implementation. `Update` handled `deltaMsg` by writing both `TextDelta` and `ReasoningDelta` into `m.streamBuffer`.
-- `surface/tui/view.go` — Renders conversation history and the in-progress stream buffer with `assistantLabel` (subtle blue) for all assistant content. No animated or static indicator is appended.
-- `surface/tui/model_test.go` — Table-driven tests covering delta handling, turn finalization, viewport scrolling, and view output. All streaming tests referenced the single `streamBuffer` field.
-- `surface/tui/tui.go` — Thin wrapper; no changes needed.
+- `conduit/tui/model.go` — Bubble Tea `tea.Model` implementation. `Update` handled `deltaMsg` by writing both `TextDelta` and `ReasoningDelta` into `m.streamBuffer`.
+- `conduit/tui/view.go` — Renders conversation history and the in-progress stream buffer with `assistantLabel` (subtle blue) for all assistant content. No animated or static indicator is appended.
+- `conduit/tui/model_test.go` — Table-driven tests covering delta handling, turn finalization, viewport scrolling, and view output. All streaming tests referenced the single `streamBuffer` field.
+- `conduit/tui/tui.go` — Thin wrapper; no changes needed.
 - `artifact/artifact.go` — Defines `TextDelta` and `ReasoningDelta` as distinct artifact kinds.
 - `go.mod` — Already depends on `github.com/charmbracelet/bubbles v1.0.0`, which includes `spinner` and `viewport` bubbles.
 
@@ -73,7 +73,7 @@ Issue [#8](https://github.com/andrewhowdencom/ore/issues/8) (“TUI: Add streami
 2. `artifact.ReasoningDelta` content is accumulated in a separate buffer and rendered with a `Thinking:` label in faint/italic style.
 3. The indicator disappears cleanly when `turnMsg` finalizes the turn.
 4. The indicator must not interfere with `cellbuf.Wrap` text wrapping or viewport scrolling.
-5. All existing tests in `surface/tui` continue to pass; new tests cover the blinking cursor and reasoning stream rendering.
+5. All existing tests in `conduit/tui` continue to pass; new tests cover the blinking cursor and reasoning stream rendering.
 
 ## Task Breakdown
 
@@ -81,9 +81,9 @@ Issue [#8](https://github.com/andrewhowdencom/ore/issues/8) (“TUI: Add streami
 - **Goal**: Separate `TextDelta` and `ReasoningDelta` into distinct model buffers, add streaming-state tracking, and implement a `tea.Tick`-driven blinking cursor that renders during active streaming.
 - **Dependencies**: None.
 - **Files Affected**:
-  - `surface/tui/model.go`
-  - `surface/tui/view.go`
-  - `surface/tui/model_test.go`
+  - `conduit/tui/model.go`
+  - `conduit/tui/view.go`
+  - `conduit/tui/model_test.go`
 - **New Files**: None.
 - **Interfaces**:
   - `model` struct changes:
@@ -100,7 +100,7 @@ Issue [#8](https://github.com/andrewhowdencom/ore/issues/8) (“TUI: Add streami
     - Render `textStreamBuffer` with `assistantLabel` and, when `m.streaming && m.cursorVisible`, append `▌` after the wrapped text (post-wrap, on the last non-empty line, respecting terminal width).
     - Render `reasoningStreamBuffer` with a new `thinkingStyle` (faint + italic) and `Thinking:` label, applying the same cursor rule.
 - **Validation**:
-  - `go test -race ./surface/tui/…` passes.
+  - `go test -race ./conduit/tui/…` passes.
   - `go vet ./…` is clean.
 - **Details**:
   1. In `model.go`, rename `streamBuffer` to `textStreamBuffer`, add `reasoningStreamBuffer`, `streaming`, and `cursorVisible`.
@@ -120,11 +120,11 @@ Issue [#8](https://github.com/andrewhowdencom/ore/issues/8) (“TUI: Add streami
      - Add `TestModel_View_ContainsReasoningStream` — populate `reasoningStreamBuffer`, assert view contains `Thinking:` and reasoning text.
      - Add `TestModel_View_BlinkingCursorVisible` — set `streaming = true`, `cursorVisible = true`, populate `textStreamBuffer`, assert view contains `▌`.
      - Add `TestModel_View_BlinkingCursorHidden` — set `streaming = true`, `cursorVisible = false`, populate `textStreamBuffer`, assert view does **not** contain `▌`.
-  9. Run `go test -race ./surface/tui/…` and fix any width-calculation or race issues.
+  9. Run `go test -race ./conduit/tui/…` and fix any width-calculation or race issues.
 
 ## Dependency Graph
 
-- Task 1 has no dependencies and is the only task (all changes are localized to the `surface/tui` package).
+- Task 1 has no dependencies and is the only task (all changes are localized to the `conduit/tui` package).
 
 ## Risks & Mitigations
 
@@ -137,9 +137,9 @@ Issue [#8](https://github.com/andrewhowdencom/ore/issues/8) (“TUI: Add streami
 
 ## Validation Criteria
 
-- [ ] `go test -race ./surface/tui/…` passes with zero failures.
+- [ ] `go test -race ./conduit/tui/…` passes with zero failures.
 - [ ] `go vet ./…` reports no issues.
-- [ ] `surface/tui/model.go` compiles with the new `textStreamBuffer`, `reasoningStreamBuffer`, `streaming`, and `cursorVisible` fields.
-- [ ] `surface/tui/view.go` renders `textStreamBuffer` with `Assistant:` label, `reasoningStreamBuffer` with `Thinking:` label in faint/italic style, and appends a blinking `▌` cursor when `streaming && cursorVisible`.
+- [ ] `conduit/tui/model.go` compiles with the new `textStreamBuffer`, `reasoningStreamBuffer`, `streaming`, and `cursorVisible` fields.
+- [ ] `conduit/tui/view.go` renders `textStreamBuffer` with `Assistant:` label, `reasoningStreamBuffer` with `Thinking:` label in faint/italic style, and appends a blinking `▌` cursor when `streaming && cursorVisible`.
 - [ ] `turnMsg` resets both buffers and disables the cursor.
-- [ ] The OpenAI provider is **not** modified in this plan; the TUI change is surface-only and provider-agnostic.
+- [ ] The OpenAI provider is **not** modified in this plan; the TUI change is conduit-only and provider-agnostic.

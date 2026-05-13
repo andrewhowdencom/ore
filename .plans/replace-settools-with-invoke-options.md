@@ -71,7 +71,7 @@ This preserves `ReAct`'s blindness: `ReAct.Run` calls `Step.Turn(ctx, st, r.Prov
 |---|---|
 | **Immutable provider factory** (`WithTools` returns new `Provider`) | Cleaner than `SetTools`, but requires allocating a new provider struct per turn. Passing options at the invocation boundary is more direct and generalizes to temperature, max-tokens, etc. without additional factory methods. |
 | **Tools in `State`** | Would require `state` to import `provider` for the `Tool` type, creating a cycle (`provider` already depends on `state`). Moving `Tool` to `artifact` is possible but pollutes the artifact package with a provider-concern. |
-| **Separate `InvokeWithTools` method on `ToolProvider`** | Bloats the interface surface; `Step.Turn` would need to know about `ToolProvider` to choose the right method, leaking tool awareness into the loop. |
+| **Separate `InvokeWithTools` method on `ToolProvider`** | Bloats the interface conduit; `Step.Turn` would need to know about `ToolProvider` to choose the right method, leaking tool awareness into the loop. |
 | **Generic request config struct** | Would need to live in `provider/` and encompass all possible provider-specific fields, or be an `any`-typed bag. Either bloats the generic interface or loses type safety. Options keep provider-specific types in provider sub-packages. |
 
 ## Requirements

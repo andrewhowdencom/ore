@@ -4,7 +4,7 @@ This file captures architectural conventions and design intent for agents workin
 
 ## Project Philosophy
 
-ore is a **framework for building agentic applications**, not a specific agent implementation. The core is a minimal, provider-agnostic inference primitive. Everything else — provider adapters, artifact handlers, I/O surfaces, orchestration strategies — lives outside the core as composable, build-time extensions.
+ore is a **framework for building agentic applications**, not a specific agent implementation. The core is a minimal, provider-agnostic inference primitive. Everything else — provider adapters, artifact handlers, I/O conduits, orchestration strategies — lives outside the core as composable, build-time extensions.
 
 ## Package Structure
 

@@ -1,11 +1,11 @@
-// cmd/docgen generates a Markdown compatibility matrix from surface Descriptors.
+// cmd/docgen generates a Markdown compatibility matrix from conduit Descriptors.
 //
 // Usage:
 //
-//	go run ./cmd/docgen -out docs/surface-capabilities.md
+//	go run ./cmd/docgen -out docs/conduit-capabilities.md
 //
-// When adding a new surface package, import it here and append its
-// Descriptor to the `surfaces` slice.
+// When adding a new conduit package, import it here and append its
+// Descriptor to the `descriptors` slice.
 package main
 
 import (
@@ -17,19 +17,19 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/andrewhowdencom/ore/surface"
-	"github.com/andrewhowdencom/ore/surface/tui"
+	"github.com/andrewhowdencom/ore/conduit"
+	"github.com/andrewhowdencom/ore/conduit/tui"
 )
 
-// surfaces is the explicit list of surface descriptors to document.
-// Future surfaces are added here when they are implemented.
-var surfaces = []surface.Descriptor{
+// descriptors is the explicit list of conduit descriptors to document.
+// Future descriptors are added here when they are implemented.
+var descriptors = []conduit.Descriptor{
 	tui.Descriptor,
 }
 
 func main() {
-	out := flag.String("out", "docs/surface-capabilities.md", "output markdown file path")
-	title := flag.String("title", "Surface Capability Matrix", "markdown document title")
+	out := flag.String("out", "docs/conduit-capabilities.md", "output markdown file path")
+	title := flag.String("title", "Conduit Capability Matrix", "markdown document title")
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -44,14 +44,14 @@ func main() {
 
 func run(outPath, title string) error {
 	// Collect all unique capabilities.
-	capSet := make(map[surface.Capability]struct{})
-	for _, desc := range surfaces {
+	capSet := make(map[conduit.Capability]struct{})
+	for _, desc := range descriptors {
 		for _, cap := range desc.Capabilities {
 			capSet[cap] = struct{}{}
 		}
 	}
 
-	caps := make([]surface.Capability, 0, len(capSet))
+	caps := make([]conduit.Capability, 0, len(capSet))
 	for cap := range capSet {
 		caps = append(caps, cap)
 	}
@@ -65,11 +65,11 @@ func run(outPath, title string) error {
 	b.WriteString("# ")
 	b.WriteString(title)
 	b.WriteString("\n\n")
-	b.WriteString("This matrix shows which capabilities each surface implementation supports.\n\n")
+	b.WriteString("This matrix shows which capabilities each conduit implementation supports.\n\n")
 
 	// Header row.
 	b.WriteString("| Capability |")
-	for _, desc := range surfaces {
+	for _, desc := range descriptors {
 		b.WriteString(" ")
 		b.WriteString(desc.Name)
 		b.WriteString(" |")
@@ -78,7 +78,7 @@ func run(outPath, title string) error {
 
 	// Separator row.
 	b.WriteString("|------------|")
-	for range surfaces {
+	for range descriptors {
 		b.WriteString("----------|")
 	}
 	b.WriteString("\n")
@@ -88,7 +88,7 @@ func run(outPath, title string) error {
 		b.WriteString("| ")
 		b.WriteString(string(cap))
 		b.WriteString(" |")
-		for _, desc := range surfaces {
+		for _, desc := range descriptors {
 			b.WriteString(" ")
 			if contains(desc.Capabilities, cap) {
 				b.WriteString("✅")
@@ -111,7 +111,7 @@ func run(outPath, title string) error {
 	return nil
 }
 
-func contains(caps []surface.Capability, cap surface.Capability) bool {
+func contains(caps []conduit.Capability, cap conduit.Capability) bool {
 	for _, c := range caps {
 		if c == cap {
 			return true

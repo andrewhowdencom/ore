@@ -1,4 +1,4 @@
-package surface
+package conduit
 
 import (
 	"testing"
@@ -58,11 +58,11 @@ func TestContains(t *testing.T) {
 func TestDescriptor(t *testing.T) {
 	d := Descriptor{
 		Name:         "Test",
-		Description:  "Test surface",
+		Description:  "Test conduit",
 		Capabilities: []Capability{CapEventSource},
 	}
 	assert.Equal(t, "Test", d.Name)
-	assert.Equal(t, "Test surface", d.Description)
+	assert.Equal(t, "Test conduit", d.Description)
 	assert.Equal(t, []Capability{CapEventSource}, d.Capabilities)
 }
 
@@ -84,12 +84,12 @@ func TestCapable(t *testing.T) {
 	assert.False(t, m.Can(Capability("")))
 }
 
-type mockSurface struct {
+type mockConduit struct {
 	mockCapable
 }
 
-func (m *mockSurface) Events() <-chan Event { return nil }
+func (m *mockConduit) Events() <-chan Event { return nil }
 
-func TestSurfaceInterface(t *testing.T) {
-	var _ Surface = (*mockSurface)(nil)
+func TestConduitInterface(t *testing.T) {
+	var _ Conduit = (*mockConduit)(nil)
 }

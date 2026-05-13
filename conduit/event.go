@@ -1,6 +1,6 @@
-package surface
+package conduit
 
-// Event is the base interface for all ingress events from a Surface.
+// Event is the base interface for all ingress events from a Conduit.
 // Custom event types can be defined in other packages by implementing
 // the public Kind() method, following the same pattern as artifact.Artifact.
 type Event interface {

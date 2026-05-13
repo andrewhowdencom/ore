@@ -2,7 +2,7 @@
 
 ## Objective
 
-Collapse the `Provider`/`StreamingProvider` bifurcation into a single channel-based interface where all providers emit typed artifacts (both delta and complete) through one `chan<- artifact.Artifact`. The `loop.Step` embeds `FanOut` as its native event distribution mechanism, surfaces subscribe by artifact `Kind()`, and mid-stream errors emit an `ErrorEvent` without mutating state.
+Collapse the `Provider`/`StreamingProvider` bifurcation into a single channel-based interface where all providers emit typed artifacts (both delta and complete) through one `chan<- artifact.Artifact`. The `loop.Step` embeds `FanOut` as its native event distribution mechanism, conduits subscribe by artifact `Kind()`, and mid-stream errors emit an `ErrorEvent` without mutating state.
 
 ## Context
 
@@ -10,8 +10,8 @@ From discovery of the ore codebase:
 
 - **Provider contract** (`provider/provider.go`) currently defines two interfaces: `Provider` with `Invoke(...)` returning `[]artifact.Artifact`, and `StreamingProvider` extending it with `InvokeStreaming(..., deltasCh chan<- artifact.Artifact, ...)`. The loop's `Turn()` method type-asserts the provider to `StreamingProvider` when an output channel is configured.
 - **OpenAI adapter** (`provider/openai/openai.go`) implements both interfaces, duplicating parameter serialization and maintaining separate buffering logic for streaming vs. non-streaming paths.
-- **Loop** (`loop/loop.go`) emits `DeltaEvent` wrappers around artifacts for the output channel. Surfaces must type-assert through `DeltaEvent.Delta` to reach the actual artifact.
-- **FanOut** (`loop/fanout.go`) distributes `OutputEvent` values by `Kind()` string, already supporting filtered subscriptions. The recent surface refactor (`f2a4751`) moved TUI surfaces from explicit `RenderDelta`/`RenderTurn` methods to subscribing to a `FanOut` by event kind.
+- **Loop** (`loop/loop.go`) emits `DeltaEvent` wrappers around artifacts for the output channel. Conduits must type-assert through `DeltaEvent.Delta` to reach the actual artifact.
+- **FanOut** (`loop/fanout.go`) distributes `OutputEvent` values by `Kind()` string, already supporting filtered subscriptions. The recent conduit refactor (`f2a4751`) moved TUI conduits from explicit `RenderDelta`/`RenderTurn` methods to subscribing to a `FanOut` by event kind.
 - **Artifact types** (`artifact/artifact.go`) define `TextDelta`, `ReasoningDelta`, `ToolCallDelta` (ephemeral) alongside `Text`, `ToolCall`, `Usage`, `Reasoning` (complete). There is currently no way to distinguish ephemeral from persisted artifacts at the type level.
 - **Cognitive patterns** (`cognitive/react.go`) rely on `Step.Turn()` being an atomic operation that produces a complete `RoleAssistant` turn. The turn-completion boundary is critical for `ReAct` to decide whether to loop again.
 - **State** (`state/state.go`, `state/memory.go`) appends complete turns; delta artifacts must never reach state.
@@ -28,7 +28,7 @@ The converged design from ideation (#42) uses a single provider method that emit
 2. **Delta Marker Interface**
    - `type Delta interface { Artifact; IsDelta() }` added in `artifact/`.
    - `TextDelta`, `ReasoningDelta`, `ToolCallDelta` implement it.
-   - The loop uses this to route ephemeral content to surfaces immediately while buffering complete artifacts for state.
+   - The loop uses this to route ephemeral content to conduits immediately while buffering complete artifacts for state.
 
 3. **Embedded FanOut in Step**
    - `Step` owns a `FanOut` internally, fed by a persistent event channel.
@@ -41,7 +41,7 @@ The converged design from ideation (#42) uses a single provider method that emit
    - `ErrorEvent{Err: error}` (`Kind() = "error"`) is added for mid-stream failures.
 
 5. **Error Contract**
-   - On `Invoke` error, partial artifacts already forwarded to surfaces remain visible, but state is NOT mutated. An `ErrorEvent` is emitted.
+   - On `Invoke` error, partial artifacts already forwarded to conduits remain visible, but state is NOT mutated. An `ErrorEvent` is emitted.
 
 ## Requirements
 
@@ -50,7 +50,7 @@ The converged design from ideation (#42) uses a single provider method that emit
 3. Refactor `loop.Step` to buffer complete artifacts, forward deltas to embedded `FanOut`, and emit `ErrorEvent` on failure.
 4. Refactor OpenAI adapter to single method emitting both deltas and complete artifacts.
 5. Remove `DeltaEvent` wrapper; emit artifacts directly as events.
-6. Update all tests, examples, and surfaces to the new model.
+6. Update all tests, examples, and conduits to the new model.
 7. `go test -race ./...` must pass at every commit.
 
 ## Task Breakdown
@@ -84,9 +84,9 @@ The converged design from ideation (#42) uses a single provider method that emit
   - `loop/fanout_test.go` — update tests to emit artifacts directly instead of `DeltaEvent`
   - `loop/doc.go` — update package documentation
   - `cognitive/react_test.go` — update mock providers
-  - `surface/tui/tui.go` — update event reading goroutine to handle artifacts directly
-  - `surface/tui/tui_test.go` — update tests
-  - `surface/surface_test.go` — update if needed
+  - `conduit/tui/tui.go` — update event reading goroutine to handle artifacts directly
+  - `conduit/tui/tui_test.go` — update tests
+  - `conduit/conduit_test.go` — update if needed
   - `examples/single-turn-cli/main.go` — adapt provider construction and calling
   - `examples/calculator/main.go` — adapt provider construction and calling
   - `examples/tui-chat/main.go` — adapt to `step.Subscribe(...)`
@@ -125,7 +125,7 @@ The converged design from ideation (#42) uses a single provider method that emit
      - Remove `DeltaEvent` type.
      - Add `ErrorEvent` type.
   4. Update all mock providers in tests to implement the new single interface.
-  5. Update `surface/tui/tui.go` goroutine to type-switch on concrete artifact types (or `artifact.Artifact` interface) instead of `loop.DeltaEvent`.
+  5. Update `conduit/tui/tui.go` goroutine to type-switch on concrete artifact types (or `artifact.Artifact` interface) instead of `loop.DeltaEvent`.
   6. Update all examples to use `step.Subscribe(...)` instead of `loop.WithOutput` + `loop.NewFanOut`.
 
 ### Task 3: Final Validation and Cleanup
@@ -152,8 +152,8 @@ The converged design from ideation (#42) uses a single provider method that emit
 | Go interface change breaks compilation across packages | High | Certain (by design) | All affected files updated atomically in Task 2. No intermediate commits. |
 | OpenAI streaming does not expose `Usage` metadata, losing token counts | Medium | High | Document as known limitation. Usage can be added later if SDK supports it. |
 | Goroutine leak in `Turn()` if provider hangs or panics | High | Medium | Use `ctx.Done()` in all channel sends/receives. Add deferred cleanup. Test with `go test -race`. |
-| Surfaces drop events if they subscribe late or buffer fills | Low | Medium | Documented FanOut behavior; surfaces must subscribe before `Turn()` and read promptly. |
-| Partial deltas rendered by surface before error, but no state record | Low | Low | Acceptable per design: surfaces show "live" content, state remains consistent. |
+| Conduits drop events if they subscribe late or buffer fills | Low | Medium | Documented FanOut behavior; conduits must subscribe before `Turn()` and read promptly. |
+| Partial deltas rendered by conduit before error, but no state record | Low | Low | Acceptable per design: conduits show "live" content, state remains consistent. |
 
 ## Validation Criteria
 
