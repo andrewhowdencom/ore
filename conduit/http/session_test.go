@@ -1,6 +1,7 @@
 package http
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 
@@ -170,4 +171,31 @@ func TestGenerateSessionID(t *testing.T) {
 	id2, err := generateSessionID()
 	require.NoError(t, err)
 	assert.NotEqual(t, id1, id2)
+}
+
+// failReader is an io.Reader that always returns an error.
+type failReader struct{}
+
+func (f *failReader) Read(p []byte) (n int, err error) {
+	return 0, fmt.Errorf("random source failure")
+}
+
+func TestGenerateSessionID_Error(t *testing.T) {
+	old := randRead
+	randRead = &failReader{}
+	defer func() { randRead = old }()
+
+	_, err := generateSessionID()
+	require.Error(t, err)
+}
+
+func TestSessionStore_Create_RandFailure(t *testing.T) {
+	old := randRead
+	randRead = &failReader{}
+	defer func() { randRead = old }()
+
+	store := NewSessionStore()
+	step := loop.New()
+	_, err := store.Create(step)
+	require.Error(t, err)
 }

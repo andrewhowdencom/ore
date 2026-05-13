@@ -1,8 +1,11 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -16,9 +19,10 @@ import (
 )
 
 // mockProvider is a provider.Provider implementation for testing that can be
-// configured to emit a sequence of artifacts.
+// configured to emit a sequence of artifacts, optionally returning an error.
 type mockProvider struct {
 	artifacts []artifact.Artifact
+	err       error
 }
 
 func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
@@ -29,7 +33,27 @@ func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- arti
 			return ctx.Err()
 		}
 	}
-	return nil
+	return m.err
+}
+
+// noFlusherWriter implements http.ResponseWriter but NOT http.Flusher.
+// Used to test writer creation failure paths.
+type noFlusherWriter struct {
+	header http.Header
+	body   *bytes.Buffer
+	code   int
+}
+
+func (w *noFlusherWriter) Header() http.Header {
+	return w.header
+}
+
+func (w *noFlusherWriter) Write(b []byte) (int, error) {
+	return w.body.Write(b)
+}
+
+func (w *noFlusherWriter) WriteHeader(code int) {
+	w.code = code
 }
 
 func TestNewHandler(t *testing.T) {
@@ -110,6 +134,21 @@ func TestHandler_CreateSession_StoresStep(t *testing.T) {
 	require.True(t, ok)
 	assert.NotNil(t, session.step)
 	assert.NotNil(t, session.state)
+}
+
+func TestHandler_CreateSession_RandFailure(t *testing.T) {
+	old := randRead
+	randRead = &failReader{}
+	defer func() { randRead = old }()
+
+	newStep := func() *loop.Step { return loop.New() }
+	h := NewHandler(&mockProvider{}, newStep)
+
+	req := httptest.NewRequest("POST", "/sessions", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	assert.Equal(t, 500, rr.Code)
 }
 
 func TestHandler_DeleteSession(t *testing.T) {
@@ -302,6 +341,133 @@ func TestHandler_SessionEvents_ContextCancel(t *testing.T) {
 	assert.Equal(t, "text/event-stream", rr.Header().Get("Content-Type"))
 	assert.Equal(t, "no-cache", rr.Header().Get("Cache-Control"))
 	assert.Equal(t, "keep-alive", rr.Header().Get("Connection"))
+}
+
+func TestHandler_SendMessage_Concurrent(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+		},
+	}
+	newStep := func() *loop.Step { return loop.New() }
+	h := NewHandler(prov, newStep)
+
+	// Create a session.
+	createReq := httptest.NewRequest("POST", "/sessions", nil)
+	createRr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(createRr, createReq)
+	require.Equal(t, 201, createRr.Code)
+
+	var createResp map[string]string
+	require.NoError(t, json.Unmarshal(createRr.Body.Bytes(), &createResp))
+	sessionID := createResp["id"]
+
+	// Lock the session manually to simulate an in-progress turn.
+	session, _ := h.store.Get(sessionID)
+	require.True(t, session.Lock())
+
+	// Send a message while the session is busy.
+	body := `{"content": "hi", "kinds": ["text_delta", "turn_complete"]}`
+	req := httptest.NewRequest("POST", "/sessions/"+sessionID+"/messages", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	assert.Equal(t, 409, rr.Code)
+
+	// Unlock and clean up.
+	session.Unlock()
+}
+
+func TestHandler_SendMessage_MalformedJSON(t *testing.T) {
+	newStep := func() *loop.Step { return loop.New() }
+	h := NewHandler(&mockProvider{}, newStep)
+
+	// Create a session.
+	createReq := httptest.NewRequest("POST", "/sessions", nil)
+	createRr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(createRr, createReq)
+	require.Equal(t, 201, createRr.Code)
+
+	var createResp map[string]string
+	require.NoError(t, json.Unmarshal(createRr.Body.Bytes(), &createResp))
+	sessionID := createResp["id"]
+
+	// Send malformed JSON.
+	body := `{"invalid`
+	req := httptest.NewRequest("POST", "/sessions/"+sessionID+"/messages", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	assert.Equal(t, 400, rr.Code)
+}
+
+func TestHandler_SendMessage_ProviderError(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Partial"},
+		},
+		err: fmt.Errorf("provider failure"),
+	}
+	newStep := func() *loop.Step { return loop.New() }
+	h := NewHandler(prov, newStep)
+
+	// Create a session.
+	createReq := httptest.NewRequest("POST", "/sessions", nil)
+	createRr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(createRr, createReq)
+	require.Equal(t, 201, createRr.Code)
+
+	var createResp map[string]string
+	require.NoError(t, json.Unmarshal(createRr.Body.Bytes(), &createResp))
+	sessionID := createResp["id"]
+
+	// Send a message with "error" included in kinds so the error event is streamed.
+	body := `{"content": "hi", "kinds": ["text_delta", "turn_complete", "error"]}`
+	req := httptest.NewRequest("POST", "/sessions/"+sessionID+"/messages", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	require.Equal(t, 200, rr.Code)
+
+	// Parse NDJSON lines.
+	lines := strings.Split(strings.TrimSpace(rr.Body.String()), "\n")
+	require.NotEmpty(t, lines)
+
+	// Check that at least one error event was streamed.
+	var foundError bool
+	for _, line := range lines {
+		var event map[string]any
+		if err := json.Unmarshal([]byte(line), &event); err == nil {
+			if event["kind"] == "error" {
+				foundError = true
+				break
+			}
+		}
+	}
+	assert.True(t, foundError, "expected an error event in the NDJSON stream")
+
+	// Last line should still be the complete event.
+	var complete completeEventJSON
+	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &complete))
+	assert.Equal(t, "complete", complete.Kind)
+}
+
+func TestNDJSONWriter_NoFlusher(t *testing.T) {
+	w := &noFlusherWriter{
+		header: make(http.Header),
+		body:   new(bytes.Buffer),
+	}
+	_, err := newNDJSONWriter(w)
+	require.Error(t, err)
+}
+
+func TestSSEWriter_NoFlusher(t *testing.T) {
+	w := &noFlusherWriter{
+		header: make(http.Header),
+		body:   new(bytes.Buffer),
+	}
+	_, err := newSSEWriter(w)
+	require.Error(t, err)
 }
 
 func TestHandler_ServeMux_UnknownPaths(t *testing.T) {

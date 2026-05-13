@@ -4,11 +4,16 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"sync"
 
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/state"
 )
+
+// randRead is the random source used for session ID generation.
+// It is package-level so tests can inject a failing source.
+var randRead io.Reader = rand.Reader
 
 // Session represents an ephemeral conversation session held in memory.
 // It owns a state.Memory and a loop.Step, and tracks whether a turn is
@@ -103,7 +108,7 @@ func (s *SessionStore) Delete(id string) bool {
 // generateSessionID creates a random 32-character hex string (128 bits).
 func generateSessionID() (string, error) {
 	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
+	if _, err := io.ReadFull(randRead, b); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
