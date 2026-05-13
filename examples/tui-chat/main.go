@@ -2,10 +2,23 @@
 // framework. It wires together the ReAct cognitive pattern, the loop.Step
 // primitive for turn orchestration, and the conduit/tui package for
 // terminal interaction.
+//
+// Usage:
+//
+//	go run ./examples/tui-chat
+//
+// Resume an existing conversation:
+//
+//	go run ./examples/tui-chat --conversation <uuid>
+//
+// With persistent JSON store:
+//
+//	STORE_DIR=/tmp/ore-store go run ./examples/tui-chat
 package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -13,11 +26,12 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
+	"github.com/andrewhowdencom/ore/conversation"
+	"github.com/andrewhowdencom/ore/conduit"
+	"github.com/andrewhowdencom/ore/conduit/tui"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider/openai"
 	"github.com/andrewhowdencom/ore/state"
-	"github.com/andrewhowdencom/ore/conduit"
-	"github.com/andrewhowdencom/ore/conduit/tui"
 )
 
 func main() {
@@ -34,6 +48,11 @@ func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Parse command-line flags.
+	var conversationID string
+	flag.StringVar(&conversationID, "conversation", "", "existing conversation UUID to resume")
+	flag.Parse()
+
 	// Environment configuration.
 	apiKey := os.Getenv("ORE_API_KEY")
 	if apiKey == "" {
@@ -47,14 +66,34 @@ func run() error {
 
 	baseURL := os.Getenv("ORE_BASE_URL")
 
-	// Architecture:
-	//   * `react` (cognitive.ReAct) drives the inference loop using the
-	//     provider and the Step primitive.
-	//   * `Step` emits streaming artifacts and turn-complete events that
-	//     the TUI conduit consumes.
-	//   * The TUI conduit forwards user input back as UserMessageEvents,
-	//     which are fed into `Step.Submit` to keep the conversation
-	//     history consistent.
+	// Create conversation store.
+	var store conversation.Store
+	if storeDir := os.Getenv("STORE_DIR"); storeDir != "" {
+		var err error
+		store, err = conversation.NewJSONStore(storeDir)
+		if err != nil {
+			return fmt.Errorf("create JSON store: %w", err)
+		}
+	} else {
+		store = conversation.NewMemoryStore()
+	}
+
+	// Create or load conversation.
+	var conv *conversation.Conversation
+	if conversationID != "" {
+		var ok bool
+		conv, ok = store.Get(conversationID)
+		if !ok {
+			return fmt.Errorf("conversation %q not found", conversationID)
+		}
+	} else {
+		var err error
+		conv, err = store.Create()
+		if err != nil {
+			return fmt.Errorf("create conversation: %w", err)
+		}
+		slog.Info("conversation started", "id", conv.ID)
+	}
 
 	// Build OpenAI provider.
 	var opts []openai.Option
@@ -77,9 +116,6 @@ func run() error {
 		Provider: prov,
 	}
 
-	// Conversation state.
-	mem := &state.Memory{}
-
 	// Event processing goroutine.
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -94,12 +130,12 @@ func run() error {
 			case conduit.UserMessageEvent:
 				// Record the user's message as a non-inference turn so it
 				// appears in the same artifact stream as assistant responses.
-				result, err := react.Step.Submit(ctx, mem, state.RoleUser, artifact.Text{Content: e.Content})
+				result, err := react.Step.Submit(ctx, conv.State, state.RoleUser, artifact.Text{Content: e.Content})
 				if err != nil {
 					slog.Error("submit failed", "err", err)
 					continue
 				}
-				mem = result.(*state.Memory)
+				_ = result // conv.State is mutated in place
 				if err := s.SetStatus(ctx, "thinking..."); err != nil {
 					slog.Error("set status failed", "err", err)
 				}
@@ -109,9 +145,14 @@ func run() error {
 				cancelFunc = cancel
 				mu.Unlock()
 
-				result, err = react.Run(opCtx, mem)
-				// State is mutable, so result is the same pointer; reassign for clarity.
-				mem = result.(*state.Memory)
+				result, err = react.Run(opCtx, conv.State)
+				// State is mutable, so result is the same pointer.
+				_ = result
+
+				// Save conversation state after each turn.
+				if err := store.Save(conv); err != nil {
+					slog.Error("save conversation failed", "err", err)
+				}
 
 				mu.Lock()
 				cancelFunc = nil
