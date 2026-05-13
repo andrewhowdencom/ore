@@ -8,7 +8,7 @@ Rename the entire Go module, all import paths, documentation, and environment va
 
 The project is currently named **tack** with Go module path `github.com/andrewhowdencom/ore`. The string "tack" appears in three broad categories:
 
-1. **Go module system**: `go.mod` module declaration and import paths in 23+ `.go` and `_test.go` files across all packages (`artifact/`, `state/`, `provider/`, `loop/`, `tool/`, `surface/`, `cognitive/`, `examples/*/`).
+1. **Go module system**: `go.mod` module declaration and import paths in 23+ `.go` and `_test.go` files across all packages (`artifact/`, `state/`, `provider/`, `loop/`, `tool/`, `conduit/`, `cognitive/`, `examples/*/`).
 2. **Human-readable references**: `README.md`, `AGENTS.md`, package doc comments (`doc.go` files and inline comments), and example file header comments.
 3. **Runtime configuration**: Environment variables `TACK_API_KEY`, `TACK_MODEL`, and `TACK_BASE_URL` in the three example applications.
 
@@ -46,12 +46,12 @@ This is a mechanical, non-architectural rename. There is only one viable path: p
   - `state/memory.go`
   - `state/memory_test.go`
   - `state/state.go`
-  - `surface/surface.go`
-  - `surface/tui/model.go`
-  - `surface/tui/model_test.go`
-  - `surface/tui/tui.go`
-  - `surface/tui/view.go`
-  - `surface/tui/view_test.go`
+  - `conduit/conduit.go`
+  - `conduit/tui/model.go`
+  - `conduit/tui/model_test.go`
+  - `conduit/tui/tui.go`
+  - `conduit/tui/view.go`
+  - `conduit/tui/view_test.go`
   - `loop/handler.go`
   - `loop/loop.go`
   - `loop/loop_test.go`
@@ -81,8 +81,8 @@ This is a mechanical, non-architectural rename. There is only one viable path: p
   - `state/doc.go`
   - `state/state.go`
   - `loop/doc.go`
-  - `surface/surface.go`
-  - `surface/tui/tui.go`
+  - `conduit/conduit.go`
+  - `conduit/tui/tui.go`
   - `tool/tool.go`
   - `provider/openai/openai.go` (inline comments: "converts tack state", "maps tack roles")
   - `examples/single-turn-cli/main.go` (header comment)
@@ -100,7 +100,7 @@ This is a mechanical, non-architectural rename. There is only one viable path: p
      - Update all remaining body references from "tack" to "ore"
   2. Update `AGENTS.md`: title `# tack Agent Conventions` → `# ore Agent Conventions`, update body references
   3. Update package doc comments in `artifact/doc.go`, `artifact/artifact.go`, `state/doc.go`, `state/state.go`, `loop/doc.go`
-  4. Update comments in `surface/surface.go` ("the tack framework"), `surface/tui/tui.go` ("the tack framework"), `tool/tool.go` ("for tack")
+  4. Update comments in `conduit/conduit.go` ("the tack framework"), `conduit/tui/tui.go` ("the tack framework"), `tool/tool.go` ("for tack")
   5. Update inline comments in `provider/openai/openai.go`
   6. Update example header comments in all three `examples/*/main.go` files
 
@@ -128,7 +128,7 @@ This is a mechanical, non-architectural rename. There is only one viable path: p
   - `.plans/add-tool-calling-with-extension-points.md`
   - `.plans/add-tui-scrollable-viewport.md`
   - `.plans/add-tui-with-streaming.md`
-  - `.plans/extract-tui-surface-package.md`
+  - `.plans/extract-tui-conduit-package.md`
   - `.plans/merge-core-step-into-loop.md`
   - `.plans/separate-cognitive-patterns-from-io-wiring.md`
   - `.plans/add-tui-streaming-feedback.md`

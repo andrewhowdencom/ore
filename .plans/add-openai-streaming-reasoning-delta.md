@@ -2,14 +2,14 @@
 
 ## Objective
 
-Add support for emitting `artifact.ReasoningDelta` during streaming in the OpenAI provider (`provider/openai/openai.go`). The TUI surface already supports rendering reasoning deltas (PR #28), but no provider currently emits them during streaming. This plan implements the missing OpenAI streaming integration so that reasoning content from models like o1 and o3-mini is displayed in real time.
+Add support for emitting `artifact.ReasoningDelta` during streaming in the OpenAI provider (`provider/openai/openai.go`). The TUI conduit already supports rendering reasoning deltas (PR #28), but no provider currently emits them during streaming. This plan implements the missing OpenAI streaming integration so that reasoning content from models like o1 and o3-mini is displayed in real time.
 
 ## Context
 
 - **File**: `provider/openai/openai.go` — The `InvokeStreaming` method processes streaming chunks from the OpenAI SDK but only handles `delta.Content` (text) and `delta.ToolCalls`. It ignores reasoning-related fields.
 - **File**: `provider/openai/openai.go` — The non-streaming `Invoke` method already extracts reasoning content from `msg.JSON.ExtraFields["reasoning_content"]` and appends `artifact.Reasoning` to the returned artifacts (lines 228–231).
-- **File**: `surface/tui/model.go` — The TUI `Update` method handles `artifact.ReasoningDelta` by writing it to `reasoningStreamBuffer` (already implemented in PR #28).
-- **File**: `surface/tui/view.go` — The TUI `View` method renders `reasoningStreamBuffer` with a `Thinking:` label in faint/italic style (already implemented).
+- **File**: `conduit/tui/model.go` — The TUI `Update` method handles `artifact.ReasoningDelta` by writing it to `reasoningStreamBuffer` (already implemented in PR #28).
+- **File**: `conduit/tui/view.go` — The TUI `View` method renders `reasoningStreamBuffer` with a `Thinking:` label in faint/italic style (already implemented).
 - **File**: `artifact/artifact.go` — `ReasoningDelta` type already exists with `Kind() string { return "reasoning_delta" }`.
 - **SDK behavior**: The `github.com/openai/openai-go` SDK's `ChatCompletionChunkChoiceDelta` struct does not have a direct `ReasoningContent` field, but it has `JSON.ExtraFields` which captures unknown JSON fields during unmarshalling. The non-streaming method already successfully uses `msg.JSON.ExtraFields["reasoning_content"]`.
 - **Test pattern**: Existing streaming tests in `provider/openai/openai_test.go` use `httptest.Server`-style mock responses with SSE-formatted JSON bodies. The SDK parses these into `ChatCompletionChunk` objects.

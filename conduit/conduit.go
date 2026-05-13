@@ -1,4 +1,4 @@
-// Package conduit defines the Surface interface, the contract between I/O
+// Package conduit defines the Conduit interface, the contract between I/O
 // frontends and the ore framework. Implementations (TUI, web, Telegram,
 // etc.) provide ingress events and consume egress events via subscription
 // to the framework's event stream (e.g., loop.FanOut). Status updates remain
@@ -47,7 +47,7 @@ type Capable interface {
 	Can(cap Capability) bool
 }
 
-// Surface is the contract between an I/O frontend and the ore framework.
+// Conduit is the contract between an I/O frontend and the ore framework.
 // It declares ingress capabilities (event production) via the embedded
 // Capable interface. Concrete implementations are composed at build time;
 // the framework does not assume any specific rendering mechanism.

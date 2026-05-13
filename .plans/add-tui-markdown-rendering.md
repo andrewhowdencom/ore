@@ -1,17 +1,17 @@
 # Plan: Add Markdown Rendering to TUI
 
 ## Objective
-Enable the TUI surface to render assistant responses as rich Markdown using `charmbracelet/glamour`, providing syntax highlighting for code blocks, styled headings/lists, and inline formatting. Streaming text remains plain-text (incomplete Markdown renders poorly), while finalized turns are pre-rendered and cached. Re-rendering happens on terminal resize.
+Enable the TUI conduit to render assistant responses as rich Markdown using `charmbracelet/glamour`, providing syntax highlighting for code blocks, styled headings/lists, and inline formatting. Streaming text remains plain-text (incomplete Markdown renders poorly), while finalized turns are pre-rendered and cached. Re-rendering happens on terminal resize.
 
 ## Context
-The TUI surface lives in `surface/tui/` with these key files:
-- `surface/tui/model.go`: Defines `renderedTurn` (`role`, `text string`), `model.Update` (handles `turnMsg` by extracting `artifact.Text` into `renderedTurn.text`), and viewport management.
-- `surface/tui/view.go`: `View()` iterates `turns`, calls `wrapText()` (label + indent + `cellbuf.Wrap`) for each role, and sets viewport content. `assistantStyle` applies a subtle blue foreground to the "Assistant: " label.
-- `surface/tui/tui.go`: Surface wiring, creates `tea.Program` with alt screen.
-- `surface/tui/model_test.go`: Comprehensive unit tests for update, view, wrapText, and viewport scrolling.
+The TUI conduit lives in `conduit/tui/` with these key files:
+- `conduit/tui/model.go`: Defines `renderedTurn` (`role`, `text string`), `model.Update` (handles `turnMsg` by extracting `artifact.Text` into `renderedTurn.text`), and viewport management.
+- `conduit/tui/view.go`: `View()` iterates `turns`, calls `wrapText()` (label + indent + `cellbuf.Wrap`) for each role, and sets viewport content. `assistantStyle` applies a subtle blue foreground to the "Assistant: " label.
+- `conduit/tui/tui.go`: Conduit wiring, creates `tea.Program` with alt screen.
+- `conduit/tui/model_test.go`: Comprehensive unit tests for update, view, wrapText, and viewport scrolling.
 - `go.mod`: Uses `charmbracelet/bubbles`, `bubbletea`, `lipgloss`, `x/cellbuf`. No `glamour` yet.
 
-The `Surface` interface (`surface/surface.go`) contract is unchanged — this is purely a rendering enhancement inside the TUI package.
+The `Conduit` interface (`conduit/conduit.go`) contract is unchanged — this is purely a rendering enhancement inside the TUI package.
 
 ## Architectural Blueprint
 
@@ -56,15 +56,15 @@ The `Surface` interface (`surface/surface.go`) contract is unchanged — this is
 ### Task 2: Create Markdown rendering utility
 - **Goal**: Add a `renderMarkdown` helper and a `prefixLines` helper with unit tests.
 - **Dependencies**: Task 1.
-- **Files Affected**: `surface/tui/view.go` (add helpers), `surface/tui/model_test.go` (add tests).
+- **Files Affected**: `conduit/tui/view.go` (add helpers), `conduit/tui/model_test.go` (add tests).
 - **New Files**: None.
 - **Interfaces**:
   - `func renderMarkdown(text string, width int) (string, error)` — uses `glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(width))` then `r.Render(text)`.
   - `func prefixLines(text, label, indent string) string` — prepends `label` to the first line and `indent` to subsequent lines, without re-wrapping. Must be ANSI-aware (reuse `strings.Split` on `"\n"`, use `lipgloss.Width` for indent sizing).
 - **Validation**:
-  - `go test ./surface/tui/... -run TestRenderMarkdown` passes.
-  - `go test ./surface/tui/... -run TestPrefixLines` passes.
-  - `go test ./surface/tui/... -race` passes (all existing tests still pass).
+  - `go test ./conduit/tui/... -run TestRenderMarkdown` passes.
+  - `go test ./conduit/tui/... -run TestPrefixLines` passes.
+  - `go test ./conduit/tui/... -race` passes (all existing tests still pass).
 - **Details**: In `view.go`, add `renderMarkdown` near the existing style vars. Add `prefixLines` next to `wrapText`. In `model_test.go`, add table-driven tests covering:
   - `renderMarkdown` with a simple code block produces ANSI sequences.
   - `renderMarkdown` error returns an error (mock by passing invalid width or triggering a glamour error if possible; otherwise test the fallback path in integration).
@@ -73,7 +73,7 @@ The `Surface` interface (`surface/surface.go`) contract is unchanged — this is
 ### Task 3: Integrate markdown rendering into model
 - **Goal**: Modify `renderedTurn`, `Update` turnMsg handling, and window-size re-rendering.
 - **Dependencies**: Task 2.
-- **Files Affected**: `surface/tui/model.go`.
+- **Files Affected**: `conduit/tui/model.go`.
 - **New Files**: None.
 - **Interfaces**:
   - `renderedTurn` becomes:
@@ -87,7 +87,7 @@ The `Surface` interface (`surface/surface.go`) contract is unchanged — this is
   - `Update` `turnMsg` branch: after building `text.String()`, if `msg.turn.Role == state.RoleAssistant`, call `renderMarkdown(text.String(), m.viewport.Width)` and store in `rendered`.
   - `Update` `tea.WindowSizeMsg` branch: after resizing viewport, iterate `m.turns`; for each `role == state.RoleAssistant`, re-render `renderMarkdown(turn.text, m.viewport.Width)` and update `m.turns[i].rendered`.
 - **Validation**:
-  - `go test ./surface/tui/...` passes.
+  - `go test ./conduit/tui/...` passes.
   - New tests verify:
     - `turnMsg` with `RoleAssistant` populates `rendered`.
     - `turnMsg` with `RoleUser` leaves `rendered` empty.
@@ -97,11 +97,11 @@ The `Surface` interface (`surface/surface.go`) contract is unchanged — this is
 ### Task 4: Update View to render assistant turns as Markdown
 - **Goal**: In `View()`, use pre-rendered ANSI output for assistant turns instead of `wrapText`.
 - **Dependencies**: Task 3.
-- **Files Affected**: `surface/tui/view.go`.
+- **Files Affected**: `conduit/tui/view.go`.
 - **New Files**: None.
 - **Interfaces**: None.
 - **Validation**:
-  - `go test ./surface/tui/...` passes.
+  - `go test ./conduit/tui/...` passes.
   - New tests verify:
     - `View()` for assistant turn with `rendered` set contains glamour ANSI sequences.
     - `View()` for assistant turn with empty `rendered` falls back to plain text.
@@ -126,7 +126,7 @@ The `Surface` interface (`surface/surface.go`) contract is unchanged — this is
   - `go test -race ./...` passes.
   - `go build ./...` succeeds.
   - Manual test: run `examples/tui-chat` and observe that a multi-line assistant response containing Markdown (e.g., `# Heading`, `**bold**`, code block) is rendered with styling.
-- **Details**: The `examples/tui-chat/main.go` should not need code changes because the TUI surface is opaque. However, confirm the example still compiles and runs. If glamour introduces any runtime issues (e.g., style asset loading), diagnose and fix.
+- **Details**: The `examples/tui-chat/main.go` should not need code changes because the TUI conduit is opaque. However, confirm the example still compiles and runs. If glamour introduces any runtime issues (e.g., style asset loading), diagnose and fix.
 
 ## Dependency Graph
 - Task 1 → Task 2
