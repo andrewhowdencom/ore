@@ -1,6 +1,7 @@
 package conversation
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -55,4 +56,30 @@ func TestJSONStore_CrossConduitContinuity(t *testing.T) {
 	// Step 6: Verify timestamps.
 	assert.True(t, createdAt.Equal(got.CreatedAt), "CreatedAt should be preserved")
 	assert.True(t, got.UpdatedAt.After(createdAt), "UpdatedAt should reflect the save")
+}
+
+func TestConversation_MarshalJSON(t *testing.T) {
+	conv := &Conversation{
+		ID:        "test-id",
+		State:     &state.Memory{},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	conv.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	conv.State.Append(state.RoleAssistant, artifact.Text{Content: "hi there"})
+
+	data, err := json.Marshal(conv)
+	require.NoError(t, err)
+
+	got := &Conversation{}
+	err = json.Unmarshal(data, got)
+	require.NoError(t, err)
+
+	assert.Equal(t, conv.ID, got.ID)
+	assert.True(t, conv.CreatedAt.Equal(got.CreatedAt))
+	assert.True(t, conv.UpdatedAt.Equal(got.UpdatedAt))
+	turns := got.State.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, state.RoleUser, turns[0].Role)
+	assert.Equal(t, state.RoleAssistant, turns[1].Role)
 }

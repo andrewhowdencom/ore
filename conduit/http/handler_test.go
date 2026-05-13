@@ -625,8 +625,9 @@ func TestHandler_ServeMux_UnknownPaths(t *testing.T) {
 }
 
 func TestHandler_WithUI_StaticFiles(t *testing.T) {
+	store := conversation.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, simpleMessageHandler(), WithUI())
+	h := NewHandler(store, newStep, simpleMessageHandler(), WithUI())
 
 	t.Run("GET / returns text/html", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/", nil)
@@ -655,8 +656,9 @@ func TestHandler_WithUI_StaticFiles(t *testing.T) {
 }
 
 func TestHandler_WithUI_StaticFiles_ErrorPath(t *testing.T) {
+	store := conversation.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, simpleMessageHandler(), WithUI())
+	h := NewHandler(store, newStep, simpleMessageHandler(), WithUI())
 
 	// Swap staticFS with a mock that always errors.
 	oldFS := staticFS
@@ -682,11 +684,181 @@ func TestHandler_WithUI_StaticFiles_ErrorPath(t *testing.T) {
 }
 
 func TestHandler_WithoutUI_Root404(t *testing.T) {
+	store := conversation.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, simpleMessageHandler())
+	h := NewHandler(store, newStep, simpleMessageHandler())
 
 	req := httptest.NewRequest("GET", "/", nil)
 	rr := httptest.NewRecorder()
 	h.ServeMux().ServeHTTP(rr, req)
 	assert.Equal(t, 404, rr.Code)
+// boomMessageHandler returns a MessageHandler that always fails.
+func boomMessageHandler() MessageHandler {
+	return func(ctx context.Context, session *Session, content string) error {
+		return fmt.Errorf("handler boom")
+	}
+}
+
+// saveErrStore is a Store whose Save always returns an error.
+// All other methods delegate to a real MemoryStore.
+type saveErrStore struct {
+	inner conversation.Store
+}
+
+func newSaveErrStore() *saveErrStore {
+	return &saveErrStore{inner: conversation.NewMemoryStore()}
+}
+
+func (s *saveErrStore) Create() (*conversation.Conversation, error) {
+	return s.inner.Create()
+}
+func (s *saveErrStore) Get(id string) (*conversation.Conversation, bool) {
+	return s.inner.Get(id)
+}
+func (s *saveErrStore) Save(conv *conversation.Conversation) error {
+	return fmt.Errorf("save failed")
+}
+func (s *saveErrStore) Delete(id string) bool {
+	return s.inner.Delete(id)
+}
+func (s *saveErrStore) List() ([]*conversation.Conversation, error) {
+	return s.inner.List()
+}
+
+// listErrStore is a Store whose List always returns an error.
+type listErrStore struct{}
+
+func (s *listErrStore) Create() (*conversation.Conversation, error) { return nil, nil }
+func (s *listErrStore) Get(string) (*conversation.Conversation, bool) { return nil, false }
+func (s *listErrStore) Save(*conversation.Conversation) error       { return nil }
+func (s *listErrStore) Delete(string) bool                            { return false }
+func (s *listErrStore) List() ([]*conversation.Conversation, error) {
+	return nil, fmt.Errorf("list failed")
+}
+
+func TestHandler_SendMessage_SaveError(t *testing.T) {
+	store := newSaveErrStore()
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+		},
+	}
+	newStep := func() *loop.Step { return loop.New() }
+	h := NewHandler(store, newStep, turnMessageHandler(prov))
+
+	// Create a session.
+	createReq := httptest.NewRequest("POST", "/sessions", nil)
+	createRr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(createRr, createReq)
+	require.Equal(t, 201, createRr.Code)
+
+	var createResp map[string]string
+	require.NoError(t, json.Unmarshal(createRr.Body.Bytes(), &createResp))
+	sessionID := createResp["id"]
+
+	// Send a message.
+	body := `{"content": "hi", "kinds": ["text_delta", "turn_complete", "error"]}`
+	req := httptest.NewRequest("POST", "/sessions/"+sessionID+"/messages", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	require.Equal(t, 200, rr.Code)
+
+	// Parse NDJSON lines.
+	lines := strings.Split(strings.TrimSpace(rr.Body.String()), "\n")
+	require.NotEmpty(t, lines)
+
+	// Should contain an error event for the save failure.
+	var foundError bool
+	for _, line := range lines {
+		var event map[string]any
+		if err := json.Unmarshal([]byte(line), &event); err == nil {
+			if event["kind"] == "error" {
+				foundError = true
+				break
+			}
+		}
+	}
+	assert.True(t, foundError, "expected an error event for save failure")
+
+	// Last line should still be the complete event.
+	var complete completeEventJSON
+	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &complete))
+	assert.Equal(t, "complete", complete.Kind)
+}
+
+func TestHandler_SendMessage_HandlerError(t *testing.T) {
+	store := conversation.NewMemoryStore()
+	newStep := func() *loop.Step { return loop.New() }
+	h := NewHandler(store, newStep, boomMessageHandler())
+
+	// Create a session.
+	createReq := httptest.NewRequest("POST", "/sessions", nil)
+	createRr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(createRr, createReq)
+	require.Equal(t, 201, createRr.Code)
+
+	var createResp map[string]string
+	require.NoError(t, json.Unmarshal(createRr.Body.Bytes(), &createResp))
+	sessionID := createResp["id"]
+
+	// Send a message.
+	body := `{"content": "hi", "kinds": ["text_delta", "turn_complete", "error"]}`
+	req := httptest.NewRequest("POST", "/sessions/"+sessionID+"/messages", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	require.Equal(t, 200, rr.Code)
+
+	// Parse NDJSON lines.
+	lines := strings.Split(strings.TrimSpace(rr.Body.String()), "\n")
+	require.NotEmpty(t, lines)
+
+	// Should contain an error event for the handler failure.
+	var foundError bool
+	var errorMsg string
+	for _, line := range lines {
+		var event map[string]any
+		if err := json.Unmarshal([]byte(line), &event); err == nil {
+			if event["kind"] == "error" {
+				foundError = true
+				if m, ok := event["message"].(string); ok {
+					errorMsg = m
+				}
+				break
+			}
+		}
+	}
+	assert.True(t, foundError, "expected an error event for handler failure")
+	assert.Contains(t, errorMsg, "handler boom")
+
+	// Last line should still be the complete event.
+	var complete completeEventJSON
+	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &complete))
+	assert.Equal(t, "complete", complete.Kind)
+}
+
+func TestHandler_ListConversations_StoreError(t *testing.T) {
+	store := &listErrStore{}
+	newStep := func() *loop.Step { return loop.New() }
+	h := NewHandler(store, newStep, simpleMessageHandler())
+
+	req := httptest.NewRequest("GET", "/conversations", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	assert.Equal(t, 500, rr.Code)
+}
+
+func TestHandler_CreateSession_MalformedJSON(t *testing.T) {
+	store := conversation.NewMemoryStore()
+	newStep := func() *loop.Step { return loop.New() }
+	h := NewHandler(store, newStep, simpleMessageHandler())
+
+	body := `{"conversation_id": "`
+	req := httptest.NewRequest("POST", "/sessions", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	assert.Equal(t, 400, rr.Code)
 }

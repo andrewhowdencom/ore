@@ -116,3 +116,41 @@ func TestMemoryStore_ConcurrentCreate(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestConversation_Lock_HighContention(t *testing.T) {
+	conv, err := NewMemoryStore().Create()
+	require.NoError(t, err)
+
+	var maxConcurrent int
+	var current int
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if !conv.Lock() {
+				return
+			}
+
+			mu.Lock()
+			current++
+			if current > maxConcurrent {
+				maxConcurrent = current
+			}
+			mu.Unlock()
+
+			// Hold briefly to increase contention window.
+			time.Sleep(1 * time.Millisecond)
+
+			mu.Lock()
+			current--
+			mu.Unlock()
+			conv.Unlock()
+		}()
+	}
+	wg.Wait()
+
+	assert.Equal(t, 1, maxConcurrent, "at most one goroutine should hold the lock at any time")
+}

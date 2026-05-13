@@ -1,6 +1,8 @@
 package conversation
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -183,4 +185,72 @@ func TestJSONStore_ConcurrentCreate(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestJSONStore_CorruptedFile(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write a corrupted JSON file.
+	err := os.WriteFile(filepath.Join(dir, "bad.json"), []byte("not json"), 0644)
+	require.NoError(t, err)
+
+	// Write a valid conversation file.
+	valid := &Conversation{
+		ID:        "good",
+		State:     &state.Memory{},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	valid.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	data, err := json.Marshal(valid)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(dir, "good.json"), data, 0644)
+	require.NoError(t, err)
+
+	// Create store — corrupted file should be silently skipped.
+	store, err := NewJSONStore(dir)
+	require.NoError(t, err)
+
+	// good should be loadable.
+	got, ok := store.Get("good")
+	require.True(t, ok)
+	assert.Len(t, got.State.Turns(), 1)
+
+	// bad should not be found.
+	_, ok = store.Get("bad")
+	assert.False(t, ok)
+
+	// List should only include good.
+	list, err := store.List()
+	require.NoError(t, err)
+	assert.Len(t, list, 1)
+	assert.Equal(t, "good", list[0].ID)
+}
+
+func TestJSONStore_ConcurrentCreateSaveGet(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewJSONStore(dir)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			conv, err := store.Create()
+			require.NoError(t, err)
+			conv.State.Append(state.RoleUser, artifact.Text{Content: fmt.Sprintf("msg-%d", i)})
+			require.NoError(t, store.Save(conv))
+
+			got, ok := store.Get(conv.ID)
+			require.True(t, ok)
+			assert.Len(t, got.State.Turns(), 1)
+		}(i)
+	}
+	wg.Wait()
+
+	// Verify all 50 conversations exist.
+	list, err := store.List()
+	require.NoError(t, err)
+	assert.Len(t, list, 50)
 }
