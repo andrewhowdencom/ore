@@ -19,8 +19,9 @@ Replace the TUI's bare single-line `strings.Builder` input with a `charmbracelet
 ### Selected approach
 
 Use `bubbles/textarea.Model` as the input widget. Intercept `tea.KeyMsg` in `model.Update` before passing to `textarea` for:
-- `KeyEnter` without `Shift` → submit message, clear input.
-- `KeyEnter` with `Shift` → pass to `textarea` to insert a newline.
+- `KeyEnter` (no modifiers) → submit message, clear input.
+- `KeyEnter` with `Alt` → pass to `textarea` to insert a newline.  
+  *(Note: `bubbletea` v1.3.10 does not detect the `Shift` modifier on special keys, so `Alt+Enter` is used as the practical alternative.)*
 - `KeyPgUp` / `KeyPgDown` → pass to `viewport` to scroll conversation history.
 - `KeyCtrlC` → send interrupt event, return `tea.Quit`.
 - All other keys → pass to `textarea.Update()`.
@@ -37,12 +38,13 @@ After any `textarea.Update()` call, recalculate the textarea's desired height fr
 
 - **Custom multi-line input on `strings.Builder`** — Rejected. Would duplicate a large fraction of `textarea`'s logic and be error-prone with Unicode widths.
 - **`bubbles/textinput`** — Rejected. Single-line only; does not satisfy the multi-line requirement.
-- **Keep single-line, improve styling only** — Rejected. Issue #10 explicitly requires multi-line input (Shift+Enter newline).
+- **Keep single-line, improve styling only** — Rejected. Issue #10 explicitly requires multi-line input (Alt+Enter for newline).
 
 ## Requirements
 
 1. Replace `model.input strings.Builder` with `textarea textarea.Model`.
-2. `Enter` submits the current input as a `UserMessageEvent`; `Shift+Enter` inserts a newline into the textarea.
+2. `Enter` submits the current input as a `UserMessageEvent`; `Alt+Enter` inserts a newline into the textarea.  
+   *(Note: `bubbletea` v1.3.10 cannot detect `Shift+Enter`, so `Alt+Enter` is the practical alternative.)*
 3. `PgUp`/`PgDown` scroll the conversation `viewport`, never the textarea cursor.
 4. `Ctrl+C` sends `InterruptEvent` and quits cleanly.
 5. Arrow keys, Home/End, and standard `textarea` shortcuts (Ctrl+A/E, etc.) navigate within the input.
@@ -67,7 +69,7 @@ After any `textarea.Update()` call, recalculate the textarea's desired height fr
 - **Interfaces**:
   - `model.input` field type changes from `strings.Builder` to `textarea.Model`.
   - `tui.New()` must initialize `textarea.Model`, call `.Focus()`, set `ShowLineNumbers = false`, configure a subtle `Prompt` (e.g., `> ` or empty), and set an initial width/height.
-  - `model.Update(tea.KeyMsg)` routing changes: intercept `Enter`, `Shift+Enter`, `PgUp`, `PgDown`, `CtrlC`; route everything else through `m.textarea.Update()`.
+  - `model.Update(tea.KeyMsg)` routing changes: intercept `Enter`, `Alt+Enter`, `PgUp`, `PgDown`, `CtrlC`; route everything else through `m.textarea.Update()`.
   - Add `recalcLayout()` helper: after any `textarea` state change, compute desired height from `m.textarea.Value()` and `m.textarea.Width()`, call `m.textarea.SetHeight(desired)`, then set `m.viewport.Height = m.height - m.textarea.Height() - 1` (subtracting 1 for the horizontal separator).
   - `model.View()` changes: render `m.viewport.View()` + newline + horizontal separator (`strings.Repeat("─", m.width)`) + newline + `m.textarea.View()`.
   - `model.Update(tea.WindowSizeMsg)`: set `m.textarea.SetWidth(msg.Width)`, then call `recalcLayout()`.
@@ -77,7 +79,7 @@ After any `textarea.Update()` call, recalculate the textarea's desired height fr
 - **Details**:
   - Update tests that reference `m.input` (`strings.Builder`) to reference `m.textarea.Value()` instead.
   - Update view tests that assert on the old `> _` prompt suffix to assert on `m.textarea.View()` presence or on the separator line instead.
-  - Add new test: `Shift+Enter` inserts a newline (textarea value contains `\n`).
+  - Add new test: `Alt+Enter` inserts a newline (textarea value contains `\n`).
   - Add new test: `Enter` on multi-line input submits and clears the textarea.
   - Add new test: `PgUp`/`PgDown` still scroll the viewport even when the textarea has multi-line content.
   - Add new test: horizontal separator appears in `View()` output.
@@ -106,7 +108,7 @@ After any `textarea.Update()` call, recalculate the textarea's desired height fr
 | Risk | Impact | Likelihood | Mitigation |
 |---|---|---|---|
 | `textarea` word-wrap line count differs from our dynamic-height estimate, causing visual jitter or truncated text | Medium | Medium | Keep height estimate conservative (slightly over-count). The builder can refine the estimate in Task 1; exact pixel-perfect matching is not required for a chat input. |
-| Key routing between `textarea` and `viewport` fights (e.g., arrow keys unexpectedly scroll viewport instead of moving cursor) | Medium | Low | Explicitly intercept only `PgUp`/`PgDown` and `Enter`/`Shift+Enter`. All other keys pass to `textarea`. Add targeted tests for cursor movement vs. viewport scrolling. |
+| Key routing between `textarea` and `viewport` fights (e.g., arrow keys unexpectedly scroll viewport instead of moving cursor) | Medium | Low | Explicitly intercept only `PgUp`/`PgDown` and `Enter`/`Alt+Enter`. All other keys pass to `textarea`. Add targeted tests for cursor movement vs. viewport scrolling. |
 | `textarea` default styling (line numbers, borders) clashes with existing app styling | Low | Low | Explicitly disable line numbers and minimize border/padding in `tui.New()`. The visual separator is rendered by our `View()` code, not by `textarea`. |
 | Tests asserting exact `View()` output break due to `textarea` injecting ANSI cursor/styles | Medium | Medium | Update assertions to check for content presence rather than exact string equality. Use `strings.Contains` or `lipgloss.Width` checks. |
 
@@ -115,7 +117,7 @@ After any `textarea.Update()` call, recalculate the textarea's desired height fr
 - [ ] `go test -race ./conduit/tui/...` passes after Task 1.
 - [ ] `go test -race ./...` passes after Task 2.
 - [ ] `go build ./...` passes after Task 2.
-- [ ] `Shift+Enter` inserts a newline in the textarea (verified by test).
+- [ ] `Alt+Enter` inserts a newline in the textarea (verified by test).
 - [ ] `Enter` submits the message and clears the textarea (verified by test).
 - [ ] `PgUp`/`PgDown` scroll the conversation viewport even when the textarea contains multi-line text (verified by test).
 - [ ] The rendered view contains a horizontal separator line between the conversation history and the input area (verified by test).
