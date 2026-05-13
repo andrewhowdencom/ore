@@ -709,3 +709,95 @@ func TestModel_Update_Turn_Assistant_EmptyText(t *testing.T) {
 	output := mm.View()
 	assert.Contains(t, output, "Assistant: ")
 }
+
+// --- Critical coverage gap tests (added per testing agent review) ---
+
+func TestModel_Update_AltEnter_DoesNotEmitEvent(t *testing.T) {
+	eventsCh := make(chan conduit.Event, 10)
+	m := newTestModel()
+	m.eventsCh = eventsCh
+	m.textarea.SetValue("hello")
+	m.recalcLayout()
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter, Alt: true})
+	mm := newM.(*model)
+
+	assert.Contains(t, mm.textarea.Value(), "\n")
+
+	select {
+	case <-eventsCh:
+		t.Fatal("Alt+Enter should not emit a UserMessageEvent")
+	default:
+	}
+}
+
+func TestModel_Update_DynamicLayout(t *testing.T) {
+	m := newTestModel()
+	newM, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	mm := newM.(*model)
+
+	// Empty textarea: 1 line, separator: 1 line, viewport: 22 lines
+	assert.Equal(t, 1, mm.textarea.Height(), "empty textarea should be 1 line")
+	assert.Equal(t, 22, mm.viewport.Height, "viewport should fill remaining space")
+
+	// Add 3 lines
+	mm.textarea.SetValue("line1\nline2\nline3")
+	mm.recalcLayout()
+
+	assert.Equal(t, 3, mm.textarea.Height(), "textarea should grow to 3 lines")
+	assert.Equal(t, 20, mm.viewport.Height, "viewport should shrink accordingly")
+
+	// Add many lines to hit the cap: max(3, 24/3) = 8
+	mm.textarea.SetValue(strings.Repeat("x\n", 20))
+	mm.recalcLayout()
+
+	assert.Equal(t, 8, mm.textarea.Height(), "should respect max height cap")
+	assert.Equal(t, 15, mm.viewport.Height, "viewport should shrink to minimum")
+}
+
+func TestModel_View_SeparatorAdaptsToResize(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.width = 80
+	m.status = "ready" // ensure viewport has content so separator is rendered
+	output := m.View()
+	assert.Contains(t, output, strings.Repeat("─", 80))
+
+	// Resize to narrower width
+	newM, _ := m.Update(tea.WindowSizeMsg{Width: 50, Height: 20})
+	mm := newM.(*model)
+	mm.status = "ready"
+	output = mm.View()
+	assert.Contains(t, output, strings.Repeat("─", 50))
+}
+
+func TestModel_Update_AltEnter_EmptyTextarea(t *testing.T) {
+	eventsCh := make(chan conduit.Event, 10)
+	m := newTestModel()
+	m.eventsCh = eventsCh
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter, Alt: true})
+	mm := newM.(*model)
+
+	assert.Equal(t, "\n", mm.textarea.Value())
+
+	select {
+	case <-eventsCh:
+		t.Fatal("Alt+Enter on empty textarea should not emit event")
+	default:
+	}
+}
+
+func TestModel_Update_RecalcLayout_MinimumViewportHeight(t *testing.T) {
+	m := newTestModel()
+	newM, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 2})
+	mm := newM.(*model)
+
+	// Even with a tiny terminal, viewport should never collapse to 0
+	assert.GreaterOrEqual(t, mm.viewport.Height, 1, "viewport height should never be < 1")
+}
+
+func TestWrapText_LabelWiderThanTerminal(t *testing.T) {
+	output := wrapText("hello", "VeryLongLabel: ", "               ", 10)
+	assert.Equal(t, "VeryLongLabel: hello", output)
+}
