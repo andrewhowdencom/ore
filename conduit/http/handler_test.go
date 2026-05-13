@@ -534,7 +534,7 @@ func TestHandler_WithUI_StaticFiles(t *testing.T) {
 		h.ServeMux().ServeHTTP(rr, req)
 		assert.Equal(t, 200, rr.Code)
 		assert.Equal(t, "application/javascript; charset=utf-8", rr.Header().Get("Content-Type"))
-		assert.Contains(t, rr.Body.String(), "ore chat loaded")
+		assert.Contains(t, rr.Body.String(), "createSession")
 	})
 }
 
