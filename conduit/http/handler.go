@@ -18,10 +18,11 @@ import (
 // The handler runs in a goroutine; it should return when processing is complete.
 type MessageHandler func(ctx context.Context, session *Session, content string) error
 
-// Option configures a Handler.
+// Option configures a Handler via functional options.
 type Option func(*Handler)
 
-// WithUI enables serving of an embedded HTML/JS chat client at GET /.
+// WithUI enables serving of an embedded HTML/JS chat client at GET / and
+// GET /chat.js. When enabled, the handler registers these routes in ServeMux.
 func WithUI() Option {
 	return func(h *Handler) {
 		h.withUI = true
@@ -267,7 +268,8 @@ func (h *Handler) sessionEvents(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 }
 
 // serveUI serves the embedded static files (index.html and chat.js) for the
-// web chat client. It is registered at GET / and GET /chat.js when WithUI()
+// web chat client. It reads the requested file from staticFS and returns 404
+// for unknown paths. It is registered at GET / and GET /chat.js when WithUI()
 // is enabled.
 func (h *Handler) serveUI(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	switch r.URL.Path {
