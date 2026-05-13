@@ -7,7 +7,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
-	"github.com/andrewhowdencom/ore/surface"
+	"github.com/andrewhowdencom/ore/conduit"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -181,7 +181,7 @@ func TestModel_Update_KeyBackspace_Empty(t *testing.T) {
 }
 
 func TestModel_Update_KeyEnter_WithInput(t *testing.T) {
-	eventsCh := make(chan surface.Event, 10)
+	eventsCh := make(chan conduit.Event, 10)
 	m := model{eventsCh: eventsCh}
 	m.input.WriteString("hello")
 
@@ -196,7 +196,7 @@ func TestModel_Update_KeyEnter_WithInput(t *testing.T) {
 	select {
 	case e := <-eventsCh:
 		require.Equal(t, "user_message", e.Kind())
-		ume, ok := e.(surface.UserMessageEvent)
+		ume, ok := e.(conduit.UserMessageEvent)
 		require.True(t, ok)
 		assert.Equal(t, "hello", ume.Content)
 	default:
@@ -205,7 +205,7 @@ func TestModel_Update_KeyEnter_WithInput(t *testing.T) {
 }
 
 func TestModel_Update_KeyEnter_EmptyInput(t *testing.T) {
-	eventsCh := make(chan surface.Event, 10)
+	eventsCh := make(chan conduit.Event, 10)
 	m := model{eventsCh: eventsCh}
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -238,7 +238,7 @@ func TestModel_Update_WindowSize_ResizesViewport(t *testing.T) {
 }
 
 func TestModel_Update_KeyCtrlC(t *testing.T) {
-	eventsCh := make(chan surface.Event, 10)
+	eventsCh := make(chan conduit.Event, 10)
 	m := model{eventsCh: eventsCh}
 
 	newM, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})

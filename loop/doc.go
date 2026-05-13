@@ -12,7 +12,7 @@
 // optional, opt-in capabilities via functional options. A Step with no
 // options is valid for non-streaming, non-handler use cases.
 //
-// Surfaces subscribe to specific artifact kinds via Step.Subscribe(),
+// Conduits subscribe to specific artifact kinds via Step.Subscribe(),
 // receiving artifacts directly (which satisfy OutputEvent via Kind()) as
 // they are emitted by the provider. The artifact.Delta marker interface
 // controls whether an artifact is persisted to state; it does NOT filter

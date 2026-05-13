@@ -1,4 +1,4 @@
-// model.go implements the Bubble Tea model used by the TUI surface.
+// model.go implements the Bubble Tea model used by the TUI conduit.
 // It receives streaming artifacts and turn notifications from the
 // ore core and updates the on-screen conversation view.
 package tui
@@ -9,7 +9,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
-	"github.com/andrewhowdencom/ore/surface"
+	"github.com/andrewhowdencom/ore/conduit"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -51,7 +51,7 @@ type renderedBlock struct {
 // model implements tea.Model. All state mutation happens in Update,
 // which runs on Bubble Tea's single goroutine, so no locks are needed.
 type model struct {
-	eventsCh chan surface.Event
+	eventsCh chan conduit.Event
 
 	// Conversation history.
 	turns []renderedTurn
@@ -103,7 +103,7 @@ func (m *model) Init() tea.Cmd {
 }
 
 // Update handles incoming messages: keyboard input, window resize, and
-// custom messages carrying delta/turn/status data from the surface methods.
+// custom messages carrying delta/turn/status data from the conduit methods.
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case deltaMsg:
@@ -155,7 +155,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport, cmd = m.viewport.Update(msg)
 			return m, cmd
 		// On Enter, send the completed user input as a UserMessageEvent to
-		// the surface's event channel, then clear the input buffer. The turn
+		// the conduit's event channel, then clear the input buffer. The turn
 		// will be rendered when it arrives back via turnMsg from the loop's
 		// FanOut.
 		case tea.KeyEnter:
@@ -163,7 +163,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				content := m.input.String()
 				m.input.Reset()
 				select {
-				case m.eventsCh <- surface.UserMessageEvent{Content: content}:
+				case m.eventsCh <- conduit.UserMessageEvent{Content: content}:
 				default:
 					slog.Warn("event channel full, dropping user message")
 				}
@@ -171,7 +171,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Propagate Ctrl+C as an interrupt to cancel the ongoing inference.
 		case tea.KeyCtrlC:
 			select {
-			case m.eventsCh <- surface.InterruptEvent{}:
+			case m.eventsCh <- conduit.InterruptEvent{}:
 			default:
 			}
 			return m, tea.Quit
