@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	stdhttp "net/http"
+	"io"
 	"strings"
 	"sync"
 	"time"
@@ -35,14 +36,16 @@ func WithUI() Option {
 // Handler provides HTTP endpoints for the ore framework's conversation
 // primitives. It is mounted on an http.ServeMux via ServeMux().
 type Handler struct {
-	convStore      conversation.Store
-	newStep        func() *loop.Step
+	// convStore is the shared conversation persistence layer.
+	convStore conversation.Store
+	// newStep is called once per session to create an isolated Step.
+	newStep func() *loop.Step
+	// messageHandler processes each incoming user message within a locked session.
 	messageHandler MessageHandler
-	convStore      conversation.Store
-	newStep        func() *loop.Step
-	messageHandler MessageHandler
-	sessions       map[string]*Session
-	mu             sync.RWMutex
+	// sessions tracks active HTTP sessions keyed by conversation ID.
+	sessions map[string]*Session
+	// mu protects the sessions map.
+	mu sync.RWMutex
 	store          *SessionStore
 	withUI         bool
 }
@@ -87,7 +90,14 @@ func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	var req struct {
 		ConversationID string `json:"conversation_id"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		// An empty body is valid (creates a new session).
+		// Any non-EOF error means malformed JSON.
+		if err != io.EOF {
+			w.WriteHeader(stdhttp.StatusBadRequest)
+			return
+		}
+	}
 
 	var conv *conversation.Conversation
 	var err error
@@ -166,10 +176,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		w.WriteHeader(stdhttp.StatusConflict)
 		return
 	}
-	defer func() {
-		_ = h.convStore.Save(session.conv)
-		session.Unlock()
-	}()
+	defer session.Unlock()
 
 	// Parse request body.
 	var req struct {
@@ -230,6 +237,11 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 			// Stream a final error event if the handler failed.
 			if err != nil {
 				data, _ := MarshalOutputEvent(loop.ErrorEvent{Err: err})
+				_ = nw.WriteEvent(data)
+			}
+			// Save conversation state; stream an error if persistence fails.
+			if saveErr := h.convStore.Save(session.conv); saveErr != nil {
+				data, _ := MarshalOutputEvent(loop.ErrorEvent{Err: saveErr})
 				_ = nw.WriteEvent(data)
 			}
 			// Stream the complete event with all new turns.
