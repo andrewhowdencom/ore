@@ -146,12 +146,16 @@ func (m *model) View() string {
 
 	m.viewport.SetContent(b.String())
 
-	// Render input prompt as a fixed line at the bottom.
-	inputLine := "> " + m.input.String() + "_"
+	// Render a thin horizontal line to visually separate the conversation
+	// history (viewport) from the input area at the bottom of the terminal.
+	var separator string
+	if m.width > 0 {
+		separator = strings.Repeat("─", m.width)
+	}
 
 	view := m.viewport.View()
 	if view != "" {
-		return view + "\n" + inputLine
+		return view + "\n" + separator + "\n" + m.textarea.View()
 	}
-	return inputLine
+	return m.textarea.View()
 }

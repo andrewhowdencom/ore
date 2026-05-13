@@ -8,12 +8,28 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/conduit"
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// newTestModel returns a model with a properly initialized textarea widget.
+// Tests that send key messages or call View() must use this helper to avoid
+// panics from the zero-value textarea.
+func newTestModel() model {
+	ta := textarea.New()
+	ta.ShowLineNumbers = false
+	ta.Prompt = "> "
+	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("alt+enter"))
+	ta.Focus()
+	return model{
+		textarea: ta,
+	}
+}
 
 func TestModel_Update_Delta_TextDelta(t *testing.T) {
 	m := model{}
@@ -152,38 +168,39 @@ func TestModel_Update_Status(t *testing.T) {
 }
 
 func TestModel_Update_KeyRunes(t *testing.T) {
-	m := model{}
+	m := newTestModel()
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hello")})
 	mm := newM.(*model)
-	assert.Equal(t, "hello", mm.input.String())
+	assert.Equal(t, "hello", mm.textarea.Value())
 }
 
 func TestModel_Update_KeySpace(t *testing.T) {
-	m := model{}
+	m := newTestModel()
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	mm := newM.(*model)
-	assert.Equal(t, " ", mm.input.String())
+	assert.Equal(t, " ", mm.textarea.Value())
 }
 
 func TestModel_Update_KeyBackspace(t *testing.T) {
-	m := model{}
-	m.input.WriteString("hi")
+	m := newTestModel()
+	m.textarea.SetValue("hi")
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
 	mm := newM.(*model)
-	assert.Equal(t, "h", mm.input.String())
+	assert.Equal(t, "h", mm.textarea.Value())
 }
 
 func TestModel_Update_KeyBackspace_Empty(t *testing.T) {
-	m := model{}
+	m := newTestModel()
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
 	mm := newM.(*model)
-	assert.Empty(t, mm.input.String())
+	assert.Empty(t, mm.textarea.Value())
 }
 
 func TestModel_Update_KeyEnter_WithInput(t *testing.T) {
 	eventsCh := make(chan conduit.Event, 10)
-	m := model{eventsCh: eventsCh}
-	m.input.WriteString("hello")
+	m := newTestModel()
+	m.eventsCh = eventsCh
+	m.textarea.SetValue("hello")
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	mm := newM.(*model)
@@ -191,7 +208,7 @@ func TestModel_Update_KeyEnter_WithInput(t *testing.T) {
 	// User turns no longer render directly on KeyEnter; they arrive via
 	// turnMsg from the loop's FanOut.
 	assert.Empty(t, mm.turns)
-	assert.Empty(t, mm.input.String())
+	assert.Empty(t, mm.textarea.Value())
 
 	select {
 	case e := <-eventsCh:
@@ -206,13 +223,14 @@ func TestModel_Update_KeyEnter_WithInput(t *testing.T) {
 
 func TestModel_Update_KeyEnter_EmptyInput(t *testing.T) {
 	eventsCh := make(chan conduit.Event, 10)
-	m := model{eventsCh: eventsCh}
+	m := newTestModel()
+	m.eventsCh = eventsCh
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	mm := newM.(*model)
 
 	assert.Empty(t, mm.turns)
-	assert.Empty(t, mm.input.String())
+	assert.Empty(t, mm.textarea.Value())
 
 	select {
 	case <-eventsCh:
@@ -222,7 +240,7 @@ func TestModel_Update_KeyEnter_EmptyInput(t *testing.T) {
 }
 
 func TestModel_Update_WindowSize(t *testing.T) {
-	m := model{}
+	m := newTestModel()
 	newM, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	mm := newM.(*model)
 	assert.Equal(t, 80, mm.width)
@@ -230,16 +248,17 @@ func TestModel_Update_WindowSize(t *testing.T) {
 }
 
 func TestModel_Update_WindowSize_ResizesViewport(t *testing.T) {
-	m := model{}
+	m := newTestModel()
 	newM, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	mm := newM.(*model)
 	assert.Equal(t, 80, mm.viewport.Width)
-	assert.Equal(t, 23, mm.viewport.Height)
+	assert.Equal(t, 22, mm.viewport.Height)
 }
 
 func TestModel_Update_KeyCtrlC(t *testing.T) {
 	eventsCh := make(chan conduit.Event, 10)
-	m := model{eventsCh: eventsCh}
+	m := newTestModel()
+	m.eventsCh = eventsCh
 
 	newM, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 	mm := newM.(*model)
@@ -256,11 +275,10 @@ func TestModel_Update_KeyCtrlC(t *testing.T) {
 }
 
 func TestModel_View_ContainsTurn(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-		turns: []renderedTurn{
-			{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
-		},
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.turns = []renderedTurn{
+		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
 	}
 	output := m.View()
 	assert.Contains(t, output, "You: ")
@@ -268,11 +286,10 @@ func TestModel_View_ContainsTurn(t *testing.T) {
 }
 
 func TestModel_View_ContainsAssistantTurn(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-		turns: []renderedTurn{
-			{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "world"}}},
-		},
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.turns = []renderedTurn{
+		{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "world"}}},
 	}
 	output := m.View()
 	assert.Contains(t, output, "Assistant: ")
@@ -280,11 +297,10 @@ func TestModel_View_ContainsAssistantTurn(t *testing.T) {
 }
 
 func TestModel_View_ContainsToolTurn(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-		turns: []renderedTurn{
-			{role: state.RoleTool, blocks: []renderedBlock{{kind: "text", source: "result"}}},
-		},
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.turns = []renderedTurn{
+		{role: state.RoleTool, blocks: []renderedBlock{{kind: "text", source: "result"}}},
 	}
 	output := m.View()
 	assert.Contains(t, output, "Tool: ")
@@ -292,59 +308,53 @@ func TestModel_View_ContainsToolTurn(t *testing.T) {
 }
 
 func TestModel_View_ContainsStreaming(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-		streamBlocks: []streamBlock{{kind: "text", content: "partial"}},
-	}
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.streamBlocks = []streamBlock{{kind: "text", content: "partial"}}
 	output := m.View()
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "partial")
 }
 
 func TestModel_View_ContainsStatus(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-		status: "thinking...",
-	}
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.status = "thinking..."
 	output := m.View()
 	assert.Contains(t, output, "thinking...")
 }
 
 func TestModel_View_ContainsPrompt(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-	}
-	m.input.WriteString("hi")
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.textarea.SetValue("hi")
 	output := m.View()
 	assert.Contains(t, output, "> ")
-	assert.Contains(t, output, "hi_")
+	assert.Contains(t, output, "hi")
 }
 
 func TestModel_View_Empty(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-	}
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
 	output := m.View()
-	assert.True(t, strings.HasSuffix(output, "> _"))
+	assert.Contains(t, output, "> ")
 }
 
 func TestModel_View_ContainsInputAtBottom(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-		turns: []renderedTurn{
-			{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
-		},
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.turns = []renderedTurn{
+		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
 	}
 	output := m.View()
 	lines := strings.Split(output, "\n")
 	lastLine := lines[len(lines)-1]
-	assert.Equal(t, "> _", lastLine)
+	assert.Contains(t, lastLine, "> ")
 }
 
 func TestModel_Update_PgUp_ScrollsViewport(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 5),
-	}
+	m := newTestModel()
+	m.viewport = viewport.New(80, 5)
 	m.viewport.SetContent(strings.Repeat("line\n", 20))
 	m.viewport.GotoBottom()
 	initialYOffset := m.viewport.YOffset
@@ -356,9 +366,8 @@ func TestModel_Update_PgUp_ScrollsViewport(t *testing.T) {
 }
 
 func TestModel_Update_PgDown_ScrollsViewport(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 5),
-	}
+	m := newTestModel()
+	m.viewport = viewport.New(80, 5)
 	m.viewport.SetContent(strings.Repeat("line\n", 20))
 	m.viewport.GotoBottom()
 
@@ -373,9 +382,8 @@ func TestModel_Update_PgDown_ScrollsViewport(t *testing.T) {
 }
 
 func TestModel_Update_Turn_AutoScrollsViewport(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 5),
-	}
+	m := newTestModel()
+	m.viewport = viewport.New(80, 5)
 	m.viewport.SetContent(strings.Repeat("line\n", 20))
 	m.viewport.GotoBottom()
 
@@ -396,9 +404,8 @@ func TestModel_Update_Turn_AutoScrollsViewport(t *testing.T) {
 }
 
 func TestModel_Update_Delta_AutoScrollsViewport(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 5),
-	}
+	m := newTestModel()
+	m.viewport = viewport.New(80, 5)
 	m.viewport.SetContent(strings.Repeat("line\n", 20))
 	m.viewport.GotoBottom()
 
@@ -416,9 +423,8 @@ func TestModel_Update_Delta_AutoScrollsViewport(t *testing.T) {
 }
 
 func TestModel_View_LongHistory_InputAtBottom(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 5),
-	}
+	m := newTestModel()
+	m.viewport = viewport.New(80, 5)
 	// Add enough turns to exceed viewport height
 	for i := 0; i < 10; i++ {
 		m.turns = append(m.turns, renderedTurn{
@@ -429,7 +435,7 @@ func TestModel_View_LongHistory_InputAtBottom(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 	lastLine := lines[len(lines)-1]
-	assert.Equal(t, "> _", lastLine)
+	assert.Contains(t, lastLine, "> ")
 }
 
 func TestWrapText_NoWrap(t *testing.T) {
@@ -480,11 +486,10 @@ func TestWrapText_AnsiAware(t *testing.T) {
 }
 
 func TestModel_View_WrapsLongTurn(t *testing.T) {
-	m := model{
-		viewport: viewport.New(20, 5),
-		turns: []renderedTurn{
-			{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 10)}}},
-		},
+	m := newTestModel()
+	m.viewport = viewport.New(20, 5)
+	m.turns = []renderedTurn{
+		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 10)}}},
 	}
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -553,9 +558,8 @@ func TestModel_Update_Turn_User_LeavesRenderedEmpty(t *testing.T) {
 }
 
 func TestModel_Update_WindowSize_RerendersAssistantTurns(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-	}
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
 	turn := state.Turn{
 		Role: state.RoleAssistant,
 		Artifacts: []artifact.Artifact{
@@ -587,10 +591,9 @@ func (m mockMarkdownRenderer) Render(text string, width int) (string, error) {
 }
 
 func TestModel_Update_Turn_Assistant_RenderError_Fallback(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-		md:       mockMarkdownRenderer{err: errors.New("render failed")},
-	}
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.md = mockMarkdownRenderer{err: errors.New("render failed")}
 	turn := state.Turn{
 		Role: state.RoleAssistant,
 		Artifacts: []artifact.Artifact{
@@ -606,10 +609,9 @@ func TestModel_Update_Turn_Assistant_RenderError_Fallback(t *testing.T) {
 }
 
 func TestModel_View_AssistantTurn_RenderError_FallbackToPlainText(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-		md:       mockMarkdownRenderer{err: errors.New("render failed")},
-	}
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.md = mockMarkdownRenderer{err: errors.New("render failed")}
 	turn := state.Turn{
 		Role: state.RoleAssistant,
 		Artifacts: []artifact.Artifact{
@@ -624,10 +626,9 @@ func TestModel_View_AssistantTurn_RenderError_FallbackToPlainText(t *testing.T) 
 }
 
 func TestModel_Update_WindowSize_RerenderError_KeepsOldCache(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-		md:       mockMarkdownRenderer{output: "initial-render"},
-	}
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.md = mockMarkdownRenderer{output: "initial-render"}
 	turn := state.Turn{
 		Role: state.RoleAssistant,
 		Artifacts: []artifact.Artifact{
@@ -646,11 +647,52 @@ func TestModel_Update_WindowSize_RerenderError_KeepsOldCache(t *testing.T) {
 		"old cache should be kept on re-render error")
 }
 
-func TestModel_Update_Turn_Assistant_EmptyText(t *testing.T) {
-	m := model{
-		viewport: viewport.New(80, 20),
-		md:       mockMarkdownRenderer{output: "mock-empty-output"},
+func TestModel_Update_AltEnter_InsertsNewline(t *testing.T) {
+	m := newTestModel()
+	m.textarea.SetValue("hello")
+	m.recalcLayout()
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter, Alt: true})
+	mm := newM.(*model)
+
+	assert.Contains(t, mm.textarea.Value(), "\n")
+}
+
+func TestModel_Update_Enter_SubmitsMultiLine(t *testing.T) {
+	eventsCh := make(chan conduit.Event, 10)
+	m := newTestModel()
+	m.eventsCh = eventsCh
+	m.textarea.SetValue("line1\nline2")
+	m.recalcLayout()
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm := newM.(*model)
+
+	assert.Empty(t, mm.textarea.Value())
+
+	select {
+	case e := <-eventsCh:
+		require.Equal(t, "user_message", e.Kind())
+		ume, ok := e.(conduit.UserMessageEvent)
+		require.True(t, ok)
+		assert.Equal(t, "line1\nline2", ume.Content)
+	default:
+		t.Fatal("expected event on channel")
 	}
+}
+
+func TestModel_View_ContainsSeparator(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.width = 80
+	output := m.View()
+	assert.Contains(t, output, strings.Repeat("─", 80))
+}
+
+func TestModel_Update_Turn_Assistant_EmptyText(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.md = mockMarkdownRenderer{output: "mock-empty-output"}
 	turn := state.Turn{
 		Role: state.RoleAssistant,
 		Artifacts: []artifact.Artifact{
