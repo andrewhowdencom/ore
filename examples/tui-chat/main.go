@@ -1,5 +1,7 @@
-// tui-chat is a reference application demonstrating a streaming chat REPL
-// using the ore framework with the surface/tui package.
+// Package main provides a streaming chat REPL demonstrating the ore
+// framework. It wires together the ReAct cognitive pattern, the loop.Step
+// primitive for turn orchestration, and the surface/tui package for
+// terminal interaction.
 package main
 
 import (
@@ -45,6 +47,15 @@ func run() error {
 
 	baseURL := os.Getenv("ORE_BASE_URL")
 
+	// Architecture:
+	//   * `react` (cognitive.ReAct) drives the inference loop using the
+	//     provider and the Step primitive.
+	//   * `Step` emits streaming artifacts and turn-complete events that
+	//     the TUI surface consumes.
+	//   * The TUI surface forwards user input back as UserMessageEvents,
+	//     which are fed into `Step.Submit` to keep the conversation
+	//     history consistent.
+
 	// Build OpenAI provider.
 	var opts []openai.Option
 	if baseURL != "" {
@@ -81,7 +92,14 @@ func run() error {
 		for event := range s.Events() {
 			switch e := event.(type) {
 			case surface.UserMessageEvent:
-				mem.Append(state.RoleUser, artifact.Text{Content: e.Content})
+				// Record the user's message as a non-inference turn so it
+				// appears in the same artifact stream as assistant responses.
+				result, err := react.Step.Submit(ctx, mem, state.RoleUser, artifact.Text{Content: e.Content})
+				if err != nil {
+					slog.Error("submit failed", "err", err)
+					continue
+				}
+				mem = result.(*state.Memory)
 				if err := s.SetStatus(ctx, "thinking..."); err != nil {
 					slog.Error("set status failed", "err", err)
 				}
@@ -91,7 +109,7 @@ func run() error {
 				cancelFunc = cancel
 				mu.Unlock()
 
-				result, err := react.Run(opCtx, mem)
+				result, err = react.Run(opCtx, mem)
 				// State is mutable, so result is the same pointer; reassign for clarity.
 				mem = result.(*state.Memory)
 
@@ -108,6 +126,7 @@ func run() error {
 				}
 
 			case surface.InterruptEvent:
+				// Propagate a Ctrl+C cancellation to the ongoing inference turn.
 				mu.Lock()
 				if cancelFunc != nil {
 					cancelFunc()

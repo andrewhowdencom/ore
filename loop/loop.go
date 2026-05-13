@@ -15,8 +15,11 @@ type BeforeTurn interface {
 	BeforeTurn(ctx context.Context, s state.State) (state.State, error)
 }
 
-// OutputEvent is emitted by Step during Turn() to notify subscribers of
-// streaming progress and completed turns.
+// OutputEvent represents any event emitted by a Step. Artifacts
+// (e.g. TextDelta, ReasoningDelta) and turn-related events
+// (TurnCompleteEvent, ErrorEvent) all implement this interface via
+// their Kind() method, allowing subscribers to filter the event
+// stream by kind (e.g. "text_delta", "turn_complete", "error").
 type OutputEvent interface {
 	Kind() string
 }
@@ -78,8 +81,9 @@ func (s *Step) Close() error {
 // Option configures a Step.
 type Option func(*Step)
 
-// WithBeforeTurn configures before-turn hooks that run before the provider
-// call. Hooks run in registration order; each receives the state returned by
+// WithBeforeTurn configures before-turn hooks that run before any turn,
+// including both inference turns (Turn) and submitted turns (Submit).
+// Hooks run in registration order; each receives the state returned by
 // the previous hook. An error from any hook aborts the turn.
 func WithBeforeTurn(beforeTurns ...BeforeTurn) Option {
 	return func(s *Step) {
@@ -174,7 +178,31 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 		return st, fmt.Errorf("turn failed: %w", err)
 	}
 
-	st.Append(state.RoleAssistant, accumulatedArtifacts...)
+	return s.finalizeTurn(ctx, st, state.RoleAssistant, accumulatedArtifacts)
+}
+
+// Submit records a non-inference turn into state, runs registered handlers,
+// and emits a TurnCompleteEvent to all subscribers. It is the canonical
+// mechanism for user, system, or tool turns to enter the same artifact stream
+// as assistant responses from Turn().
+func (s *Step) Submit(ctx context.Context, st state.State, role state.Role, artifacts ...artifact.Artifact) (state.State, error) {
+	var err error
+
+	for _, bt := range s.beforeTurns {
+		st, err = bt.BeforeTurn(ctx, st)
+		if err != nil {
+			return st, fmt.Errorf("before turn hook failed: %w", err)
+		}
+	}
+
+	return s.finalizeTurn(ctx, st, role, artifacts)
+}
+
+// finalizeTurn appends a turn to state, runs registered handlers on each
+// artifact, and emits a TurnCompleteEvent to all subscribers. It is the shared
+// post-processing pipeline used by both Turn() and Submit().
+func (s *Step) finalizeTurn(ctx context.Context, st state.State, role state.Role, artifacts []artifact.Artifact) (state.State, error) {
+	st.Append(role, artifacts...)
 
 	turns := st.Turns()
 	if len(turns) == 0 {
@@ -182,7 +210,7 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 	}
 
 	last := turns[len(turns)-1]
-	if last.Role != state.RoleAssistant {
+	if last.Role != role {
 		return st, nil
 	}
 

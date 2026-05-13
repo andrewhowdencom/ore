@@ -1,3 +1,6 @@
+// model.go implements the Bubble Tea model used by the TUI surface.
+// It receives streaming artifacts and turn notifications from the
+// ore core and updates the on-screen conversation view.
 package tui
 
 import (
@@ -11,21 +14,22 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// deltaMsg carries an ephemeral delta artifact into the Bubble Tea message
-// loop so model.Update can append it to the appropriate streaming buffer
-// (text or reasoning).
+// deltaMsg is a Bubble Tea message that carries an ephemeral streaming
+// delta artifact into the model.Update loop so it can be appended to
+// the appropriate streaming buffer (text or reasoning).
 type deltaMsg struct {
 	delta artifact.Artifact
 }
 
-// turnMsg carries a complete turn into the Bubble Tea message loop so
-// model.Update can finalize it in the conversation history.
+// turnMsg is a Bubble Tea message that carries a complete turn into
+// the model.Update loop so it can be finalized in the conversation
+// history.
 type turnMsg struct {
 	turn state.Turn
 }
 
-// statusMsg carries a status update into the Bubble Tea message loop so
-// model.Update can update the transient status line.
+// statusMsg is a Bubble Tea message that carries a status update into
+// the model.Update loop so it can update the transient status line.
 type statusMsg struct {
 	status string
 }
@@ -84,6 +88,8 @@ type renderedTurn struct {
 // renderMarkdown delegates to the model's markdown renderer, falling back
 // to a default glamourMarkdownRenderer if none was injected.
 func (m *model) renderMarkdown(text string, width int) (string, error) {
+	// If no renderer was supplied (e.g. in tests), fall back to the
+	// production glamour renderer.
 	if m.md == nil {
 		m.md = glamourMarkdownRenderer{}
 	}
@@ -148,13 +154,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.viewport, cmd = m.viewport.Update(msg)
 			return m, cmd
+		// On Enter, send the completed user input as a UserMessageEvent to
+		// the surface's event channel, then clear the input buffer. The turn
+		// will be rendered when it arrives back via turnMsg from the loop's
+		// FanOut.
 		case tea.KeyEnter:
 			if m.input.Len() > 0 {
 				content := m.input.String()
-				m.turns = append(m.turns, renderedTurn{
-					role:   state.RoleUser,
-					blocks: []renderedBlock{{kind: "text", source: content}},
-				})
 				m.input.Reset()
 				select {
 				case m.eventsCh <- surface.UserMessageEvent{Content: content}:
@@ -162,6 +168,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					slog.Warn("event channel full, dropping user message")
 				}
 			}
+		// Propagate Ctrl+C as an interrupt to cancel the ongoing inference.
 		case tea.KeyCtrlC:
 			select {
 			case m.eventsCh <- surface.InterruptEvent{}:

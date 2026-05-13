@@ -732,3 +732,267 @@ func TestStep_Turn_ErrorEvent(t *testing.T) {
 	// State should not be mutated.
 	assert.Len(t, mem.Turns(), 1)
 }
+
+func TestStep_Submit_AppendsUserTurn(t *testing.T) {
+	s := New()
+	mem := &state.Memory{}
+
+	result, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
+	require.NoError(t, err)
+	assert.Same(t, mem, result)
+
+	turns := mem.Turns()
+	require.Len(t, turns, 1)
+
+	last := turns[0]
+	assert.Equal(t, state.RoleUser, last.Role)
+	require.Len(t, last.Artifacts, 1)
+	assert.Equal(t, "text", last.Artifacts[0].Kind())
+	text, ok := last.Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "hello", text.Content)
+}
+
+func TestStep_Submit_EmitsTurnCompleteEvent(t *testing.T) {
+	s := New()
+	ch := s.Subscribe("turn_complete")
+	mem := &state.Memory{}
+
+	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
+	require.NoError(t, err)
+
+	events := collectEvents(ch, 100*time.Millisecond)
+
+	require.Len(t, events, 1)
+	assert.Equal(t, "turn_complete", events[0].Kind())
+	turnComplete, ok := events[0].(TurnCompleteEvent)
+	require.True(t, ok)
+	assert.Equal(t, state.RoleUser, turnComplete.Turn.Role)
+	require.Len(t, turnComplete.Turn.Artifacts, 1)
+	text, ok := turnComplete.Turn.Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "hello", text.Content)
+}
+
+func TestStep_Submit_BeforeTurn_TransformsState(t *testing.T) {
+	before := &mockBeforeTurn{
+		fn: func(ctx context.Context, s state.State) (state.State, error) {
+			s.Append(state.RoleSystem, artifact.Text{Content: "system-prompt"})
+			return s, nil
+		},
+	}
+	s := New(WithBeforeTurn(before))
+	mem := &state.Memory{}
+
+	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
+	require.NoError(t, err)
+
+	turns := mem.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, state.RoleSystem, turns[0].Role)
+	assert.Equal(t, state.RoleUser, turns[1].Role)
+}
+
+func TestStep_Submit_BeforeTurn_ErrorAborts(t *testing.T) {
+	wantErr := errors.New("before turn failed")
+	before := &mockBeforeTurn{
+		fn: func(ctx context.Context, s state.State) (state.State, error) {
+			return s, wantErr
+		},
+	}
+	s := New(WithBeforeTurn(before))
+	mem := &state.Memory{}
+
+	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
+	require.ErrorIs(t, err, wantErr)
+
+	assert.Len(t, mem.Turns(), 0)
+}
+
+func TestStep_Submit_Handler(t *testing.T) {
+	h := &mockHandler{}
+	s := New(WithHandlers(h))
+	mem := &state.Memory{}
+
+	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"}, artifact.ToolCall{Name: "test"})
+	require.NoError(t, err)
+
+	require.Len(t, h.called, 2)
+	assert.Equal(t, "text", h.called[0].Kind())
+	assert.Equal(t, "tool_call", h.called[1].Kind())
+}
+
+func TestStep_Submit_HandlerError(t *testing.T) {
+	wantErr := context.Canceled
+	h := &mockHandler{err: wantErr}
+	s := New(WithHandlers(h))
+	mem := &state.Memory{}
+
+	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestStep_Submit_MultipleInOrder(t *testing.T) {
+	s := New()
+	mem := &state.Memory{}
+
+	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "first"})
+	require.NoError(t, err)
+
+	_, err = s.Submit(context.Background(), mem, state.RoleSystem, artifact.Text{Content: "second"})
+	require.NoError(t, err)
+
+	turns := mem.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, state.RoleUser, turns[0].Role)
+	assert.Equal(t, state.RoleSystem, turns[1].Role)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "first", text.Content)
+
+	text, ok = turns[1].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "second", text.Content)
+}
+
+func TestStep_Submit_ThenTurn_EventsInOrder(t *testing.T) {
+	s := New()
+	ch := s.Subscribe("turn_complete")
+	mem := &state.Memory{}
+
+	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
+	require.NoError(t, err)
+
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world"},
+		},
+	}
+
+	_, err = s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+
+	events := collectEvents(ch, 100*time.Millisecond)
+
+	require.Len(t, events, 2)
+	assert.Equal(t, "turn_complete", events[0].Kind())
+	assert.Equal(t, state.RoleUser, events[0].(TurnCompleteEvent).Turn.Role)
+	assert.Equal(t, "turn_complete", events[1].Kind())
+	assert.Equal(t, state.RoleAssistant, events[1].(TurnCompleteEvent).Turn.Role)
+}
+
+func TestStep_Submit_EmptyArtifacts(t *testing.T) {
+	s := New()
+	mem := &state.Memory{}
+
+	_, err := s.Submit(context.Background(), mem, state.RoleUser)
+	require.NoError(t, err)
+
+	turns := mem.Turns()
+	require.Len(t, turns, 1)
+	last := turns[0]
+	assert.Equal(t, state.RoleUser, last.Role)
+	assert.Empty(t, last.Artifacts)
+}
+
+func TestStep_Submit_ToolRole(t *testing.T) {
+	s := New()
+	mem := &state.Memory{}
+
+	result, err := s.Submit(context.Background(), mem, state.RoleTool, artifact.Text{Content: "tool result"})
+	require.NoError(t, err)
+	assert.Same(t, mem, result)
+
+	turns := mem.Turns()
+	require.Len(t, turns, 1)
+
+	last := turns[0]
+	assert.Equal(t, state.RoleTool, last.Role)
+	require.Len(t, last.Artifacts, 1)
+	assert.Equal(t, "text", last.Artifacts[0].Kind())
+	text, ok := last.Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "tool result", text.Content)
+}
+
+func TestStep_Submit_HandlerErrorAfterPartialProcessing(t *testing.T) {
+	h := &mockHandler{
+		fn: func(ctx context.Context, art artifact.Artifact, s state.State) error {
+			if art.Kind() == "text" {
+				return nil
+			}
+			return errors.New("handler failed on second artifact")
+		},
+	}
+	s := New(WithHandlers(h))
+	mem := &state.Memory{}
+
+	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"}, artifact.ToolCall{Name: "test"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "handler failed on second artifact")
+
+	require.Len(t, h.called, 2)
+	assert.Equal(t, "text", h.called[0].Kind())
+	assert.Equal(t, "tool_call", h.called[1].Kind())
+
+	// State should still have the turn appended (finalizeTurn appends
+	// before running handlers).
+	turns := mem.Turns()
+	require.Len(t, turns, 1)
+	assert.Equal(t, state.RoleUser, turns[0].Role)
+	require.Len(t, turns[0].Artifacts, 2)
+}
+
+func TestStep_Submit_Multiple_EventsInOrder(t *testing.T) {
+	s := New()
+	ch := s.Subscribe("turn_complete")
+	mem := &state.Memory{}
+
+	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "first"})
+	require.NoError(t, err)
+
+	_, err = s.Submit(context.Background(), mem, state.RoleSystem, artifact.Text{Content: "second"})
+	require.NoError(t, err)
+
+	_, err = s.Submit(context.Background(), mem, state.RoleTool, artifact.Text{Content: "third"})
+	require.NoError(t, err)
+
+	events := collectEvents(ch, 100*time.Millisecond)
+
+	require.Len(t, events, 3)
+	assert.Equal(t, state.RoleUser, events[0].(TurnCompleteEvent).Turn.Role)
+	assert.Equal(t, state.RoleSystem, events[1].(TurnCompleteEvent).Turn.Role)
+	assert.Equal(t, state.RoleTool, events[2].(TurnCompleteEvent).Turn.Role)
+}
+
+func TestStep_Submit_EmptyArtifacts_ByRole(t *testing.T) {
+	tests := []struct {
+		name string
+		role state.Role
+	}{
+		{"system", state.RoleSystem},
+		{"tool", state.RoleTool},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := New()
+			ch := s.Subscribe("turn_complete")
+			mem := &state.Memory{}
+
+			_, err := s.Submit(context.Background(), mem, tt.role)
+			require.NoError(t, err)
+
+			turns := mem.Turns()
+			require.Len(t, turns, 1)
+			assert.Equal(t, tt.role, turns[0].Role)
+			assert.Empty(t, turns[0].Artifacts)
+
+			events := collectEvents(ch, 100*time.Millisecond)
+			require.Len(t, events, 1)
+			assert.Equal(t, "turn_complete", events[0].Kind())
+			assert.Equal(t, tt.role, events[0].(TurnCompleteEvent).Turn.Role)
+		})
+	}
+}
