@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
@@ -14,10 +15,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// mockProvider is a minimal provider.Provider implementation for testing.
-type mockProvider struct{}
+// mockProvider is a provider.Provider implementation for testing that can be
+// configured to emit a sequence of artifacts.
+type mockProvider struct {
+	artifacts []artifact.Artifact
+}
 
 func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+	for _, art := range m.artifacts {
+		select {
+		case ch <- art:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	return nil
 }
 
@@ -44,8 +55,8 @@ func TestHandler_ServeMux_Routing(t *testing.T) {
 	}{
 		{"create session", "POST", "/sessions", 201},
 		{"delete session not found", "DELETE", "/sessions/abc-123", 404},
-		{"send message", "POST", "/sessions/abc-123/messages", 501},
-		{"session events", "GET", "/sessions/abc-123/events", 501},
+		{"send message not found", "POST", "/sessions/abc-123/messages", 404},
+		{"session events stub", "GET", "/sessions/abc-123/events", 501},
 		{"get sessions method not allowed", "GET", "/sessions", 405},
 		{"post to session root method not allowed", "POST", "/sessions/abc-123", 405},
 		{"put method not allowed", "PUT", "/sessions/abc-123", 405},
@@ -137,6 +148,108 @@ func TestHandler_DeleteSession_NotFound(t *testing.T) {
 	h.ServeMux().ServeHTTP(rr, req)
 
 	assert.Equal(t, 404, rr.Code)
+}
+
+func TestHandler_SendMessage(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+			artifact.TextDelta{Content: " world"},
+		},
+	}
+	newStep := func() *loop.Step { return loop.New() }
+	h := NewHandler(prov, newStep)
+
+	// Create a session.
+	createReq := httptest.NewRequest("POST", "/sessions", nil)
+	createRr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(createRr, createReq)
+	require.Equal(t, 201, createRr.Code)
+
+	var createResp map[string]string
+	require.NoError(t, json.Unmarshal(createRr.Body.Bytes(), &createResp))
+	sessionID := createResp["id"]
+
+	// Send a message.
+	body := `{"content": "hi", "kinds": ["text_delta", "turn_complete"]}`
+	req := httptest.NewRequest("POST", "/sessions/"+sessionID+"/messages", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	require.Equal(t, 200, rr.Code)
+	assert.Equal(t, "application/x-ndjson", rr.Header().Get("Content-Type"))
+
+	// Parse NDJSON lines.
+	lines := strings.Split(strings.TrimSpace(rr.Body.String()), "\n")
+	require.NotEmpty(t, lines)
+
+	// Last line should be the complete event.
+	var complete completeEventJSON
+	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &complete))
+	assert.Equal(t, "complete", complete.Kind)
+	assert.GreaterOrEqual(t, len(complete.Turns), 2) // user + assistant
+
+	// Verify user turn content.
+	userTurn := complete.Turns[0]
+	assert.Equal(t, "user", userTurn.Role)
+	require.Len(t, userTurn.Artifacts, 1)
+	assert.Equal(t, "text", userTurn.Artifacts[0].Kind)
+	assert.Equal(t, "hi", userTurn.Artifacts[0].Content)
+
+	// Verify assistant turn content.
+	assistantTurn := complete.Turns[len(complete.Turns)-1]
+	assert.Equal(t, "assistant", assistantTurn.Role)
+	require.Len(t, assistantTurn.Artifacts, 1)
+	assert.Equal(t, "text", assistantTurn.Artifacts[0].Kind)
+	assert.Equal(t, "Hello world", assistantTurn.Artifacts[0].Content)
+}
+
+func TestHandler_SendMessage_NotFound(t *testing.T) {
+	newStep := func() *loop.Step { return loop.New() }
+	h := NewHandler(&mockProvider{}, newStep)
+
+	body := `{"content": "hi"}`
+	req := httptest.NewRequest("POST", "/sessions/nonexistent/messages", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	assert.Equal(t, 404, rr.Code)
+}
+
+func TestHandler_SendMessage_NoKinds(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+		},
+	}
+	newStep := func() *loop.Step { return loop.New() }
+	h := NewHandler(prov, newStep)
+
+	// Create a session.
+	createReq := httptest.NewRequest("POST", "/sessions", nil)
+	createRr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(createRr, createReq)
+	require.Equal(t, 201, createRr.Code)
+
+	var createResp map[string]string
+	require.NoError(t, json.Unmarshal(createRr.Body.Bytes(), &createResp))
+	sessionID := createResp["id"]
+
+	// Send a message without specifying kinds.
+	body := `{"content": "hi"}`
+	req := httptest.NewRequest("POST", "/sessions/"+sessionID+"/messages", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	require.Equal(t, 200, rr.Code)
+
+	// Should still get the complete event at the end.
+	lines := strings.Split(strings.TrimSpace(rr.Body.String()), "\n")
+	require.NotEmpty(t, lines)
+
+	var complete completeEventJSON
+	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &complete))
+	assert.Equal(t, "complete", complete.Kind)
 }
 
 func TestHandler_ServeMux_UnknownPaths(t *testing.T) {
