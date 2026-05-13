@@ -2,6 +2,9 @@
 // It exposes a stateful chat server over HTTP with NDJSON streaming and
 // an optional SSE ambient channel, backed by an OpenAI-compatible provider.
 //
+// A built-in web chat UI is served at http://localhost:8080/ when the
+// application starts. Open a browser to interact without curl.
+//
 // Usage:
 //
 //	export ORE_API_KEY=...
@@ -152,8 +155,8 @@ func run() error {
 		return err
 	}
 
-	// Create the HTTP conduit handler.
-	handler := httpc.NewHandler(stepFactory, messageHandler)
+	// Create the HTTP conduit handler with the embedded web UI enabled.
+	handler := httpc.NewHandler(stepFactory, messageHandler, httpc.WithUI())
 
 	// Start the HTTP server.
 	server := &http.Server{
