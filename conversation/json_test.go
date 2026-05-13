@@ -146,6 +146,28 @@ func TestJSONStore_CreatedAtPreserved(t *testing.T) {
 	assert.True(t, got.UpdatedAt.After(createdAt))
 }
 
+func TestJSONStore_List(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewJSONStore(dir)
+	require.NoError(t, err)
+
+	conv1, err := store.Create()
+	require.NoError(t, err)
+	conv2, err := store.Create()
+	require.NoError(t, err)
+
+	list, err := store.List()
+	require.NoError(t, err)
+	require.Len(t, list, 2)
+
+	ids := make(map[string]bool)
+	for _, conv := range list {
+		ids[conv.ID] = true
+	}
+	assert.True(t, ids[conv1.ID])
+	assert.True(t, ids[conv2.ID])
+}
+
 func TestJSONStore_ConcurrentCreate(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewJSONStore(dir)

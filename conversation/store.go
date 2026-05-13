@@ -15,6 +15,7 @@ type Store interface {
 	Get(id string) (*Conversation, bool)
 	Save(conv *Conversation) error
 	Delete(id string) bool
+	List() ([]*Conversation, error)
 }
 
 // Conversation represents a persistent conversation with identity,

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,15 +20,46 @@ type JSONStore struct {
 }
 
 // NewJSONStore creates a new JSONStore backed by the given directory.
-// The directory is created if it does not exist.
+// The directory is created if it does not exist. Existing conversations
+// are loaded from disk into the in-memory cache.
 func NewJSONStore(dir string) (*JSONStore, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("create store directory: %w", err)
 	}
 
+	cache := make(map[string]*Conversation)
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("read store directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		id := strings.TrimSuffix(name, ".json")
+
+		path := filepath.Join(dir, name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+
+		conv := &Conversation{}
+		if err := json.Unmarshal(data, conv); err != nil {
+			continue
+		}
+		cache[id] = conv
+	}
+
 	return &JSONStore{
 		dir:   dir,
-		cache: make(map[string]*Conversation),
+		cache: cache,
 	}, nil
 }
 
@@ -126,4 +158,15 @@ func (s *JSONStore) Delete(id string) bool {
 	}
 
 	return ok
+}
+
+// List returns all conversations in the store.
+func (s *JSONStore) List() ([]*Conversation, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make([]*Conversation, 0, len(s.cache))
+	for _, conv := range s.cache {
+		result = append(result, conv)
+	}
+	return result, nil
 }

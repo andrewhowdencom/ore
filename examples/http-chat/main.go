@@ -45,6 +45,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
+	"github.com/andrewhowdencom/ore/conversation"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/provider/openai"
@@ -159,8 +160,9 @@ func run() error {
 		return err
 	}
 
-	// Create the HTTP conduit handler with the embedded web UI enabled.
-	handler := httpc.NewHandler(stepFactory, messageHandler, httpc.WithUI())
+	// Create the HTTP conduit handler.
+	convStore := conversation.NewMemoryStore()
+	handler := httpc.NewHandler(convStore, stepFactory, messageHandler, httpc.WithUI())
 
 	// Start the HTTP server.
 	server := &http.Server{

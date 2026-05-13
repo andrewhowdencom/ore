@@ -84,6 +84,25 @@ func TestConversation_Lock(t *testing.T) {
 	conv.Unlock()
 }
 
+func TestMemoryStore_List(t *testing.T) {
+	store := NewMemoryStore()
+	conv1, err := store.Create()
+	require.NoError(t, err)
+	conv2, err := store.Create()
+	require.NoError(t, err)
+
+	list, err := store.List()
+	require.NoError(t, err)
+	require.Len(t, list, 2)
+
+	ids := make(map[string]bool)
+	for _, conv := range list {
+		ids[conv.ID] = true
+	}
+	assert.True(t, ids[conv1.ID])
+	assert.True(t, ids[conv2.ID])
+}
+
 func TestMemoryStore_ConcurrentCreate(t *testing.T) {
 	store := NewMemoryStore()
 	var wg sync.WaitGroup

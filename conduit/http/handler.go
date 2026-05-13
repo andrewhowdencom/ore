@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	stdhttp "net/http"
 	"strings"
+	"sync"
+	"time"
 
+	"github.com/andrewhowdencom/ore/conversation"
 	"github.com/andrewhowdencom/ore/loop"
 )
 
@@ -32,22 +35,26 @@ func WithUI() Option {
 // Handler provides HTTP endpoints for the ore framework's conversation
 // primitives. It is mounted on an http.ServeMux via ServeMux().
 type Handler struct {
+	convStore      conversation.Store
 	newStep        func() *loop.Step
 	messageHandler MessageHandler
+	convStore      conversation.Store
+	newStep        func() *loop.Step
+	messageHandler MessageHandler
+	sessions       map[string]*Session
+	mu             sync.RWMutex
 	store          *SessionStore
 	withUI         bool
 }
 
-// NewHandler creates a new Handler with the given Step factory and message handler.
-// The Step factory is called once per session to create an isolated Step
-// with its own FanOut. The messageHandler processes each incoming user message
-// within a locked session; events emitted by the Step's FanOut are streamed
-// to the client as NDJSON.
-func NewHandler(newStep func() *loop.Step, messageHandler MessageHandler, opts ...Option) *Handler {
+// NewHandler creates a new Handler with the given conversation store,
+// Step factory, and message handler.
+func NewHandler(store conversation.Store, newStep func() *loop.Step, messageHandler MessageHandler, opts ...Option) *Handler {
 	h := &Handler{
+		convStore:      store,
 		newStep:        newStep,
 		messageHandler: messageHandler,
-		store:          NewSessionStore(),
+		sessions:       make(map[string]*Session),
 	}
 	for _, opt := range opts {
 		opt(h)
@@ -56,14 +63,13 @@ func NewHandler(newStep func() *loop.Step, messageHandler MessageHandler, opts .
 }
 
 // ServeMux returns an http.ServeMux with all HTTP conduit routes registered.
-// Routes use Go 1.22+ METHOD path patterns (e.g. "POST /sessions",
-// "DELETE /sessions/{id}").
 func (h *Handler) ServeMux() *stdhttp.ServeMux {
 	mux := stdhttp.NewServeMux()
 	mux.HandleFunc("POST /sessions", h.createSession)
 	mux.HandleFunc("DELETE /sessions/{id}", h.deleteSession)
 	mux.HandleFunc("POST /sessions/{id}/messages", h.sendMessage)
 	mux.HandleFunc("GET /sessions/{id}/events", h.sessionEvents)
+	mux.HandleFunc("GET /conversations", h.listConversations)
 	if h.withUI {
 		mux.HandleFunc("GET /", h.serveUI)
 		mux.HandleFunc("GET /chat.js", h.serveUI)
@@ -72,16 +78,45 @@ func (h *Handler) ServeMux() *stdhttp.ServeMux {
 }
 
 // createSession handles POST /sessions by creating a new ephemeral session.
-// On success it responds with 201 Created and a JSON body:
+// If a "conversation_id" is provided in the JSON body, the session attaches
+// to an existing conversation. On success it responds with 201 Created and a
+// JSON body:
 //
 //	{"id": "<session-id>", "events_url": "/sessions/<session-id>/events"}
 func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-	step := h.newStep()
-	session, err := h.store.Create(step)
-	if err != nil {
-		w.WriteHeader(stdhttp.StatusInternalServerError)
-		return
+	var req struct {
+		ConversationID string `json:"conversation_id"`
 	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	var conv *conversation.Conversation
+	var err error
+
+	if req.ConversationID != "" {
+		var ok bool
+		conv, ok = h.convStore.Get(req.ConversationID)
+		if !ok {
+			w.WriteHeader(stdhttp.StatusNotFound)
+			return
+		}
+	} else {
+		conv, err = h.convStore.Create()
+		if err != nil {
+			w.WriteHeader(stdhttp.StatusInternalServerError)
+			return
+		}
+	}
+
+	step := h.newStep()
+	session := &Session{
+		id:   conv.ID,
+		conv: conv,
+		step: step,
+	}
+
+	h.mu.Lock()
+	h.sessions[conv.ID] = session
+	h.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(stdhttp.StatusCreated)
@@ -92,13 +127,24 @@ func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 }
 
 // deleteSession handles DELETE /sessions/{id} by removing the session and
-// closing its Step.
+// closing its Step. The conversation is NOT deleted from the store.
 func (h *Handler) deleteSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	id := r.PathValue("id")
-	if ok := h.store.Delete(id); !ok {
+
+	h.mu.Lock()
+	session, ok := h.sessions[id]
+	delete(h.sessions, id)
+	h.mu.Unlock()
+
+	if !ok {
 		w.WriteHeader(stdhttp.StatusNotFound)
 		return
 	}
+
+	if session.step != nil {
+		_ = session.step.Close()
+	}
+
 	w.WriteHeader(stdhttp.StatusNoContent)
 }
 
@@ -106,7 +152,11 @@ func (h *Handler) deleteSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 // configured messageHandler and streaming events as NDJSON.
 func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	id := r.PathValue("id")
-	session, ok := h.store.Get(id)
+
+	h.mu.RLock()
+	session, ok := h.sessions[id]
+	h.mu.RUnlock()
+
 	if !ok {
 		w.WriteHeader(stdhttp.StatusNotFound)
 		return
@@ -116,7 +166,10 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		w.WriteHeader(stdhttp.StatusConflict)
 		return
 	}
-	defer session.Unlock()
+	defer func() {
+		_ = h.convStore.Save(session.conv)
+		session.Unlock()
+	}()
 
 	// Parse request body.
 	var req struct {
@@ -134,7 +187,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 
 	// Capture turn count before the messageHandler runs so we can return all new turns.
-	beforeCount := len(session.state.Turns())
+	beforeCount := len(session.State().Turns())
 
 	// Subscribe to the session's FanOut before the goroutine starts.
 	subCh := session.step.Subscribe(req.Kinds...)
@@ -180,7 +233,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 				_ = nw.WriteEvent(data)
 			}
 			// Stream the complete event with all new turns.
-			newTurns := session.state.Turns()[beforeCount:]
+			newTurns := session.State().Turns()[beforeCount:]
 			data, _ := MarshalCompleteEvent(newTurns)
 			_ = nw.WriteEvent(data)
 			return
@@ -217,7 +270,11 @@ func drainSubscription(subCh <-chan loop.OutputEvent, nw *ndjsonWriter) {
 // SSE connection that streams events from the session's FanOut.
 func (h *Handler) sessionEvents(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	id := r.PathValue("id")
-	session, ok := h.store.Get(id)
+
+	h.mu.RLock()
+	session, ok := h.sessions[id]
+	h.mu.RUnlock()
+
 	if !ok {
 		w.WriteHeader(stdhttp.StatusNotFound)
 		return
@@ -292,4 +349,32 @@ func (h *Handler) serveUI(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	default:
 		w.WriteHeader(stdhttp.StatusNotFound)
 	}
+}
+
+// listConversations handles GET /conversations by returning all conversations
+// in the store as a JSON array.
+func (h *Handler) listConversations(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+	convs, err := h.convStore.List()
+	if err != nil {
+		w.WriteHeader(stdhttp.StatusInternalServerError)
+		return
+	}
+
+	type summary struct {
+		ID        string    `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+	}
+
+	result := make([]summary, len(convs))
+	for i, conv := range convs {
+		result[i] = summary{
+			ID:        conv.ID,
+			CreatedAt: conv.CreatedAt,
+			UpdatedAt: conv.UpdatedAt,
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(result)
 }

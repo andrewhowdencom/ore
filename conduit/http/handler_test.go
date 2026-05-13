@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/conversation"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
@@ -89,18 +90,32 @@ func turnMessageHandler(p provider.Provider) MessageHandler {
 	}
 }
 
+// errStore is a Store that always returns an error from Create.
+type errStore struct{}
+
+func (e *errStore) Create() (*conversation.Conversation, error) {
+	return nil, fmt.Errorf("store error")
+}
+func (e *errStore) Get(string) (*conversation.Conversation, bool)  { return nil, false }
+func (e *errStore) Save(*conversation.Conversation) error           { return nil }
+func (e *errStore) Delete(string) bool                               { return false }
+func (e *errStore) List() ([]*conversation.Conversation, error)       { return nil, nil }
+
 func TestNewHandler(t *testing.T) {
+	store := conversation.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, simpleMessageHandler())
+	h := NewHandler(store, newStep, simpleMessageHandler())
 	require.NotNil(t, h)
 	assert.NotNil(t, h.newStep)
 	assert.NotNil(t, h.messageHandler)
-	assert.NotNil(t, h.store)
+	assert.NotNil(t, h.convStore)
+	assert.NotNil(t, h.sessions)
 }
 
 func TestHandler_ServeMux_Routing(t *testing.T) {
+	store := conversation.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, simpleMessageHandler())
+	h := NewHandler(store, newStep, simpleMessageHandler())
 	server := httptest.NewServer(h.ServeMux())
 	defer server.Close()
 
@@ -114,6 +129,7 @@ func TestHandler_ServeMux_Routing(t *testing.T) {
 		{"delete session not found", "DELETE", "/sessions/abc-123", 404},
 		{"send message not found", "POST", "/sessions/abc-123/messages", 404},
 		{"session events not found", "GET", "/sessions/abc-123/events", 404},
+		{"list conversations", "GET", "/conversations", 200},
 		{"get sessions method not allowed", "GET", "/sessions", 405},
 		{"post to session root method not allowed", "POST", "/sessions/abc-123", 405},
 		{"put method not allowed", "PUT", "/sessions/abc-123", 405},
@@ -130,8 +146,9 @@ func TestHandler_ServeMux_Routing(t *testing.T) {
 }
 
 func TestHandler_CreateSession(t *testing.T) {
+	store := conversation.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, simpleMessageHandler())
+	h := NewHandler(store, newStep, simpleMessageHandler())
 
 	req := httptest.NewRequest("POST", "/sessions", nil)
 	rr := httptest.NewRecorder()
@@ -145,14 +162,15 @@ func TestHandler_CreateSession(t *testing.T) {
 	require.NotEmpty(t, resp["id"])
 	assert.Equal(t, "/sessions/"+resp["id"]+"/events", resp["events_url"])
 
-	// Verify the session exists in the store.
-	_, ok := h.store.Get(resp["id"])
+	// Verify the conversation exists in the store.
+	_, ok := store.Get(resp["id"])
 	assert.True(t, ok)
 }
 
 func TestHandler_CreateSession_StoresStep(t *testing.T) {
+	store := conversation.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, simpleMessageHandler())
+	h := NewHandler(store, newStep, simpleMessageHandler())
 
 	req := httptest.NewRequest("POST", "/sessions", nil)
 	rr := httptest.NewRecorder()
@@ -163,19 +181,16 @@ func TestHandler_CreateSession_StoresStep(t *testing.T) {
 	var resp map[string]string
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
 
-	session, ok := h.store.Get(resp["id"])
+	session, ok := h.sessions[resp["id"]]
 	require.True(t, ok)
 	assert.NotNil(t, session.step)
-	assert.NotNil(t, session.state)
+	assert.NotNil(t, session.conv)
 }
 
-func TestHandler_CreateSession_RandFailure(t *testing.T) {
-	old := randRead
-	randRead = &failReader{}
-	defer func() { randRead = old }()
-
+func TestHandler_CreateSession_StoreError(t *testing.T) {
+	store := &errStore{}
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, simpleMessageHandler())
+	h := NewHandler(store, newStep, simpleMessageHandler())
 
 	req := httptest.NewRequest("POST", "/sessions", nil)
 	rr := httptest.NewRecorder()
@@ -184,9 +199,50 @@ func TestHandler_CreateSession_RandFailure(t *testing.T) {
 	assert.Equal(t, 500, rr.Code)
 }
 
-func TestHandler_DeleteSession(t *testing.T) {
+func TestHandler_CreateSession_AttachExisting(t *testing.T) {
+	store := conversation.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, simpleMessageHandler())
+	h := NewHandler(store, newStep, simpleMessageHandler())
+
+	// Create a conversation directly in the store.
+	conv, err := store.Create()
+	require.NoError(t, err)
+
+	// Attach to the existing conversation.
+	body := fmt.Sprintf(`{"conversation_id": "%s"}`, conv.ID)
+	req := httptest.NewRequest("POST", "/sessions", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	require.Equal(t, 201, rr.Code)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	assert.Equal(t, conv.ID, resp["id"])
+
+	// Verify the session references the same conversation.
+	session, ok := h.sessions[conv.ID]
+	require.True(t, ok)
+	assert.Equal(t, conv.ID, session.conv.ID)
+}
+
+func TestHandler_CreateSession_AttachNotFound(t *testing.T) {
+	store := conversation.NewMemoryStore()
+	newStep := func() *loop.Step { return loop.New() }
+	h := NewHandler(store, newStep, simpleMessageHandler())
+
+	body := `{"conversation_id": "nonexistent"}`
+	req := httptest.NewRequest("POST", "/sessions", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	assert.Equal(t, 404, rr.Code)
+}
+
+func TestHandler_DeleteSession(t *testing.T) {
+	store := conversation.NewMemoryStore()
+	newStep := func() *loop.Step { return loop.New() }
+	h := NewHandler(store, newStep, simpleMessageHandler())
 
 	// Create a session first.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -206,14 +262,19 @@ func TestHandler_DeleteSession(t *testing.T) {
 	assert.Equal(t, 204, deleteRr.Code)
 	assert.Empty(t, deleteRr.Body.String())
 
-	// Verify the session no longer exists.
-	_, ok := h.store.Get(sessionID)
+	// Verify the session no longer exists in the handler.
+	_, ok := h.sessions[sessionID]
 	assert.False(t, ok)
+
+	// Verify the conversation still exists in the store.
+	_, ok = store.Get(sessionID)
+	assert.True(t, ok)
 }
 
 func TestHandler_DeleteSession_NotFound(t *testing.T) {
+	store := conversation.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, simpleMessageHandler())
+	h := NewHandler(store, newStep, simpleMessageHandler())
 
 	req := httptest.NewRequest("DELETE", "/sessions/nonexistent", nil)
 	rr := httptest.NewRecorder()
@@ -229,8 +290,9 @@ func TestHandler_SendMessage(t *testing.T) {
 			artifact.TextDelta{Content: " world"},
 		},
 	}
+	store := conversation.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, turnMessageHandler(prov))
+	h := NewHandler(store, newStep, turnMessageHandler(prov))
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -277,8 +339,9 @@ func TestHandler_SendMessage(t *testing.T) {
 }
 
 func TestHandler_SendMessage_NotFound(t *testing.T) {
+	store := conversation.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, simpleMessageHandler())
+	h := NewHandler(store, newStep, simpleMessageHandler())
 
 	body := `{"content": "hi"}`
 	req := httptest.NewRequest("POST", "/sessions/nonexistent/messages", strings.NewReader(body))
@@ -294,8 +357,9 @@ func TestHandler_SendMessage_NoKinds(t *testing.T) {
 			artifact.TextDelta{Content: "Hello"},
 		},
 	}
+	store := conversation.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, turnMessageHandler(prov))
+	h := NewHandler(store, newStep, turnMessageHandler(prov))
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -338,8 +402,9 @@ func TestSSEWriter(t *testing.T) {
 }
 
 func TestHandler_SessionEvents_NotFound(t *testing.T) {
+	store := conversation.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, simpleMessageHandler())
+	h := NewHandler(store, newStep, simpleMessageHandler())
 
 	req := httptest.NewRequest("GET", "/sessions/nonexistent/events", nil)
 	rr := httptest.NewRecorder()
@@ -349,8 +414,9 @@ func TestHandler_SessionEvents_NotFound(t *testing.T) {
 }
 
 func TestHandler_SessionEvents_ContextCancel(t *testing.T) {
+	store := conversation.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, simpleMessageHandler())
+	h := NewHandler(store, newStep, simpleMessageHandler())
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -382,8 +448,9 @@ func TestHandler_SendMessage_Concurrent(t *testing.T) {
 			artifact.TextDelta{Content: "Hello"},
 		},
 	}
+	store := conversation.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, turnMessageHandler(prov))
+	h := NewHandler(store, newStep, turnMessageHandler(prov))
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -396,7 +463,7 @@ func TestHandler_SendMessage_Concurrent(t *testing.T) {
 	sessionID := createResp["id"]
 
 	// Lock the session manually to simulate an in-progress turn.
-	session, _ := h.store.Get(sessionID)
+	session := h.sessions[sessionID]
 	require.True(t, session.Lock())
 
 	// Send a message while the session is busy.
@@ -412,8 +479,9 @@ func TestHandler_SendMessage_Concurrent(t *testing.T) {
 }
 
 func TestHandler_SendMessage_MalformedJSON(t *testing.T) {
+	store := conversation.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, simpleMessageHandler())
+	h := NewHandler(store, newStep, simpleMessageHandler())
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -441,8 +509,9 @@ func TestHandler_SendMessage_ProviderError(t *testing.T) {
 		},
 		err: fmt.Errorf("provider failure"),
 	}
+	store := conversation.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, turnMessageHandler(prov))
+	h := NewHandler(store, newStep, turnMessageHandler(prov))
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -485,6 +554,33 @@ func TestHandler_SendMessage_ProviderError(t *testing.T) {
 	assert.Equal(t, "complete", complete.Kind)
 }
 
+func TestHandler_ListConversations(t *testing.T) {
+	store := conversation.NewMemoryStore()
+	newStep := func() *loop.Step { return loop.New() }
+	h := NewHandler(store, newStep, simpleMessageHandler())
+
+	// Create a session (which also creates a conversation).
+	createReq := httptest.NewRequest("POST", "/sessions", nil)
+	createRr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(createRr, createReq)
+	require.Equal(t, 201, createRr.Code)
+
+	var createResp map[string]string
+	require.NoError(t, json.Unmarshal(createRr.Body.Bytes(), &createResp))
+
+	req := httptest.NewRequest("GET", "/conversations", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	require.Equal(t, 200, rr.Code)
+	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+
+	var resp []map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Len(t, resp, 1)
+	assert.Equal(t, createResp["id"], resp[0]["id"])
+}
+
 func TestNDJSONWriter_NoFlusher(t *testing.T) {
 	w := &noFlusherWriter{
 		header: make(http.Header),
@@ -504,8 +600,9 @@ func TestSSEWriter_NoFlusher(t *testing.T) {
 }
 
 func TestHandler_ServeMux_UnknownPaths(t *testing.T) {
+	store := conversation.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
-	h := NewHandler(newStep, simpleMessageHandler())
+	h := NewHandler(store, newStep, simpleMessageHandler())
 
 	tests := []struct {
 		name       string

@@ -70,6 +70,17 @@ func (s *MemoryStore) Delete(id string) bool {
 	return ok
 }
 
+// List returns all conversations in the store.
+func (s *MemoryStore) List() ([]*Conversation, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make([]*Conversation, 0, len(s.conversations))
+	for _, conv := range s.conversations {
+		result = append(result, conv)
+	}
+	return result, nil
+}
+
 // generateID creates a random 32-character hex string (128 bits).
 func generateID() (string, error) {
 	b := make([]byte, 16)
