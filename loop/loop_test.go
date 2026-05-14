@@ -444,7 +444,7 @@ func TestStep_Turn_OutputEvents(t *testing.T) {
 
 	events := collectEvents(ch, 100*time.Millisecond)
 
-	require.Len(t, events, 4)
+	require.Len(t, events, 5)
 	assert.Equal(t, "text_delta", events[0].Kind())
 	assert.Equal(t, "wor", events[0].(artifact.TextDelta).Content)
 	assert.Equal(t, "text_delta", events[1].Kind())
@@ -452,16 +452,20 @@ func TestStep_Turn_OutputEvents(t *testing.T) {
 	assert.Equal(t, "text", events[2].Kind())
 	text, ok := events[2].(artifact.Text)
 	require.True(t, ok)
+	assert.Equal(t, "world", text.Content)
+	assert.Equal(t, "text", events[3].Kind())
+	text, ok = events[3].(artifact.Text)
+	require.True(t, ok)
 	assert.Equal(t, "world!", text.Content)
-	assert.Equal(t, "turn_complete", events[3].Kind())
-	assert.Equal(t, state.RoleAssistant, events[3].(TurnCompleteEvent).Turn.Role)
+	assert.Equal(t, "turn_complete", events[4].Kind())
+	assert.Equal(t, state.RoleAssistant, events[4].(TurnCompleteEvent).Turn.Role)
 	// Deltas are accumulated into ordered blocks: Text{"wor"} merges with
 	// Text{"ld"} into Text{"world"}, then Text{"world!"} starts a new block.
-	require.Len(t, events[3].(TurnCompleteEvent).Turn.Artifacts, 2)
-	text, ok = events[3].(TurnCompleteEvent).Turn.Artifacts[0].(artifact.Text)
+	require.Len(t, events[4].(TurnCompleteEvent).Turn.Artifacts, 2)
+	text, ok = events[4].(TurnCompleteEvent).Turn.Artifacts[0].(artifact.Text)
 	require.True(t, ok)
 	assert.Equal(t, "world", text.Content)
-	text, ok = events[3].(TurnCompleteEvent).Turn.Artifacts[1].(artifact.Text)
+	text, ok = events[4].(TurnCompleteEvent).Turn.Artifacts[1].(artifact.Text)
 	require.True(t, ok)
 	assert.Equal(t, "world!", text.Content)
 }
