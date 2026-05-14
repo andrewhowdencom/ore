@@ -6,6 +6,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
+	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
 )
 
@@ -39,5 +40,15 @@ func (r *ReAct) Run(ctx context.Context, st state.State) (state.State, error) {
 		}
 
 		st = result
+	}
+}
+
+// NewTurnProcessor returns a session.TurnProcessor that runs the ReAct
+// cognitive pattern. It creates a temporary ReAct with the session's
+// loop.Step and the Manager's provider for each turn.
+func NewTurnProcessor() session.TurnProcessor {
+	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+		react := &ReAct{Step: step, Provider: prov}
+		return react.Run(ctx, st)
 	}
 }
