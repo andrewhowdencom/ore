@@ -83,7 +83,7 @@ func (m *model) renderMarkdown(text string, width int) (string, error) {
 	// If no renderer was supplied (e.g. in tests), fall back to the
 	// production glamour renderer.
 	if m.md == nil {
-		m.md = glamourMarkdownRenderer{}
+		m.md = newGlamourMarkdownRenderer()
 	}
 	return m.md.Render(text, width)
 }

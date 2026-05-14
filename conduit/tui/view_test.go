@@ -13,7 +13,7 @@ import (
 
 func TestRenderMarkdown(t *testing.T) {
 	input := "# Hello\n\nSome **bold** text and `code`."
-	output, err := glamourMarkdownRenderer{}.Render(input, 80)
+	output, err := newGlamourMarkdownRenderer().Render(input, 80)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output)
 	// Output should differ from input (glamour processes the markdown).
@@ -22,7 +22,7 @@ func TestRenderMarkdown(t *testing.T) {
 
 func TestRenderMarkdown_CodeBlock(t *testing.T) {
 	input := "```go\nfunc main() {\n    fmt.Println(\"hi\")\n}\n```"
-	output, err := glamourMarkdownRenderer{}.Render(input, 80)
+	output, err := newGlamourMarkdownRenderer().Render(input, 80)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output)
 	// Verify glamour processed the code block (output differs from input).
@@ -33,7 +33,7 @@ func TestRenderMarkdown_NegativeWidth(t *testing.T) {
 	// glamour.NewTermRenderer may accept any width; ensure we handle
 	// a negative width without panic.
 	input := "hello"
-	output, err := glamourMarkdownRenderer{}.Render(input, -1)
+	output, err := newGlamourMarkdownRenderer().Render(input, -1)
 	// We allow either success or error; the caller handles errors.
 	_ = output
 	_ = err
@@ -124,7 +124,7 @@ func TestRenderMarkdown_MalformedInput(t *testing.T) {
 		"```unclosed",
 	}
 	for _, input := range cases {
-		output, err := glamourMarkdownRenderer{}.Render(input, 80)
+		output, err := newGlamourMarkdownRenderer().Render(input, 80)
 		assert.NoError(t, err, "malformed markdown %q should not error", input)
 		assert.NotEmpty(t, output)
 	}
@@ -132,7 +132,7 @@ func TestRenderMarkdown_MalformedInput(t *testing.T) {
 
 func TestRenderMarkdown_NarrowWidth(t *testing.T) {
 	for _, width := range []int{1, 2, 5} {
-		output, err := glamourMarkdownRenderer{}.Render("hello world", width)
+		output, err := newGlamourMarkdownRenderer().Render("hello world", width)
 		assert.NoError(t, err, "narrow width %d should not panic", width)
 		assert.NotEmpty(t, output)
 	}

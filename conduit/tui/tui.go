@@ -80,7 +80,7 @@ func New(mgr *session.Manager, threadID string) *TUI {
 		eventsCh: surfEventsCh,
 		viewport: viewport.New(0, 0),
 		textarea: ta,
-		md:       glamourMarkdownRenderer{},
+		md:       newGlamourMarkdownRenderer(),
 	}
 	p := tea.NewProgram(&m, tea.WithAltScreen())
 	t := &TUI{
