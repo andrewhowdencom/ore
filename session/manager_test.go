@@ -472,6 +472,38 @@ func TestManager_Check_NotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found")
 }
 
+func TestSession_Cancel_Idle(t *testing.T) {
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, &mockProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	sess, err := mgr.Create()
+	require.NoError(t, err)
+
+	// Cancel on an idle session (no active turn) should be a no-op.
+	err = sess.Cancel()
+	require.NoError(t, err)
+}
+
+func TestSession_Close_Idempotent(t *testing.T) {
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, &mockProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	sess, err := mgr.Create()
+	require.NoError(t, err)
+
+	// First close should succeed.
+	err = sess.Close()
+	require.NoError(t, err)
+
+	// Second close should also succeed (idempotent, no panic).
+	err = sess.Close()
+	require.NoError(t, err)
+
+	// Subscribe should still error after double-close.
+	_, err = sess.Subscribe("text_delta")
+	require.Error(t, err)
+}
+
 // errStore is a Store that always returns an error from Save.
 type errStore struct{}
 
