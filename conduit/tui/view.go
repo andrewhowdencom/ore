@@ -33,6 +33,10 @@ func renderBlock(label string, labelStyle lipgloss.Style, content string, width 
 
 // buildContent constructs the full conversation string for the viewport,
 // including all turns, the pending placeholder, and the status line.
+//
+// This helper was extracted from View() so that Update() can refresh the
+// viewport content before calling GotoBottom(), fixing a timing bug where
+// auto-scroll operated on stale content height and hid newly-rendered output.
 func (m *model) buildContent() string {
 	var b strings.Builder
 
@@ -59,6 +63,8 @@ func (m *model) buildContent() string {
 					} else {
 						b.WriteString(renderBlock("Assistant: ", assistantStyle, block.source, width))
 					}
+				// Reasoning blocks are rendered through the same Markdown pipeline
+				// as text blocks; the rendered ANSI is cached in renderedBlock.rendered.
 				case "reasoning":
 					if block.rendered != "" {
 						b.WriteString(renderBlock("Thinking: ", thinkingStyle, block.rendered, 0))

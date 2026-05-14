@@ -20,16 +20,32 @@ type markdownRenderer interface {
 // charmbracelet/glamour. It creates a new TermRenderer per call because
 // glamour renderers are not safe for concurrent reuse and the Bubble Tea model
 // runs on a single goroutine anyway.
+//
+// The renderer loads one of two embedded style files (darkStyle or lightStyle)
+// which are tweaked copies of glamour's built-in themes with document.margin
+// set to 0. Style selection is performed at construction time based on runtime
+// terminal detection: non-terminal defaults to dark; terminal with dark
+// background selects dark; otherwise light.
 type glamourMarkdownRenderer struct {
 	styleBytes []byte
 }
 
+// newGlamourMarkdownRenderer creates a renderer with auto-detected style.
+// It uses term.IsTerminal on os.Stdout and termenv.HasDarkBackground to
+// decide between the embedded dark and light styles.
 func newGlamourMarkdownRenderer() *glamourMarkdownRenderer {
+	return newGlamourMarkdownRendererWithDetectors(
+		func() bool { return term.IsTerminal(int(os.Stdout.Fd())) },
+		termenv.HasDarkBackground,
+	)
+}
+
+func newGlamourMarkdownRendererWithDetectors(isTerminal func() bool, hasDarkBackground func() bool) *glamourMarkdownRenderer {
 	var style []byte
-	if !term.IsTerminal(int(os.Stdout.Fd())) {
+	if !isTerminal() {
 		// Not a terminal; default to dark style.
 		style = darkStyle
-	} else if termenv.HasDarkBackground() {
+	} else if hasDarkBackground() {
 		style = darkStyle
 	} else {
 		style = lightStyle

@@ -785,3 +785,33 @@ func TestModel_Update_RapidSubmissions(t *testing.T) {
 		t.Fatal("expected second event on channel")
 	}
 }
+
+func TestAutoScroll_MultipleTurns(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 5)
+	for i := 0; i < 3; i++ {
+		turn := state.Turn{
+			Role: state.RoleAssistant,
+			Artifacts: []artifact.Artifact{
+				artifact.Text{Content: strings.Repeat("content ", 200)},
+			},
+		}
+		newM, _ := m.Update(turnMsg{turn: turn})
+		m = *newM.(*model)
+		assert.True(t, m.viewport.AtBottom(), "turn %d should auto-scroll to bottom", i+1)
+	}
+}
+
+func TestUnknownArtifact_Ignored(t *testing.T) {
+	m := model{}
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			unknownArtifact{},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+	require.Len(t, mm.turns, 1)
+	assert.Empty(t, mm.turns[0].blocks, "unknown artifact should produce no blocks")
+}

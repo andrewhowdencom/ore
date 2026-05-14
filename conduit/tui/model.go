@@ -151,6 +151,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 				blocks = append(blocks, block)
+			// Reasoning artifacts are rendered via the Markdown renderer to
+			// support formatting (code fences, bold, etc.) and cached for
+			// later View() calls, just like text artifacts.
 			case artifact.Reasoning:
 				block := renderedBlock{kind: "reasoning", source: a.Content}
 				if msg.turn.Role == state.RoleAssistant {
