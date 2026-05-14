@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"go/parser"
 	"go/token"
+	"os"
+	"path/filepath"
 	"text/template"
 )
 
@@ -41,6 +43,27 @@ func GenerateMainGo(manifest *Manifest) ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
+}
+
+// Generate writes main.go and go.mod into targetDir.
+func Generate(manifest *Manifest, oreModulePath string, targetDir string) error {
+	mainGo, err := GenerateMainGo(manifest)
+	if err != nil {
+		return fmt.Errorf("generate main.go: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "main.go"), mainGo, 0644); err != nil {
+		return fmt.Errorf("write main.go: %w", err)
+	}
+
+	goMod, err := GenerateGoMod(manifest, oreModulePath)
+	if err != nil {
+		return fmt.Errorf("generate go.mod: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "go.mod"), goMod, 0644); err != nil {
+		return fmt.Errorf("write go.mod: %w", err)
+	}
+
+	return nil
 }
 
 // GenerateGoMod produces a go.mod that depends on the local ore module via
