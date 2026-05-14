@@ -228,10 +228,10 @@ This README remains a vision document, but the framework is now partially implem
 - `loop/` — `Step` with `Turn()` method, `BeforeTurn` hook, optional streaming via `OutputEvent` channel, and artifact `Handler` interface for single-turn execution
 - `tool/` — `Registry` for mapping tool names to Go functions, and `Handler` implementing `loop.Handler` for tool execution
 - `cognitive/` — `ReAct` cognitive pattern for multi-turn looping, conduit-agnostic and stateless
-- `conduit/` — `Conduit` interface with ingress events and egress delta/turn/status rendering. The TUI conduit renders assistant turns as rich Markdown via `charmbracelet/glamour` (syntax-highlighted code blocks, headings, bold/italic); streaming text stays plain text so incomplete Markdown never breaks.
+- `conduit/` — `Conduit` interface with ingress events and egress delta/turn/status rendering. The TUI conduit renders complete assistant turns as rich Markdown via `charmbracelet/glamour` (syntax-highlighted code blocks, headings, bold/italic). While a response is pending, the TUI shows a static `Assistant:` / `...` placeholder; no streaming delta rendering is performed.
 - `provider/openai/` — OpenAI-compatible adapter with streaming chat completions and tool calling support
 - `examples/single-turn-cli/` — Reference one-shot CLI application
-- `examples/tui-chat/` — Reference streaming chat REPL using Bubble Tea
+- `examples/tui-chat/` — Reference interactive chat REPL using Bubble Tea
 - `examples/calculator/` — Reference tool-calling application with add and multiply
 - `cmd/forge/` — CLI that reads a YAML manifest and generates a compilable Go agent binary for HTTP or TUI conduits
 

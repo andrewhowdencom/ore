@@ -39,35 +39,6 @@ func TestRenderMarkdown_NegativeWidth(t *testing.T) {
 	_ = err
 }
 
-func TestPrefixLines_SingleLine(t *testing.T) {
-	output := prefixLines("hello", "Label: ", "       ")
-	assert.Equal(t, "Label: hello", output)
-}
-
-func TestPrefixLines_MultiLine(t *testing.T) {
-	output := prefixLines("line1\nline2\nline3", "L: ", "   ")
-	lines := strings.Split(output, "\n")
-	require.Len(t, lines, 3)
-	assert.Equal(t, "L: line1", lines[0])
-	assert.Equal(t, "   line2", lines[1])
-	assert.Equal(t, "   line3", lines[2])
-}
-
-func TestPrefixLines_EmptyText(t *testing.T) {
-	output := prefixLines("", "Label: ", "       ")
-	assert.Equal(t, "Label: ", output)
-}
-
-func TestPrefixLines_WithANSI(t *testing.T) {
-	styled := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000")).Render("red")
-	input := styled + "\nplain"
-	output := prefixLines(input, "L: ", "   ")
-	assert.True(t, strings.HasPrefix(output, "L: "))
-	lines := strings.Split(output, "\n")
-	require.Len(t, lines, 2)
-	assert.True(t, strings.HasPrefix(lines[1], "   "))
-}
-
 func TestModel_View_AssistantTurn_WithRendered(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(80, 20)
@@ -79,6 +50,11 @@ func TestModel_View_AssistantTurn_WithRendered(t *testing.T) {
 	assert.Contains(t, output, "pre-rendered glamour output")
 	// Should not contain the raw Markdown source.
 	assert.NotContains(t, output, "# Hello")
+	idxLabel := strings.Index(output, "Assistant: ")
+	idxContent := strings.Index(output, "pre-rendered glamour output")
+	assert.Greater(t, idxContent, idxLabel, "content should appear after label")
+	segment := output[idxLabel:idxContent]
+	assert.Contains(t, segment, "\n", "label and content should be on separate lines")
 }
 
 func TestModel_View_AssistantTurn_FallbackToPlainText(t *testing.T) {
@@ -90,41 +66,11 @@ func TestModel_View_AssistantTurn_FallbackToPlainText(t *testing.T) {
 	output := m.View()
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "plain text")
-}
-
-func TestModel_View_StreamingText_PlainText(t *testing.T) {
-	m := newTestModel()
-	m.viewport = viewport.New(80, 20)
-	m.streamBlocks = []streamBlock{{kind: "text", content: "streaming text"}}
-	output := m.View()
-	assert.Contains(t, output, "Assistant: ")
-	assert.Contains(t, output, "streaming text")
-}
-
-func TestModel_View_StreamingReasoning(t *testing.T) {
-	m := newTestModel()
-	m.viewport = viewport.New(80, 20)
-	m.streamBlocks = []streamBlock{{kind: "reasoning", content: "thinking..."}}
-	output := m.View()
-	assert.Contains(t, output, "Thinking: ")
-	assert.Contains(t, output, "thinking...")
-}
-
-func TestModel_View_InterleavedStreaming(t *testing.T) {
-	m := newTestModel()
-	m.viewport = viewport.New(80, 20)
-	m.streamBlocks = []streamBlock{
-		{kind: "text", content: "first"},
-		{kind: "reasoning", content: "think"},
-		{kind: "text", content: "second"},
-	}
-	output := m.View()
-	// Verify text and reasoning appear interleaved in order.
-	idxFirst := strings.Index(output, "first")
-	idxThink := strings.Index(output, "think")
-	idxSecond := strings.Index(output, "second")
-	assert.Greater(t, idxThink, idxFirst, "reasoning should appear after first text")
-	assert.Greater(t, idxSecond, idxThink, "second text should appear after reasoning")
+	idxLabel := strings.Index(output, "Assistant: ")
+	idxContent := strings.Index(output, "plain text")
+	assert.Greater(t, idxContent, idxLabel, "content should appear after label")
+	segment := output[idxLabel:idxContent]
+	assert.Contains(t, segment, "\n", "label and content should be on separate lines")
 }
 
 func TestModel_View_AssistantTurn_WithReasoning(t *testing.T) {
@@ -190,4 +136,88 @@ func TestRenderMarkdown_NarrowWidth(t *testing.T) {
 		assert.NoError(t, err, "narrow width %d should not panic", width)
 		assert.NotEmpty(t, output)
 	}
+}
+
+func TestRenderBlock_LabelAboveContent(t *testing.T) {
+	output := renderBlock("You: ", lipgloss.NewStyle(), "hello", 80)
+	assert.Equal(t, "You: \nhello", output)
+}
+
+func TestRenderBlock_WrapsContent(t *testing.T) {
+	text := strings.Repeat("a", 100)
+	output := renderBlock("You: ", lipgloss.NewStyle(), text, 20)
+	lines := strings.Split(output, "\n")
+	assert.Greater(t, len(lines), 2, "long text should wrap to multiple lines")
+	// First line is label, remaining lines are content starting at column 0
+	assert.Equal(t, "You: ", lines[0])
+	for i := 1; i < len(lines); i++ {
+		assert.False(t, strings.HasPrefix(lines[i], " "), "content should start at column 0")
+	}
+}
+
+func TestRenderBlock_StyledLabel(t *testing.T) {
+	style := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000"))
+	output := renderBlock("Label: ", style, "hello", 80)
+	assert.True(t, strings.HasPrefix(output, style.Render("Label: ")))
+}
+
+func TestRenderBlock_EmptyContent(t *testing.T) {
+	output := renderBlock("You: ", lipgloss.NewStyle(), "", 80)
+	assert.Equal(t, "You: ", output)
+}
+
+func TestRenderBlock_PreRenderedWidthZero(t *testing.T) {
+	content := "line1\nline2\nline3"
+	output := renderBlock("Assistant: ", lipgloss.NewStyle(), content, 0)
+	lines := strings.Split(output, "\n")
+	require.Len(t, lines, 4)
+	assert.Equal(t, "Assistant: ", lines[0])
+	assert.Equal(t, "line1", lines[1])
+	assert.Equal(t, "line2", lines[2])
+	assert.Equal(t, "line3", lines[3])
+}
+
+func TestModel_View_PendingPlaceholder(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.pending = true
+	output := m.View()
+	assert.Contains(t, output, "Assistant: ")
+	assert.Contains(t, output, "...")
+	idxLabel := strings.Index(output, "Assistant: ")
+	idxContent := strings.Index(output, "...")
+	assert.Greater(t, idxContent, idxLabel, "placeholder content should appear after label")
+	segment := output[idxLabel:idxContent]
+	assert.Contains(t, segment, "\n", "label and placeholder should be on separate lines")
+}
+
+func TestRenderBlock_Unicode(t *testing.T) {
+	// Japanese characters are typically 2 cells wide.
+	text := "こんにちは世界"
+	output := renderBlock("You: ", lipgloss.NewStyle(), text, 12)
+	lines := strings.Split(output, "\n")
+	// First line is label
+	assert.Equal(t, "You: ", lines[0])
+	// Content should be wrapped considering cell width
+	for i := 1; i < len(lines); i++ {
+		assert.LessOrEqual(t, lipgloss.Width(lines[i]), 12, "line %q exceeds width", lines[i])
+	}
+}
+
+func TestRenderBlock_NegativeWidth(t *testing.T) {
+	// Negative width should skip wrapping and not panic.
+	output := renderBlock("You: ", lipgloss.NewStyle(), "hello", -1)
+	assert.Equal(t, "You: \nhello", output)
+}
+
+func TestRenderBlock_ExactFit(t *testing.T) {
+	// Content whose length exactly matches width should not produce
+	// an extra wrapped line.
+	content := strings.Repeat("a", 20)
+	output := renderBlock("You: ", lipgloss.NewStyle(), content, 20)
+	lines := strings.Split(output, "\n")
+	// Label + one content line
+	assert.Equal(t, 2, len(lines), "exact-fit content should not wrap to extra line")
+	assert.Equal(t, "You: ", lines[0])
+	assert.Equal(t, content, lines[1])
 }

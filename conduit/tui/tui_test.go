@@ -36,7 +36,6 @@ func TestTUI_Capabilities(t *testing.T) {
 	expected := []conduit.Capability{
 		conduit.CapEventSource,
 		conduit.CapShowStatus,
-		conduit.CapRenderDelta,
 		conduit.CapRenderTurn,
 		conduit.CapRenderMarkdown,
 	}
@@ -56,7 +55,6 @@ func TestTUI_Can(t *testing.T) {
 	}{
 		{"event-source", conduit.CapEventSource, true},
 		{"show-status", conduit.CapShowStatus, true},
-		{"render-delta", conduit.CapRenderDelta, true},
 		{"render-turn", conduit.CapRenderTurn, true},
 		{"render-markdown", conduit.CapRenderMarkdown, true},
 		{"render-image", conduit.CapRenderImage, false},
