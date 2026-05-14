@@ -12,7 +12,6 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/conduit"
 	"github.com/andrewhowdencom/ore/session"
@@ -36,7 +35,6 @@ var Descriptor = conduit.Descriptor{
 	Capabilities: []conduit.Capability{
 		conduit.CapEventSource,
 		conduit.CapShowStatus,
-		conduit.CapRenderDelta,
 		conduit.CapRenderTurn,
 		conduit.CapRenderMarkdown,
 	},
@@ -91,11 +89,11 @@ func New(mgr *session.Manager, threadID string) *TUI {
 	}
 
 	// Subscribe to the manager's output stream for this thread.
-	outputCh, err := mgr.Subscribe(threadID, "text_delta", "reasoning_delta", "tool_call_delta", "turn_complete")
+	outputCh, err := mgr.Subscribe(threadID, "turn_complete")
 	if err != nil {
 		// Session may not exist yet; attach and retry.
 		_, _ = mgr.Attach(threadID)
-		outputCh, err = mgr.Subscribe(threadID, "text_delta", "reasoning_delta", "tool_call_delta", "turn_complete")
+		outputCh, err = mgr.Subscribe(threadID, "turn_complete")
 		if err != nil {
 			slog.Error("failed to subscribe to manager output", "err", err)
 		}
@@ -111,8 +109,6 @@ func New(mgr *session.Manager, threadID string) *TUI {
 				case loop.ErrorEvent:
 					// Errors are exposed via status updates rather than the
 					// message loop; the application goroutine handles them.
-				case artifact.Artifact:
-					t.program.Send(deltaMsg{delta: e})
 				}
 			}
 		}()
