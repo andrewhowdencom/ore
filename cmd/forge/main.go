@@ -33,5 +33,12 @@ func run() error {
 	}
 	defer f.Close()
 
-	return fmt.Errorf("manifest parsing not yet implemented")
+	manifest, err := ParseManifest(f)
+	if err != nil {
+		return fmt.Errorf("parse manifest: %w", err)
+	}
+
+	_ = manifest
+
+	return fmt.Errorf("build orchestration not yet implemented")
 }
