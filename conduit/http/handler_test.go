@@ -625,7 +625,7 @@ func TestHandler_ServeMux_UnknownPaths(t *testing.T) {
 }
 
 func TestHandler_WithUI_StaticFiles(t *testing.T) {
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler(), WithUI())
 
@@ -656,7 +656,7 @@ func TestHandler_WithUI_StaticFiles(t *testing.T) {
 }
 
 func TestHandler_WithUI_StaticFiles_ErrorPath(t *testing.T) {
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler(), WithUI())
 
@@ -684,7 +684,7 @@ func TestHandler_WithUI_StaticFiles_ErrorPath(t *testing.T) {
 }
 
 func TestHandler_WithoutUI_Root404(t *testing.T) {
-	store := conversation.NewMemoryStore()
+	store := thread.NewMemoryStore()
 	newStep := func() *loop.Step { return loop.New() }
 	h := NewHandler(store, newStep, simpleMessageHandler())
 
@@ -692,6 +692,8 @@ func TestHandler_WithoutUI_Root404(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ServeMux().ServeHTTP(rr, req)
 	assert.Equal(t, 404, rr.Code)
+}
+
 // boomMessageHandler returns a MessageHandler that always fails.
 func boomMessageHandler() MessageHandler {
 	return func(ctx context.Context, session *Session, content string) error {

@@ -46,7 +46,6 @@ type Handler struct {
 	sessions map[string]*Session
 	// mu protects the sessions map.
 	mu sync.RWMutex
-	store          *SessionStore
 	withUI         bool
 }
 
