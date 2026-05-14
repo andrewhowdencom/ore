@@ -17,21 +17,17 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
-	"sync"
 
-	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
-	"github.com/andrewhowdencom/ore/thread"
-	"github.com/andrewhowdencom/ore/conduit"
-	"github.com/andrewhowdencom/ore/conduit/tui"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider/openai"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/thread"
+	"github.com/andrewhowdencom/ore/conduit/tui"
 )
 
 func main() {
@@ -45,9 +41,6 @@ func main() {
 }
 
 func run() error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	// Parse command-line flags.
 	var threadID string
 	flag.StringVar(&threadID, "thread", "", "existing thread UUID to resume")
@@ -102,89 +95,21 @@ func run() error {
 	}
 	prov := openai.New(apiKey, modelName, opts...)
 
-	// Step with embedded FanOut for event distribution.
-	st := loop.New()
-	defer st.Close()
-
-	// Create TUI conduit subscribed to the event stream.
-	ch := st.Subscribe("text_delta", "reasoning_delta", "tool_call_delta", "turn_complete")
-	s := tui.New(ch)
-
-	// Cognitive pattern.
-	react := &cognitive.ReAct{
-		Step:     st,
-		Provider: prov,
+	// Step factory for the manager.
+	stepFactory := func() *loop.Step {
+		return loop.New()
 	}
 
-	// Event processing goroutine.
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	// Create session manager with the ReAct cognitive pattern.
+	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())
 
-		var mu sync.Mutex
-		var cancelFunc context.CancelFunc
-
-		for event := range s.Events() {
-			switch e := event.(type) {
-			case conduit.UserMessageEvent:
-				// Record the user's message as a non-inference turn so it
-				// appears in the same artifact stream as assistant responses.
-				result, err := react.Step.Submit(ctx, thread.State, state.RoleUser, artifact.Text{Content: e.Content})
-				if err != nil {
-					slog.Error("submit failed", "err", err)
-					continue
-				}
-				_ = result // thread.State is mutated in place
-				if err := s.SetStatus(ctx, "thinking..."); err != nil {
-					slog.Error("set status failed", "err", err)
-				}
-
-				opCtx, cancel := context.WithCancel(ctx)
-				mu.Lock()
-				cancelFunc = cancel
-				mu.Unlock()
-
-				result, err = react.Run(opCtx, thread.State)
-				// State is mutable, so result is the same pointer.
-				_ = result
-
-				// Save thread state after each turn.
-				if err := store.Save(thread); err != nil {
-					slog.Error("save thread failed", "err", err)
-				}
-
-				mu.Lock()
-				cancelFunc = nil
-				mu.Unlock()
-				cancel()
-
-				if err := s.SetStatus(ctx, ""); err != nil {
-					slog.Error("set status failed", "err", err)
-				}
-				if err != nil {
-					slog.Error("react failed", "err", err)
-				}
-
-			case conduit.InterruptEvent:
-				// Propagate a Ctrl+C cancellation to the ongoing inference turn.
-				mu.Lock()
-				if cancelFunc != nil {
-					cancelFunc()
-				}
-				mu.Unlock()
-			}
-		}
-	}()
+	// Create TUI conduit composed with the manager.
+	s := tui.NewWithManager(mgr, thread.ID)
 
 	// Run the TUI. This blocks until the user quits (Ctrl+C).
 	if err := s.Run(); err != nil {
 		return fmt.Errorf("tui exited: %w", err)
 	}
-
-	// Clean shutdown: cancel the context and wait for the event loop to finish.
-	cancel()
-	wg.Wait()
 
 	return nil
 }
