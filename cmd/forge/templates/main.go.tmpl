@@ -1,0 +1,112 @@
+package main
+
+import (
+{{- if eq .ConduitType "tui" }}
+	"flag"
+{{- end }}
+	"fmt"
+	"log/slog"
+{{- if eq .ConduitType "http" }}
+	"net/http"
+{{- end }}
+	"os"
+
+	"github.com/andrewhowdencom/ore/cognitive"
+{{- if eq .ConduitType "http" }}
+	httpc "github.com/andrewhowdencom/ore/conduit/http"
+{{- else }}
+	"github.com/andrewhowdencom/ore/conduit/tui"
+{{- end }}
+	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/provider/openai"
+	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/thread"
+)
+
+func main() {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	slog.SetDefault(logger)
+
+	if err := run(); err != nil {
+		slog.Error("fatal error", "err", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+{{- if eq .ConduitType "tui" }}
+	var threadID string
+	flag.StringVar(&threadID, "thread", "", "existing thread UUID to resume")
+	flag.Parse()
+{{- end }}
+
+	apiKey := os.Getenv("ORE_API_KEY")
+	if apiKey == "" {
+		return fmt.Errorf("ORE_API_KEY not set")
+	}
+
+	modelName := os.Getenv("ORE_MODEL")
+	if modelName == "" {
+		modelName = "gpt-4o"
+	}
+
+	baseURL := os.Getenv("ORE_BASE_URL")
+
+	var store thread.Store
+	if storeDir := os.Getenv("STORE_DIR"); storeDir != "" {
+		var err error
+		store, err = thread.NewJSONStore(storeDir)
+		if err != nil {
+			return fmt.Errorf("create JSON store: %w", err)
+		}
+	} else {
+		store = thread.NewMemoryStore()
+	}
+
+	var opts []openai.Option
+	if baseURL != "" {
+		opts = append(opts, openai.WithBaseURL(baseURL))
+	}
+	prov := openai.New(apiKey, modelName, opts...)
+
+	stepFactory := func() *loop.Step {
+		return loop.New()
+	}
+
+	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())
+
+{{- if eq .ConduitType "http" }}
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	handler := httpc.NewHandler(mgr)
+	server := &http.Server{
+		Addr:    ":" + port,
+		Handler: handler.ServeMux(),
+	}
+
+	slog.Info("starting HTTP server", "addr", server.Addr)
+	return server.ListenAndServe()
+{{- else }}
+	var thr *thread.Thread
+	if threadID != "" {
+		var ok bool
+		thr, ok = store.Get(threadID)
+		if !ok {
+			return fmt.Errorf("thread %q not found", threadID)
+		}
+	} else {
+		var err error
+		thr, err = store.Create()
+		if err != nil {
+			return fmt.Errorf("create thread: %w", err)
+		}
+		slog.Info("thread started", "id", thr.ID)
+	}
+
+	s := tui.New(mgr, thr.ID)
+	return s.Run()
+{{- end }}
+}

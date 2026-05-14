@@ -1,0 +1,5 @@
+dist:
+  name: http-smoke-agent
+  output_path: ./http-smoke-agent
+conduit:
+  type: http
