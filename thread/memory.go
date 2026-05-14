@@ -33,7 +33,7 @@ func (s *MemoryStore) Create() (*Thread, error) {
 
 	thread := &Thread{
 		ID:        id,
-		State:     &state.Memory{},
+		State:     &state.Buffer{},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}

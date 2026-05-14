@@ -99,7 +99,7 @@ func (h *testHandler) Handle(ctx context.Context, art artifact.Artifact, s state
 var _ loop.Handler = (*testHandler)(nil)
 
 func TestReAct_SingleTurn(t *testing.T) {
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 
 	s := loop.New()
 
@@ -126,7 +126,7 @@ func TestReAct_SingleTurn(t *testing.T) {
 }
 
 func TestReAct_ToolLoop(t *testing.T) {
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 
 	toolHandler := &testHandler{
 		fn: func(ctx context.Context, art artifact.Artifact, s state.State) error {
@@ -161,7 +161,7 @@ func TestReAct_ToolLoop(t *testing.T) {
 }
 
 func TestReAct_ProviderError(t *testing.T) {
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 
 	s := loop.New()
 
@@ -179,7 +179,7 @@ func TestReAct_ProviderError(t *testing.T) {
 }
 
 func TestReAct_HandlerError(t *testing.T) {
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 
 	wantErr := errors.New("handler failed")
 	toolHandler := &testHandler{
@@ -211,7 +211,7 @@ func TestReAct_HandlerError(t *testing.T) {
 }
 
 func TestReAct_ContextCancellation(t *testing.T) {
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 
 	prov := &cancelCheckingProvider{}
 	s := loop.New()

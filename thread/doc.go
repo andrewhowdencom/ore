@@ -1,7 +1,7 @@
 // Package thread defines a Store interface and Thread entity
 // for managing persistent, multi-conduit thread state.
 //
-// A Thread holds a stable UUID, a *state.Memory, and timestamps.
+// A Thread holds a stable UUID, a *state.Buffer, and timestamps.
 // It also provides per-thread locking (Lock/Unlock) so multiple
 // conduits can safely append turns to the same thread. Lock is
 // non-blocking: it returns false if the thread is already busy.

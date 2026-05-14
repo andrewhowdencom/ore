@@ -80,7 +80,7 @@ func collectEvents(ch <-chan OutputEvent, timeout time.Duration) []OutputEvent {
 
 func TestStep_Turn_AppendsArtifacts(t *testing.T) {
 	s := New()
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	mock := &mockProvider{
@@ -106,7 +106,7 @@ func TestStep_Turn_AppendsArtifacts(t *testing.T) {
 
 func TestStep_Turn_PropagatesError(t *testing.T) {
 	s := New()
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	wantErr := errors.New("provider failed")
@@ -120,7 +120,7 @@ func TestStep_Turn_PropagatesError(t *testing.T) {
 
 func TestStep_Turn_AppendsReasoningArtifact(t *testing.T) {
 	s := New()
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	mock := &mockProvider{
@@ -146,7 +146,7 @@ func TestStep_Turn_AppendsReasoningArtifact(t *testing.T) {
 
 func TestStep_Turn_EmptyArtifacts(t *testing.T) {
 	s := New()
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	mock := &mockProvider{
@@ -167,7 +167,7 @@ func TestStep_Turn_EmptyArtifacts(t *testing.T) {
 func TestStep_Turn_Handler(t *testing.T) {
 	h := &mockHandler{}
 	s := New(WithHandlers(h))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
@@ -195,7 +195,7 @@ func TestStep_Turn_HandlerAppendsToolResult(t *testing.T) {
 		},
 	}
 	s := New(WithHandlers(h))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
@@ -219,7 +219,7 @@ func TestStep_Turn_HandlerError(t *testing.T) {
 	wantErr := context.Canceled
 	h := &mockHandler{err: wantErr}
 	s := New(WithHandlers(h))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
@@ -240,7 +240,7 @@ func TestStep_Turn_BeforeTurn_TransformsState(t *testing.T) {
 		},
 	}
 	s := New(WithBeforeTurn(before))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	mock := &mockProvider{
@@ -267,7 +267,7 @@ func TestStep_Turn_BeforeTurn_ErrorAborts(t *testing.T) {
 		},
 	}
 	s := New(WithBeforeTurn(before))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	mock := &mockProvider{
@@ -297,7 +297,7 @@ func TestStep_Turn_BeforeTurn_MultipleInOrder(t *testing.T) {
 		},
 	}
 	s := New(WithBeforeTurn(before1, before2))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	mock := &mockProvider{
@@ -332,7 +332,7 @@ func TestStep_Turn_BeforeTurnAndHandler_EndToEnd(t *testing.T) {
 	}
 
 	s := New(WithBeforeTurn(before), WithHandlers(h))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
@@ -376,7 +376,7 @@ func TestStep_Turn_UsageArtifact(t *testing.T) {
 	}
 
 	s := New(WithHandlers(h))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
@@ -405,7 +405,7 @@ func TestStep_Turn_HandlerErrorAfterPartialProcessing(t *testing.T) {
 		},
 	}
 	s := New(WithHandlers(h))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
@@ -427,7 +427,7 @@ func TestStep_Turn_HandlerErrorAfterPartialProcessing(t *testing.T) {
 func TestStep_Turn_OutputEvents(t *testing.T) {
 	s := New()
 	ch := s.Subscribe("text_delta", "text", "turn_complete")
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
@@ -468,7 +468,7 @@ func TestStep_Turn_OutputEvents(t *testing.T) {
 
 func TestStep_Turn_AccumulatesInterleavedDeltas(t *testing.T) {
 	s := New()
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
@@ -505,7 +505,7 @@ func TestStep_Turn_AccumulatesInterleavedDeltas(t *testing.T) {
 
 func TestStep_Turn_AccumulatesAdjacentDeltas(t *testing.T) {
 	s := New()
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
@@ -547,7 +547,7 @@ func TestStep_Turn_OutputEventsWithHandler(t *testing.T) {
 		},
 	}))
 	ch := s.Subscribe("turn_complete")
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
@@ -577,7 +577,7 @@ func TestStep_Turn_OutputEventsWithHandler(t *testing.T) {
 func TestStep_Turn_OutputEvents_OnlyCompletes(t *testing.T) {
 	s := New()
 	ch := s.Subscribe("text_delta", "turn_complete")
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
@@ -609,7 +609,7 @@ func TestStep_Turn_OutputEvents_OnlyCompletes(t *testing.T) {
 
 func TestStep_Turn_DeltasDroppedWithoutSubscriber(t *testing.T) {
 	s := New()
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
@@ -641,7 +641,7 @@ func TestStep_Turn_DeltasDroppedWithoutSubscriber(t *testing.T) {
 func TestStep_Turn_CompleteArtifactEvent(t *testing.T) {
 	s := New()
 	ch := s.Subscribe("text", "turn_complete")
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
@@ -678,7 +678,7 @@ func TestStep_Turn_CompleteArtifactEvent(t *testing.T) {
 func TestStep_Turn_ErrorEmitsCompleteArtifacts(t *testing.T) {
 	s := New()
 	ch := s.Subscribe("text", "error")
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	wantErr := errors.New("provider failed")
@@ -709,7 +709,7 @@ func TestStep_Turn_ErrorEmitsCompleteArtifacts(t *testing.T) {
 func TestStep_Turn_ErrorEvent(t *testing.T) {
 	s := New()
 	ch := s.Subscribe("error")
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	wantErr := errors.New("provider failed")
@@ -735,7 +735,7 @@ func TestStep_Turn_ErrorEvent(t *testing.T) {
 
 func TestStep_Submit_AppendsUserTurn(t *testing.T) {
 	s := New()
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 
 	result, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
 	require.NoError(t, err)
@@ -756,7 +756,7 @@ func TestStep_Submit_AppendsUserTurn(t *testing.T) {
 func TestStep_Submit_EmitsTurnCompleteEvent(t *testing.T) {
 	s := New()
 	ch := s.Subscribe("turn_complete")
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 
 	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
 	require.NoError(t, err)
@@ -782,7 +782,7 @@ func TestStep_Submit_BeforeTurn_TransformsState(t *testing.T) {
 		},
 	}
 	s := New(WithBeforeTurn(before))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 
 	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
 	require.NoError(t, err)
@@ -801,7 +801,7 @@ func TestStep_Submit_BeforeTurn_ErrorAborts(t *testing.T) {
 		},
 	}
 	s := New(WithBeforeTurn(before))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 
 	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
 	require.ErrorIs(t, err, wantErr)
@@ -812,7 +812,7 @@ func TestStep_Submit_BeforeTurn_ErrorAborts(t *testing.T) {
 func TestStep_Submit_Handler(t *testing.T) {
 	h := &mockHandler{}
 	s := New(WithHandlers(h))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 
 	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"}, artifact.ToolCall{Name: "test"})
 	require.NoError(t, err)
@@ -826,7 +826,7 @@ func TestStep_Submit_HandlerError(t *testing.T) {
 	wantErr := context.Canceled
 	h := &mockHandler{err: wantErr}
 	s := New(WithHandlers(h))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 
 	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
 	require.ErrorIs(t, err, wantErr)
@@ -834,7 +834,7 @@ func TestStep_Submit_HandlerError(t *testing.T) {
 
 func TestStep_Submit_MultipleInOrder(t *testing.T) {
 	s := New()
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 
 	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "first"})
 	require.NoError(t, err)
@@ -859,7 +859,7 @@ func TestStep_Submit_MultipleInOrder(t *testing.T) {
 func TestStep_Submit_ThenTurn_EventsInOrder(t *testing.T) {
 	s := New()
 	ch := s.Subscribe("turn_complete")
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 
 	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
 	require.NoError(t, err)
@@ -884,7 +884,7 @@ func TestStep_Submit_ThenTurn_EventsInOrder(t *testing.T) {
 
 func TestStep_Submit_EmptyArtifacts(t *testing.T) {
 	s := New()
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 
 	_, err := s.Submit(context.Background(), mem, state.RoleUser)
 	require.NoError(t, err)
@@ -898,7 +898,7 @@ func TestStep_Submit_EmptyArtifacts(t *testing.T) {
 
 func TestStep_Submit_ToolRole(t *testing.T) {
 	s := New()
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 
 	result, err := s.Submit(context.Background(), mem, state.RoleTool, artifact.Text{Content: "tool result"})
 	require.NoError(t, err)
@@ -926,7 +926,7 @@ func TestStep_Submit_HandlerErrorAfterPartialProcessing(t *testing.T) {
 		},
 	}
 	s := New(WithHandlers(h))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 
 	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"}, artifact.ToolCall{Name: "test"})
 	require.Error(t, err)
@@ -947,7 +947,7 @@ func TestStep_Submit_HandlerErrorAfterPartialProcessing(t *testing.T) {
 func TestStep_Submit_Multiple_EventsInOrder(t *testing.T) {
 	s := New()
 	ch := s.Subscribe("turn_complete")
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 
 	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "first"})
 	require.NoError(t, err)
@@ -979,7 +979,7 @@ func TestStep_Submit_EmptyArtifacts_ByRole(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := New()
 			ch := s.Subscribe("turn_complete")
-			mem := &state.Memory{}
+			mem := &state.Buffer{}
 
 			_, err := s.Submit(context.Background(), mem, tt.role)
 			require.NoError(t, err)

@@ -197,7 +197,7 @@ func TestJSONStore_CorruptedFile(t *testing.T) {
 	// Write a valid thread file.
 	valid := &Thread{
 		ID:        "good",
-		State:     &state.Memory{},
+		State:     &state.Buffer{},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}

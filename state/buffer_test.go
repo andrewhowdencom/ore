@@ -8,22 +8,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMemory_Empty(t *testing.T) {
-	m := &Memory{}
+func TestBuffer_Empty(t *testing.T) {
+	m := &Buffer{}
 	assert.Empty(t, m.Turns())
 }
 
-func TestMemory_AppendAndTurns(t *testing.T) {
+func TestBuffer_AppendAndTurns(t *testing.T) {
 	tests := []struct {
 		name     string
-		setup    func(*Memory)
+		setup    func(*Buffer)
 		wantLen  int
 		wantRole Role
 		wantKind string
 	}{
 		{
 			name: "single user turn",
-			setup: func(m *Memory) {
+			setup: func(m *Buffer) {
 				m.Append(RoleUser, artifact.Text{Content: "hello"})
 			},
 			wantLen:  1,
@@ -32,7 +32,7 @@ func TestMemory_AppendAndTurns(t *testing.T) {
 		},
 		{
 			name: "multiple turns",
-			setup: func(m *Memory) {
+			setup: func(m *Buffer) {
 				m.Append(RoleSystem, artifact.Text{Content: "sys"})
 				m.Append(RoleUser, artifact.Text{Content: "usr"})
 				m.Append(RoleAssistant, artifact.Text{Content: "asst"})
@@ -43,7 +43,7 @@ func TestMemory_AppendAndTurns(t *testing.T) {
 		},
 		{
 			name: "turn with multiple artifacts",
-			setup: func(m *Memory) {
+			setup: func(m *Buffer) {
 				m.Append(RoleAssistant,
 					artifact.Text{Content: "text1"},
 					artifact.ToolCall{Name: "foo"},
@@ -57,7 +57,7 @@ func TestMemory_AppendAndTurns(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := &Memory{}
+			m := &Buffer{}
 			tt.setup(m)
 
 			turns := m.Turns()
@@ -71,8 +71,8 @@ func TestMemory_AppendAndTurns(t *testing.T) {
 	}
 }
 
-func TestMemory_TurnsDefensiveCopy(t *testing.T) {
-	m := &Memory{}
+func TestBuffer_TurnsDefensiveCopy(t *testing.T) {
+	m := &Buffer{}
 	m.Append(RoleUser, artifact.Text{Content: "hello"})
 
 	turns := m.Turns()
@@ -83,8 +83,8 @@ func TestMemory_TurnsDefensiveCopy(t *testing.T) {
 	assert.Len(t, m.Turns(), 1, "modifying returned slice affected internal state")
 }
 
-func TestMemory_AppendZeroArtifacts(t *testing.T) {
-	m := &Memory{}
+func TestBuffer_AppendZeroArtifacts(t *testing.T) {
+	m := &Buffer{}
 	m.Append(RoleSystem)
 
 	turns := m.Turns()

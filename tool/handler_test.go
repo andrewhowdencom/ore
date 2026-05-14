@@ -14,7 +14,7 @@ import (
 func TestHandler_IgnoresNonToolCall(t *testing.T) {
 	r := NewRegistry()
 	h := r.Handler()
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	err := h.Handle(context.Background(), artifact.Text{Content: "world"}, mem)
@@ -25,7 +25,7 @@ func TestHandler_IgnoresNonToolCall(t *testing.T) {
 func TestHandler_UnknownTool(t *testing.T) {
 	r := NewRegistry()
 	h := r.Handler()
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
@@ -53,7 +53,7 @@ func TestHandler_ExecutesRegisteredTool(t *testing.T) {
 		return a + b, nil
 	})
 	h := r.Handler()
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
@@ -80,7 +80,7 @@ func TestHandler_InvalidArguments(t *testing.T) {
 		return nil, nil
 	})
 	h := r.Handler()
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
@@ -104,7 +104,7 @@ func TestHandler_ToolExecutionError(t *testing.T) {
 		return nil, errors.New("boom")
 	})
 	h := r.Handler()
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
@@ -129,7 +129,7 @@ func TestHandler_SerializationError(t *testing.T) {
 		return make(chan int), nil
 	})
 	h := r.Handler()
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
@@ -153,7 +153,7 @@ func TestHandler_EmptyArguments(t *testing.T) {
 		return "done", nil
 	})
 	h := r.Handler()
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	err := h.Handle(context.Background(), artifact.ToolCall{

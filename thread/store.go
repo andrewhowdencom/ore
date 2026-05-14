@@ -32,7 +32,7 @@ type Thread struct {
 	ID string
 	// State holds the mutable thread turn history.
 	// It is not safe for concurrent use; callers must hold the lock.
-	State *state.Memory
+	State *state.Buffer
 	// CreatedAt is set when the thread is first created.
 	CreatedAt time.Time
 	// UpdatedAt is advanced on every successful Save.
@@ -107,7 +107,7 @@ func (c *Thread) UnmarshalJSON(data []byte) error {
 	c.ID = jc.ID
 	c.CreatedAt = jc.CreatedAt
 	c.UpdatedAt = jc.UpdatedAt
-	c.State = &state.Memory{}
+	c.State = &state.Buffer{}
 	for _, turn := range turns {
 		c.State.Append(turn.Role, turn.Artifacts...)
 	}
