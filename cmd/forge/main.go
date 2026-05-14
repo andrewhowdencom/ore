@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"runtime/debug"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -27,7 +28,29 @@ func main() {
 }
 
 func run() error {
-	return newForgeCmd().Execute()
+	cmd := newForgeCmd()
+	cmd.SetArgs(normalizeArgs(os.Args[1:]))
+	return cmd.Execute()
+}
+
+// normalizeArgs converts single-dash long flags (e.g. -config) to the
+// double-dash form that Cobra's pflag package expects. This preserves
+// backward compatibility with the original flat flag-based CLI.
+func normalizeArgs(args []string) []string {
+	result := make([]string, len(args))
+	copy(result, args)
+	for i, arg := range result {
+		if strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && len(arg) > 2 {
+			name := strings.TrimPrefix(arg, "-")
+			if idx := strings.Index(name, "="); idx != -1 {
+				name = name[:idx]
+			}
+			if name == "config" {
+				result[i] = "--" + strings.TrimPrefix(arg, "-")
+			}
+		}
+	}
+	return result
 }
 
 func newForgeCmd() *cobra.Command {
