@@ -221,3 +221,34 @@ func (m *Manager) List() []*Session {
 	}
 	return result
 }
+
+// Get returns the public Session handle for an active session.
+// An error is returned if the session does not exist.
+func (m *Manager) Get(sessionID string) (*Session, error) {
+	m.mu.RLock()
+	sess, ok := m.sessions[sessionID]
+	m.mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("session %s not found", sessionID)
+	}
+	return &Session{id: sessionID, thread: sess.thread}, nil
+}
+
+// Check verifies that the session exists and is not busy. It returns nil if
+// the session is ready to process, ErrSessionBusy if it is processing a turn,
+// or a not-found error if the session does not exist.
+func (m *Manager) Check(sessionID string) error {
+	m.mu.RLock()
+	sess, ok := m.sessions[sessionID]
+	m.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("session %s not found", sessionID)
+	}
+	sess.mu.Lock()
+	busy := sess.busy
+	sess.mu.Unlock()
+	if busy {
+		return ErrSessionBusy
+	}
+	return nil
+}

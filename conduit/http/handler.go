@@ -1,26 +1,18 @@
 package http
 
 import (
-	"context"
-	_ "embed"
 	"encoding/json"
+	"errors"
 	stdhttp "net/http"
 	"io"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/andrewhowdencom/ore/thread"
+	"github.com/andrewhowdencom/ore/conduit"
 	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/thread"
 )
-
-// MessageHandler processes a user message within a locked session.
-// It receives the session (with its Step and State), the parsed message
-// content, and the request context. The handler may call session.Step().Submit(),
-// session.Step().Turn(), or run any cognitive pattern. Events emitted by the
-// Step's FanOut are streamed to the client automatically by the Handler.
-// The handler runs in a goroutine; it should return when processing is complete.
-type MessageHandler func(ctx context.Context, session *Session, content string) error
 
 // Option configures a Handler via functional options.
 type Option func(*Handler)
@@ -36,28 +28,13 @@ func WithUI() Option {
 // Handler provides HTTP endpoints for the ore framework's thread
 // primitives. It is mounted on an http.ServeMux via ServeMux().
 type Handler struct {
-	// threadStore is the shared thread persistence layer.
-	threadStore thread.Store
-	// newStep is called once per session to create an isolated Step.
-	newStep func() *loop.Step
-	// messageHandler processes each incoming user message within a locked session.
-	messageHandler MessageHandler
-	// sessions tracks active HTTP sessions keyed by thread ID.
-	sessions map[string]*Session
-	// mu protects the sessions map.
-	mu sync.RWMutex
-	withUI         bool
+	mgr    *session.Manager
+	withUI bool
 }
 
-// NewHandler creates a new Handler with the given thread store,
-// Step factory, and message handler.
-func NewHandler(store thread.Store, newStep func() *loop.Step, messageHandler MessageHandler, opts ...Option) *Handler {
-	h := &Handler{
-		threadStore:      store,
-		newStep:        newStep,
-		messageHandler: messageHandler,
-		sessions:       make(map[string]*Session),
-	}
+// NewHandler creates a new Handler with the given session manager.
+func NewHandler(mgr *session.Manager, opts ...Option) *Handler {
+	h := &Handler{mgr: mgr}
 	for _, opt := range opts {
 		opt(h)
 	}
@@ -98,40 +75,28 @@ func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		}
 	}
 
-	var thread *thread.Thread
+	var sess *session.Session
 	var err error
 
 	if req.ThreadID != "" {
-		var ok bool
-		thread, ok = h.threadStore.Get(req.ThreadID)
-		if !ok {
+		sess, err = h.mgr.Attach(req.ThreadID)
+		if err != nil {
 			w.WriteHeader(stdhttp.StatusNotFound)
 			return
 		}
 	} else {
-		thread, err = h.threadStore.Create()
+		sess, err = h.mgr.Create()
 		if err != nil {
 			w.WriteHeader(stdhttp.StatusInternalServerError)
 			return
 		}
 	}
 
-	step := h.newStep()
-	session := &Session{
-		id:     thread.ID,
-		thread: thread,
-		step:   step,
-	}
-
-	h.mu.Lock()
-	h.sessions[thread.ID] = session
-	h.mu.Unlock()
-
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(stdhttp.StatusCreated)
 	_ = json.NewEncoder(w).Encode(map[string]string{
-		"id":         session.id,
-		"events_url": "/sessions/" + session.id + "/events",
+		"id":         sess.ID(),
+		"events_url": "/sessions/" + sess.ID() + "/events",
 	})
 }
 
@@ -140,42 +105,36 @@ func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 func (h *Handler) deleteSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	id := r.PathValue("id")
 
-	h.mu.Lock()
-	session, ok := h.sessions[id]
-	delete(h.sessions, id)
-	h.mu.Unlock()
-
-	if !ok {
+	if err := h.mgr.Close(id); err != nil {
 		w.WriteHeader(stdhttp.StatusNotFound)
 		return
-	}
-
-	if session.step != nil {
-		_ = session.step.Close()
 	}
 
 	w.WriteHeader(stdhttp.StatusNoContent)
 }
 
-// sendMessage handles POST /sessions/{id}/messages by invoking the
-// configured messageHandler and streaming events as NDJSON.
+// sendMessage handles POST /sessions/{id}/messages by running the inference
+// pipeline through the session manager and streaming events as NDJSON.
 func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	id := r.PathValue("id")
 
-	h.mu.RLock()
-	session, ok := h.sessions[id]
-	h.mu.RUnlock()
+	// Verify the session exists and is not busy before starting the response.
+	if err := h.mgr.Check(id); err != nil {
+		if errors.Is(err, session.ErrSessionBusy) {
+			w.WriteHeader(stdhttp.StatusConflict)
+		} else {
+			w.WriteHeader(stdhttp.StatusNotFound)
+		}
+		return
+	}
 
-	if !ok {
+	// Capture turn count before processing so we can return all new turns.
+	sess, err := h.mgr.Get(id)
+	if err != nil {
 		w.WriteHeader(stdhttp.StatusNotFound)
 		return
 	}
-
-	if !session.Lock() {
-		w.WriteHeader(stdhttp.StatusConflict)
-		return
-	}
-	defer session.Unlock()
+	beforeCount := len(sess.Thread().State.Turns())
 
 	// Parse request body.
 	var req struct {
@@ -192,17 +151,17 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		req.Kinds = []string{"text_delta", "reasoning_delta", "tool_call_delta", "turn_complete", "error"}
 	}
 
-	// Capture turn count before the messageHandler runs so we can return all new turns.
-	beforeCount := len(session.State().Turns())
-
 	// Subscribe to the session's FanOut before the goroutine starts.
-	subCh := session.step.Subscribe(req.Kinds...)
+	subCh, err := h.mgr.Subscribe(id, req.Kinds...)
+	if err != nil {
+		w.WriteHeader(stdhttp.StatusInternalServerError)
+		return
+	}
 
-	// Run the messageHandler in a goroutine so the main goroutine can stream
-	// events from the subscription channel.
+	// Run the inference pipeline in a goroutine.
 	done := make(chan error, 1)
 	go func() {
-		done <- h.messageHandler(r.Context(), session, req.Content)
+		done <- h.mgr.Process(r.Context(), id, conduit.UserMessageEvent{Content: req.Content})
 	}()
 
 	// Setup NDJSON writer.
@@ -213,7 +172,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 	w.Header().Set("Content-Type", "application/x-ndjson")
 
-	// Stream events from the subscription until the messageHandler completes.
+	// Stream events from the subscription until the pipeline completes.
 	for {
 		select {
 		case event := <-subCh:
@@ -233,18 +192,13 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		case err := <-done:
 			// Drain any remaining events from the subscription buffer.
 			drainSubscription(subCh, nw)
-			// Stream a final error event if the handler failed.
+			// Stream a final error event if the pipeline failed.
 			if err != nil {
 				data, _ := MarshalOutputEvent(loop.ErrorEvent{Err: err})
 				_ = nw.WriteEvent(data)
 			}
-			// Save thread state; stream an error if persistence fails.
-			if saveErr := h.threadStore.Save(session.thread); saveErr != nil {
-				data, _ := MarshalOutputEvent(loop.ErrorEvent{Err: saveErr})
-				_ = nw.WriteEvent(data)
-			}
 			// Stream the complete event with all new turns.
-			newTurns := session.State().Turns()[beforeCount:]
+			newTurns := sess.Thread().State.Turns()[beforeCount:]
 			data, _ := MarshalCompleteEvent(newTurns)
 			_ = nw.WriteEvent(data)
 			return
@@ -282,15 +236,6 @@ func drainSubscription(subCh <-chan loop.OutputEvent, nw *ndjsonWriter) {
 func (h *Handler) sessionEvents(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	id := r.PathValue("id")
 
-	h.mu.RLock()
-	session, ok := h.sessions[id]
-	h.mu.RUnlock()
-
-	if !ok {
-		w.WriteHeader(stdhttp.StatusNotFound)
-		return
-	}
-
 	// Parse kinds from query parameter.
 	var kinds []string
 	if k := r.URL.Query().Get("kinds"); k != "" {
@@ -302,7 +247,11 @@ func (h *Handler) sessionEvents(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 
 	// Subscribe to the session's FanOut.
-	subCh := session.step.Subscribe(kinds...)
+	subCh, err := h.mgr.Subscribe(id, kinds...)
+	if err != nil {
+		w.WriteHeader(stdhttp.StatusNotFound)
+		return
+	}
 
 	// Setup SSE writer.
 	sw, err := newSSEWriter(w)
@@ -365,7 +314,9 @@ func (h *Handler) serveUI(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 // listThreads handles GET /threads by returning all threads
 // in the store as a JSON array.
 func (h *Handler) listThreads(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-	threads, err := h.threadStore.List()
+	var threads []*thread.Thread
+	var err error
+	threads, err = h.mgr.Store().List()
 	if err != nil {
 		w.WriteHeader(stdhttp.StatusInternalServerError)
 		return
@@ -378,11 +329,11 @@ func (h *Handler) listThreads(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 
 	result := make([]summary, len(threads))
-	for i, thread := range threads {
+	for i, thr := range threads {
 		result[i] = summary{
-			ID:        thread.ID,
-			CreatedAt: thread.CreatedAt,
-			UpdatedAt: thread.UpdatedAt,
+			ID:        thr.ID,
+			CreatedAt: thr.CreatedAt,
+			UpdatedAt: thr.UpdatedAt,
 		}
 	}
 
