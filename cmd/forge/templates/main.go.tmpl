@@ -90,23 +90,22 @@ func run() error {
 	slog.Info("starting HTTP server", "addr", server.Addr)
 	return server.ListenAndServe()
 {{- else }}
-	var thr *thread.Thread
+	var sess session.Session
+	var err error
 	if threadID != "" {
-		var ok bool
-		thr, ok = store.Get(threadID)
-		if !ok {
-			return fmt.Errorf("thread %q not found", threadID)
+		sess, err = mgr.Attach(threadID)
+		if err != nil {
+			return fmt.Errorf("attach to thread %q: %w", threadID, err)
 		}
 	} else {
-		var err error
-		thr, err = store.Create()
+		sess, err = mgr.Create()
 		if err != nil {
-			return fmt.Errorf("create thread: %w", err)
+			return fmt.Errorf("create session: %w", err)
 		}
-		slog.Info("thread started", "id", thr.ID)
+		slog.Info("thread started", "id", sess.ID())
 	}
 
-	s := tui.New(mgr, thr.ID)
+	s := tui.New(sess)
 	return s.Run()
 {{- end }}
 }

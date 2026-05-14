@@ -268,8 +268,8 @@ func TestHandler_DeleteSession(t *testing.T) {
 	assert.Equal(t, 204, deleteRr.Code)
 	assert.Empty(t, deleteRr.Body.String())
 
-	// Verify the session is closed (subscribe should fail).
-	_, err := mgr.Subscribe(sessionID, "text_delta")
+	// Verify the session is removed from the registry.
+	_, err := mgr.Get(sessionID)
 	require.Error(t, err)
 
 	// Verify the thread still exists in the store.
@@ -420,9 +420,12 @@ func TestHandler_SendMessage_Concurrent(t *testing.T) {
 	sessionID := createResp["id"]
 
 	// Lock the session by starting a blocking turn in a goroutine.
+	sess, err := mgr.Get(sessionID)
+	require.NoError(t, err)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		_ = mgr.Process(ctx, sessionID, conduit.UserMessageEvent{Content: "block"})
+		_ = sess.Process(ctx, conduit.UserMessageEvent{Content: "block"})
 	}()
 
 	// Wait briefly for the goroutine to acquire the lock.

@@ -76,7 +76,7 @@ func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		}
 	}
 
-	var sess *session.Session
+	var sess session.Session
 	var err error
 
 	if req.ThreadID != "" {
@@ -129,6 +129,12 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		return
 	}
 
+	sess, err := h.mgr.Get(id)
+	if err != nil {
+		w.WriteHeader(stdhttp.StatusInternalServerError)
+		return
+	}
+
 	// Parse request body.
 	var req struct {
 		Content string   `json:"content"`
@@ -145,7 +151,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 
 	// Subscribe to the session's FanOut before the goroutine starts.
-	subCh, err := h.mgr.Subscribe(id, req.Kinds...)
+	subCh, err := sess.Subscribe(req.Kinds...)
 	if err != nil {
 		w.WriteHeader(stdhttp.StatusInternalServerError)
 		return
@@ -154,7 +160,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	// Run the inference pipeline in a goroutine.
 	done := make(chan error)
 	go func() {
-		err := h.mgr.Process(r.Context(), id, conduit.UserMessageEvent{Content: req.Content})
+		err := sess.Process(r.Context(), conduit.UserMessageEvent{Content: req.Content})
 		select {
 		case done <- err:
 		case <-r.Context().Done():
@@ -238,9 +244,14 @@ func (h *Handler) sessionEvents(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 
 	// Subscribe to the session's FanOut.
-	subCh, err := h.mgr.Subscribe(id, kinds...)
+	sess, err := h.mgr.Get(id)
 	if err != nil {
 		w.WriteHeader(stdhttp.StatusNotFound)
+		return
+	}
+	subCh, err := sess.Subscribe(kinds...)
+	if err != nil {
+		w.WriteHeader(stdhttp.StatusInternalServerError)
 		return
 	}
 

@@ -1,9 +1,8 @@
-// Package conduit defines the Conduit interface, the contract between I/O
-// frontends and the ore framework. Implementations (TUI, web, Telegram,
-// etc.) provide ingress events and consume egress events via subscription
-// to the framework's event stream (e.g., loop.FanOut). Status updates remain
-// explicit method calls. Concrete implementations are composed at build time;
-// the framework does not assume any specific rendering mechanism.
+// Package conduit defines the event types and capability constants that are
+// the lingua franca for ingress and capability discovery across ore
+// frontends (TUI, web, Telegram, etc.). Concrete implementations are composed
+// at build time; the framework does not assume any specific rendering
+// mechanism.
 package conduit
 
 // Capability is a well-known conduit capability.
@@ -37,35 +36,4 @@ type Descriptor struct {
 	Description string
 	// Capabilities lists the well-known capabilities this conduit supports.
 	Capabilities []Capability
-}
-
-// Capable is implemented by conduits that declare their capabilities.
-type Capable interface {
-	// Capabilities returns the full list of capabilities this conduit provides.
-	Capabilities() []Capability
-	// Can reports whether the conduit supports a specific capability.
-	Can(cap Capability) bool
-}
-
-// Conduit is the contract between an I/O frontend and the ore framework.
-// It declares ingress capabilities (event production) via the embedded
-// Capable interface. Concrete implementations are composed at build time;
-// the framework does not assume any specific rendering mechanism.
-type Conduit interface {
-	Capable
-	// Events returns a read-only channel of user-generated events.
-	// The channel is owned by the conduit; it may be closed to signal
-	// shutdown. The consumer should read until the channel is closed or
-	// the context is cancelled.
-	Events() <-chan Event
-}
-
-// contains reports whether cap is present in caps.
-func contains(caps []Capability, cap Capability) bool {
-	for _, c := range caps {
-		if c == cap {
-			return true
-		}
-	}
-	return false
 }

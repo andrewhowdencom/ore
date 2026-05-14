@@ -120,7 +120,6 @@ func TestManager_Attach(t *testing.T) {
 	sess, err := mgr.Attach(thr.ID)
 	require.NoError(t, err)
 	assert.Equal(t, thr.ID, sess.ID())
-	assert.Equal(t, thr, sess.Thread())
 
 	// Active sessions should include it.
 	active := mgr.List()
@@ -170,15 +169,15 @@ func TestManager_Process(t *testing.T) {
 	require.NoError(t, err)
 
 	// Subscribe to output before processing.
-	ch, err := mgr.Subscribe(sess.ID(), "text_delta", "turn_complete")
+	ch, err := sess.Subscribe("text_delta", "turn_complete")
 	require.NoError(t, err)
 
 	// Process a user message.
-	err = mgr.Process(context.Background(), sess.ID(), conduit.UserMessageEvent{Content: "hi"})
+	err = sess.Process(context.Background(), conduit.UserMessageEvent{Content: "hi"})
 	require.NoError(t, err)
 
 	// Collect output events, then close the session to close the channel.
-	events := drainWithClose(t, ch, func() { _ = mgr.Close(sess.ID()) })
+	events := drainWithClose(t, ch, func() { _ = sess.Close() })
 
 	var deltas []artifact.Artifact
 	var turnComplete bool
@@ -214,14 +213,14 @@ func TestManager_Process_Busy(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		_ = mgr.Process(ctx, sess.ID(), conduit.UserMessageEvent{Content: "block"})
+		_ = sess.Process(ctx, conduit.UserMessageEvent{Content: "block"})
 	}()
 
 	// Wait briefly for the goroutine to acquire the lock.
 	time.Sleep(50 * time.Millisecond)
 
 	// Second Process should fail with ErrSessionBusy.
-	err = mgr.Process(context.Background(), sess.ID(), conduit.UserMessageEvent{Content: "concurrent"})
+	err = sess.Process(context.Background(), conduit.UserMessageEvent{Content: "concurrent"})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrSessionBusy)
 
@@ -229,14 +228,23 @@ func TestManager_Process_Busy(t *testing.T) {
 	cancel()
 }
 
-func TestManager_Process_NotFound(t *testing.T) {
+func TestSession_Process_Closed(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
 
-	err := mgr.Process(context.Background(), "nonexistent", conduit.UserMessageEvent{Content: "hi"})
+	sess, err := mgr.Create()
+	require.NoError(t, err)
+	err = sess.Close()
+	require.NoError(t, err)
+
+	err = sess.Process(context.Background(), conduit.UserMessageEvent{Content: "hi"})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
+	assert.Contains(t, err.Error(), "closed")
 }
+
+type unsupportedEvent struct{}
+
+func (e *unsupportedEvent) Kind() string { return "unsupported" }
 
 func TestManager_Process_UnsupportedEvent(t *testing.T) {
 	store := thread.NewMemoryStore()
@@ -245,14 +253,10 @@ func TestManager_Process_UnsupportedEvent(t *testing.T) {
 	sess, err := mgr.Create()
 	require.NoError(t, err)
 
-	err = mgr.Process(context.Background(), sess.ID(), &unsupportedEvent{})
+	err = sess.Process(context.Background(), &unsupportedEvent{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported event kind")
 }
-
-type unsupportedEvent struct{}
-
-func (e *unsupportedEvent) Kind() string { return "unsupported" }
 
 func TestManager_Process_ContextCancel(t *testing.T) {
 	store := thread.NewMemoryStore()
@@ -261,7 +265,7 @@ func TestManager_Process_ContextCancel(t *testing.T) {
 	sess, err := mgr.Create()
 	require.NoError(t, err)
 
-	ch, err := mgr.Subscribe(sess.ID(), "text_delta", "turn_complete", "error")
+	ch, err := sess.Subscribe("text_delta", "turn_complete", "error")
 	require.NoError(t, err)
 
 	// Start processing with a cancellable context.
@@ -271,7 +275,7 @@ func TestManager_Process_ContextCancel(t *testing.T) {
 		cancel()
 	}()
 
-	err = mgr.Process(ctx, sess.ID(), conduit.UserMessageEvent{Content: "cancel me"})
+	err = sess.Process(ctx, conduit.UserMessageEvent{Content: "cancel me"})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 
@@ -279,7 +283,7 @@ func TestManager_Process_ContextCancel(t *testing.T) {
 	// Turn() drops the event when the context is already cancelled.
 	// The primary assertion above (Process returns context.Canceled)
 	// is the behaviour under test.
-	_ = drainWithClose(t, ch, func() { _ = mgr.Close(sess.ID()) })
+	_ = drainWithClose(t, ch, func() { _ = sess.Close() })
 }
 
 func TestManager_Process_SaveError(t *testing.T) {
@@ -290,7 +294,7 @@ func TestManager_Process_SaveError(t *testing.T) {
 	sess, err := mgr.Create()
 	require.NoError(t, err)
 
-	err = mgr.Process(context.Background(), sess.ID(), conduit.UserMessageEvent{Content: "hi"})
+	err = sess.Process(context.Background(), conduit.UserMessageEvent{Content: "hi"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "save failed")
 }
@@ -307,33 +311,45 @@ func TestManager_Cancel(t *testing.T) {
 	// Start a blocking turn.
 	ctx := context.Background()
 	go func() {
-		_ = mgr.Process(ctx, sess.ID(), conduit.UserMessageEvent{Content: "block"})
+		_ = sess.Process(ctx, conduit.UserMessageEvent{Content: "block"})
 	}()
 
 	// Wait for lock to be acquired.
 	time.Sleep(50 * time.Millisecond)
 
 	// Cancel should abort the ongoing turn.
-	err = mgr.Cancel(sess.ID())
+	err = sess.Cancel()
 	require.NoError(t, err)
 }
 
-func TestManager_Cancel_NotFound(t *testing.T) {
+func TestSession_Cancel_Closed(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
 
-	err := mgr.Cancel("nonexistent")
+	sess, err := mgr.Create()
+	require.NoError(t, err)
+	err = sess.Close()
+	require.NoError(t, err)
+
+	// Cancel on a closed session should return an error.
+	err = sess.Cancel()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
+	assert.Contains(t, err.Error(), "closed")
 }
 
-func TestManager_Subscribe_NotFound(t *testing.T) {
+func TestSession_Subscribe_Closed(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
 
-	_, err := mgr.Subscribe("nonexistent", "text_delta")
+	sess, err := mgr.Create()
+	require.NoError(t, err)
+	err = sess.Close()
+	require.NoError(t, err)
+
+	// Subscribe on a closed session should return an error.
+	_, err = sess.Subscribe("text_delta")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
+	assert.Contains(t, err.Error(), "closed")
 }
 
 func TestManager_Close(t *testing.T) {
@@ -350,8 +366,8 @@ func TestManager_Close(t *testing.T) {
 	active := mgr.List()
 	assert.Empty(t, active)
 
-	// Subscribe should fail after close.
-	_, err = mgr.Subscribe(sess.ID(), "text_delta")
+	// Subscribe should fail after close (via Session-level close).
+	_, err = sess.Subscribe("text_delta")
 	require.Error(t, err)
 
 	// Thread should still exist in the store.
@@ -414,7 +430,7 @@ func TestManager_Lock_Concurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := mgr.Process(context.Background(), sess.ID(), conduit.UserMessageEvent{Content: " concurrent"})
+			err := sess.Process(context.Background(), conduit.UserMessageEvent{Content: " concurrent"})
 			if errors.Is(err, ErrSessionBusy) {
 				return
 			}

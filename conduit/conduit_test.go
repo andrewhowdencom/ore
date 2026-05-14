@@ -46,15 +46,6 @@ func TestCapabilityConstants_NonEmpty(t *testing.T) {
 	}
 }
 
-func TestContains(t *testing.T) {
-	caps := []Capability{CapEventSource, CapShowStatus}
-
-	assert.True(t, contains(caps, CapEventSource))
-	assert.True(t, contains(caps, CapShowStatus))
-	assert.False(t, contains(caps, CapRenderDelta))
-	assert.False(t, contains(caps, Capability("unknown")))
-}
-
 func TestDescriptor(t *testing.T) {
 	d := Descriptor{
 		Name:         "Test",
@@ -64,32 +55,4 @@ func TestDescriptor(t *testing.T) {
 	assert.Equal(t, "Test", d.Name)
 	assert.Equal(t, "Test conduit", d.Description)
 	assert.Equal(t, []Capability{CapEventSource}, d.Capabilities)
-}
-
-type mockCapable struct {
-	caps []Capability
-}
-
-func (m *mockCapable) Capabilities() []Capability { return m.caps }
-func (m *mockCapable) Can(cap Capability) bool      { return contains(m.caps, cap) }
-
-func TestCapable(t *testing.T) {
-	m := &mockCapable{caps: []Capability{CapEventSource, CapShowStatus}}
-	var _ Capable = m
-
-	assert.Equal(t, []Capability{CapEventSource, CapShowStatus}, m.Capabilities())
-	assert.True(t, m.Can(CapEventSource))
-	assert.True(t, m.Can(CapShowStatus))
-	assert.False(t, m.Can(CapRenderDelta))
-	assert.False(t, m.Can(Capability("")))
-}
-
-type mockConduit struct {
-	mockCapable
-}
-
-func (m *mockConduit) Events() <-chan Event { return nil }
-
-func TestConduitInterface(t *testing.T) {
-	var _ Conduit = (*mockConduit)(nil)
 }
