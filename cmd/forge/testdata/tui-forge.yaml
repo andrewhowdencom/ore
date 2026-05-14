@@ -1,3 +1,4 @@
+# Minimal TUI conduit manifest used by smoke tests.
 dist:
   name: tui-smoke-agent
   output_path: ./tui-smoke-agent
