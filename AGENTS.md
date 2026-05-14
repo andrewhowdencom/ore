@@ -95,3 +95,29 @@ They **MUST NOT**:
 Cognitive patterns, provider invocation, and conversation orchestration are **application-level concerns**, composed in `examples/` or `cmd/` packages. The library exposes its `Session`, `Step`, and `State` via exported accessors so the application can call `Step.Submit()`, `Step.Turn()`, or run a full `cognitive.ReAct` loop as needed.
 
 This mirrors the TUI pattern: `conduit/tui/` is a dumb pipe; `examples/tui-chat/main.go` composes the ReAct loop. The HTTP conduit must follow the same separation.
+
+## Agent Workspace Conventions
+
+### Verify Freshness Before Reasoning
+
+Before reading files or building a mental model of the codebase, verify the
+repository state:
+
+- `git status` — check for uncommitted changes that may affect file contents.
+- `git log --oneline -5` — confirm the HEAD commit and recent history.
+- `git branch` — confirm which branch is checked out.
+
+Do not assume files in sibling directories (e.g. `.worktrees/`) reflect the
+current branch. Each worktree is an isolated checkout; only the current working
+directory is the source of truth.
+
+### Scope to the Current Worktree
+
+Agents are opened within a specific git worktree or branch checkout. Treat that
+working directory as the sole scope of operation. Do not read from, reason about,
+or modify files in other worktrees unless explicitly directed.
+
+### Main Branch Default
+
+When opened in the main worktree on the default branch, default to ideation and
+discussion. Do not propose or execute file changes unless explicitly asked.
