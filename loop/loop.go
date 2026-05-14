@@ -131,34 +131,87 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		var currentBlock artifact.Artifact
+
 		for art := range provCh {
+			switch d := art.(type) {
+			case artifact.TextDelta:
+				if text, ok := currentBlock.(artifact.Text); ok {
+					text.Content += d.Content
+					currentBlock = text
+					select {
+					case s.events <- art:
+					case <-ctx.Done():
+						return
+					}
+				} else {
+					if currentBlock != nil {
+						select {
+						case s.events <- currentBlock:
+						case <-ctx.Done():
+							return
+						}
+						accumulatedArtifacts = append(accumulatedArtifacts, currentBlock)
+					}
+					currentBlock = artifact.Text(d)
+					select {
+					case s.events <- art:
+					case <-ctx.Done():
+						return
+					}
+				}
+			case artifact.ReasoningDelta:
+				if reasoning, ok := currentBlock.(artifact.Reasoning); ok {
+					reasoning.Content += d.Content
+					currentBlock = reasoning
+					select {
+					case s.events <- art:
+					case <-ctx.Done():
+						return
+					}
+				} else {
+					if currentBlock != nil {
+						select {
+						case s.events <- currentBlock:
+						case <-ctx.Done():
+							return
+						}
+						accumulatedArtifacts = append(accumulatedArtifacts, currentBlock)
+					}
+					currentBlock = artifact.Reasoning(d)
+					select {
+					case s.events <- art:
+					case <-ctx.Done():
+						return
+					}
+				}
+			default:
+				if currentBlock != nil {
+					select {
+					case s.events <- currentBlock:
+					case <-ctx.Done():
+						return
+					}
+					accumulatedArtifacts = append(accumulatedArtifacts, currentBlock)
+					currentBlock = nil
+				}
+				select {
+				case s.events <- art:
+				case <-ctx.Done():
+					return
+				}
+				if _, ok := art.(artifact.ToolCallDelta); !ok {
+					accumulatedArtifacts = append(accumulatedArtifacts, art)
+				}
+			}
+		}
+		if currentBlock != nil {
 			select {
-			case s.events <- art:
+			case s.events <- currentBlock:
 			case <-ctx.Done():
 				return
 			}
-			switch d := art.(type) {
-			case artifact.TextDelta:
-				if len(accumulatedArtifacts) > 0 {
-					if last, ok := accumulatedArtifacts[len(accumulatedArtifacts)-1].(artifact.Text); ok {
-						last.Content += d.Content
-						accumulatedArtifacts[len(accumulatedArtifacts)-1] = last
-						continue
-					}
-				}
-				accumulatedArtifacts = append(accumulatedArtifacts, artifact.Text(d))
-			case artifact.ReasoningDelta:
-				if len(accumulatedArtifacts) > 0 {
-					if last, ok := accumulatedArtifacts[len(accumulatedArtifacts)-1].(artifact.Reasoning); ok {
-						last.Content += d.Content
-						accumulatedArtifacts[len(accumulatedArtifacts)-1] = last
-						continue
-					}
-				}
-				accumulatedArtifacts = append(accumulatedArtifacts, artifact.Reasoning(d))
-			default:
-				accumulatedArtifacts = append(accumulatedArtifacts, art)
-			}
+			accumulatedArtifacts = append(accumulatedArtifacts, currentBlock)
 		}
 	}()
 

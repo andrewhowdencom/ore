@@ -1,8 +1,6 @@
 let sessionId = null;
 let isTurnInProgress = false;
-let currentAssistantMessageDiv = null;
-let currentBlockKind = null;
-let currentBlockContent = '';
+let typingIndicatorDiv = null;
 
 function setStatus(text) {
     document.getElementById('status').textContent = text || '';
@@ -25,6 +23,11 @@ function createSession() {
         });
 }
 
+function scrollToBottom() {
+    const chat = document.getElementById('chat');
+    chat.scrollTop = chat.scrollHeight;
+}
+
 function renderUserMessage(content) {
     const chat = document.getElementById('chat');
     const div = document.createElement('div');
@@ -34,70 +37,91 @@ function renderUserMessage(content) {
     scrollToBottom();
 }
 
-function renderBlock(kind, content) {
-    if (kind === 'reasoning' || kind === 'reasoning_delta') {
-        const details = document.createElement('details');
-        details.innerHTML = '<summary>Thinking...</summary><div class="reasoning-content"></div>';
-        details.querySelector('.reasoning-content').textContent = content;
-        return details;
+function showTypingIndicator() {
+    if (typingIndicatorDiv) return;
+    const chat = document.getElementById('chat');
+    typingIndicatorDiv = document.createElement('div');
+    typingIndicatorDiv.className = 'message assistant typing';
+    const indicator = document.createElement('div');
+    indicator.className = 'typing-indicator';
+    indicator.textContent = '...';
+    typingIndicatorDiv.appendChild(indicator);
+    chat.appendChild(typingIndicatorDiv);
+    scrollToBottom();
+}
+
+function hideTypingIndicator() {
+    if (typingIndicatorDiv) {
+        typingIndicatorDiv.remove();
+        typingIndicatorDiv = null;
     }
+}
+
+function renderTextBlock(content) {
+    hideTypingIndicator();
+    const chat = document.getElementById('chat');
     const div = document.createElement('div');
+    div.className = 'message assistant';
     try {
         div.innerHTML = marked.parse(content);
     } catch (err) {
         console.error('Markdown parsing failed:', err);
         div.textContent = content;
     }
-    return div;
+    chat.appendChild(div);
+    scrollToBottom();
 }
 
-function completeCurrentBlock() {
-    if (!currentAssistantMessageDiv || !currentBlockKind) return;
-
-    const indicator = currentAssistantMessageDiv.querySelector('.typing-indicator');
-    if (indicator) {
-        indicator.remove();
-    }
-
-    const blockEl = renderBlock(currentBlockKind, currentBlockContent);
-    currentAssistantMessageDiv.appendChild(blockEl);
-
-    const newIndicator = document.createElement('div');
-    newIndicator.className = 'typing-indicator';
-    newIndicator.textContent = '...';
-    currentAssistantMessageDiv.appendChild(newIndicator);
-
+function renderReasoningBlock(content) {
+    hideTypingIndicator();
+    const chat = document.getElementById('chat');
+    const div = document.createElement('div');
+    div.className = 'message reasoning';
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = 'Thinking...';
+    details.appendChild(summary);
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'reasoning-content';
+    contentDiv.textContent = content;
+    details.appendChild(contentDiv);
+    div.appendChild(details);
+    chat.appendChild(div);
     scrollToBottom();
+}
 
-    currentBlockKind = null;
-    currentBlockContent = '';
+function renderToolCallBlock(id, name, args) {
+    hideTypingIndicator();
+    const chat = document.getElementById('chat');
+    const div = document.createElement('div');
+    div.className = 'message tool-call';
+    div.innerHTML = '<strong>Tool Call:</strong> ' + escapeHtml(name) +
+        ' <span class="tool-id">(' + escapeHtml(id) + ')</span>' +
+        '<pre><code>' + escapeHtml(args) + '</code></pre>';
+    chat.appendChild(div);
+    scrollToBottom();
+}
+
+function renderToolResultBlock(toolCallId, content, isError) {
+    hideTypingIndicator();
+    const chat = document.getElementById('chat');
+    const div = document.createElement('div');
+    div.className = 'message tool-result' + (isError ? ' error' : '');
+    div.innerHTML = '<strong>Tool Result' + (isError ? ' (Error)' : '') + ':</strong> ' +
+        '<span class="tool-id">(' + escapeHtml(toolCallId) + ')</span>' +
+        '<pre><code>' + escapeHtml(content) + '</code></pre>';
+    chat.appendChild(div);
+    scrollToBottom();
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 function finalizeTurn() {
-    if (!currentAssistantMessageDiv) return;
-
-    if (currentBlockKind) {
-        const indicator = currentAssistantMessageDiv.querySelector('.typing-indicator');
-        if (indicator) {
-            indicator.remove();
-        }
-        const blockEl = renderBlock(currentBlockKind, currentBlockContent);
-        currentAssistantMessageDiv.appendChild(blockEl);
-        currentBlockKind = null;
-        currentBlockContent = '';
-    }
-
-    const indicator = currentAssistantMessageDiv.querySelector('.typing-indicator');
-    if (indicator) {
-        indicator.remove();
-    }
-
-    // Remove empty assistant messages (no blocks rendered).
-    if (currentAssistantMessageDiv.children.length === 0) {
-        currentAssistantMessageDiv.remove();
-    }
-
-    currentAssistantMessageDiv = null;
+    hideTypingIndicator();
     isTurnInProgress = false;
     setStatus('Ready');
     updateSendButton();
@@ -109,29 +133,27 @@ function handleEvent(event) {
     }
 
     if (event.kind === 'text_delta' || event.kind === 'reasoning_delta') {
-        if (!currentAssistantMessageDiv) {
-            const chat = document.getElementById('chat');
-            currentAssistantMessageDiv = document.createElement('div');
-            currentAssistantMessageDiv.className = 'message assistant';
-            const indicator = document.createElement('div');
-            indicator.className = 'typing-indicator';
-            indicator.textContent = '...';
-            currentAssistantMessageDiv.appendChild(indicator);
-            chat.appendChild(currentAssistantMessageDiv);
-            scrollToBottom();
-        }
+        // Deltas are not used in the block-based UI.
+        return;
+    }
 
-        const content = event.content || '';
-        if (!currentBlockKind) {
-            currentBlockKind = event.kind;
-            currentBlockContent = content;
-        } else if (currentBlockKind === event.kind) {
-            currentBlockContent += content;
-        } else {
-            completeCurrentBlock();
-            currentBlockKind = event.kind;
-            currentBlockContent = content;
-        }
+    if (event.kind === 'text') {
+        renderTextBlock(event.content);
+        return;
+    }
+
+    if (event.kind === 'reasoning') {
+        renderReasoningBlock(event.content);
+        return;
+    }
+
+    if (event.kind === 'tool_call') {
+        renderToolCallBlock(event.id, event.name, event.arguments);
+        return;
+    }
+
+    if (event.kind === 'tool_result') {
+        renderToolResultBlock(event.tool_call_id, event.content, event.is_error);
         return;
     }
 
@@ -143,6 +165,11 @@ function handleEvent(event) {
     if (event.kind === 'error') {
         setStatus('Error: ' + (event.message || 'Unknown error'));
         finalizeTurn();
+        return;
+    }
+
+    if (event.kind === 'usage' || event.kind === 'image') {
+        // Silently ignore usage and image events in the chat UI.
         return;
     }
 
@@ -189,18 +216,7 @@ async function sendMessage(content) {
     setStatus('thinking...');
     updateSendButton();
     renderUserMessage(content);
-
-    const chat = document.getElementById('chat');
-    currentAssistantMessageDiv = document.createElement('div');
-    currentAssistantMessageDiv.className = 'message assistant';
-
-    const indicator = document.createElement('div');
-    indicator.className = 'typing-indicator';
-    indicator.textContent = '...';
-    currentAssistantMessageDiv.appendChild(indicator);
-
-    chat.appendChild(currentAssistantMessageDiv);
-    scrollToBottom();
+    showTypingIndicator();
 
     try {
         const response = await fetch('/sessions/' + sessionId + '/messages', {
@@ -228,11 +244,6 @@ async function sendMessage(content) {
 function updateSendButton() {
     const btn = document.getElementById('send-btn');
     btn.disabled = isTurnInProgress;
-}
-
-function scrollToBottom() {
-    const chat = document.getElementById('chat');
-    chat.scrollTop = chat.scrollHeight;
 }
 
 function handleSend() {
