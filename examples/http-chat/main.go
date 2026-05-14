@@ -170,6 +170,7 @@ func run() error {
 	mgr := session.NewManager(threadStore, prov, stepFactory, cognitive.NewTurnProcessor())
 
 	// Create the HTTP conduit handler.
+	// WithUI() is optional; omit it to serve only the API without the chat UI.
 	handler := httpc.NewHandler(mgr, httpc.WithUI())
 
 	// Start the HTTP server.

@@ -104,9 +104,13 @@ func run() error {
 	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())
 
 	// Create TUI conduit composed with the manager.
+	// The TUI manages its own subscription and event loop; do not call
+	// mgr.Subscribe or mgr.Process from application code.
 	s := tui.NewWithManager(mgr, thread.ID)
 
 	// Run the TUI. This blocks until the user quits (Ctrl+C).
+	// s.Run() closes the events channel on return so background
+	// goroutines exit cleanly.
 	if err := s.Run(); err != nil {
 		return fmt.Errorf("tui exited: %w", err)
 	}

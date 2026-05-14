@@ -104,9 +104,14 @@ func (m *Manager) Attach(threadID string) (*Session, error) {
 }
 
 // Process submits the event to the session's state and runs the inference
-// pipeline. The session must exist and not be busy; otherwise ErrSessionBusy
-// or a not-found error is returned. Context cancellation aborts the running
-// TurnProcessor.
+// pipeline. The session must exist and not be busy. Context cancellation
+// aborts the running TurnProcessor.
+//
+// Errors:
+//   - "session not found" if the session does not exist
+//   - ErrSessionBusy if the session is already processing a turn
+//   - "unsupported event kind" for unknown event types
+//   - "process event: ..." wrapping any TurnProcessor or save error
 func (m *Manager) Process(ctx context.Context, sessionID string, event conduit.Event) error {
 	m.mu.RLock()
 	sess, ok := m.sessions[sessionID]
@@ -178,8 +183,16 @@ func (m *Manager) Cancel(sessionID string) error {
 }
 
 // Subscribe returns a filtered output event channel for the session's
-// loop.Step FanOut. The channel is closed when the session's Step is
-// closed. An error is returned if the session does not exist.
+// loop.Step FanOut. An error is returned if the session does not exist.
+//
+// The returned channel is closed when the session's Step is closed
+// (via Close or Manager shutdown). Callers should range over the channel
+// and handle closure:
+//
+//	ch, _ := mgr.Subscribe(id, "text_delta", "turn_complete")
+//	for event := range ch {
+//	    // process event
+//	}
 func (m *Manager) Subscribe(sessionID string, kinds ...string) (<-chan loop.OutputEvent, error) {
 	m.mu.RLock()
 	sess, ok := m.sessions[sessionID]
@@ -235,8 +248,11 @@ func (m *Manager) Get(sessionID string) (*Session, error) {
 }
 
 // Check verifies that the session exists and is not busy. It returns nil if
-// the session is ready to process, ErrSessionBusy if it is processing a turn,
-// or a not-found error if the session does not exist.
+// the session is ready to process.
+//
+// Errors:
+//   - "session not found" if the session does not exist
+//   - ErrSessionBusy if the session is already processing a turn
 func (m *Manager) Check(sessionID string) error {
 	m.mu.RLock()
 	sess, ok := m.sessions[sessionID]

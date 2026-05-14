@@ -127,3 +127,15 @@ func TestNewWithManager_Events(t *testing.T) {
 	eventsCh := tui.Events()
 	require.NotNil(t, eventsCh)
 }
+
+func TestNewWithManager_SubscribeFailure(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	// No thread exists for this ID, so Subscribe and Attach both fail.
+	// NewWithManager should still return a valid TUI without panicking.
+	tui := NewWithManager(mgr, "nonexistent")
+	require.NotNil(t, tui)
+	assert.NotNil(t, tui.Events())
+}

@@ -8,9 +8,21 @@
 // ingress events and consume output streams, never touching loop.Step
 // directly.
 //
+// Typical composition:
+//
+//	store := thread.NewMemoryStore()
+//	prov := openai.New(apiKey, model)
+//	stepFactory := func() *loop.Step { return loop.New() }
+//	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())
+//
+//	// HTTP conduit
+//	handler := httpc.NewHandler(mgr, httpc.WithUI())
+//
+//	// TUI conduit
+//	tui := tui.NewWithManager(mgr, threadID)
+//
 // Usage:
 //
-//	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())
 //	sess, _ := mgr.Create()
 //	ch, _ := mgr.Subscribe(sess.ID(), "text_delta", "turn_complete")
 //	_ = mgr.Process(ctx, sess.ID(), conduit.UserMessageEvent{Content: "hello"})

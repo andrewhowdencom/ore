@@ -1,5 +1,17 @@
 // Package tui implements an opinionated terminal user interface conduit for
 // the ore framework using Bubble Tea.
+//
+// Two constructors are provided:
+//
+//	New(eventsCh)                   - use when you already have a loop.Step
+//	                                  output channel and want to manage the
+//	                                  event loop yourself.
+//
+//	NewWithManager(mgr, threadID)   - use for the common case where the TUI
+//	                                  should manage its own subscription and
+//	                                  send user events back through the manager.
+//
+// The TUI satisfies conduit.Conduit (via Capable and Events).
 package tui
 
 import (
