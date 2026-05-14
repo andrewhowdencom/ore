@@ -18,52 +18,17 @@ var (
 	thinkingStyle = lipgloss.NewStyle().Faint(true).Italic(true)
 )
 
-// wrapText wraps text to fit within the given terminal width, prefixing the
-// first line with label and subsequent lines with indent. It is Unicode and
-// ANSI aware.
-func wrapText(text, label, indent string, width int) string {
-	if width <= 0 || text == "" {
-		return label + text
+// renderBlock renders a labeled content block with the label on its own line
+// and content starting at column 0. If width > 0, content is wrapped to fit.
+func renderBlock(label string, labelStyle lipgloss.Style, content string, width int) string {
+	styledLabel := labelStyle.Render(label)
+	if content == "" {
+		return styledLabel
 	}
-	labelWidth := lipgloss.Width(label)
-	available := width - labelWidth
-	if available <= 1 {
-		return label + text
+	if width > 0 {
+		content = cellbuf.Wrap(content, width, " ")
 	}
-	wrapped := cellbuf.Wrap(text, available, " ")
-	lines := strings.Split(wrapped, "\n")
-	var b strings.Builder
-	for i, line := range lines {
-		if i == 0 {
-			b.WriteString(label)
-		} else {
-			b.WriteString("\n")
-			b.WriteString(indent)
-		}
-		b.WriteString(line)
-	}
-	return b.String()
-}
-
-// prefixLines prepends label to the first line and indent to every
-// subsequent line of text. It does not re-wrap text; the caller is
-// responsible for ensuring each line already fits within the desired width.
-func prefixLines(text, label, indent string) string {
-	if text == "" {
-		return label + text
-	}
-	lines := strings.Split(text, "\n")
-	var b strings.Builder
-	for i, line := range lines {
-		if i == 0 {
-			b.WriteString(label)
-		} else {
-			b.WriteString("\n")
-			b.WriteString(indent)
-		}
-		b.WriteString(line)
-	}
-	return b.String()
+	return styledLabel + "\n" + content
 }
 
 // View renders the conversation history inside a scrollable viewport and
@@ -73,22 +38,13 @@ func (m *model) View() string {
 
 	width := m.viewport.Width
 
-	userLabel := "You: "
-	userIndent := strings.Repeat(" ", lipgloss.Width(userLabel))
-
-	assistantLabel := assistantStyle.Render("Assistant: ")
-	assistantIndent := strings.Repeat(" ", lipgloss.Width(assistantLabel))
-
-	toolLabel := "Tool: "
-	toolIndent := strings.Repeat(" ", lipgloss.Width(toolLabel))
-
 	// Render conversation history.
 	for _, turn := range m.turns {
 		switch turn.role {
 		case state.RoleUser:
 			for i, block := range turn.blocks {
 				if block.kind == "text" {
-					b.WriteString(wrapText(block.source, userLabel, userIndent, width))
+					b.WriteString(renderBlock("You: ", lipgloss.NewStyle(), block.source, width))
 				}
 				if i < len(turn.blocks)-1 {
 					b.WriteString("\n\n")
@@ -99,14 +55,12 @@ func (m *model) View() string {
 				switch block.kind {
 				case "text":
 					if block.rendered != "" {
-						b.WriteString(prefixLines(block.rendered, assistantLabel, assistantIndent))
+						b.WriteString(renderBlock("Assistant: ", assistantStyle, block.rendered, 0))
 					} else {
-						b.WriteString(wrapText(block.source, assistantLabel, assistantIndent, width))
+						b.WriteString(renderBlock("Assistant: ", assistantStyle, block.source, width))
 					}
 				case "reasoning":
-					thinkingLabel := thinkingStyle.Render("Thinking: ")
-					thinkingIndent := strings.Repeat(" ", lipgloss.Width(thinkingLabel))
-					b.WriteString(wrapText(block.source, thinkingLabel, thinkingIndent, width))
+					b.WriteString(renderBlock("Thinking: ", thinkingStyle, block.source, width))
 				}
 				if i < len(turn.blocks)-1 {
 					b.WriteString("\n\n")
@@ -115,7 +69,7 @@ func (m *model) View() string {
 		case state.RoleTool:
 			for i, block := range turn.blocks {
 				if block.kind == "text" {
-					b.WriteString(wrapText(block.source, toolLabel, toolIndent, width))
+					b.WriteString(renderBlock("Tool: ", lipgloss.NewStyle(), block.source, width))
 				}
 				if i < len(turn.blocks)-1 {
 					b.WriteString("\n\n")
@@ -125,16 +79,9 @@ func (m *model) View() string {
 		b.WriteString("\n\n")
 	}
 
-	// Render the in-progress stream blocks in arrival order.
-	for _, block := range m.streamBlocks {
-		switch block.kind {
-		case "text":
-			b.WriteString(wrapText(block.content, assistantLabel, assistantIndent, width))
-		case "reasoning":
-			thinkingLabel := thinkingStyle.Render("Thinking: ")
-			thinkingIndent := strings.Repeat(" ", lipgloss.Width(thinkingLabel))
-			b.WriteString(wrapText(block.content, thinkingLabel, thinkingIndent, width))
-		}
+	// Render pending placeholder.
+	if m.pending {
+		b.WriteString(renderBlock("Assistant: ", assistantStyle, "...", width))
 		b.WriteString("\n\n")
 	}
 

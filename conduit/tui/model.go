@@ -15,13 +15,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// deltaMsg is a Bubble Tea message that carries an ephemeral streaming
-// delta artifact into the model.Update loop so it can be appended to
-// the appropriate streaming buffer (text or reasoning).
-type deltaMsg struct {
-	delta artifact.Artifact
-}
-
 // turnMsg is a Bubble Tea message that carries a complete turn into
 // the model.Update loop so it can be finalized in the conversation
 // history.
@@ -33,12 +26,6 @@ type turnMsg struct {
 // the model.Update loop so it can update the transient status line.
 type statusMsg struct {
 	status string
-}
-
-// streamBlock tracks an ordered piece of streaming content with its kind.
-type streamBlock struct {
-	kind    string // "text" or "reasoning"
-	content string
 }
 
 // renderedBlock tracks a finalized piece of turn content with its kind and
@@ -57,10 +44,8 @@ type model struct {
 	// Conversation history.
 	turns []renderedTurn
 
-	// streamBlocks holds the ordered partial content of the current assistant
-	// response. Each block is either text or reasoning, preserving the
-	// arrival order from the provider.
-	streamBlocks []streamBlock
+	// pending indicates an assistant response is in flight.
+	pending bool
 
 	// Transient status line (e.g., "thinking...").
 	status string
@@ -138,7 +123,7 @@ func (m *model) recalcLayout() {
 }
 
 // Init returns an initial command. No periodic ticks are needed because
-// deltas arrive via program.Send from the orchestrator goroutine.
+// turns arrive via program.Send from the orchestrator goroutine.
 func (m *model) Init() tea.Cmd {
 	return nil
 }
@@ -147,22 +132,6 @@ func (m *model) Init() tea.Cmd {
 // custom messages carrying delta/turn/status data from the conduit methods.
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case deltaMsg:
-		switch d := msg.delta.(type) {
-		case artifact.TextDelta:
-			if len(m.streamBlocks) > 0 && m.streamBlocks[len(m.streamBlocks)-1].kind == "text" {
-				m.streamBlocks[len(m.streamBlocks)-1].content += d.Content
-			} else {
-				m.streamBlocks = append(m.streamBlocks, streamBlock{kind: "text", content: d.Content})
-			}
-		case artifact.ReasoningDelta:
-			if len(m.streamBlocks) > 0 && m.streamBlocks[len(m.streamBlocks)-1].kind == "reasoning" {
-				m.streamBlocks[len(m.streamBlocks)-1].content += d.Content
-			} else {
-				m.streamBlocks = append(m.streamBlocks, streamBlock{kind: "reasoning", content: d.Content})
-			}
-		}
-		m.viewport.GotoBottom()
 	case turnMsg:
 		var blocks []renderedBlock
 		for _, art := range msg.turn.Artifacts {
@@ -185,7 +154,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			blocks: blocks,
 		}
 		m.turns = append(m.turns, rt)
-		m.streamBlocks = nil
+		if msg.turn.Role == state.RoleAssistant {
+			m.pending = false
+		}
 		m.viewport.GotoBottom()
 	case statusMsg:
 		m.status = msg.status
@@ -206,6 +177,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					default:
 						slog.Warn("event channel full, dropping user message")
 					}
+					m.pending = true
 				}
 				return m, nil
 			}

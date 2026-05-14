@@ -6,13 +6,12 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/conduit"
+	"github.com/andrewhowdencom/ore/state"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,59 +30,6 @@ func newTestModel() model {
 	}
 }
 
-func TestModel_Update_Delta_TextDelta(t *testing.T) {
-	m := model{}
-	newM, _ := m.Update(deltaMsg{delta: artifact.TextDelta{Content: "hello"}})
-	mm := newM.(*model)
-	require.Len(t, mm.streamBlocks, 1)
-	assert.Equal(t, "text", mm.streamBlocks[0].kind)
-	assert.Equal(t, "hello", mm.streamBlocks[0].content)
-}
-
-func TestModel_Update_Delta_ReasoningDelta(t *testing.T) {
-	m := model{}
-	newM, _ := m.Update(deltaMsg{delta: artifact.ReasoningDelta{Content: "thinking"}})
-	mm := newM.(*model)
-	require.Len(t, mm.streamBlocks, 1)
-	assert.Equal(t, "reasoning", mm.streamBlocks[0].kind)
-	assert.Equal(t, "thinking", mm.streamBlocks[0].content)
-}
-
-func TestModel_Update_Delta_Interleaved(t *testing.T) {
-	m := model{}
-	newM, _ := m.Update(deltaMsg{delta: artifact.TextDelta{Content: "first"}})
-	newM, _ = newM.Update(deltaMsg{delta: artifact.ReasoningDelta{Content: "think"}})
-	newM, _ = newM.Update(deltaMsg{delta: artifact.TextDelta{Content: "second"}})
-	mm := newM.(*model)
-	require.Len(t, mm.streamBlocks, 3)
-	assert.Equal(t, "text", mm.streamBlocks[0].kind)
-	assert.Equal(t, "first", mm.streamBlocks[0].content)
-	assert.Equal(t, "reasoning", mm.streamBlocks[1].kind)
-	assert.Equal(t, "think", mm.streamBlocks[1].content)
-	assert.Equal(t, "text", mm.streamBlocks[2].kind)
-	assert.Equal(t, "second", mm.streamBlocks[2].content)
-}
-
-func TestModel_Update_Delta_AdjacentTextMerges(t *testing.T) {
-	m := model{}
-	newM, _ := m.Update(deltaMsg{delta: artifact.TextDelta{Content: "Hello"}})
-	newM, _ = newM.Update(deltaMsg{delta: artifact.TextDelta{Content: " world"}})
-	mm := newM.(*model)
-	require.Len(t, mm.streamBlocks, 1)
-	assert.Equal(t, "text", mm.streamBlocks[0].kind)
-	assert.Equal(t, "Hello world", mm.streamBlocks[0].content)
-}
-
-func TestModel_Update_Delta_AdjacentReasoningMerges(t *testing.T) {
-	m := model{}
-	newM, _ := m.Update(deltaMsg{delta: artifact.ReasoningDelta{Content: "think"}})
-	newM, _ = newM.Update(deltaMsg{delta: artifact.ReasoningDelta{Content: "...done"}})
-	mm := newM.(*model)
-	require.Len(t, mm.streamBlocks, 1)
-	assert.Equal(t, "reasoning", mm.streamBlocks[0].kind)
-	assert.Equal(t, "think...done", mm.streamBlocks[0].content)
-}
-
 func TestModel_Update_Turn(t *testing.T) {
 	m := model{}
 	turn := state.Turn{
@@ -99,7 +45,6 @@ func TestModel_Update_Turn(t *testing.T) {
 	require.Len(t, mm.turns[0].blocks, 1)
 	assert.Equal(t, "text", mm.turns[0].blocks[0].kind)
 	assert.Equal(t, "hello world", mm.turns[0].blocks[0].source)
-	assert.Empty(t, mm.streamBlocks)
 }
 
 func TestModel_Update_Turn_PreservesReasoning(t *testing.T) {
@@ -123,9 +68,9 @@ func TestModel_Update_Turn_PreservesReasoning(t *testing.T) {
 	assert.Equal(t, "let me think...", mm.turns[0].blocks[1].source)
 }
 
-func TestModel_Update_Turn_ResetsStreamBuffer(t *testing.T) {
+func TestModel_Update_Turn_ClearsPending(t *testing.T) {
 	m := model{}
-	m.streamBlocks = []streamBlock{{kind: "text", content: "partial"}}
+	m.pending = true
 
 	turn := state.Turn{
 		Role: state.RoleAssistant,
@@ -135,7 +80,7 @@ func TestModel_Update_Turn_ResetsStreamBuffer(t *testing.T) {
 	}
 	newM, _ := m.Update(turnMsg{turn: turn})
 	mm := newM.(*model)
-	assert.Empty(t, mm.streamBlocks)
+	assert.False(t, mm.pending)
 }
 
 func TestModel_Update_Turn_Interleaved(t *testing.T) {
@@ -283,6 +228,11 @@ func TestModel_View_ContainsTurn(t *testing.T) {
 	output := m.View()
 	assert.Contains(t, output, "You: ")
 	assert.Contains(t, output, "hello")
+	idxLabel := strings.Index(output, "You: ")
+	idxContent := strings.Index(output, "hello")
+	assert.Greater(t, idxContent, idxLabel, "content should appear after label")
+	segment := output[idxLabel:idxContent]
+	assert.Contains(t, segment, "\n", "label and content should be on separate lines")
 }
 
 func TestModel_View_ContainsAssistantTurn(t *testing.T) {
@@ -294,6 +244,11 @@ func TestModel_View_ContainsAssistantTurn(t *testing.T) {
 	output := m.View()
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "world")
+	idxLabel := strings.Index(output, "Assistant: ")
+	idxContent := strings.Index(output, "world")
+	assert.Greater(t, idxContent, idxLabel, "content should appear after label")
+	segment := output[idxLabel:idxContent]
+	assert.Contains(t, segment, "\n", "label and content should be on separate lines")
 }
 
 func TestModel_View_ContainsToolTurn(t *testing.T) {
@@ -305,15 +260,11 @@ func TestModel_View_ContainsToolTurn(t *testing.T) {
 	output := m.View()
 	assert.Contains(t, output, "Tool: ")
 	assert.Contains(t, output, "result")
-}
-
-func TestModel_View_ContainsStreaming(t *testing.T) {
-	m := newTestModel()
-	m.viewport = viewport.New(80, 20)
-	m.streamBlocks = []streamBlock{{kind: "text", content: "partial"}}
-	output := m.View()
-	assert.Contains(t, output, "Assistant: ")
-	assert.Contains(t, output, "partial")
+	idxLabel := strings.Index(output, "Tool: ")
+	idxContent := strings.Index(output, "result")
+	assert.Greater(t, idxContent, idxLabel, "content should appear after label")
+	segment := output[idxLabel:idxContent]
+	assert.Contains(t, segment, "\n", "label and content should be on separate lines")
 }
 
 func TestModel_View_ContainsStatus(t *testing.T) {
@@ -403,32 +354,13 @@ func TestModel_Update_Turn_AutoScrollsViewport(t *testing.T) {
 	assert.True(t, mm.viewport.AtBottom(), "turn should auto-scroll viewport to bottom")
 }
 
-func TestModel_Update_Delta_AutoScrollsViewport(t *testing.T) {
-	m := newTestModel()
-	m.viewport = viewport.New(80, 5)
-	m.viewport.SetContent(strings.Repeat("line\n", 20))
-	m.viewport.GotoBottom()
-
-	// Scroll up to simulate user reading history
-	m.viewport.HalfPageUp()
-	assert.False(t, m.viewport.AtBottom(), "should not be at bottom after scrolling up")
-
-	newM, _ := m.Update(deltaMsg{delta: artifact.TextDelta{Content: "new token"}})
-	mm := newM.(*model)
-
-	assert.True(t, mm.viewport.AtBottom(), "delta should auto-scroll viewport to bottom")
-	require.Len(t, mm.streamBlocks, 1)
-	assert.Equal(t, "text", mm.streamBlocks[0].kind)
-	assert.Equal(t, "new token", mm.streamBlocks[0].content)
-}
-
 func TestModel_View_LongHistory_InputAtBottom(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(80, 5)
 	// Add enough turns to exceed viewport height
 	for i := 0; i < 10; i++ {
 		m.turns = append(m.turns, renderedTurn{
-			role: state.RoleUser,
+			role:   state.RoleUser,
 			blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 20)}},
 		})
 	}
@@ -436,53 +368,6 @@ func TestModel_View_LongHistory_InputAtBottom(t *testing.T) {
 	lines := strings.Split(output, "\n")
 	lastLine := lines[len(lines)-1]
 	assert.Contains(t, lastLine, "> ")
-}
-
-func TestWrapText_NoWrap(t *testing.T) {
-	output := wrapText("hello", "You: ", "     ", 80)
-	assert.Equal(t, "You: hello", output)
-}
-
-func TestWrapText_WrapsLongLine(t *testing.T) {
-	text := strings.Repeat("a", 100)
-	output := wrapText(text, "You: ", "     ", 20)
-	lines := strings.Split(output, "\n")
-	assert.Greater(t, len(lines), 1, "long text should wrap to multiple lines")
-	assert.True(t, strings.HasPrefix(lines[0], "You: "), "first line should have label")
-	for i := 1; i < len(lines); i++ {
-		assert.True(t, strings.HasPrefix(lines[i], "     "), "continuation lines should have indent")
-	}
-}
-
-func TestWrapText_WidthZero(t *testing.T) {
-	output := wrapText("hello", "You: ", "     ", 0)
-	assert.Equal(t, "You: hello", output)
-}
-
-func TestWrapText_EmptyText(t *testing.T) {
-	output := wrapText("", "You: ", "     ", 80)
-	assert.Equal(t, "You: ", output)
-}
-
-func TestWrapText_Unicode(t *testing.T) {
-	// Japanese characters are typically 2 cells wide.
-	output := wrapText("こんにちは世界", "You: ", "     ", 12)
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		assert.LessOrEqual(t, lipgloss.Width(line), 12, "line %q exceeds width", line)
-	}
-}
-
-func TestWrapText_AnsiAware(t *testing.T) {
-	styledLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000")).Render("Label: ")
-	indent := strings.Repeat(" ", lipgloss.Width(styledLabel))
-	text := strings.Repeat("x", 100)
-	output := wrapText(text, styledLabel, indent, 30)
-	lines := strings.Split(output, "\n")
-	assert.Greater(t, len(lines), 1, "long text should wrap to multiple lines")
-	for _, line := range lines {
-		assert.LessOrEqual(t, lipgloss.Width(line), 30, "line %q exceeds width", line)
-	}
 }
 
 func TestModel_View_WrapsLongTurn(t *testing.T) {
@@ -493,34 +378,42 @@ func TestModel_View_WrapsLongTurn(t *testing.T) {
 	}
 	output := m.View()
 	lines := strings.Split(output, "\n")
-	hasContinuation := false
-	for _, line := range lines {
-		if strings.HasPrefix(line, "     ") {
-			hasContinuation = true
+	// Find the label line
+	labelIdx := -1
+	for i, line := range lines {
+		if strings.HasPrefix(line, "You: ") {
+			labelIdx = i
 			break
 		}
 	}
-	assert.True(t, hasContinuation, "long turn should wrap with continuation lines")
+	require.GreaterOrEqual(t, labelIdx, 0, "should contain label line")
+	// Count content lines (before separator)
+	contentLines := 0
+	for i := labelIdx + 1; i < len(lines); i++ {
+		if strings.HasPrefix(lines[i], "─") {
+			break
+		}
+		if strings.TrimSpace(lines[i]) != "" {
+			contentLines++
+		}
+	}
+	assert.Greater(t, contentLines, 1, "long content should wrap to multiple lines at column 0")
+	// Verify no old indent prefix exists (skip viewport padding lines)
+	for i := labelIdx + 1; i < len(lines); i++ {
+		if strings.HasPrefix(lines[i], "─") {
+			break
+		}
+		if strings.TrimSpace(lines[i]) == "" {
+			continue
+		}
+		assert.False(t, strings.HasPrefix(lines[i], "     "), "content should not have old indent prefix")
+	}
 }
 
 // unknownArtifact is an artifact type not handled by the TUI model.
 type unknownArtifact struct{}
 
 func (unknownArtifact) Kind() string { return "unknown" }
-
-func TestModel_Update_Delta_UnknownArtifact(t *testing.T) {
-	m := model{}
-	newM, cmd := m.Update(deltaMsg{delta: unknownArtifact{}})
-	mm := newM.(*model)
-	assert.Empty(t, mm.streamBlocks)
-	assert.Nil(t, cmd)
-}
-
-func TestWrapText_AvailableLEOne(t *testing.T) {
-	// "You: " has width 5, so width=6 gives available=1.
-	output := wrapText("hello", "You: ", "     ", 6)
-	assert.Equal(t, "You: hello", output)
-}
 
 func TestModel_Update_Turn_Assistant_PopulatesRendered(t *testing.T) {
 	m := model{
@@ -797,7 +690,44 @@ func TestModel_Update_RecalcLayout_MinimumViewportHeight(t *testing.T) {
 	assert.GreaterOrEqual(t, mm.viewport.Height, 1, "viewport height should never be < 1")
 }
 
-func TestWrapText_LabelWiderThanTerminal(t *testing.T) {
-	output := wrapText("hello", "VeryLongLabel: ", "               ", 10)
-	assert.Equal(t, "VeryLongLabel: hello", output)
+func TestModel_Update_KeyEnter_SetsPending(t *testing.T) {
+	eventsCh := make(chan conduit.Event, 10)
+	m := newTestModel()
+	m.eventsCh = eventsCh
+	m.textarea.SetValue("hello")
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm := newM.(*model)
+
+	assert.True(t, mm.pending, "KeyEnter should set pending=true")
+}
+
+func TestModel_Update_Turn_Assistant_ClearsPending(t *testing.T) {
+	m := model{}
+	m.pending = true
+
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "response"},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+	assert.False(t, mm.pending, "assistant turn should clear pending")
+}
+
+func TestModel_Update_Turn_User_DoesNotClearPending(t *testing.T) {
+	m := model{}
+	m.pending = true
+
+	turn := state.Turn{
+		Role: state.RoleUser,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "user message"},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+	assert.True(t, mm.pending, "user turn should not clear pending")
 }
