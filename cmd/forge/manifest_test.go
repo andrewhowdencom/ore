@@ -85,6 +85,11 @@ conduit:
 `,
 			wantErr: `conduit.type must be "http" or "tui"`,
 		},
+		{
+			name: "malformed YAML",
+			input:   "not: valid: yaml: [",
+			wantErr: "decode manifest",
+		},
 	}
 
 	for _, tt := range tests {

@@ -26,8 +26,12 @@ func main() {
 func run() error {
 	configPath := flag.String("config", "forge.yaml", "path to manifest file")
 	flag.Parse()
+	return runWithPath(*configPath)
+}
 
-	f, err := os.Open(*configPath)
+// runWithPath executes the forge pipeline for the manifest at configPath.
+func runWithPath(configPath string) error {
+	f, err := os.Open(configPath)
 	if err != nil {
 		return fmt.Errorf("open manifest: %w", err)
 	}

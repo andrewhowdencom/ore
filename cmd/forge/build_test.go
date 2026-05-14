@@ -47,3 +47,22 @@ func TestBuild(t *testing.T) {
 		})
 	}
 }
+
+func TestBuild_RelativeOutputPath(t *testing.T) {
+	oreModulePath, err := FindOreModuleRoot(".")
+	require.NoError(t, err)
+
+	t.Chdir(t.TempDir())
+
+	manifest := &Manifest{
+		Dist:    Dist{Name: "rel-agent", OutputPath: "rel-agent"},
+		Conduit: Conduit{Type: "http"},
+	}
+
+	err = Build(manifest, oreModulePath, manifest.Dist.OutputPath)
+	require.NoError(t, err)
+
+	info, err := os.Stat(manifest.Dist.OutputPath)
+	require.NoError(t, err)
+	assert.False(t, info.IsDir())
+}
