@@ -124,6 +124,7 @@ func New(mgr *session.Manager, threadID string) *TUI {
 				}
 				if err := mgr.Process(context.Background(), threadID, e); err != nil {
 					slog.Error("process failed", "err", err)
+					t.program.Send(clearPendingMsg{})
 				}
 				if err := t.SetStatus(context.Background(), ""); err != nil {
 					slog.Error("set status failed", "err", err)

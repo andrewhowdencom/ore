@@ -29,6 +29,11 @@ type statusMsg struct {
 	status string
 }
 
+// clearPendingMsg is a Bubble Tea message that instructs the model to
+// clear the pending flag, typically because the manager failed to produce
+// a turn.
+type clearPendingMsg struct{}
+
 // renderedBlock tracks a finalized piece of turn content with its kind and
 // optional pre-rendered ANSI cache.
 type renderedBlock struct {
@@ -161,6 +166,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.GotoBottom()
 	case statusMsg:
 		m.status = msg.status
+	case clearPendingMsg:
+		m.pending = false
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyPgUp, tea.KeyPgDown:

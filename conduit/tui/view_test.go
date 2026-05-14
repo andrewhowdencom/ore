@@ -190,3 +190,34 @@ func TestModel_View_PendingPlaceholder(t *testing.T) {
 	segment := output[idxLabel:idxContent]
 	assert.Contains(t, segment, "\n", "label and placeholder should be on separate lines")
 }
+
+func TestRenderBlock_Unicode(t *testing.T) {
+	// Japanese characters are typically 2 cells wide.
+	text := "こんにちは世界"
+	output := renderBlock("You: ", lipgloss.NewStyle(), text, 12)
+	lines := strings.Split(output, "\n")
+	// First line is label
+	assert.Equal(t, "You: ", lines[0])
+	// Content should be wrapped considering cell width
+	for i := 1; i < len(lines); i++ {
+		assert.LessOrEqual(t, lipgloss.Width(lines[i]), 12, "line %q exceeds width", lines[i])
+	}
+}
+
+func TestRenderBlock_NegativeWidth(t *testing.T) {
+	// Negative width should skip wrapping and not panic.
+	output := renderBlock("You: ", lipgloss.NewStyle(), "hello", -1)
+	assert.Equal(t, "You: \nhello", output)
+}
+
+func TestRenderBlock_ExactFit(t *testing.T) {
+	// Content whose length exactly matches width should not produce
+	// an extra wrapped line.
+	content := strings.Repeat("a", 20)
+	output := renderBlock("You: ", lipgloss.NewStyle(), content, 20)
+	lines := strings.Split(output, "\n")
+	// Label + one content line
+	assert.Equal(t, 2, len(lines), "exact-fit content should not wrap to extra line")
+	assert.Equal(t, "You: ", lines[0])
+	assert.Equal(t, content, lines[1])
+}

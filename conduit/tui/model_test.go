@@ -731,3 +731,51 @@ func TestModel_Update_Turn_User_DoesNotClearPending(t *testing.T) {
 	mm := newM.(*model)
 	assert.True(t, mm.pending, "user turn should not clear pending")
 }
+
+func TestModel_Update_ClearPendingMsg(t *testing.T) {
+	m := model{}
+	m.pending = true
+
+	newM, _ := m.Update(clearPendingMsg{})
+	mm := newM.(*model)
+
+	assert.False(t, mm.pending, "clearPendingMsg should reset pending")
+}
+
+func TestModel_Update_RapidSubmissions(t *testing.T) {
+	eventsCh := make(chan conduit.Event, 10)
+	m := newTestModel()
+	m.eventsCh = eventsCh
+	m.textarea.SetValue("first")
+
+	// First submission
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm := newM.(*model)
+	assert.True(t, mm.pending, "first submission should set pending")
+	assert.Empty(t, mm.textarea.Value())
+
+	// Second submission while still pending
+	mm.textarea.SetValue("second")
+	newM2, _ := mm.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm2 := newM2.(*model)
+	assert.True(t, mm2.pending, "second submission should keep pending true")
+	assert.Empty(t, mm2.textarea.Value())
+
+	// Both events should be on the channel
+	select {
+	case e := <-eventsCh:
+		ume, ok := e.(conduit.UserMessageEvent)
+		require.True(t, ok)
+		assert.Equal(t, "first", ume.Content)
+	default:
+		t.Fatal("expected first event on channel")
+	}
+	select {
+	case e := <-eventsCh:
+		ume, ok := e.(conduit.UserMessageEvent)
+		require.True(t, ok)
+		assert.Equal(t, "second", ume.Content)
+	default:
+		t.Fatal("expected second event on channel")
+	}
+}
