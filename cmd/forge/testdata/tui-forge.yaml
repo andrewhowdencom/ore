@@ -1,0 +1,5 @@
+dist:
+  name: tui-smoke-agent
+  output_path: ./tui-smoke-agent
+conduit:
+  type: tui
