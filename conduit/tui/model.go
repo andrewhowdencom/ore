@@ -170,6 +170,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.turn.Role == state.RoleAssistant {
 			m.pending = false
 		}
+		m.viewport.SetContent(m.buildContent())
 		m.viewport.GotoBottom()
 	case statusMsg:
 		m.status = msg.status
