@@ -28,6 +28,14 @@ func TestForgeSmoke(t *testing.T) {
 			name:         "tui",
 			manifestPath: "testdata/tui-forge.yaml",
 		},
+		{
+			name:         "http-example",
+			manifestPath: "../../examples/forge/http/forge.yaml",
+		},
+		{
+			name:         "tui-example",
+			manifestPath: "../../examples/forge/tui/forge.yaml",
+		},
 	}
 
 	for _, tt := range tests {
