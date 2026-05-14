@@ -128,7 +128,7 @@ function finalizeTurn() {
 }
 
 function handleEvent(event) {
-    if (event.kind === 'tool_call_delta' || event.kind === 'complete') {
+    if (event.kind === 'tool_call_delta') {
         return;
     }
 
@@ -232,8 +232,6 @@ async function sendMessage(content) {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         await readNDJSONStream(reader, decoder);
-
-        finalizeTurn();
     } catch (err) {
         setStatus('Error: ' + err.message);
         console.error('Send failed:', err);

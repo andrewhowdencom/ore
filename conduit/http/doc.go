@@ -24,7 +24,7 @@
 //   500  - internal error (provider, store, etc.)
 //
 // Default event kinds for POST /messages responses:
-//   text_delta, reasoning_delta, tool_call_delta, turn_complete
+//   text, reasoning, tool_call, tool_result, turn_complete, error
 //
 // Callers compose the Handler with a session.Manager and mount the
 // returned ServeMux on an http.Server.

@@ -45,13 +45,6 @@ type errorEventJSON struct {
 	Message string `json:"message"`
 }
 
-// completeEventJSON is an HTTP-package-specific event that signals the end
-// of a message turn, carrying all new turns since the last request.
-type completeEventJSON struct {
-	Kind  string     `json:"kind"`
-	Turns []turnJSON `json:"turns"`
-}
-
 // --- Marshal functions ---
 
 // MarshalArtifact serializes an artifact.Artifact to JSON bytes.
@@ -138,24 +131,6 @@ func turnToJSON(t state.Turn) (turnJSON, error) {
 		Role:      string(t.Role),
 		Artifacts: artifacts,
 	}, nil
-}
-
-// MarshalCompleteEvent serializes a complete event carrying all new turns
-// produced during a message handler invocation. The returned JSON has
-// kind "complete" and a "turns" array.
-func MarshalCompleteEvent(turns []state.Turn) ([]byte, error) {
-	turnsJSON := make([]turnJSON, len(turns))
-	for i, t := range turns {
-		turn, err := turnToJSON(t)
-		if err != nil {
-			return nil, err
-		}
-		turnsJSON[i] = turn
-	}
-	return json.Marshal(completeEventJSON{
-		Kind:  "complete",
-		Turns: turnsJSON,
-	})
 }
 
 // --- Unmarshal functions ---

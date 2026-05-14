@@ -280,19 +280,6 @@ type unknownOutputEvent struct{}
 
 func (u *unknownOutputEvent) Kind() string { return "unknown_event" }
 
-func TestMarshalCompleteEvent(t *testing.T) {
-	turns := []state.Turn{
-		{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}},
-		{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}}},
-	}
-
-	got, err := MarshalCompleteEvent(turns)
-	require.NoError(t, err)
-
-	want := `{"kind":"complete","turns":[{"role":"user","artifacts":[{"kind":"text","content":"hello"}]},{"role":"assistant","artifacts":[{"kind":"text","content":"hi"}]}]}`
-	assert.JSONEq(t, want, string(got))
-}
-
 func TestTurnToJSON(t *testing.T) {
 	turn := state.Turn{
 		Role: state.RoleAssistant,
