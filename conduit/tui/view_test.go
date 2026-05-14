@@ -1,9 +1,12 @@
 package tui
 
 import (
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
@@ -13,7 +16,7 @@ import (
 
 func TestRenderMarkdown(t *testing.T) {
 	input := "# Hello\n\nSome **bold** text and `code`."
-	output, err := glamourMarkdownRenderer{}.Render(input, 80)
+	output, err := newGlamourMarkdownRenderer().Render(input, 80)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output)
 	// Output should differ from input (glamour processes the markdown).
@@ -22,7 +25,7 @@ func TestRenderMarkdown(t *testing.T) {
 
 func TestRenderMarkdown_CodeBlock(t *testing.T) {
 	input := "```go\nfunc main() {\n    fmt.Println(\"hi\")\n}\n```"
-	output, err := glamourMarkdownRenderer{}.Render(input, 80)
+	output, err := newGlamourMarkdownRenderer().Render(input, 80)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output)
 	// Verify glamour processed the code block (output differs from input).
@@ -33,7 +36,7 @@ func TestRenderMarkdown_NegativeWidth(t *testing.T) {
 	// glamour.NewTermRenderer may accept any width; ensure we handle
 	// a negative width without panic.
 	input := "hello"
-	output, err := glamourMarkdownRenderer{}.Render(input, -1)
+	output, err := newGlamourMarkdownRenderer().Render(input, -1)
 	// We allow either success or error; the caller handles errors.
 	_ = output
 	_ = err
@@ -117,6 +120,24 @@ func TestModel_View_AssistantTurn_MultiBlockSpacing(t *testing.T) {
 	assert.Contains(t, segment, "\n", "reasoning and answer blocks should be on separate lines")
 }
 
+func TestModel_View_AssistantTurn_Reasoning_Rendered(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.md = mockMarkdownRenderer{output: "rendered-reasoning"}
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Reasoning{Content: "let me think..."},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+	output := mm.View()
+	assert.Contains(t, output, "Thinking: ")
+	assert.Contains(t, output, "rendered-reasoning")
+	assert.NotContains(t, output, "let me think...")
+}
+
 func TestRenderMarkdown_MalformedInput(t *testing.T) {
 	cases := []string{
 		"[link](<unfinished",
@@ -124,7 +145,7 @@ func TestRenderMarkdown_MalformedInput(t *testing.T) {
 		"```unclosed",
 	}
 	for _, input := range cases {
-		output, err := glamourMarkdownRenderer{}.Render(input, 80)
+		output, err := newGlamourMarkdownRenderer().Render(input, 80)
 		assert.NoError(t, err, "malformed markdown %q should not error", input)
 		assert.NotEmpty(t, output)
 	}
@@ -132,7 +153,7 @@ func TestRenderMarkdown_MalformedInput(t *testing.T) {
 
 func TestRenderMarkdown_NarrowWidth(t *testing.T) {
 	for _, width := range []int{1, 2, 5} {
-		output, err := glamourMarkdownRenderer{}.Render("hello world", width)
+		output, err := newGlamourMarkdownRenderer().Render("hello world", width)
 		assert.NoError(t, err, "narrow width %d should not panic", width)
 		assert.NotEmpty(t, output)
 	}
@@ -220,4 +241,68 @@ func TestRenderBlock_ExactFit(t *testing.T) {
 	assert.Equal(t, 2, len(lines), "exact-fit content should not wrap to extra line")
 	assert.Equal(t, "You: ", lines[0])
 	assert.Equal(t, content, lines[1])
+}
+
+func TestEmbeddedStyles_MarginZero(t *testing.T) {
+	var dark map[string]interface{}
+	require.NoError(t, json.Unmarshal(darkStyle, &dark))
+	doc, ok := dark["document"].(map[string]interface{})
+	require.True(t, ok, "dark style should have document key")
+	margin, ok := doc["margin"].(float64)
+	require.True(t, ok, "document should have margin key")
+	assert.Equal(t, 0.0, margin, "dark style document margin should be 0")
+
+	var light map[string]interface{}
+	require.NoError(t, json.Unmarshal(lightStyle, &light))
+	doc2, ok := light["document"].(map[string]interface{})
+	require.True(t, ok, "light style should have document key")
+	margin2, ok := doc2["margin"].(float64)
+	require.True(t, ok, "document should have margin key")
+	assert.Equal(t, 0.0, margin2, "light style document margin should be 0")
+}
+
+func TestRenderReasoning_ErrorFallback(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.md = mockMarkdownRenderer{err: errors.New("render failed")}
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Reasoning{Content: "let me think..."},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+	require.Len(t, mm.turns, 1)
+	require.Len(t, mm.turns[0].blocks, 1)
+	assert.Empty(t, mm.turns[0].blocks[0].rendered, "render error should leave rendered empty")
+	assert.Equal(t, "let me think...", mm.turns[0].blocks[0].source, "raw text should still be stored")
+
+	output := mm.View()
+	assert.Contains(t, output, "Thinking: ")
+	assert.Contains(t, output, "let me think...")
+}
+
+func TestRenderer_SelectsDarkStyle(t *testing.T) {
+	r := newGlamourMarkdownRendererWithDetectors(
+		func() bool { return true },
+		func() bool { return true },
+	)
+	assert.Equal(t, darkStyle, r.styleBytes, "terminal + dark background should select dark style")
+}
+
+func TestRenderer_SelectsLightStyle(t *testing.T) {
+	r := newGlamourMarkdownRendererWithDetectors(
+		func() bool { return true },
+		func() bool { return false },
+	)
+	assert.Equal(t, lightStyle, r.styleBytes, "terminal + light background should select light style")
+}
+
+func TestRenderer_SelectsNoTTY(t *testing.T) {
+	r := newGlamourMarkdownRendererWithDetectors(
+		func() bool { return false },
+		func() bool { return false },
+	)
+	assert.Equal(t, darkStyle, r.styleBytes, "non-terminal should default to dark style")
 }

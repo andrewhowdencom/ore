@@ -83,7 +83,7 @@ func (m *model) renderMarkdown(text string, width int) (string, error) {
 	// If no renderer was supplied (e.g. in tests), fall back to the
 	// production glamour renderer.
 	if m.md == nil {
-		m.md = glamourMarkdownRenderer{}
+		m.md = newGlamourMarkdownRenderer()
 	}
 	return m.md.Render(text, width)
 }
@@ -151,8 +151,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 				blocks = append(blocks, block)
+			// Reasoning artifacts are rendered via the Markdown renderer to
+			// support formatting (code fences, bold, etc.) and cached for
+			// later View() calls, just like text artifacts.
 			case artifact.Reasoning:
-				blocks = append(blocks, renderedBlock{kind: "reasoning", source: a.Content})
+				block := renderedBlock{kind: "reasoning", source: a.Content}
+				if msg.turn.Role == state.RoleAssistant {
+					rendered, err := m.renderMarkdown(a.Content, m.viewport.Width)
+					if err == nil {
+						block.rendered = rendered
+					}
+				}
+				blocks = append(blocks, block)
 			}
 		}
 		rt := renderedTurn{
@@ -163,6 +173,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.turn.Role == state.RoleAssistant {
 			m.pending = false
 		}
+		m.viewport.SetContent(m.buildContent())
 		m.viewport.GotoBottom()
 	case statusMsg:
 		m.status = msg.status

@@ -31,9 +31,13 @@ func renderBlock(label string, labelStyle lipgloss.Style, content string, width 
 	return styledLabel + "\n" + content
 }
 
-// View renders the conversation history inside a scrollable viewport and
-// anchors the input prompt at the bottom of the terminal.
-func (m *model) View() string {
+// buildContent constructs the full conversation string for the viewport,
+// including all turns, the pending placeholder, and the status line.
+//
+// This helper was extracted from View() so that Update() can refresh the
+// viewport content before calling GotoBottom(), fixing a timing bug where
+// auto-scroll operated on stale content height and hid newly-rendered output.
+func (m *model) buildContent() string {
 	var b strings.Builder
 
 	width := m.viewport.Width
@@ -59,8 +63,14 @@ func (m *model) View() string {
 					} else {
 						b.WriteString(renderBlock("Assistant: ", assistantStyle, block.source, width))
 					}
+				// Reasoning blocks are rendered through the same Markdown pipeline
+				// as text blocks; the rendered ANSI is cached in renderedBlock.rendered.
 				case "reasoning":
-					b.WriteString(renderBlock("Thinking: ", thinkingStyle, block.source, width))
+					if block.rendered != "" {
+						b.WriteString(renderBlock("Thinking: ", thinkingStyle, block.rendered, 0))
+					} else {
+						b.WriteString(renderBlock("Thinking: ", thinkingStyle, block.source, width))
+					}
 				}
 				if i < len(turn.blocks)-1 {
 					b.WriteString("\n\n")
@@ -91,7 +101,13 @@ func (m *model) View() string {
 		b.WriteString("\n")
 	}
 
-	m.viewport.SetContent(b.String())
+	return b.String()
+}
+
+// View renders the conversation history inside a scrollable viewport and
+// anchors the input prompt at the bottom of the terminal.
+func (m *model) View() string {
+	m.viewport.SetContent(m.buildContent())
 
 	// Render a thin horizontal line to visually separate the conversation
 	// history (viewport) from the input area at the bottom of the terminal.

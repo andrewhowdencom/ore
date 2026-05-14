@@ -96,6 +96,13 @@ Cognitive patterns, provider invocation, and conversation orchestration are **ap
 
 This mirrors the TUI pattern: `conduit/tui/` is a dumb pipe; `examples/tui-chat/main.go` composes the ReAct loop. The HTTP conduit must follow the same separation.
 
+### TUI Rendering Expectations
+
+The TUI conduit renders all assistant artifacts (including `Reasoning`)
+through a Markdown renderer with embedded zero-margin styles. Agents
+generating content for the TUI should format output accordingly, as
+raw text and Markdown syntax will be styled by glamour at display time.
+
 ## Agent Workspace Conventions
 
 ### Verify Freshness Before Reasoning

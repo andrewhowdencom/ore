@@ -66,6 +66,7 @@ func TestModel_Update_Turn_PreservesReasoning(t *testing.T) {
 	assert.Equal(t, "the answer is 42", mm.turns[0].blocks[0].source)
 	assert.Equal(t, "reasoning", mm.turns[0].blocks[1].kind)
 	assert.Equal(t, "let me think...", mm.turns[0].blocks[1].source)
+	assert.NotEmpty(t, mm.turns[0].blocks[1].rendered, "reasoning block should be rendered for assistant turns")
 }
 
 func TestModel_Update_Turn_ClearsPending(t *testing.T) {
@@ -335,23 +336,28 @@ func TestModel_Update_PgDown_ScrollsViewport(t *testing.T) {
 func TestModel_Update_Turn_AutoScrollsViewport(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(80, 5)
-	m.viewport.SetContent(strings.Repeat("line\n", 20))
+	// Pre-populate with tall content so buildContent() exceeds viewport height.
+	m.turns = []renderedTurn{
+		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 200)}}},
+	}
+	m.viewport.SetContent(m.buildContent())
 	m.viewport.GotoBottom()
-
-	// Scroll up to simulate user reading history
+	oldBottom := m.viewport.YOffset
 	m.viewport.HalfPageUp()
 	assert.False(t, m.viewport.AtBottom(), "should not be at bottom after scrolling up")
 
+	// Add another tall turn to genuinely increase content height.
 	turn := state.Turn{
 		Role: state.RoleAssistant,
 		Artifacts: []artifact.Artifact{
-			artifact.Text{Content: "hello world"},
+			artifact.Text{Content: strings.Repeat("more content ", 200)},
 		},
 	}
 	newM, _ := m.Update(turnMsg{turn: turn})
 	mm := newM.(*model)
 
 	assert.True(t, mm.viewport.AtBottom(), "turn should auto-scroll viewport to bottom")
+	assert.Greater(t, mm.viewport.YOffset, oldBottom, "should scroll to new bottom past old bottom")
 }
 
 func TestModel_View_LongHistory_InputAtBottom(t *testing.T) {
@@ -778,4 +784,34 @@ func TestModel_Update_RapidSubmissions(t *testing.T) {
 	default:
 		t.Fatal("expected second event on channel")
 	}
+}
+
+func TestAutoScroll_MultipleTurns(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 5)
+	for i := 0; i < 3; i++ {
+		turn := state.Turn{
+			Role: state.RoleAssistant,
+			Artifacts: []artifact.Artifact{
+				artifact.Text{Content: strings.Repeat("content ", 200)},
+			},
+		}
+		newM, _ := m.Update(turnMsg{turn: turn})
+		m = *newM.(*model)
+		assert.True(t, m.viewport.AtBottom(), "turn %d should auto-scroll to bottom", i+1)
+	}
+}
+
+func TestUnknownArtifact_Ignored(t *testing.T) {
+	m := model{}
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			unknownArtifact{},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+	require.Len(t, mm.turns, 1)
+	assert.Empty(t, mm.turns[0].blocks, "unknown artifact should produce no blocks")
 }
