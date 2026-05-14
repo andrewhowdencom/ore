@@ -233,5 +233,32 @@ This README remains a vision document, but the framework is now partially implem
 - `examples/single-turn-cli/` — Reference one-shot CLI application
 - `examples/tui-chat/` — Reference streaming chat REPL using Bubble Tea
 - `examples/calculator/` — Reference tool-calling application with add and multiply
+- `cmd/forge/` — CLI that reads a YAML manifest and generates a compilable Go agent binary for HTTP or TUI conduits
 
 Remaining work: additional provider adapters (Anthropic, Gemini), additional artifact handlers (image, structured output), additional lifecycle hooks, and more I/O conduit implementations (web, Telegram, webhook).
+
+## Forge CLI
+
+`cmd/forge` is a build-time tool that turns a YAML manifest into a runnable Go binary. It generates the `main.go` and `go.mod` for an agent application, resolves the local ore module path, and compiles the binary with `go build`.
+
+### Usage
+
+```bash
+go run ./cmd/forge -config forge.yaml
+```
+
+### Manifest format
+
+The manifest is a single YAML file with three top-level sections:
+
+```yaml
+dist:
+  name: my-agent          # binary name used in go.mod
+  output_path: ./my-agent # destination path (relative to cwd)
+conduit:
+  type: http              # "http" or "tui"
+```
+
+### Generated binary
+
+The compiled binary accepts the same environment variables as the reference applications (`ORE_API_KEY`, `ORE_MODEL`, `ORE_BASE_URL`, `STORE_DIR`, `PORT`) and behaves identically. For the TUI conduit, pass `--thread <uuid>` to resume an existing thread.

@@ -1,3 +1,4 @@
+# Minimal HTTP conduit manifest used by smoke tests.
 dist:
   name: http-smoke-agent
   output_path: ./http-smoke-agent

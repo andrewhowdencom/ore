@@ -1,0 +1,10 @@
+# Forge manifest for an HTTP chat agent.
+# Run with:
+#   cd examples/forge/http
+#   go run ../../../cmd/forge -config forge.yaml
+# The output binary is written relative to the current working directory.
+dist:
+  name: http-chat
+  output_path: ./http-chat
+conduit:
+  type: http

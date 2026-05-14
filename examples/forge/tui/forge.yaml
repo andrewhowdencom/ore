@@ -1,0 +1,10 @@
+# Forge manifest for a TUI chat agent.
+# Run with:
+#   cd examples/forge/tui
+#   go run ../../../cmd/forge -config forge.yaml
+# The output binary is written relative to the current working directory.
+dist:
+  name: tui-chat
+  output_path: ./tui-chat
+conduit:
+  type: tui
