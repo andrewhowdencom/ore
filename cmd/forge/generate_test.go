@@ -37,6 +37,7 @@ func TestGenerateMainGo(t *testing.T) {
 			if tt.manifest.Conduit.Type == "http" {
 				assert.Contains(t, content, `"net/http"`)
 				assert.Contains(t, content, `httpc "github.com/andrewhowdencom/ore/conduit/http"`)
+				assert.NotContains(t, content, `"flag"`)
 			} else {
 				assert.Contains(t, content, `"github.com/andrewhowdencom/ore/conduit/tui"`)
 				assert.Contains(t, content, `"flag"`)

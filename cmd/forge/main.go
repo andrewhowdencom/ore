@@ -38,7 +38,15 @@ func run() error {
 		return fmt.Errorf("parse manifest: %w", err)
 	}
 
-	_ = manifest
+	oreModulePath, err := FindOreModuleRoot(".")
+	if err != nil {
+		return fmt.Errorf("find ore module root: %w", err)
+	}
 
-	return fmt.Errorf("build orchestration not yet implemented")
+	if err := Build(manifest, oreModulePath, manifest.Dist.OutputPath); err != nil {
+		return fmt.Errorf("build: %w", err)
+	}
+
+	slog.Info("build complete", "output", manifest.Dist.OutputPath)
+	return nil
 }
