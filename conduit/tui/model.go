@@ -1,6 +1,7 @@
 // model.go implements the Bubble Tea model used by the TUI conduit.
-// It receives streaming artifacts and turn notifications from the
-// ore core and updates the on-screen conversation view.
+// It receives turn notifications from the ore core and updates the
+// on-screen conversation view, including a pending placeholder while an
+// assistant response is in flight.
 package tui
 
 import (

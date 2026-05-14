@@ -7,7 +7,12 @@ This matrix shows which capabilities each conduit implementation supports.
 | Capability | TUI |
 |------------|----------|
 | event-source | ✅ |
-| render-delta | ✅ |
+| render-delta | ❌ |
 | render-markdown | ✅ |
 | render-turn | ✅ |
 | show-status | ✅ |
+
+> **Note:** The TUI no longer consumes streaming delta artifacts. While an
+> assistant response is pending, the TUI shows a static placeholder
+> (`Assistant:` / `...`). The full turn is rendered at once when the
+> `turn_complete` event arrives.

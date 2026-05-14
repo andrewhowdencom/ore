@@ -1,4 +1,4 @@
-// Package main provides a streaming chat REPL demonstrating the ore
+// Package main provides an interactive chat REPL demonstrating the ore
 // framework. It wires together the ReAct cognitive pattern, the loop.Step
 // primitive for turn orchestration, and the conduit/tui package for
 // terminal interaction.
