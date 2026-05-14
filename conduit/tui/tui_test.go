@@ -15,16 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNew(t *testing.T) {
-	ch := make(chan loop.OutputEvent, 10)
-	tui := New(ch)
-	require.NotNil(t, tui)
-	assert.NotNil(t, tui.Events())
-}
-
 func TestTUI_Events(t *testing.T) {
-	ch := make(chan loop.OutputEvent, 10)
-	tui := New(ch)
+	tui := &TUI{eventsCh: make(chan conduit.Event, 10)}
 	eventsCh := tui.Events()
 	require.NotNil(t, eventsCh)
 }
@@ -36,7 +28,7 @@ var (
 )
 
 func TestTUI_Capabilities(t *testing.T) {
-	tui := New(make(chan loop.OutputEvent, 10))
+	tui := &TUI{eventsCh: make(chan conduit.Event, 10)}
 	caps := tui.Capabilities()
 
 	assert.Equal(t, Descriptor.Capabilities, caps)
@@ -55,7 +47,7 @@ func TestTUI_Capabilities(t *testing.T) {
 }
 
 func TestTUI_Can(t *testing.T) {
-	tui := New(make(chan loop.OutputEvent, 10))
+	tui := &TUI{eventsCh: make(chan conduit.Event, 10)}
 
 	tests := []struct {
 		name string
@@ -104,38 +96,38 @@ func simpleProcessor() session.TurnProcessor {
 	}
 }
 
-func TestNewWithManager(t *testing.T) {
+func TestNew(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
 	thr, err := store.Create()
 	require.NoError(t, err)
 
-	tui := NewWithManager(mgr, thr.ID)
+	tui := New(mgr, thr.ID)
 	require.NotNil(t, tui)
 	assert.NotNil(t, tui.Events())
 }
 
-func TestNewWithManager_Events(t *testing.T) {
+func TestNew_Events(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
 	thr, err := store.Create()
 	require.NoError(t, err)
 
-	tui := NewWithManager(mgr, thr.ID)
+	tui := New(mgr, thr.ID)
 	eventsCh := tui.Events()
 	require.NotNil(t, eventsCh)
 }
 
-func TestNewWithManager_SubscribeFailure(t *testing.T) {
+func TestNew_SubscribeFailure(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
 
 	// No thread exists for this ID, so Subscribe and Attach both fail.
-	// NewWithManager should still return a valid TUI without panicking.
-	tui := NewWithManager(mgr, "nonexistent")
+	// New should still return a valid TUI without panicking.
+	tui := New(mgr, "nonexistent")
 	require.NotNil(t, tui)
 	assert.NotNil(t, tui.Events())
 }

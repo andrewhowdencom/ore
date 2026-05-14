@@ -106,7 +106,7 @@ func run() error {
 	// Create TUI conduit composed with the manager.
 	// The TUI manages its own subscription and event loop; do not call
 	// mgr.Subscribe or mgr.Process from application code.
-	s := tui.NewWithManager(mgr, thread.ID)
+	s := tui.New(mgr, thread.ID)
 
 	// Run the TUI. This blocks until the user quits (Ctrl+C).
 	// s.Run() closes the events channel on return so background

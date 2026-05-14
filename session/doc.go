@@ -19,7 +19,7 @@
 //	handler := httpc.NewHandler(mgr, httpc.WithUI())
 //
 //	// TUI conduit
-//	tui := tui.NewWithManager(mgr, threadID)
+//	tui := tui.New(mgr, threadID)
 //
 // Usage:
 //

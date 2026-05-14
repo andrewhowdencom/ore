@@ -1,15 +1,9 @@
 // Package tui implements an opinionated terminal user interface conduit for
 // the ore framework using Bubble Tea.
 //
-// Two constructors are provided:
-//
-//	New(eventsCh)                   - use when you already have a loop.Step
-//	                                  output channel and want to manage the
-//	                                  event loop yourself.
-//
-//	NewWithManager(mgr, threadID)   - use for the common case where the TUI
-//	                                  should manage its own subscription and
-//	                                  send user events back through the manager.
+// Use New(mgr, threadID) to create a TUI that composes with a
+// session.Manager. The TUI subscribes to the manager's output stream and
+// sends user events back through it.
 //
 // The TUI satisfies conduit.Conduit (via Capable and Events).
 package tui
@@ -48,50 +42,6 @@ var Descriptor = conduit.Descriptor{
 	},
 }
 
-// New creates a new TUI conduit with an initialized events channel and
-// Bubble Tea program configured with the alternate screen buffer.
-// The TUI reads artifacts and turn completion events from the provided
-// channel and routes them into the Bubble Tea message loop.
-func New(eventsCh <-chan loop.OutputEvent) *TUI {
-	surfEventsCh := make(chan conduit.Event, 10)
-
-	ta := textarea.New()
-	ta.ShowLineNumbers = false
-	ta.Prompt = "> "
-	// Note: bubbletea v1.3.10 does not support Shift modifier detection.
-	// Alt+Enter is used as the practical alternative for newline insertion.
-	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("alt+enter"))
-	ta.Focus()
-
-	m := model{
-		eventsCh: surfEventsCh,
-		viewport: viewport.New(0, 0),
-		textarea: ta,
-		md:       glamourMarkdownRenderer{},
-	}
-	p := tea.NewProgram(&m, tea.WithAltScreen())
-	t := &TUI{
-		eventsCh: surfEventsCh,
-		program:  p,
-	}
-
-	go func() {
-		for event := range eventsCh {
-			switch e := event.(type) {
-			case loop.TurnCompleteEvent:
-				t.program.Send(turnMsg{turn: e.Turn})
-			case loop.ErrorEvent:
-				// Errors are exposed via status updates rather than the
-				// message loop; the application goroutine handles them.
-			case artifact.Artifact:
-				t.program.Send(deltaMsg{delta: e})
-			}
-		}
-	}()
-
-	return t
-}
-
 // Events returns a read-only channel of user-generated events.
 func (t *TUI) Events() <-chan conduit.Event {
 	return t.eventsCh
@@ -112,12 +62,12 @@ func (t *TUI) Can(cap conduit.Capability) bool {
 	return false
 }
 
-// NewWithManager creates a new TUI conduit that composes with a
-// session.Manager. It subscribes to the manager's output stream for the
-// given thread and sends user events back through the manager. The
-// application should not read from Events() when using this constructor;
-// the TUI manages the event loop internally.
-func NewWithManager(mgr *session.Manager, threadID string) *TUI {
+// New creates a new TUI conduit that composes with a session.Manager.
+// It subscribes to the manager's output stream for the given thread and
+// sends user events back through the manager. The application should not
+// read from Events() when using this constructor; the TUI manages the
+// event loop internally.
+func New(mgr *session.Manager, threadID string) *TUI {
 	surfEventsCh := make(chan conduit.Event, 10)
 
 	ta := textarea.New()
