@@ -16,7 +16,7 @@ and templates become explicit.
 
 ```bash
 cd examples/forge/http
-go run ../../../cmd/forge -config forge.yaml
+go run ../../../cmd/forge build --config forge.yaml
 ./http-chat
 ```
 
@@ -24,7 +24,7 @@ go run ../../../cmd/forge -config forge.yaml
 
 ```bash
 cd examples/forge/tui
-go run ../../../cmd/forge -config forge.yaml
+go run ../../../cmd/forge build --config forge.yaml
 ./tui-chat
 ```
 
