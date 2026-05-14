@@ -457,6 +457,30 @@ func TestHandler_SendMessage_MalformedJSON(t *testing.T) {
 	assert.Equal(t, 400, rr.Code)
 }
 
+func TestHandler_SendMessage_EmptyBody(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	h := NewHandler(mgr)
+
+	// Create a session.
+	createReq := httptest.NewRequest("POST", "/sessions", nil)
+	createRr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(createRr, createReq)
+	require.Equal(t, 201, createRr.Code)
+
+	var createResp map[string]string
+	require.NoError(t, json.Unmarshal(createRr.Body.Bytes(), &createResp))
+	sessionID := createResp["id"]
+
+	// Send empty request body.
+	req := httptest.NewRequest("POST", "/sessions/"+sessionID+"/messages", strings.NewReader(""))
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	assert.Equal(t, 400, rr.Code)
+}
+
 func TestHandler_SendMessage_ProviderError(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
@@ -694,6 +718,24 @@ func TestHandler_ListThreads(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
 	require.Len(t, resp, 1)
 	assert.Equal(t, createResp["id"], resp[0]["id"])
+}
+
+func TestHandler_ListThreads_Empty(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	h := NewHandler(mgr)
+
+	req := httptest.NewRequest("GET", "/threads", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	require.Equal(t, 200, rr.Code)
+	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+
+	var resp []map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	assert.Empty(t, resp)
 }
 
 func TestHandler_ListThreads_StoreError(t *testing.T) {
