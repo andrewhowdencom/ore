@@ -14,7 +14,7 @@ type subscription struct {
 // FanOut distributes OutputEvent values from a source channel to multiple
 // subscribers, filtered by event kind.
 type FanOut struct {
-	src    <-chan OutputEvent
+	src    <-chan outputEventEnvelope
 	subs   []subscription
 	mu     sync.Mutex
 	done   chan struct{}
@@ -26,7 +26,7 @@ type FanOut struct {
 // NewFanOut creates a FanOut that reads from src and distributes events.
 // The FanOut starts a background goroutine that reads from src until it is
 // closed or the FanOut is closed.
-func NewFanOut(src <-chan OutputEvent) *FanOut {
+func NewFanOut(src <-chan outputEventEnvelope) *FanOut {
 	f := &FanOut{
 		src:  src,
 		subs: make([]subscription, 0),
@@ -41,13 +41,14 @@ func (f *FanOut) run() {
 	defer f.wg.Done()
 	for {
 		select {
-		case event, ok := <-f.src:
+		case env, ok := <-f.src:
 			if !ok {
 				// Source closed — close all subscribers and return.
 				f.closeAll()
 				return
 			}
-			f.send(event)
+			f.send(env.event)
+			close(env.done)
 		case <-f.done:
 			// FanOut was explicitly closed — drain remaining events from src
 			// without blocking, close all subscribers, and return.
@@ -80,11 +81,12 @@ func (f *FanOut) send(event OutputEvent) {
 func (f *FanOut) drain() {
 	for {
 		select {
-		case event, ok := <-f.src:
+		case env, ok := <-f.src:
 			if !ok {
 				return
 			}
-			f.send(event)
+			f.send(env.event)
+			close(env.done)
 		default:
 			return
 		}

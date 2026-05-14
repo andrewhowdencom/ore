@@ -152,9 +152,13 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 
 	// Run the inference pipeline in a goroutine.
-	done := make(chan error, 1)
+	done := make(chan error)
 	go func() {
-		done <- h.mgr.Process(r.Context(), id, conduit.UserMessageEvent{Content: req.Content})
+		err := h.mgr.Process(r.Context(), id, conduit.UserMessageEvent{Content: req.Content})
+		select {
+		case done <- err:
+		case <-r.Context().Done():
+		}
 	}()
 
 	// Setup NDJSON writer.
@@ -182,16 +186,35 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 				// Client likely disconnected.
 				return
 			}
-			if tc, ok := event.(loop.TurnCompleteEvent); ok && tc.Turn.Role == state.RoleAssistant {
-				return
-			}
+			// turn_complete (assistant) is written but we don't return here;
+			// we wait for done to fire so that any post-turn error (e.g. Save)
+			// is not lost. With unbuffered s.events, done cannot fire until
+			// after the FanOut has delivered all events to subCh.
 		case err := <-done:
-			// Stream a final error event if the pipeline failed.
-			if err != nil {
-				data, _ := MarshalOutputEvent(loop.ErrorEvent{Err: err})
-				_ = nw.WriteEvent(data)
+			// Drain any remaining events that have already been delivered
+			// to the subscription buffer before returning.
+			for {
+				select {
+				case event := <-subCh:
+					data, _ := MarshalOutputEvent(event)
+					if data != nil {
+						_ = nw.WriteEvent(data)
+					}
+					if tc, ok := event.(loop.TurnCompleteEvent); ok && tc.Turn.Role == state.RoleAssistant {
+						if err != nil {
+							data, _ := MarshalOutputEvent(loop.ErrorEvent{Err: err})
+							_ = nw.WriteEvent(data)
+						}
+						return
+					}
+				default:
+					if err != nil {
+						data, _ := MarshalOutputEvent(loop.ErrorEvent{Err: err})
+						_ = nw.WriteEvent(data)
+					}
+					return
+				}
 			}
-			return
 		case <-r.Context().Done():
 			// Client disconnected; stop streaming.
 			return

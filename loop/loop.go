@@ -41,11 +41,18 @@ type ErrorEvent struct {
 // Kind returns the event kind identifier.
 func (e ErrorEvent) Kind() string { return "error" }
 
+// outputEventEnvelope wraps an OutputEvent with an acknowledgment channel.
+// The producer blocks until the FanOut closes done after delivering the event.
+type outputEventEnvelope struct {
+	event OutputEvent
+	done  chan struct{}
+}
+
 // Step executes a single complete inference turn: it invokes the provider,
 // distributes streaming artifacts to subscribers via an embedded FanOut, and
 // runs registered artifact handlers synchronously on the complete response.
 type Step struct {
-	events      chan OutputEvent
+	events      chan outputEventEnvelope
 	fanOut      *FanOut
 	beforeTurns []BeforeTurn
 	handlers    []Handler
@@ -54,7 +61,7 @@ type Step struct {
 
 // New creates a Step with the given options.
 func New(opts ...Option) *Step {
-	events := make(chan OutputEvent, 100)
+	events := make(chan outputEventEnvelope)
 	s := &Step{
 		events: events,
 		fanOut: NewFanOut(events),
@@ -63,6 +70,20 @@ func New(opts ...Option) *Step {
 		opt(s)
 	}
 	return s
+}
+
+// emit sends an event to the FanOut and blocks until it has been delivered.
+func (s *Step) emit(ctx context.Context, event OutputEvent) {
+	env := outputEventEnvelope{event: event, done: make(chan struct{})}
+	select {
+	case s.events <- env:
+	case <-ctx.Done():
+		return
+	}
+	select {
+	case <-env.done:
+	case <-ctx.Done():
+	}
 }
 
 // Subscribe returns a receive-only channel of OutputEvents whose Kind()
@@ -139,24 +160,21 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 				if text, ok := currentBlock.(artifact.Text); ok {
 					text.Content += d.Content
 					currentBlock = text
-					select {
-					case s.events <- art:
-					case <-ctx.Done():
+					s.emit(ctx, art)
+					if ctx.Err() != nil {
 						return
 					}
 				} else {
 					if currentBlock != nil {
-						select {
-						case s.events <- currentBlock:
-						case <-ctx.Done():
+						s.emit(ctx, currentBlock)
+						if ctx.Err() != nil {
 							return
 						}
 						accumulatedArtifacts = append(accumulatedArtifacts, currentBlock)
 					}
 					currentBlock = artifact.Text(d)
-					select {
-					case s.events <- art:
-					case <-ctx.Done():
+					s.emit(ctx, art)
+					if ctx.Err() != nil {
 						return
 					}
 				}
@@ -164,40 +182,35 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 				if reasoning, ok := currentBlock.(artifact.Reasoning); ok {
 					reasoning.Content += d.Content
 					currentBlock = reasoning
-					select {
-					case s.events <- art:
-					case <-ctx.Done():
+					s.emit(ctx, art)
+					if ctx.Err() != nil {
 						return
 					}
 				} else {
 					if currentBlock != nil {
-						select {
-						case s.events <- currentBlock:
-						case <-ctx.Done():
+						s.emit(ctx, currentBlock)
+						if ctx.Err() != nil {
 							return
 						}
 						accumulatedArtifacts = append(accumulatedArtifacts, currentBlock)
 					}
 					currentBlock = artifact.Reasoning(d)
-					select {
-					case s.events <- art:
-					case <-ctx.Done():
+					s.emit(ctx, art)
+					if ctx.Err() != nil {
 						return
 					}
 				}
 			default:
 				if currentBlock != nil {
-					select {
-					case s.events <- currentBlock:
-					case <-ctx.Done():
+					s.emit(ctx, currentBlock)
+					if ctx.Err() != nil {
 						return
 					}
 					accumulatedArtifacts = append(accumulatedArtifacts, currentBlock)
 					currentBlock = nil
 				}
-				select {
-				case s.events <- art:
-				case <-ctx.Done():
+				s.emit(ctx, art)
+				if ctx.Err() != nil {
 					return
 				}
 				if _, ok := art.(artifact.ToolCallDelta); !ok {
@@ -206,9 +219,8 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 			}
 		}
 		if currentBlock != nil {
-			select {
-			case s.events <- currentBlock:
-			case <-ctx.Done():
+			s.emit(ctx, currentBlock)
+			if ctx.Err() != nil {
 				return
 			}
 			accumulatedArtifacts = append(accumulatedArtifacts, currentBlock)
@@ -224,10 +236,8 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 	wg.Wait()
 
 	if err != nil {
-		select {
-		case s.events <- ErrorEvent{Err: err}:
-		case <-ctx.Done():
-		}
+		s.emit(ctx, ErrorEvent{Err: err})
+		
 		return st, fmt.Errorf("turn failed: %w", err)
 	}
 
@@ -275,10 +285,8 @@ func (s *Step) finalizeTurn(ctx context.Context, st state.State, role state.Role
 		}
 	}
 
-	select {
-	case s.events <- TurnCompleteEvent{Turn: last}:
-	case <-ctx.Done():
-	}
+	s.emit(ctx, TurnCompleteEvent{Turn: last})
+	
 
 	return st, nil
 }

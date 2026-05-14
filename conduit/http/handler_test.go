@@ -324,25 +324,40 @@ func TestHandler_SendMessage(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(rr.Body.String()), "\n")
 	require.NotEmpty(t, lines)
 
-	// Last line should be the complete event.
-	var complete completeEventJSON
-	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &complete))
-	assert.Equal(t, "complete", complete.Kind)
-	assert.GreaterOrEqual(t, len(complete.Turns), 2) // user + assistant
+	// Last line should be the assistant turn_complete event.
+	var lastEvent map[string]any
+	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &lastEvent))
+	assert.Equal(t, "turn_complete", lastEvent["kind"])
+	turn, ok := lastEvent["turn"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "assistant", turn["role"])
+	artifacts, ok := turn["artifacts"].([]any)
+	require.Len(t, artifacts, 1)
+	art := artifacts[0].(map[string]any)
+	assert.Equal(t, "text", art["kind"])
+	assert.Equal(t, "Hello world", art["content"])
 
-	// Verify user turn content.
-	userTurn := complete.Turns[0]
-	assert.Equal(t, "user", userTurn.Role)
-	require.Len(t, userTurn.Artifacts, 1)
-	assert.Equal(t, "text", userTurn.Artifacts[0].Kind)
-	assert.Equal(t, "hi", userTurn.Artifacts[0].Content)
-
-	// Verify assistant turn content.
-	assistantTurn := complete.Turns[len(complete.Turns)-1]
-	assert.Equal(t, "assistant", assistantTurn.Role)
-	require.Len(t, assistantTurn.Artifacts, 1)
-	assert.Equal(t, "text", assistantTurn.Artifacts[0].Kind)
-	assert.Equal(t, "Hello world", assistantTurn.Artifacts[0].Content)
+	// Verify user turn content from the first turn_complete event.
+	var userFound bool
+	for _, line := range lines {
+		var event map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &event))
+		if event["kind"] != "turn_complete" {
+			continue
+		}
+		turn, ok := event["turn"].(map[string]any)
+		require.True(t, ok)
+		if turn["role"] == "user" {
+			userFound = true
+			artifacts, _ := turn["artifacts"].([]any)
+			require.Len(t, artifacts, 1)
+			art := artifacts[0].(map[string]any)
+			assert.Equal(t, "text", art["kind"])
+			assert.Equal(t, "hi", art["content"])
+			break
+		}
+	}
+	require.True(t, userFound, "expected a user turn_complete event")
 }
 
 func TestHandler_SendMessage_NotFound(t *testing.T) {
@@ -387,13 +402,16 @@ func TestHandler_SendMessage_NoKinds(t *testing.T) {
 
 	require.Equal(t, 200, rr.Code)
 
-	// Should still get the complete event at the end.
+	// Last line should be the assistant turn_complete event.
 	lines := strings.Split(strings.TrimSpace(rr.Body.String()), "\n")
 	require.NotEmpty(t, lines)
 
-	var complete completeEventJSON
-	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &complete))
-	assert.Equal(t, "complete", complete.Kind)
+	var lastEvent map[string]any
+	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &lastEvent))
+	assert.Equal(t, "turn_complete", lastEvent["kind"])
+	turn, ok := lastEvent["turn"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "assistant", turn["role"])
 }
 
 func TestHandler_SendMessage_Concurrent(t *testing.T) {
@@ -527,10 +545,10 @@ func TestHandler_SendMessage_ProviderError(t *testing.T) {
 	}
 	assert.True(t, foundError, "expected an error event in the NDJSON stream")
 
-	// Last line should still be the complete event.
-	var complete completeEventJSON
-	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &complete))
-	assert.Equal(t, "complete", complete.Kind)
+	// Last line should be the error event.
+	var lastEvent map[string]any
+	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &lastEvent))
+	assert.Equal(t, "error", lastEvent["kind"])
 }
 
 func TestHandler_SendMessage_SaveError(t *testing.T) {
@@ -578,10 +596,10 @@ func TestHandler_SendMessage_SaveError(t *testing.T) {
 	}
 	assert.True(t, foundError, "expected an error event for save failure")
 
-	// Last line should still be the complete event.
-	var complete completeEventJSON
-	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &complete))
-	assert.Equal(t, "complete", complete.Kind)
+	// Last line should be the error event.
+	var lastEvent map[string]any
+	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &lastEvent))
+	assert.Equal(t, "error", lastEvent["kind"])
 }
 
 func TestHandler_SendMessage_HandlerError(t *testing.T) {
@@ -630,10 +648,10 @@ func TestHandler_SendMessage_HandlerError(t *testing.T) {
 	assert.True(t, foundError, "expected an error event for handler failure")
 	assert.Contains(t, errorMsg, "boom")
 
-	// Last line should still be the complete event.
-	var complete completeEventJSON
-	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &complete))
-	assert.Equal(t, "complete", complete.Kind)
+	// Last line should be the error event.
+	var lastEvent map[string]any
+	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &lastEvent))
+	assert.Equal(t, "error", lastEvent["kind"])
 }
 
 func TestSSEWriter(t *testing.T) {
