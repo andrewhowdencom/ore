@@ -11,6 +11,7 @@ import (
 	"github.com/andrewhowdencom/ore/conduit"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/thread"
 )
 
@@ -128,14 +129,6 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		return
 	}
 
-	// Capture turn count before processing so we can return all new turns.
-	sess, err := h.mgr.Get(id)
-	if err != nil {
-		w.WriteHeader(stdhttp.StatusNotFound)
-		return
-	}
-	beforeCount := len(sess.Thread().State.Turns())
-
 	// Parse request body.
 	var req struct {
 		Content string   `json:"content"`
@@ -189,43 +182,18 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 				// Client likely disconnected.
 				return
 			}
+			if tc, ok := event.(loop.TurnCompleteEvent); ok && tc.Turn.Role == state.RoleAssistant {
+				return
+			}
 		case err := <-done:
-			// Drain any remaining events from the subscription buffer.
-			drainSubscription(subCh, nw)
 			// Stream a final error event if the pipeline failed.
 			if err != nil {
 				data, _ := MarshalOutputEvent(loop.ErrorEvent{Err: err})
 				_ = nw.WriteEvent(data)
 			}
-			// Stream the complete event with all new turns.
-			newTurns := sess.Thread().State.Turns()[beforeCount:]
-			data, _ := MarshalCompleteEvent(newTurns)
-			_ = nw.WriteEvent(data)
 			return
 		case <-r.Context().Done():
 			// Client disconnected; stop streaming.
-			return
-		}
-	}
-}
-
-// drainSubscription reads all currently buffered events from the subscription
-// channel and writes them to the NDJSON writer. It is non-blocking and returns
-// as soon as the buffer is empty.
-func drainSubscription(subCh <-chan loop.OutputEvent, nw *ndjsonWriter) {
-	for {
-		select {
-		case event := <-subCh:
-			data, err := MarshalOutputEvent(event)
-			if err != nil {
-				continue
-			}
-			if data == nil {
-				// Skip unknown artifact kinds (e.g., custom extensions).
-				continue
-			}
-			_ = nw.WriteEvent(data)
-		default:
 			return
 		}
 	}
