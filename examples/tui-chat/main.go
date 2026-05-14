@@ -23,11 +23,11 @@ import (
 	"os"
 
 	"github.com/andrewhowdencom/ore/cognitive"
+	"github.com/andrewhowdencom/ore/conduit/tui"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider/openai"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/thread"
-	"github.com/andrewhowdencom/ore/conduit/tui"
 )
 
 func main() {
@@ -71,23 +71,6 @@ func run() error {
 		store = thread.NewMemoryStore()
 	}
 
-	// Create or load thread.
-	var thread *thread.Thread
-	if threadID != "" {
-		var ok bool
-		thread, ok = store.Get(threadID)
-		if !ok {
-			return fmt.Errorf("thread %q not found", threadID)
-		}
-	} else {
-		var err error
-		thread, err = store.Create()
-		if err != nil {
-			return fmt.Errorf("create thread: %w", err)
-		}
-		slog.Info("thread started", "id", thread.ID)
-	}
-
 	// Build OpenAI provider.
 	var opts []openai.Option
 	if baseURL != "" {
@@ -103,10 +86,26 @@ func run() error {
 	// Create session manager with the ReAct cognitive pattern.
 	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())
 
-	// Create TUI conduit composed with the manager.
+	// Obtain a session — resume an existing thread or create a new one.
+	var sess session.Session
+	var err error
+	if threadID != "" {
+		sess, err = mgr.Attach(threadID)
+		if err != nil {
+			return fmt.Errorf("attach to thread %q: %w", threadID, err)
+		}
+	} else {
+		sess, err = mgr.Create()
+		if err != nil {
+			return fmt.Errorf("create session: %w", err)
+		}
+		slog.Info("thread started", "id", sess.ID())
+	}
+
+	// Create TUI conduit composed with the session.
 	// The TUI manages its own subscription and event loop; do not call
-	// mgr.Subscribe or mgr.Process from application code.
-	s := tui.New(mgr, thread.ID)
+	// sess.Subscribe or sess.Process from application code.
+	s := tui.New(sess)
 
 	// Run the TUI. This blocks until the user quits (Ctrl+C).
 	// s.Run() closes the events channel on return so background

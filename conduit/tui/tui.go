@@ -1,19 +1,17 @@
 // Package tui implements an opinionated terminal user interface conduit for
 // the ore framework using Bubble Tea.
 //
-// Use New(mgr, threadID) to create a TUI that composes with a
-// session.Manager. The TUI subscribes to the manager's output stream and
-// sends user events back through it.
-//
-// The TUI satisfies conduit.Conduit (via Capable and Events).
+// Use New(sess) to create a TUI that composes with a session.Session. The
+// TUI subscribes to the session's output stream and sends user events back
+// through it.
 package tui
 
 import (
 	"context"
 	"log/slog"
 
-	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/conduit"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
@@ -21,8 +19,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// TUI is a terminal user interface conduit. It satisfies conduit.Conduit
-// (via Capable and Events) and hides all Bubble Tea internals from callers.
+// TUI is a terminal user interface conduit. It hides all Bubble Tea internals
+// from callers.
 type TUI struct {
 	eventsCh chan conduit.Event
 	program  *tea.Program
@@ -40,32 +38,11 @@ var Descriptor = conduit.Descriptor{
 	},
 }
 
-// Events returns a read-only channel of user-generated events.
-func (t *TUI) Events() <-chan conduit.Event {
-	return t.eventsCh
-}
-
-// Capabilities returns the full list of capabilities this TUI provides.
-func (t *TUI) Capabilities() []conduit.Capability {
-	return Descriptor.Capabilities
-}
-
-// Can reports whether the TUI supports a specific capability.
-func (t *TUI) Can(cap conduit.Capability) bool {
-	for _, c := range Descriptor.Capabilities {
-		if c == cap {
-			return true
-		}
-	}
-	return false
-}
-
-// New creates a new TUI conduit that composes with a session.Manager.
-// It subscribes to the manager's output stream for the given thread and
-// sends user events back through the manager. The application should not
-// read from Events() when using this constructor; the TUI manages the
-// event loop internally.
-func New(mgr *session.Manager, threadID string) *TUI {
+// New creates a new TUI conduit that composes with a session.Session.
+// It subscribes to the session's output stream and sends user events back
+// through the session. The application should not read from the internal
+// events channel; the TUI manages the event loop internally.
+func New(sess session.Session) *TUI {
 	surfEventsCh := make(chan conduit.Event, 10)
 
 	ta := textarea.New()
@@ -88,15 +65,10 @@ func New(mgr *session.Manager, threadID string) *TUI {
 		program:  p,
 	}
 
-	// Subscribe to the manager's output stream for this thread.
-	outputCh, err := mgr.Subscribe(threadID, "turn_complete")
+	// Subscribe to the session's output stream.
+	outputCh, err := sess.Subscribe("turn_complete")
 	if err != nil {
-		// Session may not exist yet; attach and retry.
-		_, _ = mgr.Attach(threadID)
-		outputCh, err = mgr.Subscribe(threadID, "turn_complete")
-		if err != nil {
-			slog.Error("failed to subscribe to manager output", "err", err)
-		}
+		slog.Error("failed to subscribe to session output", "err", err)
 	}
 
 	// Goroutine to stream output events into the Bubble Tea message loop.
@@ -114,7 +86,7 @@ func New(mgr *session.Manager, threadID string) *TUI {
 		}()
 	}
 
-	// Goroutine to process user events through the manager.
+	// Goroutine to process user events through the session.
 	go func() {
 		for event := range t.eventsCh {
 			switch e := event.(type) {
@@ -122,7 +94,7 @@ func New(mgr *session.Manager, threadID string) *TUI {
 				if err := t.SetStatus(context.Background(), "thinking..."); err != nil {
 					slog.Error("set status failed", "err", err)
 				}
-				if err := mgr.Process(context.Background(), threadID, e); err != nil {
+				if err := sess.Process(context.Background(), e); err != nil {
 					slog.Error("process failed", "err", err)
 					t.program.Send(clearPendingMsg{})
 				}
@@ -130,7 +102,7 @@ func New(mgr *session.Manager, threadID string) *TUI {
 					slog.Error("set status failed", "err", err)
 				}
 			case conduit.InterruptEvent:
-				if err := mgr.Cancel(threadID); err != nil {
+				if err := sess.Cancel(); err != nil {
 					slog.Error("cancel failed", "err", err)
 				}
 			}

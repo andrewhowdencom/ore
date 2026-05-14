@@ -1,5 +1,5 @@
 // Package http implements an HTTP handler library for the ore framework,
-// exposing session.Manager conversation primitives over HTTP with NDJSON
+// exposing session.Session conversation primitives over HTTP with NDJSON
 // streaming and SSE ambient channels.
 //
 // API:
@@ -27,5 +27,8 @@
 //   text, reasoning, tool_call, tool_result, turn_complete, error
 //
 // Callers compose the Handler with a session.Manager and mount the
-// returned ServeMux on an http.Server.
+// returned ServeMux on an http.Server. Per-request handlers obtain a
+// session.Session handle from the Manager and use it directly for Process
+// and Subscribe, while Manager methods remain for metadata and registry
+// lifecycle (Store, List, Check, Close).
 package http

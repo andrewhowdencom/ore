@@ -25,7 +25,8 @@ type ManagerOption func(*Manager)
 // ErrSessionBusy is returned when a session is already processing a turn.
 var ErrSessionBusy = errors.New("session is busy processing another turn")
 
-// Manager owns the Thread↔Step binding and the inference pipeline.
+// Manager owns the Thread↔Step binding and acts as a factory/registry for
+// Session handles.
 type Manager struct {
 	store     thread.Store
 	provider  provider.Provider
@@ -36,11 +37,16 @@ type Manager struct {
 }
 
 type managedSession struct {
-	thread *thread.Thread
-	step   *loop.Step
-	mu     sync.Mutex
-	busy   bool
-	cancel context.CancelFunc
+	id        string
+	thread    *thread.Thread
+	step      *loop.Step
+	provider  provider.Provider
+	processor TurnProcessor
+	store     thread.Store
+	mu        sync.Mutex
+	busy      bool
+	cancel    context.CancelFunc
+	closed    bool
 }
 
 // NewManager creates a new Manager with the given dependencies.
@@ -59,29 +65,36 @@ func NewManager(store thread.Store, prov provider.Provider, newStep func() *loop
 }
 
 // Create creates a new thread and an active session backed by it.
-func (m *Manager) Create() (*Session, error) {
+func (m *Manager) Create() (Session, error) {
 	thr, err := m.store.Create()
 	if err != nil {
 		return nil, fmt.Errorf("create thread: %w", err)
 	}
 	step := m.newStep()
-	sess := &managedSession{thread: thr, step: step}
+	sess := &managedSession{
+		id:        thr.ID,
+		thread:    thr,
+		step:      step,
+		provider:  m.provider,
+		processor: m.processor,
+		store:     m.store,
+	}
 
 	m.mu.Lock()
 	m.sessions[thr.ID] = sess
 	m.mu.Unlock()
 
-	return &Session{id: thr.ID, thread: thr}, nil
+	return sess, nil
 }
 
 // Attach gets or creates an active session for an existing thread.
 // If the thread does not exist in the store, an error is returned.
-func (m *Manager) Attach(threadID string) (*Session, error) {
+func (m *Manager) Attach(threadID string) (Session, error) {
 	m.mu.RLock()
 	sess, ok := m.sessions[threadID]
 	m.mu.RUnlock()
 	if ok {
-		return &Session{id: threadID, thread: sess.thread}, nil
+		return sess, nil
 	}
 
 	thr, ok := m.store.Get(threadID)
@@ -90,53 +103,55 @@ func (m *Manager) Attach(threadID string) (*Session, error) {
 	}
 
 	step := m.newStep()
-	sess = &managedSession{thread: thr, step: step}
+	sess = &managedSession{
+		id:        threadID,
+		thread:    thr,
+		step:      step,
+		provider:  m.provider,
+		processor: m.processor,
+		store:     m.store,
+	}
 
 	m.mu.Lock()
 	if existing, ok := m.sessions[threadID]; ok {
 		m.mu.Unlock()
-		return &Session{id: threadID, thread: existing.thread}, nil
+		return existing, nil
 	}
 	m.sessions[threadID] = sess
 	m.mu.Unlock()
 
-	return &Session{id: threadID, thread: thr}, nil
+	return sess, nil
 }
 
 // Process submits the event to the session's state and runs the inference
-// pipeline. The session must exist and not be busy. Context cancellation
-// aborts the running TurnProcessor.
+// pipeline. The session must not be busy. Context cancellation aborts the
+// running TurnProcessor.
 //
 // Errors:
-//   - "session not found" if the session does not exist
 //   - ErrSessionBusy if the session is already processing a turn
 //   - "unsupported event kind" for unknown event types
 //   - "process event: ..." wrapping any TurnProcessor or save error
-func (m *Manager) Process(ctx context.Context, sessionID string, event conduit.Event) error {
-	m.mu.RLock()
-	sess, ok := m.sessions[sessionID]
-	m.mu.RUnlock()
-	if !ok {
-		return fmt.Errorf("session %s not found", sessionID)
+func (s *managedSession) Process(ctx context.Context, event conduit.Event) error {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return fmt.Errorf("session %s is closed", s.id)
 	}
-
-	// Non-blocking lock.
-	sess.mu.Lock()
-	if sess.busy {
-		sess.mu.Unlock()
+	if s.busy {
+		s.mu.Unlock()
 		return ErrSessionBusy
 	}
-	sess.busy = true
+	s.busy = true
 	turnCtx, cancel := context.WithCancel(ctx)
-	sess.cancel = cancel
-	sess.mu.Unlock()
+	s.cancel = cancel
+	s.mu.Unlock()
 
 	var runErr error
 	switch e := event.(type) {
 	case conduit.UserMessageEvent:
-		_, runErr = sess.step.Submit(turnCtx, sess.thread.State, state.RoleUser, artifact.Text{Content: e.Content})
+		_, runErr = s.step.Submit(turnCtx, s.thread.State, state.RoleUser, artifact.Text{Content: e.Content})
 		if runErr == nil {
-			_, runErr = m.processor(turnCtx, sess.step, sess.thread.State, m.provider)
+			_, runErr = s.processor(turnCtx, s.step, s.thread.State, s.provider)
 		}
 	case conduit.InterruptEvent:
 		// Interrupt is handled by cancelling the ongoing turn context.
@@ -147,14 +162,14 @@ func (m *Manager) Process(ctx context.Context, sessionID string, event conduit.E
 	}
 
 	// Cleanup.
-	sess.mu.Lock()
-	sess.busy = false
-	sess.cancel = nil
-	sess.mu.Unlock()
+	s.mu.Lock()
+	s.busy = false
+	s.cancel = nil
+	s.mu.Unlock()
 	cancel()
 
 	// Save thread state regardless of run outcome.
-	if saveErr := m.store.Save(sess.thread); saveErr != nil && runErr == nil {
+	if saveErr := s.store.Save(s.thread); saveErr != nil && runErr == nil {
 		runErr = fmt.Errorf("save thread: %w", saveErr)
 	}
 
@@ -164,46 +179,56 @@ func (m *Manager) Process(ctx context.Context, sessionID string, event conduit.E
 	return nil
 }
 
-// Cancel aborts an ongoing turn in the given session by cancelling its
-// context. If the session is not found, an error is returned.
-func (m *Manager) Cancel(sessionID string) error {
-	m.mu.RLock()
-	sess, ok := m.sessions[sessionID]
-	m.mu.RUnlock()
-	if !ok {
-		return fmt.Errorf("session %s not found", sessionID)
+// Cancel aborts an ongoing turn by cancelling its context.
+func (s *managedSession) Cancel() error {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return fmt.Errorf("session %s is closed", s.id)
 	}
-
-	sess.mu.Lock()
-	if sess.cancel != nil {
-		sess.cancel()
+	if s.cancel != nil {
+		s.cancel()
 	}
-	sess.mu.Unlock()
+	s.mu.Unlock()
 	return nil
 }
 
 // Subscribe returns a filtered output event channel for the session's
-// loop.Step FanOut. An error is returned if the session does not exist.
+// loop.Step FanOut. An error is returned if the session is closed.
 //
-// The returned channel is closed when the session's Step is closed
-// (via Close or Manager shutdown). Callers should range over the channel
-// and handle closure:
+// The returned channel is closed when the session is closed.
+// Callers should range over the channel and handle closure:
 //
-//	ch, _ := mgr.Subscribe(id, "text_delta", "turn_complete")
+//	ch, _ := sess.Subscribe("text_delta", "turn_complete")
 //	for event := range ch {
 //	    // process event
 //	}
-func (m *Manager) Subscribe(sessionID string, kinds ...string) (<-chan loop.OutputEvent, error) {
-	m.mu.RLock()
-	sess, ok := m.sessions[sessionID]
-	m.mu.RUnlock()
-	if !ok {
-		return nil, fmt.Errorf("session %s not found", sessionID)
+func (s *managedSession) Subscribe(kinds ...string) (<-chan loop.OutputEvent, error) {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return nil, fmt.Errorf("session %s is closed", s.id)
 	}
-	return sess.step.Subscribe(kinds...), nil
+	s.mu.Unlock()
+	return s.step.Subscribe(kinds...), nil
 }
 
-// Close closes a session's Step and removes it from the active map.
+// ID returns the session's unique identifier (same as the thread ID).
+func (s *managedSession) ID() string { return s.id }
+
+// Close closes the session's Step and marks it as closed.
+// The underlying thread is NOT deleted from the store.
+func (s *managedSession) Close() error {
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
+	if s.step != nil {
+		_ = s.step.Close()
+	}
+	return nil
+}
+
+// Close closes a session and removes it from the active map.
 // The underlying thread is NOT deleted from the store.
 func (m *Manager) Close(sessionID string) error {
 	m.mu.Lock()
@@ -213,10 +238,7 @@ func (m *Manager) Close(sessionID string) error {
 	if !ok {
 		return fmt.Errorf("session %s not found", sessionID)
 	}
-	if sess.step != nil {
-		_ = sess.step.Close()
-	}
-	return nil
+	return sess.Close()
 }
 
 // Store returns the underlying thread.Store.
@@ -225,26 +247,26 @@ func (m *Manager) Store() thread.Store {
 }
 
 // List returns handles for all active sessions.
-func (m *Manager) List() []*Session {
+func (m *Manager) List() []Session {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	result := make([]*Session, 0, len(m.sessions))
-	for id, sess := range m.sessions {
-		result = append(result, &Session{id: id, thread: sess.thread})
+	result := make([]Session, 0, len(m.sessions))
+	for _, sess := range m.sessions {
+		result = append(result, sess)
 	}
 	return result
 }
 
 // Get returns the public Session handle for an active session.
 // An error is returned if the session does not exist.
-func (m *Manager) Get(sessionID string) (*Session, error) {
+func (m *Manager) Get(sessionID string) (Session, error) {
 	m.mu.RLock()
 	sess, ok := m.sessions[sessionID]
 	m.mu.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf("session %s not found", sessionID)
 	}
-	return &Session{id: sessionID, thread: sess.thread}, nil
+	return sess, nil
 }
 
 // Check verifies that the session exists and is not busy. It returns nil if
