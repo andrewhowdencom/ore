@@ -26,9 +26,22 @@
 //
 //	curl -N http://localhost:8080/sessions/$SESSION_ID/events?kinds=text_delta,turn_complete
 //
+// Attach to an existing thread:
+//
+//	curl -s -X POST http://localhost:8080/sessions \
+//	  -d '{"thread_id": "<uuid>"}' | jq -r '.id'
+//
+// List all threads:
+//
+//	curl -s http://localhost:8080/threads | jq '.'
+//
 // Delete the session:
 //
 //	curl -X DELETE http://localhost:8080/sessions/$SESSION_ID
+//
+// With persistent JSON store:
+//
+//	STORE_DIR=/tmp/ore-store go run ./examples/http-chat
 //
 // The server optionally registers calculator tools (add, multiply) to
 // demonstrate server-side ReAct loop execution. See package tool for details
@@ -45,6 +58,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
+	"github.com/andrewhowdencom/ore/thread"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/provider/openai"
@@ -159,8 +173,20 @@ func run() error {
 		return err
 	}
 
-	// Create the HTTP conduit handler with the embedded web UI enabled.
-	handler := httpc.NewHandler(stepFactory, messageHandler, httpc.WithUI())
+	// Create the thread store.
+	var threadStore thread.Store
+	if storeDir := os.Getenv("STORE_DIR"); storeDir != "" {
+		var err error
+		threadStore, err = thread.NewJSONStore(storeDir)
+		if err != nil {
+			return fmt.Errorf("create JSON store: %w", err)
+		}
+	} else {
+		threadStore = thread.NewMemoryStore()
+	}
+
+	// Create the HTTP conduit handler.
+	handler := httpc.NewHandler(threadStore, stepFactory, messageHandler, httpc.WithUI())
 
 	// Start the HTTP server.
 	server := &http.Server{
