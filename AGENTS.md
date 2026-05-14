@@ -6,6 +6,10 @@ This file captures architectural conventions and design intent for agents workin
 
 ore is a **framework for building agentic applications**, not a specific agent implementation. The core is a minimal, provider-agnostic inference primitive. Everything else — provider adapters, artifact handlers, I/O conduits, orchestration strategies — lives outside the core as composable, build-time extensions.
 
+## Refactoring vs. Backwards Compatibility
+
+Agents have a tendency to preserve backwards compatibility when modifying code. **Do not do this.** At this stage of the project, prefer **aggressive refactoring** — rename packages, move files, delete indirection, and break internal APIs when doing so produces cleaner module boundaries. Backwards compatibility is a liability until the architecture has stabilised.
+
 ## Package Structure
 
 Follow a **cycle-free dependency graph**:
