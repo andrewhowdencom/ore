@@ -60,7 +60,11 @@ func (m *model) View() string {
 						b.WriteString(renderBlock("Assistant: ", assistantStyle, block.source, width))
 					}
 				case "reasoning":
-					b.WriteString(renderBlock("Thinking: ", thinkingStyle, block.source, width))
+					if block.rendered != "" {
+						b.WriteString(renderBlock("Thinking: ", thinkingStyle, block.rendered, 0))
+					} else {
+						b.WriteString(renderBlock("Thinking: ", thinkingStyle, block.source, width))
+					}
 				}
 				if i < len(turn.blocks)-1 {
 					b.WriteString("\n\n")

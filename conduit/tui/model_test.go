@@ -66,6 +66,7 @@ func TestModel_Update_Turn_PreservesReasoning(t *testing.T) {
 	assert.Equal(t, "the answer is 42", mm.turns[0].blocks[0].source)
 	assert.Equal(t, "reasoning", mm.turns[0].blocks[1].kind)
 	assert.Equal(t, "let me think...", mm.turns[0].blocks[1].source)
+	assert.NotEmpty(t, mm.turns[0].blocks[1].rendered, "reasoning block should be rendered for assistant turns")
 }
 
 func TestModel_Update_Turn_ClearsPending(t *testing.T) {

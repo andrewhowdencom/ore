@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
@@ -115,6 +116,24 @@ func TestModel_View_AssistantTurn_MultiBlockSpacing(t *testing.T) {
 	// buggy behavior where turn-level rendering omitted intra-turn separators).
 	segment := output[idxThink+len("let me think...") : idxAnswer]
 	assert.Contains(t, segment, "\n", "reasoning and answer blocks should be on separate lines")
+}
+
+func TestModel_View_AssistantTurn_Reasoning_Rendered(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.md = mockMarkdownRenderer{output: "rendered-reasoning"}
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Reasoning{Content: "let me think..."},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+	output := mm.View()
+	assert.Contains(t, output, "Thinking: ")
+	assert.Contains(t, output, "rendered-reasoning")
+	assert.NotContains(t, output, "let me think...")
 }
 
 func TestRenderMarkdown_MalformedInput(t *testing.T) {

@@ -152,7 +152,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				blocks = append(blocks, block)
 			case artifact.Reasoning:
-				blocks = append(blocks, renderedBlock{kind: "reasoning", source: a.Content})
+				block := renderedBlock{kind: "reasoning", source: a.Content}
+				if msg.turn.Role == state.RoleAssistant {
+					rendered, err := m.renderMarkdown(a.Content, m.viewport.Width)
+					if err == nil {
+						block.rendered = rendered
+					}
+				}
+				blocks = append(blocks, block)
 			}
 		}
 		rt := renderedTurn{
