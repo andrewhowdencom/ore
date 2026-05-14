@@ -1,24 +1,22 @@
 package tui
 
 import (
+	"context"
 	"testing"
 
-	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/conduit"
+	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/provider"
+	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/thread"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestNew(t *testing.T) {
-	ch := make(chan loop.OutputEvent, 10)
-	tui := New(ch)
-	require.NotNil(t, tui)
-	assert.NotNil(t, tui.Events())
-}
-
 func TestTUI_Events(t *testing.T) {
-	ch := make(chan loop.OutputEvent, 10)
-	tui := New(ch)
+	tui := &TUI{eventsCh: make(chan conduit.Event, 10)}
 	eventsCh := tui.Events()
 	require.NotNil(t, eventsCh)
 }
@@ -30,7 +28,7 @@ var (
 )
 
 func TestTUI_Capabilities(t *testing.T) {
-	tui := New(make(chan loop.OutputEvent, 10))
+	tui := &TUI{eventsCh: make(chan conduit.Event, 10)}
 	caps := tui.Capabilities()
 
 	assert.Equal(t, Descriptor.Capabilities, caps)
@@ -49,7 +47,7 @@ func TestTUI_Capabilities(t *testing.T) {
 }
 
 func TestTUI_Can(t *testing.T) {
-	tui := New(make(chan loop.OutputEvent, 10))
+	tui := &TUI{eventsCh: make(chan conduit.Event, 10)}
 
 	tests := []struct {
 		name string
@@ -72,4 +70,64 @@ func TestTUI_Can(t *testing.T) {
 			assert.Equal(t, tt.want, tui.Can(tt.cap))
 		})
 	}
+}
+
+// mockProvider is a provider.Provider implementation for testing.
+type mockProvider struct {
+	artifacts []artifact.Artifact
+	err       error
+}
+
+func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+	for _, art := range m.artifacts {
+		select {
+		case ch <- art:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return m.err
+}
+
+// simpleProcessor runs a single Step.Turn with the mock provider.
+func simpleProcessor() session.TurnProcessor {
+	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+		return step.Turn(ctx, st, prov)
+	}
+}
+
+func TestNew(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	thr, err := store.Create()
+	require.NoError(t, err)
+
+	tui := New(mgr, thr.ID)
+	require.NotNil(t, tui)
+	assert.NotNil(t, tui.Events())
+}
+
+func TestNew_Events(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	thr, err := store.Create()
+	require.NoError(t, err)
+
+	tui := New(mgr, thr.ID)
+	eventsCh := tui.Events()
+	require.NotNil(t, eventsCh)
+}
+
+func TestNew_SubscribeFailure(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	// No thread exists for this ID, so Subscribe and Attach both fail.
+	// New should still return a valid TUI without panicking.
+	tui := New(mgr, "nonexistent")
+	require.NotNil(t, tui)
+	assert.NotNil(t, tui.Events())
 }
