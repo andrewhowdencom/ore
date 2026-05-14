@@ -33,9 +33,10 @@ func run() error {
 	return cmd.Execute()
 }
 
-// normalizeArgs converts single-dash long flags (e.g. -config) to the
-// double-dash form that Cobra's pflag package expects. This preserves
-// backward compatibility with the original flat flag-based CLI.
+// normalizeArgs converts the historic single-dash -config flag to the
+// Cobra-compatible --config form. Only -config is transformed; all other
+// single-dash flags are left untouched so that Cobra can process them
+// normally (as POSIX short flags or its own long flags).
 func normalizeArgs(args []string) []string {
 	result := make([]string, len(args))
 	copy(result, args)
@@ -160,6 +161,8 @@ func newForgeCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	rootCmd.Example = "forge --config forge.yaml   # equivalent to forge build"
 
 	rootCmd.AddCommand(buildCmd, generateCmd, versionCmd)
 	rootCmd.RunE = buildCmd.RunE

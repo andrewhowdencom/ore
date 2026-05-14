@@ -151,3 +151,64 @@ func TestVersionCommand(t *testing.T) {
 	require.NoError(t, cmd.Execute())
 	assert.NotEmpty(t, buf.String())
 }
+
+func TestNormalizeArgs(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		expected []string
+	}{
+		{
+			name:     "converts single-dash config",
+			args:     []string{"-config", "forge.yaml"},
+			expected: []string{"--config", "forge.yaml"},
+		},
+		{
+			name:     "converts single-dash config with equals",
+			args:     []string{"-config=forge.yaml"},
+			expected: []string{"--config=forge.yaml"},
+		},
+		{
+			name:     "leaves double-dash alone",
+			args:     []string{"--config", "forge.yaml"},
+			expected: []string{"--config", "forge.yaml"},
+		},
+		{
+			name:     "leaves unknown single-dash alone",
+			args:     []string{"-x"},
+			expected: []string{"-x"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeArgs(tt.args)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+func TestRootCommand_DefaultsToBuild(t *testing.T) {
+	cmd := newForgeCmd()
+	cmd.SetArgs([]string{"--config", filepath.Join(t.TempDir(), "nonexistent.yaml")})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "open manifest")
+}
+
+func TestLogLevel_Invalid(t *testing.T) {
+	cmd := newForgeCmd()
+	cmd.SetArgs([]string{"--log-level", "invalid", "version"})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid log level")
+}
+
+func TestLogLevel_Valid(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := newForgeCmd()
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{"--log-level", "debug", "version"})
+	require.NoError(t, cmd.Execute())
+	assert.NotEmpty(t, buf.String())
+}

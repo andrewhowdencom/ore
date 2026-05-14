@@ -253,7 +253,7 @@ Remaining work: additional provider adapters (Anthropic, Gemini), additional art
 # Build (explicit)
 go run ./cmd/forge build --config forge.yaml
 
-# Build (implicit default — backward compatible)
+# Build (implicit default — backward compatible, invokes build under the hood)
 go run ./cmd/forge --config forge.yaml
 
 # Generate to stdout
@@ -261,7 +261,19 @@ go run ./cmd/forge generate --config forge.yaml
 
 # Generate to a directory
 go run ./cmd/forge generate --config forge.yaml -o ./my-agent/
+
+# Print version
+go run ./cmd/forge version
 ```
+
+The CLI also accepts `--log-level debug|info|warn|error` (default `info`) on any command:
+
+```bash
+go run ./cmd/forge --log-level debug build --config forge.yaml
+```
+
+For backward compatibility, the historic single-dash `-config` flag is automatically
+rewritten to `--config` internally, so existing scripts continue to work.
 
 ### Manifest format
 

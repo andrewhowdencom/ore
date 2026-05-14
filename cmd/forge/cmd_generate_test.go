@@ -41,7 +41,7 @@ func TestGenerateCommand(t *testing.T) {
 			},
 		},
 		{
-			name: "directory output",
+			name: "directory output http",
 			setupArgs: func(t *testing.T) []string {
 				return []string{"generate", "--config", "testdata/http-forge.yaml", "-o", t.TempDir()}
 			},
@@ -56,6 +56,24 @@ func TestGenerateCommand(t *testing.T) {
 				goMod, err := os.ReadFile(filepath.Join(dir, "go.mod"))
 				require.NoError(t, err)
 				assert.Contains(t, string(goMod), "module http-smoke-agent")
+			},
+		},
+		{
+			name: "directory output tui",
+			setupArgs: func(t *testing.T) []string {
+				return []string{"generate", "--config", "testdata/tui-forge.yaml", "-o", t.TempDir()}
+			},
+			checkOut: func(t *testing.T, out string) {
+				assert.Empty(t, out)
+			},
+			checkDir: func(t *testing.T, dir string) {
+				mainGo, err := os.ReadFile(filepath.Join(dir, "main.go"))
+				require.NoError(t, err)
+				assert.Contains(t, string(mainGo), `"github.com/andrewhowdencom/ore/conduit/tui"`)
+
+				goMod, err := os.ReadFile(filepath.Join(dir, "go.mod"))
+				require.NoError(t, err)
+				assert.Contains(t, string(goMod), "module tui-smoke-agent")
 			},
 		},
 		{
