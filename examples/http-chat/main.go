@@ -56,13 +56,12 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
-	"github.com/andrewhowdencom/ore/thread"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/provider/openai"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/thread"
 	"github.com/andrewhowdencom/ore/tool"
 
 	httpc "github.com/andrewhowdencom/ore/conduit/http"
@@ -81,9 +80,6 @@ func main() {
 // run parses configuration, builds the provider and tool registry, and starts
 // the HTTP server.
 func run() error {
-	ctx := context.Background()
-	_ = ctx // used by tool functions
-
 	// Environment configuration.
 	apiKey := os.Getenv("ORE_API_KEY")
 	if apiKey == "" {
@@ -158,21 +154,6 @@ func run() error {
 		)
 	}
 
-	// Message handler: the application composes the ReAct cognitive pattern
-	// just like the TUI example does. The library handles HTTP and streaming;
-	// the application decides what to do with each message.
-	messageHandler := func(ctx context.Context, session *httpc.Session, content string) error {
-		if _, err := session.Step().Submit(ctx, session.State(), state.RoleUser, artifact.Text{Content: content}); err != nil {
-			return err
-		}
-		react := &cognitive.ReAct{
-			Step:     session.Step(),
-			Provider: prov,
-		}
-		_, err := react.Run(ctx, session.State())
-		return err
-	}
-
 	// Create the thread store.
 	var threadStore thread.Store
 	if storeDir := os.Getenv("STORE_DIR"); storeDir != "" {
@@ -185,8 +166,11 @@ func run() error {
 		threadStore = thread.NewMemoryStore()
 	}
 
+	// Create the session manager with the ReAct cognitive pattern.
+	mgr := session.NewManager(threadStore, prov, stepFactory, cognitive.NewTurnProcessor())
+
 	// Create the HTTP conduit handler.
-	handler := httpc.NewHandler(threadStore, stepFactory, messageHandler, httpc.WithUI())
+	handler := httpc.NewHandler(mgr, httpc.WithUI())
 
 	// Start the HTTP server.
 	server := &http.Server{
