@@ -104,7 +104,7 @@ func TestProviderInvoke_Success(t *testing.T) {
 	}
 
 	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -124,7 +124,7 @@ func TestProviderInvoke_HTTPError(t *testing.T) {
 	}
 
 	p := New("bad-key", "gpt-4", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -138,7 +138,7 @@ func TestProviderInvoke_EmptyChoices(t *testing.T) {
 	}
 
 	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -155,7 +155,7 @@ func TestProviderInvoke_MultipleTextArtifacts(t *testing.T) {
 	}
 
 	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser,
 		artifact.Text{Content: "line1"},
 		artifact.Text{Content: "line2"},
@@ -178,7 +178,7 @@ func TestProviderInvoke_NonTextArtifactsSkipped(t *testing.T) {
 	}
 
 	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser,
 		artifact.Text{Content: "hello"},
 		artifact.ToolCall{Name: "foo", Arguments: "{}"},
@@ -211,7 +211,7 @@ func TestProviderInvoke_EmptyState(t *testing.T) {
 	}
 
 	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 
 	ch := make(chan artifact.Artifact, 10)
 	_ = p.Invoke(t.Context(), mem, ch)
@@ -235,7 +235,7 @@ func TestProviderInvoke_MultipleChoices(t *testing.T) {
 	}
 
 	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -256,7 +256,7 @@ func TestProviderInvoke_MalformedJSON(t *testing.T) {
 	}
 
 	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -270,7 +270,7 @@ func TestProviderInvoke_ContextCancellation(t *testing.T) {
 	}
 
 	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -289,7 +289,7 @@ func TestProviderInvoke_CustomClient(t *testing.T) {
 	}
 
 	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -304,7 +304,7 @@ func TestProviderInvoke_WithReasoning(t *testing.T) {
 	}
 
 	p := New("test-key", "o3-mini", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -326,7 +326,7 @@ func TestProviderInvoke_EmptyReasoning(t *testing.T) {
 	}
 
 	p := New("test-key", "o3-mini", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -345,7 +345,7 @@ func TestProviderInvoke_ReasoningOnly(t *testing.T) {
 	}
 
 	p := New("test-key", "o3-mini", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -367,7 +367,7 @@ func TestProviderInvoke_RoleMapping(t *testing.T) {
 	}
 
 	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleSystem, artifact.Text{Content: "sys"})
 	mem.Append(state.RoleUser, artifact.Text{Content: "usr"})
 	mem.Append(state.RoleAssistant, artifact.Text{Content: "asst"})
@@ -402,7 +402,7 @@ func TestProviderInvoke_ConcurrentOptions(t *testing.T) {
 	}
 
 	p := New("test-key", "gpt-4", WithHTTPClient(&http.Client{Transport: transport}))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	var wg sync.WaitGroup
@@ -427,7 +427,7 @@ func TestProviderInvoke_WithTemperature(t *testing.T) {
 	}
 
 	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -462,7 +462,7 @@ func TestProviderInvoke_WithReasoningEffort(t *testing.T) {
 			}
 
 			p := New("test-key", "o3-mini", WithHTTPClient(mockClient(transport)))
-			mem := &state.Memory{}
+			mem := &state.Buffer{}
 			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 			ch := make(chan artifact.Artifact, 10)
@@ -496,7 +496,7 @@ func TestProviderInvoke_MixedAssistantTextAndToolCalls(t *testing.T) {
 	}
 
 	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	// Manually append an assistant turn with both text and tool calls.
@@ -582,7 +582,7 @@ func TestProviderInvoke_ToolsWithDescription(t *testing.T) {
 	}
 
 	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -627,7 +627,7 @@ func TestProviderInvoke_InterleavedTextReasoningChunks(t *testing.T) {
 	}
 
 	p := New("test-key", "o3-mini", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -655,7 +655,7 @@ func TestProviderInvoke_ToolCallDeltaAccumulation(t *testing.T) {
 	}
 
 	p := New("test-key", "gpt-4", WithHTTPClient(mockClient(transport)))
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)

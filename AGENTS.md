@@ -33,7 +33,7 @@ Common artifact types (`Text`, `ToolCall`, `Image`) are defined in the `artifact
 
 ### State
 
-State is a **mutable** interface. `Append()` mutates in place. `Turns()` returns a defensive copy of the internal slice so providers can safely iterate without synchronization. The in-memory implementation (`state.Memory`) is intentionally not goroutine-safe — concurrency control is a future middleware concern.
+State is a **mutable** interface. `Append()` mutates in place. `Turns()` returns a defensive copy of the internal slice so providers can safely iterate without synchronization. The in-memory implementation (`state.Buffer`) is intentionally not goroutine-safe — concurrency control is a future middleware concern.
 
 ### Provider
 

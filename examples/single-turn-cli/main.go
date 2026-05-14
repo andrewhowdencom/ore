@@ -60,7 +60,7 @@ func run() error {
 	baseURL := os.Getenv("ORE_BASE_URL")
 
 	// Build state with the user message.
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: message})
 
 	// Build provider.

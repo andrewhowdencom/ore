@@ -61,7 +61,7 @@ func TestJSONStore_CrossConduitContinuity(t *testing.T) {
 func TestThread_MarshalJSON(t *testing.T) {
 	thread := &Thread{
 		ID:        "test-id",
-		State:     &state.Memory{},
+		State:     &state.Buffer{},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}

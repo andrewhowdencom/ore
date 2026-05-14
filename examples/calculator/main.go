@@ -122,7 +122,7 @@ func run() error {
 	prov := openai.New(apiKey, model, opts...)
 
 	// Build state with the user message.
-	mem := &state.Memory{}
+	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: message})
 
 	// Create step with tool handler and pre-bound tool options.
