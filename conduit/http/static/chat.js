@@ -1,9 +1,8 @@
 let sessionId = null;
-let eventsUrl = null;
-let eventSource = null;
-let currentAssistantDiv = null;
-let accumulatedText = '';
 let isTurnInProgress = false;
+let currentAssistantMessageDiv = null;
+let currentBlockKind = null;
+let currentBlockContent = '';
 
 function setStatus(text) {
     document.getElementById('status').textContent = text || '';
@@ -18,74 +17,12 @@ function createSession() {
         })
         .then(data => {
             sessionId = data.id;
-            eventsUrl = data.events_url;
             setStatus('Ready');
-            connectSSE(eventsUrl);
         })
         .catch(err => {
             setStatus('Error: ' + err.message);
             console.error('Session creation failed:', err);
         });
-}
-
-function connectSSE(url) {
-    if (eventSource) {
-        eventSource.close();
-    }
-    eventSource = new EventSource(url);
-
-    eventSource.addEventListener('text_delta', (e) => {
-        try {
-            const data = JSON.parse(e.data);
-            renderAssistantDelta(data.content || '');
-        } catch (err) {
-            console.error('Failed to parse text_delta:', err);
-        }
-    });
-
-    eventSource.addEventListener('reasoning_delta', (e) => {
-        try {
-            const data = JSON.parse(e.data);
-            renderAssistantDelta(data.content || '');
-        } catch (err) {
-            console.error('Failed to parse reasoning_delta:', err);
-        }
-    });
-
-    eventSource.addEventListener('tool_call_delta', (e) => {
-        // Tool call deltas carry partial JSON arguments; silently consume.
-        try {
-            JSON.parse(e.data);
-        } catch (err) {
-            console.error('Failed to parse tool_call_delta:', err);
-        }
-    });
-
-    eventSource.addEventListener('turn_complete', () => {
-        finalizeTurn();
-    });
-
-    eventSource.addEventListener('error', (e) => {
-        try {
-            const data = JSON.parse(e.data);
-            setStatus('Error: ' + (data.message || 'Unknown error'));
-        } catch (err) {
-            setStatus('Error occurred');
-        }
-        isTurnInProgress = false;
-        updateSendButton();
-    });
-
-    eventSource.onerror = (err) => {
-        console.error('SSE connection error:', err);
-        if (eventSource.readyState !== EventSource.CONNECTING) {
-            setStatus('Connection lost');
-        }
-    };
-
-    eventSource.onopen = () => {
-        setStatus(isTurnInProgress ? 'thinking...' : 'Ready');
-    };
 }
 
 function renderUserMessage(content) {
@@ -97,38 +34,155 @@ function renderUserMessage(content) {
     scrollToBottom();
 }
 
-function renderAssistantDelta(content) {
-    const chat = document.getElementById('chat');
-    if (!currentAssistantDiv) {
-        currentAssistantDiv = document.createElement('div');
-        currentAssistantDiv.className = 'message assistant';
-        chat.appendChild(currentAssistantDiv);
+function renderBlock(kind, content) {
+    if (kind === 'reasoning' || kind === 'reasoning_delta') {
+        const details = document.createElement('details');
+        details.innerHTML = '<summary>Thinking...</summary><div class="reasoning-content"></div>';
+        details.querySelector('.reasoning-content').textContent = content;
+        return details;
     }
-    accumulatedText += content;
-    // Show raw text during streaming; markdown is parsed on turn_complete.
-    currentAssistantDiv.textContent = accumulatedText;
+    const div = document.createElement('div');
+    try {
+        div.innerHTML = marked.parse(content);
+    } catch (err) {
+        console.error('Markdown parsing failed:', err);
+        div.textContent = content;
+    }
+    return div;
+}
+
+function completeCurrentBlock() {
+    if (!currentAssistantMessageDiv || !currentBlockKind) return;
+
+    const indicator = currentAssistantMessageDiv.querySelector('.typing-indicator');
+    if (indicator) {
+        indicator.remove();
+    }
+
+    const blockEl = renderBlock(currentBlockKind, currentBlockContent);
+    currentAssistantMessageDiv.appendChild(blockEl);
+
+    const newIndicator = document.createElement('div');
+    newIndicator.className = 'typing-indicator';
+    newIndicator.textContent = '...';
+    currentAssistantMessageDiv.appendChild(newIndicator);
+
     scrollToBottom();
+
+    currentBlockKind = null;
+    currentBlockContent = '';
 }
 
 function finalizeTurn() {
-    if (currentAssistantDiv) {
-        if (typeof marked !== 'undefined' && accumulatedText) {
-            try {
-                currentAssistantDiv.innerHTML = marked.parse(accumulatedText);
-            } catch (err) {
-                console.error('Markdown parsing failed:', err);
-                currentAssistantDiv.textContent = accumulatedText;
-            }
+    if (!currentAssistantMessageDiv) return;
+
+    if (currentBlockKind) {
+        const indicator = currentAssistantMessageDiv.querySelector('.typing-indicator');
+        if (indicator) {
+            indicator.remove();
         }
-        currentAssistantDiv = null;
-        accumulatedText = '';
+        const blockEl = renderBlock(currentBlockKind, currentBlockContent);
+        currentAssistantMessageDiv.appendChild(blockEl);
+        currentBlockKind = null;
+        currentBlockContent = '';
     }
+
+    const indicator = currentAssistantMessageDiv.querySelector('.typing-indicator');
+    if (indicator) {
+        indicator.remove();
+    }
+
+    // Remove empty assistant messages (no blocks rendered).
+    if (currentAssistantMessageDiv.children.length === 0) {
+        currentAssistantMessageDiv.remove();
+    }
+
+    currentAssistantMessageDiv = null;
     isTurnInProgress = false;
     setStatus('Ready');
     updateSendButton();
 }
 
-function sendMessage(content) {
+function handleEvent(event) {
+    if (event.kind === 'tool_call_delta' || event.kind === 'complete') {
+        return;
+    }
+
+    if (event.kind === 'text_delta' || event.kind === 'reasoning_delta') {
+        if (!currentAssistantMessageDiv) {
+            const chat = document.getElementById('chat');
+            currentAssistantMessageDiv = document.createElement('div');
+            currentAssistantMessageDiv.className = 'message assistant';
+            const indicator = document.createElement('div');
+            indicator.className = 'typing-indicator';
+            indicator.textContent = '...';
+            currentAssistantMessageDiv.appendChild(indicator);
+            chat.appendChild(currentAssistantMessageDiv);
+            scrollToBottom();
+        }
+
+        const content = event.content || '';
+        if (!currentBlockKind) {
+            currentBlockKind = event.kind;
+            currentBlockContent = content;
+        } else if (currentBlockKind === event.kind) {
+            currentBlockContent += content;
+        } else {
+            completeCurrentBlock();
+            currentBlockKind = event.kind;
+            currentBlockContent = content;
+        }
+        return;
+    }
+
+    if (event.kind === 'turn_complete') {
+        finalizeTurn();
+        return;
+    }
+
+    if (event.kind === 'error') {
+        setStatus('Error: ' + (event.message || 'Unknown error'));
+        finalizeTurn();
+        return;
+    }
+
+    console.warn('Unknown event kind:', event.kind);
+}
+
+async function readNDJSONStream(reader, decoder) {
+    let buffer = '';
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+                const event = JSON.parse(trimmed);
+                handleEvent(event);
+            } catch (err) {
+                console.error('Failed to parse NDJSON line:', err, line);
+            }
+        }
+    }
+
+    if (buffer.trim()) {
+        try {
+            const event = JSON.parse(buffer.trim());
+            handleEvent(event);
+        } catch (err) {
+            console.error('Failed to parse final NDJSON line:', err, buffer);
+        }
+    }
+}
+
+async function sendMessage(content) {
     if (!sessionId || isTurnInProgress) return;
 
     isTurnInProgress = true;
@@ -136,22 +190,39 @@ function sendMessage(content) {
     updateSendButton();
     renderUserMessage(content);
 
-    fetch('/sessions/' + sessionId + '/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: content })
-    }).then(async r => {
-        if (!r.ok) {
-            throw new Error('Failed to send message (' + r.status + ')');
+    const chat = document.getElementById('chat');
+    currentAssistantMessageDiv = document.createElement('div');
+    currentAssistantMessageDiv.className = 'message assistant';
+
+    const indicator = document.createElement('div');
+    indicator.className = 'typing-indicator';
+    indicator.textContent = '...';
+    currentAssistantMessageDiv.appendChild(indicator);
+
+    chat.appendChild(currentAssistantMessageDiv);
+    scrollToBottom();
+
+    try {
+        const response = await fetch('/sessions/' + sessionId + '/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: content })
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to send message (' + response.status + ')');
         }
-        // Consume NDJSON body to prevent connection leaks.
-        await r.text();
-    }).catch(err => {
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        await readNDJSONStream(reader, decoder);
+
+        finalizeTurn();
+    } catch (err) {
         setStatus('Error: ' + err.message);
         console.error('Send failed:', err);
-        isTurnInProgress = false;
-        updateSendButton();
-    });
+        finalizeTurn();
+    }
 }
 
 function updateSendButton() {
