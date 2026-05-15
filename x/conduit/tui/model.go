@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/charmbracelet/bubbles/textarea"
@@ -46,7 +45,7 @@ type renderedBlock struct {
 // model implements tea.Model. All state mutation happens in Update,
 // which runs on Bubble Tea's single goroutine, so no locks are needed.
 type model struct {
-	eventsCh chan conduit.Event
+	eventsCh chan session.Event
 
 	// Conversation history.
 	turns []renderedTurn

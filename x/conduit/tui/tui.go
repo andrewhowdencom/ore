@@ -26,7 +26,7 @@ import (
 type TUI struct {
 	mgr      *session.Manager
 	threadID string
-	eventsCh chan conduit.Event
+	eventsCh chan session.Event
 	program  *tea.Program
 }
 
@@ -87,7 +87,7 @@ func (t *TUI) Start(ctx context.Context) error {
 		slog.Info("thread started", "id", stream.ID())
 	}
 
-	surfEventsCh := make(chan conduit.Event, 10)
+	surfEventsCh := make(chan session.Event, 10)
 
 	ta := textarea.New()
 	ta.ShowLineNumbers = false

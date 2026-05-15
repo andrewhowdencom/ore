@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
