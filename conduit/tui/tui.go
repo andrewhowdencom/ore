@@ -1,8 +1,8 @@
 // Package tui implements an opinionated terminal user interface conduit for
 // the ore framework using Bubble Tea.
 //
-// Use New(sess) to create a TUI that composes with a session.Session. The
-// TUI subscribes to the session's output stream and sends user events back
+// Use New(stream) to create a TUI that composes with a *session.Stream. The
+// TUI subscribes to the stream's output and sends user events back
 // through it.
 package tui
 
@@ -38,11 +38,11 @@ var Descriptor = conduit.Descriptor{
 	},
 }
 
-// New creates a new TUI conduit that composes with a session.Session.
-// It subscribes to the session's output stream and sends user events back
-// through the session. The application should not read from the internal
+// New creates a new TUI conduit that composes with a *session.Stream.
+// It subscribes to the stream's output and sends user events back
+// through the stream. The application should not read from the internal
 // events channel; the TUI manages the event loop internally.
-func New(sess session.Session) *TUI {
+func New(stream *session.Stream) *TUI {
 	surfEventsCh := make(chan session.Event, 10)
 
 	ta := textarea.New()
@@ -65,8 +65,8 @@ func New(sess session.Session) *TUI {
 		program:  p,
 	}
 
-	// Subscribe to the session's output stream.
-	outputCh, err := sess.Subscribe("turn_complete")
+	// Subscribe to the stream's output.
+	outputCh, err := stream.Subscribe("turn_complete")
 	if err != nil {
 		slog.Error("failed to subscribe to session output", "err", err)
 	}
@@ -94,7 +94,7 @@ func New(sess session.Session) *TUI {
 				if err := t.SetStatus(context.Background(), "thinking..."); err != nil {
 					slog.Error("set status failed", "err", err)
 				}
-				if err := sess.Process(context.Background(), e); err != nil {
+				if err := stream.Process(context.Background(), e); err != nil {
 					slog.Error("process failed", "err", err)
 					t.program.Send(clearPendingMsg{})
 				}
@@ -102,7 +102,7 @@ func New(sess session.Session) *TUI {
 					slog.Error("set status failed", "err", err)
 				}
 			case session.InterruptEvent:
-				if err := sess.Cancel(); err != nil {
+				if err := stream.Cancel(); err != nil {
 					slog.Error("cancel failed", "err", err)
 				}
 			}

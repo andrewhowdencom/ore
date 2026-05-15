@@ -75,17 +75,17 @@ func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		}
 	}
 
-	var sess session.Session
+	var stream *session.Stream
 	var err error
 
 	if req.ThreadID != "" {
-		sess, err = h.mgr.Attach(req.ThreadID)
+		stream, err = h.mgr.Attach(req.ThreadID)
 		if err != nil {
 			w.WriteHeader(stdhttp.StatusNotFound)
 			return
 		}
 	} else {
-		sess, err = h.mgr.Create()
+		stream, err = h.mgr.Create()
 		if err != nil {
 			w.WriteHeader(stdhttp.StatusInternalServerError)
 			return
@@ -95,8 +95,8 @@ func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(stdhttp.StatusCreated)
 	_ = json.NewEncoder(w).Encode(map[string]string{
-		"id":         sess.ID(),
-		"events_url": "/sessions/" + sess.ID() + "/events",
+		"id":         stream.ID(),
+		"events_url": "/sessions/" + stream.ID() + "/events",
 	})
 }
 
@@ -128,7 +128,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		return
 	}
 
-	sess, err := h.mgr.Get(id)
+	stream, err := h.mgr.Get(id)
 	if err != nil {
 		w.WriteHeader(stdhttp.StatusInternalServerError)
 		return
@@ -150,7 +150,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 
 	// Subscribe to the session's FanOut before the goroutine starts.
-	subCh, err := sess.Subscribe(req.Kinds...)
+	subCh, err := stream.Subscribe(req.Kinds...)
 	if err != nil {
 		w.WriteHeader(stdhttp.StatusInternalServerError)
 		return
@@ -159,7 +159,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	// Run the inference pipeline in a goroutine.
 	done := make(chan error)
 	go func() {
-		err := sess.Process(r.Context(), session.UserMessageEvent{Content: req.Content})
+		err := stream.Process(r.Context(), session.UserMessageEvent{Content: req.Content})
 		select {
 		case done <- err:
 		case <-r.Context().Done():
@@ -243,12 +243,12 @@ func (h *Handler) sessionEvents(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 
 	// Subscribe to the session's FanOut.
-	sess, err := h.mgr.Get(id)
+	stream, err := h.mgr.Get(id)
 	if err != nil {
 		w.WriteHeader(stdhttp.StatusNotFound)
 		return
 	}
-	subCh, err := sess.Subscribe(kinds...)
+	subCh, err := stream.Subscribe(kinds...)
 	if err != nil {
 		w.WriteHeader(stdhttp.StatusInternalServerError)
 		return

@@ -91,20 +91,20 @@ func TestManager_Create(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
 
-	sess, err := mgr.Create()
+	stream, err := mgr.Create()
 	require.NoError(t, err)
-	require.NotNil(t, sess)
-	assert.NotEmpty(t, sess.ID())
+	require.NotNil(t, stream)
+	assert.NotEmpty(t, stream.ID())
 
 	// Thread should exist in store.
-	thr, ok := store.Get(sess.ID())
+	thr, ok := store.Get(stream.ID())
 	assert.True(t, ok)
-	assert.Equal(t, sess.ID(), thr.ID)
+	assert.Equal(t, stream.ID(), thr.ID)
 
 	// Session should be active.
 	active := mgr.List()
 	require.Len(t, active, 1)
-	assert.Equal(t, sess.ID(), active[0].ID())
+	assert.Equal(t, stream.ID(), active[0].ID())
 }
 
 func TestManager_Attach(t *testing.T) {
@@ -116,9 +116,9 @@ func TestManager_Attach(t *testing.T) {
 	require.NoError(t, err)
 
 	// Attach should create a new active session for the existing thread.
-	sess, err := mgr.Attach(thr.ID)
+	stream, err := mgr.Attach(thr.ID)
 	require.NoError(t, err)
-	assert.Equal(t, thr.ID, sess.ID())
+	assert.Equal(t, thr.ID, stream.ID())
 
 	// Active sessions should include it.
 	active := mgr.List()
@@ -164,19 +164,19 @@ func TestManager_Process(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
 
-	sess, err := mgr.Create()
+	stream, err := mgr.Create()
 	require.NoError(t, err)
 
 	// Subscribe to output before processing.
-	ch, err := sess.Subscribe("text_delta", "turn_complete")
+	ch, err := stream.Subscribe("text_delta", "turn_complete")
 	require.NoError(t, err)
 
 	// Process a user message.
-	err = sess.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
 	require.NoError(t, err)
 
 	// Collect output events, then close the session to close the channel.
-	events := drainWithClose(t, ch, func() { _ = sess.Close() })
+	events := drainWithClose(t, ch, func() { _ = stream.Close() })
 
 	var deltas []artifact.Artifact
 	var turnComplete bool
@@ -193,7 +193,7 @@ func TestManager_Process(t *testing.T) {
 	assert.True(t, turnComplete)
 
 	// Thread state should have been saved.
-	thr, ok := store.Get(sess.ID())
+	thr, ok := store.Get(stream.ID())
 	require.True(t, ok)
 	turns := thr.State.Turns()
 	require.Len(t, turns, 2) // user + assistant
@@ -205,21 +205,21 @@ func TestManager_Process_Busy(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := NewManager(store, &blockingProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
 
-	sess, err := mgr.Create()
+	stream, err := mgr.Create()
 	require.NoError(t, err)
 
 	// Start a blocking turn in a goroutine.
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		_ = sess.Process(ctx, UserMessageEvent{Content: "block"})
+		_ = stream.Process(ctx, UserMessageEvent{Content: "block"})
 	}()
 
 	// Wait briefly for the goroutine to acquire the lock.
 	time.Sleep(50 * time.Millisecond)
 
 	// Second Process should fail with ErrSessionBusy.
-	err = sess.Process(context.Background(), UserMessageEvent{Content: "concurrent"})
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "concurrent"})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrSessionBusy)
 
@@ -227,16 +227,16 @@ func TestManager_Process_Busy(t *testing.T) {
 	cancel()
 }
 
-func TestSession_Process_Closed(t *testing.T) {
+func TestStream_Process_Closed(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
 
-	sess, err := mgr.Create()
+	stream, err := mgr.Create()
 	require.NoError(t, err)
-	err = sess.Close()
+	err = stream.Close()
 	require.NoError(t, err)
 
-	err = sess.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "closed")
 }
@@ -249,10 +249,10 @@ func TestManager_Process_UnsupportedEvent(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
 
-	sess, err := mgr.Create()
+	stream, err := mgr.Create()
 	require.NoError(t, err)
 
-	err = sess.Process(context.Background(), &unsupportedEvent{})
+	err = stream.Process(context.Background(), &unsupportedEvent{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported event kind")
 }
@@ -261,10 +261,10 @@ func TestManager_Process_ContextCancel(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := NewManager(store, &blockingProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
 
-	sess, err := mgr.Create()
+	stream, err := mgr.Create()
 	require.NoError(t, err)
 
-	ch, err := sess.Subscribe("text_delta", "turn_complete", "error")
+	ch, err := stream.Subscribe("text_delta", "turn_complete", "error")
 	require.NoError(t, err)
 
 	// Start processing with a cancellable context.
@@ -274,7 +274,7 @@ func TestManager_Process_ContextCancel(t *testing.T) {
 		cancel()
 	}()
 
-	err = sess.Process(ctx, UserMessageEvent{Content: "cancel me"})
+	err = stream.Process(ctx, UserMessageEvent{Content: "cancel me"})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 
@@ -282,7 +282,7 @@ func TestManager_Process_ContextCancel(t *testing.T) {
 	// Turn() drops the event when the context is already cancelled.
 	// The primary assertion above (Process returns context.Canceled)
 	// is the behaviour under test.
-	_ = drainWithClose(t, ch, func() { _ = sess.Close() })
+	_ = drainWithClose(t, ch, func() { _ = stream.Close() })
 }
 
 func TestManager_Process_SaveError(t *testing.T) {
@@ -290,10 +290,10 @@ func TestManager_Process_SaveError(t *testing.T) {
 	store := &errStore{}
 	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, nopProcessor())
 
-	sess, err := mgr.Create()
+	stream, err := mgr.Create()
 	require.NoError(t, err)
 
-	err = sess.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "save failed")
 }
@@ -304,49 +304,49 @@ func TestManager_Cancel(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
 
-	sess, err := mgr.Create()
+	stream, err := mgr.Create()
 	require.NoError(t, err)
 
 	// Start a blocking turn.
 	ctx := context.Background()
 	go func() {
-		_ = sess.Process(ctx, UserMessageEvent{Content: "block"})
+		_ = stream.Process(ctx, UserMessageEvent{Content: "block"})
 	}()
 
 	// Wait for lock to be acquired.
 	time.Sleep(50 * time.Millisecond)
 
 	// Cancel should abort the ongoing turn.
-	err = sess.Cancel()
+	err = stream.Cancel()
 	require.NoError(t, err)
 }
 
-func TestSession_Cancel_Closed(t *testing.T) {
+func TestStream_Cancel_Closed(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
 
-	sess, err := mgr.Create()
+	stream, err := mgr.Create()
 	require.NoError(t, err)
-	err = sess.Close()
+	err = stream.Close()
 	require.NoError(t, err)
 
 	// Cancel on a closed session should return an error.
-	err = sess.Cancel()
+	err = stream.Cancel()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "closed")
 }
 
-func TestSession_Subscribe_Closed(t *testing.T) {
+func TestStream_Subscribe_Closed(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
 
-	sess, err := mgr.Create()
+	stream, err := mgr.Create()
 	require.NoError(t, err)
-	err = sess.Close()
+	err = stream.Close()
 	require.NoError(t, err)
 
 	// Subscribe on a closed session should return an error.
-	_, err = sess.Subscribe("text_delta")
+	_, err = stream.Subscribe("text_delta")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "closed")
 }
@@ -355,22 +355,22 @@ func TestManager_Close(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
 
-	sess, err := mgr.Create()
+	stream, err := mgr.Create()
 	require.NoError(t, err)
 
 	// Close should remove the session from the active map.
-	err = mgr.Close(sess.ID())
+	err = mgr.Close(stream.ID())
 	require.NoError(t, err)
 
 	active := mgr.List()
 	assert.Empty(t, active)
 
 	// Subscribe should fail after close (via Session-level close).
-	_, err = sess.Subscribe("text_delta")
+	_, err = stream.Subscribe("text_delta")
 	require.Error(t, err)
 
 	// Thread should still exist in the store.
-	_, ok := store.Get(sess.ID())
+	_, ok := store.Get(stream.ID())
 	assert.True(t, ok)
 }
 
@@ -417,7 +417,7 @@ func TestManager_Lock_Concurrent(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func() *loop.Step { return loop.New() }, sleepyProcessor())
 
-	sess, err := mgr.Create()
+	stream, err := mgr.Create()
 	require.NoError(t, err)
 
 	var maxConcurrent int
@@ -429,7 +429,7 @@ func TestManager_Lock_Concurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := sess.Process(context.Background(), UserMessageEvent{Content: " concurrent"})
+			err := stream.Process(context.Background(), UserMessageEvent{Content: " concurrent"})
 			if errors.Is(err, ErrSessionBusy) {
 				return
 			}
@@ -471,35 +471,35 @@ func TestManager_Check_NotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found")
 }
 
-func TestSession_Cancel_Idle(t *testing.T) {
+func TestStream_Cancel_Idle(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
 
-	sess, err := mgr.Create()
+	stream, err := mgr.Create()
 	require.NoError(t, err)
 
 	// Cancel on an idle session (no active turn) should be a no-op.
-	err = sess.Cancel()
+	err = stream.Cancel()
 	require.NoError(t, err)
 }
 
-func TestSession_Close_Idempotent(t *testing.T) {
+func TestStream_Close_Idempotent(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
 
-	sess, err := mgr.Create()
+	stream, err := mgr.Create()
 	require.NoError(t, err)
 
 	// First close should succeed.
-	err = sess.Close()
+	err = stream.Close()
 	require.NoError(t, err)
 
 	// Second close should also succeed (idempotent, no panic).
-	err = sess.Close()
+	err = stream.Close()
 	require.NoError(t, err)
 
 	// Subscribe should still error after double-close.
-	_, err = sess.Subscribe("text_delta")
+	_, err = stream.Subscribe("text_delta")
 	require.Error(t, err)
 }
 

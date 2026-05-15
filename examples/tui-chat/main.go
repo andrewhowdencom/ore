@@ -87,25 +87,25 @@ func run() error {
 	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())
 
 	// Obtain a session — resume an existing thread or create a new one.
-	var sess session.Session
+	var stream *session.Stream
 	var err error
 	if threadID != "" {
-		sess, err = mgr.Attach(threadID)
+		stream, err = mgr.Attach(threadID)
 		if err != nil {
 			return fmt.Errorf("attach to thread %q: %w", threadID, err)
 		}
 	} else {
-		sess, err = mgr.Create()
+		stream, err = mgr.Create()
 		if err != nil {
 			return fmt.Errorf("create session: %w", err)
 		}
-		slog.Info("thread started", "id", sess.ID())
+		slog.Info("thread started", "id", stream.ID())
 	}
 
 	// Create TUI conduit composed with the session.
 	// The TUI manages its own subscription and event loop; do not call
-	// sess.Subscribe or sess.Process from application code.
-	s := tui.New(sess)
+	// stream.Subscribe or stream.Process from application code.
+	s := tui.New(stream)
 
 	// Run the TUI. This blocks until the user quits (Ctrl+C).
 	// s.Run() closes the events channel on return so background

@@ -419,12 +419,12 @@ func TestHandler_SendMessage_Concurrent(t *testing.T) {
 	sessionID := createResp["id"]
 
 	// Lock the session by starting a blocking turn in a goroutine.
-	sess, err := mgr.Get(sessionID)
+	stream, err := mgr.Get(sessionID)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		_ = sess.Process(ctx, session.UserMessageEvent{Content: "block"})
+		_ = stream.Process(ctx, session.UserMessageEvent{Content: "block"})
 	}()
 
 	// Wait briefly for the goroutine to acquire the lock.

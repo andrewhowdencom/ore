@@ -1,13 +1,19 @@
-// Package session provides a Manager primitive that owns the Thread↔Step
-// binding and acts as a factory/registry for Session handles in the ore
+// Package session provides the Stream and Manager primitives that
+// orchestrate per-session inference and session lifecycle in the ore
 // framework.
 //
-// The Manager creates and manages active sessions, each pairing a
-// persistent thread.Thread with an ephemeral loop.Step. Applications
-// configure a Manager with a provider, step factory, and cognitive
-// pattern (TurnProcessor). Conduits obtain a Session from the Manager
-// (via Create, Attach, or Get) and invoke Process, Subscribe, Cancel,
-// and Close on that handle, never touching loop.Step directly.
+// Stream is a per-session primitive that owns the loop.Step,
+// thread.Thread, TurnProcessor, and provider for a single active
+// conversation. It provides ingress (Process) and egress (Subscribe)
+// plus lifecycle controls (Cancel, Close).
+//
+// Manager is a factory/registry for Stream handles. It creates and
+// manages active streams, each pairing a persistent thread.Thread with
+// an ephemeral loop.Step. Applications configure a Manager with a
+// provider, step factory, and cognitive pattern (TurnProcessor).
+// Conduits obtain a *Stream from the Manager (via Create, Attach, or
+// Get) and invoke Process, Subscribe, Cancel, and Close on that
+// handle, never touching loop.Step directly.
 //
 // Typical composition:
 //
@@ -16,19 +22,19 @@
 //	stepFactory := func() *loop.Step { return loop.New() }
 //	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())
 //
-//	// Obtain a Session handle from the manager.
-//	sess, _ := mgr.Create()
+//	// Obtain a *Stream from the manager.
+//	stream, _ := mgr.Create()
 //
-//	// Subscribe to output events via the Session handle.
-//	ch, _ := sess.Subscribe("text_delta", "turn_complete")
+//	// Subscribe to output events via the Stream handle.
+//	ch, _ := stream.Subscribe("text_delta", "turn_complete")
 //
-//	// Process an event via the Session handle.
-//	_ = sess.Process(ctx, UserMessageEvent{Content: "hello"})
+//	// Process an event via the Stream handle.
+//	_ = stream.Process(ctx, UserMessageEvent{Content: "hello"})
 //
 //	// HTTP conduit composes with the Manager.
 //	handler := httpc.NewHandler(mgr, httpc.WithUI())
 //
-//	// TUI conduit composes with a Session handle.
-//	t := tui.New(sess)
+//	// TUI conduit composes with a *Stream.
+//	t := tui.New(stream)
 //
 package session

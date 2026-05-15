@@ -42,10 +42,10 @@ func TestNew(t *testing.T) {
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
 
-	sess, err := mgr.Create()
+	stream, err := mgr.Create()
 	require.NoError(t, err)
 
-	tui := New(sess)
+	tui := New(stream)
 	require.NotNil(t, tui)
 }
 
@@ -54,9 +54,9 @@ func TestNew_Events(t *testing.T) {
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
 
-	sess, err := mgr.Create()
+	stream, err := mgr.Create()
 	require.NoError(t, err)
 
-	tui := New(sess)
+	tui := New(stream)
 	require.NotNil(t, tui)
 }
