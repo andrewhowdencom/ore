@@ -1,15 +1,14 @@
 package main
 
 import (
+	"context"
 {{- if eq .ConduitType "tui" }}
 	"flag"
 {{- end }}
 	"fmt"
 	"log/slog"
-{{- if eq .ConduitType "http" }}
-	"net/http"
-{{- end }}
 	"os"
+	"os/signal"
 
 	"github.com/andrewhowdencom/ore/cognitive"
 {{- if eq .ConduitType "http" }}
@@ -81,31 +80,25 @@ func run() error {
 		port = "8080"
 	}
 
-	handler := httpc.NewHandler(mgr)
-	server := &http.Server{
-		Addr:    ":" + port,
-		Handler: handler.ServeMux(),
+	c, err := httpc.New(mgr, httpc.WithUI(), httpc.WithAddr(":"+port))
+	if err != nil {
+		return err
 	}
 
-	slog.Info("starting HTTP server", "addr", server.Addr)
-	return server.ListenAndServe()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	slog.Info("starting HTTP server", "addr", ":"+port)
+	return c.Start(ctx)
 {{- else }}
-	var stream *session.Stream
-	var err error
-	if threadID != "" {
-		stream, err = mgr.Attach(threadID)
-		if err != nil {
-			return fmt.Errorf("attach to thread %q: %w", threadID, err)
-		}
-	} else {
-		stream, err = mgr.Create()
-		if err != nil {
-			return fmt.Errorf("create session: %w", err)
-		}
-		slog.Info("thread started", "id", stream.ID())
+	c, err := tui.New(mgr, tui.WithThreadID(threadID))
+	if err != nil {
+		return err
 	}
 
-	s := tui.New(stream)
-	return s.Run()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	return c.Start(ctx)
 {{- end }}
 }

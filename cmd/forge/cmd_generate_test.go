@@ -25,7 +25,6 @@ func TestGenerateCommand(t *testing.T) {
 			},
 			checkOut: func(t *testing.T, out string) {
 				assert.Contains(t, out, "// --- FILE: go.mod ---")
-				assert.Contains(t, out, `"net/http"`)
 				assert.Contains(t, out, "module http-smoke-agent")
 			},
 		},
@@ -51,7 +50,7 @@ func TestGenerateCommand(t *testing.T) {
 			checkDir: func(t *testing.T, dir string) {
 				mainGo, err := os.ReadFile(filepath.Join(dir, "main.go"))
 				require.NoError(t, err)
-				assert.Contains(t, string(mainGo), `"net/http"`)
+				assert.Contains(t, string(mainGo), `httpc "github.com/andrewhowdencom/ore/x/conduit/http"`)
 
 				goMod, err := os.ReadFile(filepath.Join(dir, "go.mod"))
 				require.NoError(t, err)
