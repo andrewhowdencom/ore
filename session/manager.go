@@ -13,14 +13,14 @@ import (
 )
 
 // TurnProcessor runs the full inference pipeline for a single turn after
-// the user event has been submitted to state. The Manager calls this with
-// the session's loop.Step, state, and provider.
+// the user event has been submitted to state. It is called with the
+// stream's loop.Step, state, and provider.
 type TurnProcessor func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error)
 
 // ManagerOption configures a Manager.
 type ManagerOption func(*Manager)
 
-// ErrSessionBusy is returned when a session is already processing a turn.
+// ErrSessionBusy is returned when a stream is already processing a turn.
 var ErrSessionBusy = errors.New("session is busy processing another turn")
 
 // Manager owns the Thread↔Step binding and acts as a factory/registry for

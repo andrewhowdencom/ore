@@ -29,12 +29,12 @@ type Stream struct {
 	closed    bool
 }
 
-// Process submits the event to the session's state and runs the inference
-// pipeline. The session must not be busy. Context cancellation aborts the
+// Process submits the event to the stream's state and runs the inference
+// pipeline. The stream must not be busy. Context cancellation aborts the
 // running TurnProcessor.
 //
 // Errors:
-//   - ErrSessionBusy if the session is already processing a turn
+//   - ErrSessionBusy if the stream is already processing a turn
 //   - "unsupported event kind" for unknown event types
 //   - "process event: ..." wrapping any TurnProcessor or save error
 func (s *Stream) Process(ctx context.Context, event Event) error {
@@ -99,8 +99,8 @@ func (s *Stream) Cancel() error {
 	return nil
 }
 
-// Subscribe returns a filtered output event channel for the session's
-// loop.Step FanOut. An error is returned if the session is closed.
+// Subscribe returns a filtered output event channel for the stream's
+// loop.Step FanOut. An error is returned if the stream is closed.
 //
 // The returned channel is closed when the session is closed.
 // Callers should range over the channel and handle closure:
@@ -119,10 +119,10 @@ func (s *Stream) Subscribe(kinds ...string) (<-chan loop.OutputEvent, error) {
 	return s.step.Subscribe(kinds...), nil
 }
 
-// ID returns the session's unique identifier (same as the thread ID).
+// ID returns the stream's unique identifier (same as the thread ID).
 func (s *Stream) ID() string { return s.id }
 
-// Close closes the session's Step and marks it as closed.
+// Close closes the stream's Step and marks it as closed.
 // The underlying thread is NOT deleted from the store.
 func (s *Stream) Close() error {
 	s.mu.Lock()

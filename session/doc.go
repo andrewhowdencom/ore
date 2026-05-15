@@ -15,6 +15,10 @@
 // Get) and invoke Process, Subscribe, Cancel, and Close on that
 // handle, never touching loop.Step directly.
 //
+// Migration note: the Session interface has been removed. Use
+// *session.Stream directly. Event types (Event, UserMessageEvent,
+// InterruptEvent) have moved from the conduit package to session.
+//
 // Typical composition:
 //
 //	store := thread.NewMemoryStore()

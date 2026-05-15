@@ -503,6 +503,92 @@ func TestStream_Close_Idempotent(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestManager_Check_Busy(t *testing.T) {
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, &blockingProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	// Start a blocking turn in a goroutine.
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		_ = stream.Process(ctx, UserMessageEvent{Content: "block"})
+	}()
+
+	// Wait briefly for the goroutine to acquire the lock.
+	time.Sleep(50 * time.Millisecond)
+
+	// Check should return ErrSessionBusy.
+	err = mgr.Check(stream.ID())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrSessionBusy)
+
+	// Clean up.
+	cancel()
+}
+
+func TestStream_Process_ProviderError(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Partial"},
+		},
+		err: fmt.Errorf("provider failure"),
+	}
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "process event")
+}
+
+func boomProcessor() TurnProcessor {
+	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+		return st, fmt.Errorf("boom")
+	}
+}
+
+func TestStream_Process_ProcessorError(t *testing.T) {
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, &mockProvider{}, func() *loop.Step { return loop.New() }, boomProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "process event")
+	assert.Contains(t, err.Error(), "boom")
+}
+
+func TestManager_Attach_Concurrent(t *testing.T) {
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, &mockProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	// Create a thread directly in the store.
+	thr, err := store.Create()
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = mgr.Attach(thr.ID)
+		}()
+	}
+	wg.Wait()
+
+	// Only one active stream should exist.
+	active := mgr.List()
+	require.Len(t, active, 1)
+	assert.Equal(t, thr.ID, active[0].ID())
+}
+
 // errStore is a Store that always returns an error from Save.
 type errStore struct{}
 
