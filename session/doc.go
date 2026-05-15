@@ -23,7 +23,7 @@
 //	ch, _ := sess.Subscribe("text_delta", "turn_complete")
 //
 //	// Process an event via the Session handle.
-//	_ = sess.Process(ctx, conduit.UserMessageEvent{Content: "hello"})
+//	_ = sess.Process(ctx, UserMessageEvent{Content: "hello"})
 //
 //	// HTTP conduit composes with the Manager.
 //	handler := httpc.NewHandler(mgr, httpc.WithUI())

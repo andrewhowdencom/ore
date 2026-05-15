@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
-	"github.com/andrewhowdencom/ore/conduit"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -45,7 +45,7 @@ type renderedBlock struct {
 // model implements tea.Model. All state mutation happens in Update,
 // which runs on Bubble Tea's single goroutine, so no locks are needed.
 type model struct {
-	eventsCh chan conduit.Event
+	eventsCh chan session.Event
 
 	// Conversation history.
 	turns []renderedTurn
@@ -192,7 +192,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.textarea.Reset()
 					m.recalcLayout()
 					select {
-					case m.eventsCh <- conduit.UserMessageEvent{Content: content}:
+					case m.eventsCh <- session.UserMessageEvent{Content: content}:
 					default:
 						slog.Warn("event channel full, dropping user message")
 					}
@@ -207,7 +207,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		case tea.KeyCtrlC:
 			select {
-			case m.eventsCh <- conduit.InterruptEvent{}:
+			case m.eventsCh <- session.InterruptEvent{}:
 			default:
 			}
 			return m, tea.Quit

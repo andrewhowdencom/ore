@@ -22,7 +22,7 @@ import (
 // TUI is a terminal user interface conduit. It hides all Bubble Tea internals
 // from callers.
 type TUI struct {
-	eventsCh chan conduit.Event
+	eventsCh chan session.Event
 	program  *tea.Program
 }
 
@@ -43,7 +43,7 @@ var Descriptor = conduit.Descriptor{
 // through the session. The application should not read from the internal
 // events channel; the TUI manages the event loop internally.
 func New(sess session.Session) *TUI {
-	surfEventsCh := make(chan conduit.Event, 10)
+	surfEventsCh := make(chan session.Event, 10)
 
 	ta := textarea.New()
 	ta.ShowLineNumbers = false
@@ -90,7 +90,7 @@ func New(sess session.Session) *TUI {
 	go func() {
 		for event := range t.eventsCh {
 			switch e := event.(type) {
-			case conduit.UserMessageEvent:
+			case session.UserMessageEvent:
 				if err := t.SetStatus(context.Background(), "thinking..."); err != nil {
 					slog.Error("set status failed", "err", err)
 				}
@@ -101,7 +101,7 @@ func New(sess session.Session) *TUI {
 				if err := t.SetStatus(context.Background(), ""); err != nil {
 					slog.Error("set status failed", "err", err)
 				}
-			case conduit.InterruptEvent:
+			case session.InterruptEvent:
 				if err := sess.Cancel(); err != nil {
 					slog.Error("cancel failed", "err", err)
 				}

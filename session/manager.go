@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/conduit"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
@@ -131,7 +130,7 @@ func (m *Manager) Attach(threadID string) (Session, error) {
 //   - ErrSessionBusy if the session is already processing a turn
 //   - "unsupported event kind" for unknown event types
 //   - "process event: ..." wrapping any TurnProcessor or save error
-func (s *managedSession) Process(ctx context.Context, event conduit.Event) error {
+func (s *managedSession) Process(ctx context.Context, event Event) error {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -148,12 +147,12 @@ func (s *managedSession) Process(ctx context.Context, event conduit.Event) error
 
 	var runErr error
 	switch e := event.(type) {
-	case conduit.UserMessageEvent:
+	case UserMessageEvent:
 		_, runErr = s.step.Submit(turnCtx, s.thread.State, state.RoleUser, artifact.Text{Content: e.Content})
 		if runErr == nil {
 			_, runErr = s.processor(turnCtx, s.step, s.thread.State, s.provider)
 		}
-	case conduit.InterruptEvent:
+	case InterruptEvent:
 		// Interrupt is handled by cancelling the ongoing turn context.
 		// No inference is started for an interrupt event itself.
 		cancel()

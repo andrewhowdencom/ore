@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 
-	"github.com/andrewhowdencom/ore/conduit"
 	"github.com/andrewhowdencom/ore/loop"
 )
 
@@ -22,7 +21,7 @@ type Session interface {
 	//   - ErrSessionBusy if the session is already processing a turn
 	//   - "unsupported event kind" for unknown event types
 	//   - "process event: ..." wrapping any TurnProcessor or save error
-	Process(ctx context.Context, event conduit.Event) error
+	Process(ctx context.Context, event Event) error
 
 	// Subscribe returns a filtered output event channel for the session's
 	// loop.Step FanOut. An error is returned if the session is closed.

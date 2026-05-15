@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/andrewhowdencom/ore/conduit"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/thread"
 	"github.com/stretchr/testify/assert"
@@ -26,7 +25,7 @@ func TestSession_Interface(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, ch)
 
-	err = sess.Process(context.Background(), conduit.UserMessageEvent{Content: "hi"})
+	err = sess.Process(context.Background(), UserMessageEvent{Content: "hi"})
 	require.NoError(t, err)
 
 	err = sess.Cancel()

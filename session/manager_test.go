@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/conduit"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
@@ -173,7 +172,7 @@ func TestManager_Process(t *testing.T) {
 	require.NoError(t, err)
 
 	// Process a user message.
-	err = sess.Process(context.Background(), conduit.UserMessageEvent{Content: "hi"})
+	err = sess.Process(context.Background(), UserMessageEvent{Content: "hi"})
 	require.NoError(t, err)
 
 	// Collect output events, then close the session to close the channel.
@@ -213,14 +212,14 @@ func TestManager_Process_Busy(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		_ = sess.Process(ctx, conduit.UserMessageEvent{Content: "block"})
+		_ = sess.Process(ctx, UserMessageEvent{Content: "block"})
 	}()
 
 	// Wait briefly for the goroutine to acquire the lock.
 	time.Sleep(50 * time.Millisecond)
 
 	// Second Process should fail with ErrSessionBusy.
-	err = sess.Process(context.Background(), conduit.UserMessageEvent{Content: "concurrent"})
+	err = sess.Process(context.Background(), UserMessageEvent{Content: "concurrent"})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrSessionBusy)
 
@@ -237,7 +236,7 @@ func TestSession_Process_Closed(t *testing.T) {
 	err = sess.Close()
 	require.NoError(t, err)
 
-	err = sess.Process(context.Background(), conduit.UserMessageEvent{Content: "hi"})
+	err = sess.Process(context.Background(), UserMessageEvent{Content: "hi"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "closed")
 }
@@ -275,7 +274,7 @@ func TestManager_Process_ContextCancel(t *testing.T) {
 		cancel()
 	}()
 
-	err = sess.Process(ctx, conduit.UserMessageEvent{Content: "cancel me"})
+	err = sess.Process(ctx, UserMessageEvent{Content: "cancel me"})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 
@@ -294,7 +293,7 @@ func TestManager_Process_SaveError(t *testing.T) {
 	sess, err := mgr.Create()
 	require.NoError(t, err)
 
-	err = sess.Process(context.Background(), conduit.UserMessageEvent{Content: "hi"})
+	err = sess.Process(context.Background(), UserMessageEvent{Content: "hi"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "save failed")
 }
@@ -311,7 +310,7 @@ func TestManager_Cancel(t *testing.T) {
 	// Start a blocking turn.
 	ctx := context.Background()
 	go func() {
-		_ = sess.Process(ctx, conduit.UserMessageEvent{Content: "block"})
+		_ = sess.Process(ctx, UserMessageEvent{Content: "block"})
 	}()
 
 	// Wait for lock to be acquired.
@@ -430,7 +429,7 @@ func TestManager_Lock_Concurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := sess.Process(context.Background(), conduit.UserMessageEvent{Content: " concurrent"})
+			err := sess.Process(context.Background(), UserMessageEvent{Content: " concurrent"})
 			if errors.Is(err, ErrSessionBusy) {
 				return
 			}

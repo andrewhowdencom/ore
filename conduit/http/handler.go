@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/andrewhowdencom/ore/conduit"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
@@ -160,7 +159,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	// Run the inference pipeline in a goroutine.
 	done := make(chan error)
 	go func() {
-		err := sess.Process(r.Context(), conduit.UserMessageEvent{Content: req.Content})
+		err := sess.Process(r.Context(), session.UserMessageEvent{Content: req.Content})
 		select {
 		case done <- err:
 		case <-r.Context().Done():
