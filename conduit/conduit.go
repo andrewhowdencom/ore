@@ -1,8 +1,7 @@
-// Package conduit defines the event types and capability constants that are
-// the lingua franca for ingress and capability discovery across ore
-// frontends (TUI, web, Telegram, etc.). Concrete implementations are composed
-// at build time; the framework does not assume any specific rendering
-// mechanism.
+// Package conduit defines capability constants and descriptors that are
+// the lingua franca for capability discovery across ore frontends (TUI,
+// web, Telegram, etc.). Concrete implementations are composed at build time;
+// the framework does not assume any specific rendering mechanism.
 package conduit
 
 // Capability is a well-known conduit capability.

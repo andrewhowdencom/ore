@@ -1,8 +1,8 @@
 // Package tui implements an opinionated terminal user interface conduit for
 // the ore framework using Bubble Tea.
 //
-// Use New(sess) to create a TUI that composes with a session.Session. The
-// TUI subscribes to the session's output stream and sends user events back
+// Use New(stream) to create a TUI that composes with a *session.Stream. The
+// TUI subscribes to the stream's output and sends user events back
 // through it.
 package tui
 
@@ -22,7 +22,7 @@ import (
 // TUI is a terminal user interface conduit. It hides all Bubble Tea internals
 // from callers.
 type TUI struct {
-	eventsCh chan conduit.Event
+	eventsCh chan session.Event
 	program  *tea.Program
 }
 
@@ -38,12 +38,12 @@ var Descriptor = conduit.Descriptor{
 	},
 }
 
-// New creates a new TUI conduit that composes with a session.Session.
-// It subscribes to the session's output stream and sends user events back
-// through the session. The application should not read from the internal
+// New creates a new TUI conduit that composes with a *session.Stream.
+// It subscribes to the stream's output and sends user events back
+// through the stream. The application should not read from the internal
 // events channel; the TUI manages the event loop internally.
-func New(sess session.Session) *TUI {
-	surfEventsCh := make(chan conduit.Event, 10)
+func New(stream *session.Stream) *TUI {
+	surfEventsCh := make(chan session.Event, 10)
 
 	ta := textarea.New()
 	ta.ShowLineNumbers = false
@@ -65,8 +65,8 @@ func New(sess session.Session) *TUI {
 		program:  p,
 	}
 
-	// Subscribe to the session's output stream.
-	outputCh, err := sess.Subscribe("turn_complete")
+	// Subscribe to the stream's output.
+	outputCh, err := stream.Subscribe("turn_complete")
 	if err != nil {
 		slog.Error("failed to subscribe to session output", "err", err)
 	}
@@ -90,19 +90,19 @@ func New(sess session.Session) *TUI {
 	go func() {
 		for event := range t.eventsCh {
 			switch e := event.(type) {
-			case conduit.UserMessageEvent:
+			case session.UserMessageEvent:
 				if err := t.SetStatus(context.Background(), "thinking..."); err != nil {
 					slog.Error("set status failed", "err", err)
 				}
-				if err := sess.Process(context.Background(), e); err != nil {
+				if err := stream.Process(context.Background(), e); err != nil {
 					slog.Error("process failed", "err", err)
 					t.program.Send(clearPendingMsg{})
 				}
 				if err := t.SetStatus(context.Background(), ""); err != nil {
 					slog.Error("set status failed", "err", err)
 				}
-			case conduit.InterruptEvent:
-				if err := sess.Cancel(); err != nil {
+			case session.InterruptEvent:
+				if err := stream.Cancel(); err != nil {
 					slog.Error("cancel failed", "err", err)
 				}
 			}

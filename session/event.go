@@ -1,6 +1,6 @@
-package conduit
+package session
 
-// Event is the base interface for all ingress events from a Conduit.
+// Event is the base interface for all ingress events to a session Stream.
 // Custom event types can be defined in other packages by implementing
 // the public Kind() method, following the same pattern as artifact.Artifact.
 type Event interface {
