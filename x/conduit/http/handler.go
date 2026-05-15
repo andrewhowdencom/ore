@@ -1,10 +1,12 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
-	stdhttp "net/http"
+	"fmt"
 	"io"
+	stdhttp "net/http"
 	"strings"
 	"time"
 
@@ -25,20 +27,36 @@ func WithUI() Option {
 	}
 }
 
+// WithAddr sets the TCP address for the HTTP server (e.g., ":8080").
+// If not specified, the server defaults to ":8080".
+func WithAddr(addr string) Option {
+	return func(h *Handler) {
+		h.addr = addr
+	}
+}
+
 // Handler provides HTTP endpoints for the ore framework's thread
 // primitives. It is mounted on an http.ServeMux via ServeMux().
 type Handler struct {
 	mgr    *session.Manager
 	withUI bool
+	addr   string
 }
 
-// NewHandler creates a new Handler with the given session manager.
-func NewHandler(mgr *session.Manager, opts ...Option) *Handler {
+// New creates a new HTTP conduit that implements conduit.Conduit.
+// The returned value must be started with Start(ctx) to begin serving.
+func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
+	if mgr == nil {
+		return nil, fmt.Errorf("session manager is required")
+	}
 	h := &Handler{mgr: mgr}
 	for _, opt := range opts {
 		opt(h)
 	}
-	return h
+	if h.addr == "" {
+		h.addr = ":8080"
+	}
+	return h, nil
 }
 
 // ServeMux returns an http.ServeMux with all HTTP conduit routes registered.
@@ -54,6 +72,34 @@ func (h *Handler) ServeMux() *stdhttp.ServeMux {
 		mux.HandleFunc("GET /chat.js", h.serveUI)
 	}
 	return mux
+}
+
+// Start creates an http.Server from the Handler's ServeMux and begins
+// listening on the configured address. It blocks until ctx is cancelled
+// or the server encounters a fatal error. On context cancellation the
+// server is shut down gracefully.
+func (h *Handler) Start(ctx context.Context) error {
+	server := &stdhttp.Server{
+		Addr:    h.addr,
+		Handler: h.ServeMux(),
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.ListenAndServe()
+	}()
+
+	select {
+	case <-ctx.Done():
+		_ = server.Shutdown(context.Background())
+		<-errCh // wait for ListenAndServe to return
+		return nil
+	case err := <-errCh:
+		if err == stdhttp.ErrServerClosed {
+			return nil
+		}
+		return err
+	}
 }
 
 // createSession handles POST /sessions by creating a new ephemeral session.

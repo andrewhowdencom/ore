@@ -1,12 +1,14 @@
-// Package http implements an HTTP handler library for the ore framework,
+// Package http implements an HTTP conduit for the ore framework,
 // exposing *session.Stream conversation primitives over HTTP with NDJSON
 // streaming and SSE ambient channels.
 //
 // API:
 //
-//	NewHandler(mgr, opts...)  - create a handler wired to a session.Manager
+//	New(mgr, opts...)         - create an HTTP conduit implementing conduit.Conduit
 //	WithUI()                  - enable the built-in web UI (default: disabled)
-//	ServeMux()                - returns *http.ServeMux with all routes registered
+//	WithAddr(addr)            - set the listen address (default: ":8080")
+//	Start(ctx)                - start the HTTP server and block until ctx cancelled
+//	ServeMux()                - returns *http.ServeMux with all routes registered (testing)
 //
 // Routes:
 //   POST /sessions                    - create a new session (201)
@@ -26,9 +28,7 @@
 // Default event kinds for POST /messages responses:
 //   text, reasoning, tool_call, tool_result, turn_complete, error
 //
-// Callers compose the Handler with a session.Manager and mount the
-// returned ServeMux on an http.Server. Per-request handlers obtain a
-// *session.Stream handle from the Manager and use it directly for Process
-// and Subscribe, while Manager methods remain for metadata and registry
-// lifecycle (Store, List, Check, Close).
+// Per-request handlers obtain a *session.Stream handle from the Manager
+// and use it directly for Process and Subscribe, while Manager methods
+// remain for metadata and registry lifecycle (Store, List, Check, Close).
 package http

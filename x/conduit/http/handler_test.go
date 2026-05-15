@@ -56,15 +56,15 @@ type noFlusherWriter struct {
 	code   int
 }
 
-func (w *noFlusherWriter) Header() http.Header              { return w.header }
-func (w *noFlusherWriter) Write(b []byte) (int, error)       { return w.body.Write(b) }
-func (w *noFlusherWriter) WriteHeader(code int)              { w.code = code }
+func (w *noFlusherWriter) Header() http.Header         { return w.header }
+func (w *noFlusherWriter) Write(b []byte) (int, error) { return w.body.Write(b) }
+func (w *noFlusherWriter) WriteHeader(code int)        { w.code = code }
 
 // errorFS is a test double for fs.ReadFileFS that always returns an error.
 type errorFS struct{}
 
-func (e *errorFS) Open(name string) (fs.File, error)       { return nil, fs.ErrNotExist }
-func (e *errorFS) ReadFile(name string) ([]byte, error)   { return nil, fs.ErrNotExist }
+func (e *errorFS) Open(name string) (fs.File, error)    { return nil, fs.ErrNotExist }
+func (e *errorFS) ReadFile(name string) ([]byte, error) { return nil, fs.ErrNotExist }
 
 // simpleProcessor runs a single Step.Turn with the mock provider.
 func simpleProcessor() session.TurnProcessor {
@@ -83,11 +83,11 @@ func boomProcessor() session.TurnProcessor {
 // errStore is a Store that always returns an error from Create.
 type errStore struct{}
 
-func (e *errStore) Create() (*thread.Thread, error)                { return nil, fmt.Errorf("store error") }
-func (e *errStore) Get(string) (*thread.Thread, bool)               { return nil, false }
-func (e *errStore) Save(*thread.Thread) error                        { return nil }
-func (e *errStore) Delete(string) bool                              { return false }
-func (e *errStore) List() ([]*thread.Thread, error)                  { return nil, nil }
+func (e *errStore) Create() (*thread.Thread, error)   { return nil, fmt.Errorf("store error") }
+func (e *errStore) Get(string) (*thread.Thread, bool) { return nil, false }
+func (e *errStore) Save(*thread.Thread) error         { return nil }
+func (e *errStore) Delete(string) bool                { return false }
+func (e *errStore) List() ([]*thread.Thread, error)   { return nil, nil }
 
 // saveErrStore is a Store whose Save always returns an error.
 type saveErrStore struct {
@@ -98,35 +98,43 @@ func newSaveErrStore() *saveErrStore {
 	return &saveErrStore{inner: thread.NewMemoryStore()}
 }
 
-func (s *saveErrStore) Create() (*thread.Thread, error)            { return s.inner.Create() }
-func (s *saveErrStore) Get(id string) (*thread.Thread, bool)       { return s.inner.Get(id) }
-func (s *saveErrStore) Save(*thread.Thread) error                   { return fmt.Errorf("save failed") }
-func (s *saveErrStore) Delete(string) bool                          { return s.inner.Delete("") }
-func (s *saveErrStore) List() ([]*thread.Thread, error)             { return s.inner.List() }
+func (s *saveErrStore) Create() (*thread.Thread, error)      { return s.inner.Create() }
+func (s *saveErrStore) Get(id string) (*thread.Thread, bool) { return s.inner.Get(id) }
+func (s *saveErrStore) Save(*thread.Thread) error            { return fmt.Errorf("save failed") }
+func (s *saveErrStore) Delete(string) bool                   { return s.inner.Delete("") }
+func (s *saveErrStore) List() ([]*thread.Thread, error)      { return s.inner.List() }
 
 // listErrStore is a Store whose List always returns an error.
 type listErrStore struct{}
 
-func (s *listErrStore) Create() (*thread.Thread, error)            { return nil, nil }
-func (s *listErrStore) Get(string) (*thread.Thread, bool)           { return nil, false }
-func (s *listErrStore) Save(*thread.Thread) error                    { return nil }
-func (s *listErrStore) Delete(string) bool                          { return false }
-func (s *listErrStore) List() ([]*thread.Thread, error)             { return nil, fmt.Errorf("list failed") }
+func (s *listErrStore) Create() (*thread.Thread, error)   { return nil, nil }
+func (s *listErrStore) Get(string) (*thread.Thread, bool) { return nil, false }
+func (s *listErrStore) Save(*thread.Thread) error         { return nil }
+func (s *listErrStore) Delete(string) bool                { return false }
+func (s *listErrStore) List() ([]*thread.Thread, error)   { return nil, fmt.Errorf("list failed") }
 
-func TestNewHandler(t *testing.T) {
+// newTestHandler wraps New for table-driven tests that need access to the
+// concrete *Handler and its ServeMux() method.
+func newTestHandler(t *testing.T, mgr *session.Manager, opts ...Option) *Handler {
+	c, err := New(mgr, opts...)
+	require.NoError(t, err)
+	return c.(*Handler)
+}
+
+func TestNew(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
-	require.NotNil(t, h)
-	require.NotNil(t, h.mgr)
+	c, err := New(mgr)
+	require.NoError(t, err)
+	require.NotNil(t, c)
 }
 
 func TestHandler_ServeMux_Routing(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 	server := httptest.NewServer(h.ServeMux())
 	defer server.Close()
 
@@ -160,7 +168,7 @@ func TestHandler_CreateSession(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	req := httptest.NewRequest("POST", "/sessions", nil)
 	rr := httptest.NewRecorder()
@@ -183,7 +191,7 @@ func TestHandler_CreateSession_StoreError(t *testing.T) {
 	store := &errStore{}
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	req := httptest.NewRequest("POST", "/sessions", nil)
 	rr := httptest.NewRecorder()
@@ -196,7 +204,7 @@ func TestHandler_CreateSession_AttachExisting(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	// Create a thread directly in the store.
 	thr, err := store.Create()
@@ -219,7 +227,7 @@ func TestHandler_CreateSession_AttachNotFound(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	body := `{"thread_id": "nonexistent"}`
 	req := httptest.NewRequest("POST", "/sessions", strings.NewReader(body))
@@ -233,7 +241,7 @@ func TestHandler_CreateSession_MalformedJSON(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	body := `{"thread_id": "`
 	req := httptest.NewRequest("POST", "/sessions", strings.NewReader(body))
@@ -247,7 +255,7 @@ func TestHandler_DeleteSession(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	// Create a session first.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -280,7 +288,7 @@ func TestHandler_DeleteSession_NotFound(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	req := httptest.NewRequest("DELETE", "/sessions/nonexistent", nil)
 	rr := httptest.NewRecorder()
@@ -298,7 +306,7 @@ func TestHandler_SendMessage(t *testing.T) {
 	}
 	store := thread.NewMemoryStore()
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -346,7 +354,7 @@ func TestHandler_SendMessage_NotFound(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	body := `{"content": "hi"}`
 	req := httptest.NewRequest("POST", "/sessions/nonexistent/messages", strings.NewReader(body))
@@ -364,7 +372,7 @@ func TestHandler_SendMessage_NoKinds(t *testing.T) {
 	}
 	store := thread.NewMemoryStore()
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -406,7 +414,7 @@ func TestHandler_SendMessage_NoKinds(t *testing.T) {
 func TestHandler_SendMessage_Concurrent(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := session.NewManager(store, &blockingProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -446,7 +454,7 @@ func TestHandler_SendMessage_MalformedJSON(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -471,7 +479,7 @@ func TestHandler_SendMessage_EmptyBody(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -500,7 +508,7 @@ func TestHandler_SendMessage_ProviderError(t *testing.T) {
 	}
 	store := thread.NewMemoryStore()
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -535,7 +543,7 @@ func TestHandler_SendMessage_SaveError(t *testing.T) {
 		},
 	}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -565,7 +573,7 @@ func TestHandler_SendMessage_HandlerError(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, boomProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -607,7 +615,7 @@ func TestHandler_SessionEvents_NotFound(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	req := httptest.NewRequest("GET", "/sessions/nonexistent/events", nil)
 	rr := httptest.NewRecorder()
@@ -620,7 +628,7 @@ func TestHandler_SessionEvents_ContextCancel(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	// Create a session.
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -650,7 +658,7 @@ func TestHandler_ListThreads(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	// Create a session (which also creates a thread).
 	createReq := httptest.NewRequest("POST", "/sessions", nil)
@@ -678,7 +686,7 @@ func TestHandler_ListThreads_Empty(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	req := httptest.NewRequest("GET", "/threads", nil)
 	rr := httptest.NewRecorder()
@@ -696,7 +704,7 @@ func TestHandler_ListThreads_StoreError(t *testing.T) {
 	store := &listErrStore{}
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	req := httptest.NewRequest("GET", "/threads", nil)
 	rr := httptest.NewRecorder()
@@ -727,7 +735,7 @@ func TestHandler_ServeMux_UnknownPaths(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	tests := []struct {
 		name       string
@@ -753,7 +761,7 @@ func TestHandler_WithUI_StaticFiles(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr, WithUI())
+	h := newTestHandler(t, mgr, WithUI())
 
 	t.Run("GET / returns text/html", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/", nil)
@@ -785,7 +793,7 @@ func TestHandler_WithUI_StaticFiles_ErrorPath(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr, WithUI())
+	h := newTestHandler(t, mgr, WithUI())
 
 	// Swap staticFS with a mock that always errors.
 	oldFS := staticFS
@@ -814,7 +822,7 @@ func TestHandler_WithoutUI_Root404(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := NewHandler(mgr)
+	h := newTestHandler(t, mgr)
 
 	req := httptest.NewRequest("GET", "/", nil)
 	rr := httptest.NewRecorder()

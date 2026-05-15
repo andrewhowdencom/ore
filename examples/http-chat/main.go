@@ -52,8 +52,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 
 	"github.com/andrewhowdencom/ore/cognitive"
@@ -169,18 +169,19 @@ func run() error {
 	// Create the session manager with the ReAct cognitive pattern.
 	mgr := session.NewManager(threadStore, prov, stepFactory, cognitive.NewTurnProcessor())
 
-	// Create the HTTP conduit handler.
+	// Create the HTTP conduit.
 	// WithUI() is optional; omit it to serve only the API without the chat UI.
-	handler := httpc.NewHandler(mgr, httpc.WithUI())
-
-	// Start the HTTP server.
-	server := &http.Server{
-		Addr:    ":" + port,
-		Handler: handler.ServeMux(),
+	c, err := httpc.New(mgr, httpc.WithUI(), httpc.WithAddr(":"+port))
+	if err != nil {
+		return fmt.Errorf("create HTTP conduit: %w", err)
 	}
 
-	slog.Info("starting HTTP server", "addr", server.Addr)
-	return server.ListenAndServe()
+	// Start the server and block until interrupted.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	slog.Info("starting HTTP server", "addr", ":"+port)
+	return c.Start(ctx)
 }
 
 // toFloat64 converts a JSON-decoded number (or string) to float64.
