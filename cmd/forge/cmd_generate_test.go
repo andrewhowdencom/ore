@@ -36,7 +36,7 @@ func TestGenerateCommand(t *testing.T) {
 			},
 			checkOut: func(t *testing.T, out string) {
 				assert.Contains(t, out, "// --- FILE: go.mod ---")
-				assert.Contains(t, out, `"github.com/andrewhowdencom/ore/conduit/tui"`)
+				assert.Contains(t, out, `"github.com/andrewhowdencom/ore/x/conduit/tui"`)
 				assert.Contains(t, out, "module tui-smoke-agent")
 			},
 		},
@@ -69,7 +69,7 @@ func TestGenerateCommand(t *testing.T) {
 			checkDir: func(t *testing.T, dir string) {
 				mainGo, err := os.ReadFile(filepath.Join(dir, "main.go"))
 				require.NoError(t, err)
-				assert.Contains(t, string(mainGo), `"github.com/andrewhowdencom/ore/conduit/tui"`)
+				assert.Contains(t, string(mainGo), `"github.com/andrewhowdencom/ore/x/conduit/tui"`)
 
 				goMod, err := os.ReadFile(filepath.Join(dir, "go.mod"))
 				require.NoError(t, err)
