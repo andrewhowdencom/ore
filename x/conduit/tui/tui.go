@@ -10,7 +10,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/andrewhowdencom/ore/conduit"
+	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/charmbracelet/bubbles/key"
