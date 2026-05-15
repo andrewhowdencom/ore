@@ -1,13 +1,14 @@
 // Package tui implements an opinionated terminal user interface conduit for
 // the ore framework using Bubble Tea.
 //
-// Use New(stream) to create a TUI that composes with a *session.Stream. The
-// TUI subscribes to the stream's output and sends user events back
-// through it.
+// Use New(mgr, opts...) to create a TUI that composes with a session.Manager.
+// The TUI creates or attaches to a session on Start, subscribes to the
+// session's output stream, and sends user events back through it.
 package tui
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/andrewhowdencom/ore/x/conduit"
@@ -22,8 +23,21 @@ import (
 // TUI is a terminal user interface conduit. It hides all Bubble Tea internals
 // from callers.
 type TUI struct {
-	eventsCh chan session.Event
+	mgr      *session.Manager
+	threadID string
+	eventsCh chan conduit.Event
 	program  *tea.Program
+}
+
+// Option configures a TUI.
+type Option func(*TUI)
+
+// WithThreadID sets the thread ID to resume when starting the TUI.
+// An empty string means create a new session.
+func WithThreadID(id string) Option {
+	return func(t *TUI) {
+		t.threadID = id
+	}
 }
 
 // Descriptor enumerates the capabilities of the TUI conduit.
@@ -38,12 +52,39 @@ var Descriptor = conduit.Descriptor{
 	},
 }
 
-// New creates a new TUI conduit that composes with a *session.Stream.
-// It subscribes to the stream's output and sends user events back
-// through the stream. The application should not read from the internal
-// events channel; the TUI manages the event loop internally.
-func New(stream *session.Stream) *TUI {
-	surfEventsCh := make(chan session.Event, 10)
+// New creates a new TUI conduit that implements conduit.Conduit.
+// The returned value must be started with Start(ctx) to run the interface.
+func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
+	if mgr == nil {
+		return nil, fmt.Errorf("session manager is required")
+	}
+	t := &TUI{mgr: mgr}
+	for _, opt := range opts {
+		opt(t)
+	}
+	return t, nil
+}
+
+// Start creates or attaches to a session, initializes the Bubble Tea program,
+// subscribes to the session output stream, and blocks until the user quits
+// or ctx is cancelled.
+func (t *TUI) Start(ctx context.Context) error {
+	var stream *session.Stream
+	var err error
+	if t.threadID != "" {
+		stream, err = t.mgr.Attach(t.threadID)
+		if err != nil {
+			return fmt.Errorf("attach to thread %q: %w", t.threadID, err)
+		}
+	} else {
+		stream, err = t.mgr.Create()
+		if err != nil {
+			return fmt.Errorf("create session: %w", err)
+		}
+		slog.Info("thread started", "id", stream.ID())
+	}
+
+	surfEventsCh := make(chan conduit.Event, 10)
 
 	ta := textarea.New()
 	ta.ShowLineNumbers = false
@@ -60,10 +101,8 @@ func New(stream *session.Stream) *TUI {
 		md:       newGlamourMarkdownRenderer(),
 	}
 	p := tea.NewProgram(&m, tea.WithAltScreen())
-	t := &TUI{
-		eventsCh: surfEventsCh,
-		program:  p,
-	}
+	t.eventsCh = surfEventsCh
+	t.program = p
 
 	// Subscribe to the stream's output.
 	outputCh, err := stream.Subscribe("turn_complete")
@@ -109,7 +148,15 @@ func New(stream *session.Stream) *TUI {
 		}
 	}()
 
-	return t
+	// Goroutine to quit the program when the context is cancelled.
+	go func() {
+		<-ctx.Done()
+		p.Quit()
+	}()
+
+	_, err = p.Run()
+	close(t.eventsCh)
+	return err
 }
 
 // SetStatus sends a status update into the Bubble Tea message loop. The
@@ -117,13 +164,4 @@ func New(stream *session.Stream) *TUI {
 func (t *TUI) SetStatus(ctx context.Context, status string) error {
 	t.program.Send(statusMsg{status: status})
 	return nil
-}
-
-// Run starts the TUI and blocks until the user quits.
-// It closes the events channel on return so that background goroutines
-// can exit cleanly.
-func (t *TUI) Run() error {
-	_, err := t.program.Run()
-	close(t.eventsCh)
-	return err
 }
