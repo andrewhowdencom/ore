@@ -17,8 +17,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/andrewhowdencom/ore/conduit"
-	"github.com/andrewhowdencom/ore/conduit/tui"
+	"github.com/andrewhowdencom/ore/x/conduit"
+	"github.com/andrewhowdencom/ore/x/conduit/tui"
 )
 
 // descriptors is the explicit list of conduit descriptors to document.
