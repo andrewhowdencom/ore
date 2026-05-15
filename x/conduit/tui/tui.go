@@ -4,6 +4,7 @@
 // Use New(mgr, opts...) to create a TUI that composes with a session.Manager.
 // The TUI creates or attaches to a session on Start, subscribes to the
 // session's output stream, and sends user events back through it.
+// Available options include WithThreadID to resume an existing thread.
 package tui
 
 import (
@@ -54,6 +55,7 @@ var Descriptor = conduit.Descriptor{
 
 // New creates a new TUI conduit that implements conduit.Conduit.
 // The returned value must be started with Start(ctx) to run the interface.
+// Available options: WithThreadID(id) to resume an existing thread.
 func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
 	if mgr == nil {
 		return nil, fmt.Errorf("session manager is required")
@@ -67,7 +69,8 @@ func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
 
 // Start creates or attaches to a session, initializes the Bubble Tea program,
 // subscribes to the session output stream, and blocks until the user quits
-// or ctx is cancelled.
+// (Ctrl+C) or ctx is cancelled. On context cancellation the program exits
+// gracefully.
 func (t *TUI) Start(ctx context.Context) error {
 	var stream *session.Stream
 	var err error

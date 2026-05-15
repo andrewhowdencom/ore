@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
@@ -47,12 +48,28 @@ func TestNew(t *testing.T) {
 	require.NotNil(t, c)
 }
 
-func TestNew_Events(t *testing.T) {
+func TestNew_WithThreadID(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
 
-	c, err := New(mgr)
+	c, err := New(mgr, WithThreadID("test-thread-id"))
 	require.NoError(t, err)
 	require.NotNil(t, c)
+}
+
+func TestStart_AttachNotFound(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	c, err := New(mgr, WithThreadID("nonexistent"))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	err = c.Start(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "nonexistent")
 }

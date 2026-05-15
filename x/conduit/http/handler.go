@@ -45,6 +45,8 @@ type Handler struct {
 
 // New creates a new HTTP conduit that implements conduit.Conduit.
 // The returned value must be started with Start(ctx) to begin serving.
+// For advanced use cases (e.g., embedding in an existing http.Server),
+// type-assert the returned conduit.Conduit to *Handler and call ServeMux().
 func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
 	if mgr == nil {
 		return nil, fmt.Errorf("session manager is required")
@@ -60,6 +62,11 @@ func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
 }
 
 // ServeMux returns an http.ServeMux with all HTTP conduit routes registered.
+// Routes include POST /sessions, DELETE /sessions/{id}, POST /messages,
+// GET /events, and GET /threads. When WithUI() is enabled, GET / and
+// GET /chat.js are also registered for the embedded web client.
+// This method is exported primarily for table-driven unit tests; most
+// callers should use Start(ctx) which creates and runs the server internally.
 func (h *Handler) ServeMux() *stdhttp.ServeMux {
 	mux := stdhttp.NewServeMux()
 	mux.HandleFunc("POST /sessions", h.createSession)

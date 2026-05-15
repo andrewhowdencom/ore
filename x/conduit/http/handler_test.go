@@ -130,6 +130,58 @@ func TestNew(t *testing.T) {
 	require.NotNil(t, c)
 }
 
+func TestNew_WithAddr(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	c, err := New(mgr, WithAddr(":0"))
+	require.NoError(t, err)
+	require.NotNil(t, c)
+
+	// Verify the server starts on an ephemeral port and shuts down cleanly.
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- c.Start(ctx)
+	}()
+
+	// Give the server time to bind.
+	time.Sleep(50 * time.Millisecond)
+
+	cancel()
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start did not return within 2 seconds after context cancellation")
+	}
+}
+
+func TestStart_ContextCancel(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	c, err := New(mgr, WithAddr(":0"))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- c.Start(ctx)
+	}()
+
+	// Give the server time to start on an ephemeral port.
+	time.Sleep(50 * time.Millisecond)
+
+	cancel()
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start did not return within 2 seconds after context cancellation")
+	}
+}
+
 func TestHandler_ServeMux_Routing(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
