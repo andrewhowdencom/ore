@@ -13,9 +13,9 @@ import (
 
 	"github.com/andrewhowdencom/ore/cognitive"
 {{- if eq .ConduitType "http" }}
-	httpc "github.com/andrewhowdencom/ore/conduit/http"
+	httpc "github.com/andrewhowdencom/ore/x/conduit/http"
 {{- else }}
-	"github.com/andrewhowdencom/ore/conduit/tui"
+	"github.com/andrewhowdencom/ore/x/conduit/tui"
 {{- end }}
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider/openai"
