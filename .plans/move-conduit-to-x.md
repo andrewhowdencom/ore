@@ -1,14 +1,12 @@
 # Plan: Move Conduit Packages to x/ Extension Directory
 
-> **Blocked by:** [#99 — Reframe session package into Stream and Manager primitives](https://github.com/andrewhowdencom/ore/issues/99)
->
-> Do not execute this plan until #99 is complete. After the session reframe, `session` will own its own event vocabulary and will no longer import `conduit`, making this move a pure mechanical relocation with no cross-import from a root package into `x/`.
+> **Status:** Unblocked. [#99 — Reframe session package into Stream and Manager primitives](https://github.com/andrewhowdencom/ore/issues/99) is complete (merged via PR #101). The `93` branch has been rebased onto `main`; `session/` no longer imports `conduit` and `conduit/event.go` has been removed.
 
 ## Objective
 Establish the `x/` package convention for all non-core extensions by moving the `conduit/` package tree — the capability-metadata package (`conduit/conduit.go`), `conduit/tui/`, and `conduit/http/` — to `x/conduit/`. Update all downstream imports, templates, and tests to reference the new paths. This is the first concrete step toward the architectural boundary described in GitHub issue #93.
 
 ## Context
-The ore repository currently co-locates core and extension packages at the root. After #99 lands, the architecture will be:
+The ore repository currently co-locates core and extension packages at the root. #99 is now complete; the architecture is:
 
 - **`session/`** — owns the per-session `Stream` primitive (events in, output events out) and the `Manager` registry. Defines `session.Event`, `session.UserMessageEvent`, `session.InterruptEvent`.
 - **`conduit/`** — reduced to capability metadata only: `Capability`, `Descriptor`, `Capable`, `Conduit` interface. No event types.
@@ -63,7 +61,7 @@ All importers update their import paths from `github.com/andrewhowdencom/ore/con
 
 ### Task 1: Move conduit/ to x/conduit/ and Fix Internal Imports
 - **Goal**: Physically move the directory tree and update imports inside the moved packages so they reference each other via the new `x/` prefix.
-- **Dependencies**: #99 complete.
+- **Dependencies**: None (prerequisite #99 is complete).
 - **Files Affected**:
   - `conduit/conduit.go` → `x/conduit/conduit.go`
   - `conduit/conduit_test.go` → `x/conduit/conduit_test.go`
@@ -89,7 +87,7 @@ All importers update their import paths from `github.com/andrewhowdencom/ore/con
 - **Validation**:
   - `go build ./x/conduit/...` must succeed.
   - `go test ./x/conduit/...` must pass.
-- **Details**: Use `git mv` to move the entire `conduit/` directory to `x/conduit/`. Note: `conduit/event.go` will have been deleted by #99 and should not exist. Update every `.go` file inside `x/conduit/tui/` and `x/conduit/http/` that imports `github.com/andrewhowdencom/ore/conduit` to import `github.com/andrewhowdencom/ore/x/conduit` instead.
+- **Details**: Use `git mv` to move the entire `conduit/` directory to `x/conduit/`. Note: `conduit/event.go` was deleted by #99 and does not exist in the current tree. Update every `.go` file inside `x/conduit/tui/` and `x/conduit/http/` that imports `github.com/andrewhowdencom/ore/conduit` to import `github.com/andrewhowdencom/ore/x/conduit` instead.
 
 ### Task 2: Update cmd/docgen/ Imports
 - **Goal**: Update the docgen tool to import conduit descriptors from the new `x/` paths.
@@ -147,7 +145,7 @@ All importers update their import paths from `github.com/andrewhowdencom/ore/con
 - **Details**: Run the full build and test suite. If any remaining import references to the old `ore/conduit` (without `/x/`) paths exist outside of prose comments, fix them. The old `conduit/` directory should no longer exist at the repository root. Commit the entire change set as a single commit with a message like `refactor: Move conduit packages to x/conduit/`.
 
 ## Dependency Graph
-- #99 → Task 1 → Task 2 → Task 5
+- Task 1 → Task 2 → Task 5
 - Task 1 → Task 3 → Task 5
 - Task 1 → Task 4 → Task 5
 - Task 2 || Task 3 || Task 4 (all are parallelizable after Task 1)
@@ -156,7 +154,7 @@ All importers update their import paths from `github.com/andrewhowdencom/ore/con
 
 | Risk | Impact | Likelihood | Mitigation |
 |---|---|---|---|
-| #99 changes scope after this plan is written | Medium | Low | Review this plan against the actual #99 implementation before executing. The core assumption is that `session` no longer imports `conduit` after #99. |
+| #99 scope changed before execution | N/A | N/A | **Resolved.** #99 is complete; `session/` no longer imports `conduit`. Verified by `grep -r 'ore/conduit' session/` returning no matches. |
 | Missing an import reference in a file not scanned during planning | Medium | Medium | Task 5 runs `go build ./...` which will catch any unresolved imports immediately. |
 | Forge template tests assert on exact import path strings and are missed | Medium | Low | Task 3 explicitly lists `generate_test.go` and `cmd_generate_test.go`; `go test ./cmd/forge/...` will catch any remaining old-path assertions. |
 | `git mv` is not used and history is lost | Low | Low | The task instructions explicitly specify `git mv`. |
@@ -164,7 +162,7 @@ All importers update their import paths from `github.com/andrewhowdencom/ore/con
 
 ## Validation Criteria
 - [ ] `conduit/` directory no longer exists at repository root.
-- [ ] `x/conduit/` directory exists with all former `conduit/` contents (minus `event.go`, removed by #99).
+- [ ] `x/conduit/` directory exists with all former `conduit/` contents (minus `event.go`, already removed by #99).
 - [ ] No `.go` file in the repository imports `github.com/andrewhowdencom/ore/conduit` (without `/x/`), except possibly in prose doc comments.
 - [ ] `go build ./...` succeeds with zero errors.
 - [ ] `go test -race ./...` passes with zero failures.
