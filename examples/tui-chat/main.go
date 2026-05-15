@@ -17,10 +17,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/x/conduit/tui"
@@ -86,33 +88,16 @@ func run() error {
 	// Create session manager with the ReAct cognitive pattern.
 	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())
 
-	// Obtain a session — resume an existing thread or create a new one.
-	var stream *session.Stream
-	var err error
-	if threadID != "" {
-		stream, err = mgr.Attach(threadID)
-		if err != nil {
-			return fmt.Errorf("attach to thread %q: %w", threadID, err)
-		}
-	} else {
-		stream, err = mgr.Create()
-		if err != nil {
-			return fmt.Errorf("create session: %w", err)
-		}
-		slog.Info("thread started", "id", stream.ID())
+	// Create the TUI conduit, passing the thread ID via functional option.
+	// The TUI creates or attaches to the session internally on Start.
+	c, err := tui.New(mgr, tui.WithThreadID(threadID))
+	if err != nil {
+		return fmt.Errorf("create TUI conduit: %w", err)
 	}
 
-	// Create TUI conduit composed with the session.
-	// The TUI manages its own subscription and event loop; do not call
-	// stream.Subscribe or stream.Process from application code.
-	s := tui.New(stream)
-
-	// Run the TUI. This blocks until the user quits (Ctrl+C).
-	// s.Run() closes the events channel on return so background
-	// goroutines exit cleanly.
-	if err := s.Run(); err != nil {
-		return fmt.Errorf("tui exited: %w", err)
-	}
-
-	return nil
+	// Start the TUI and block until the user quits (Ctrl+C) or the
+	// context is cancelled.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	return c.Start(ctx)
 }

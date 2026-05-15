@@ -36,9 +36,10 @@
 //	_ = stream.Process(ctx, UserMessageEvent{Content: "hello"})
 //
 //	// HTTP conduit composes with the Manager.
-//	handler := httpc.NewHandler(mgr, httpc.WithUI())
+//	c, _ := httpc.New(mgr, httpc.WithUI(), httpc.WithAddr(":8080"))
+//	_ = c.Start(ctx)
 //
-//	// TUI conduit composes with a *Stream.
-//	t := tui.New(stream)
-//
+//	// TUI conduit composes with the Manager.
+//	tuiConduit, _ := tui.New(mgr)
+//	_ = tuiConduit.Start(ctx)
 package session
