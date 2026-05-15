@@ -64,7 +64,7 @@ import (
 	"github.com/andrewhowdencom/ore/thread"
 	"github.com/andrewhowdencom/ore/tool"
 
-	httpc "github.com/andrewhowdencom/ore/conduit/http"
+	httpc "github.com/andrewhowdencom/ore/x/conduit/http"
 )
 
 func main() {

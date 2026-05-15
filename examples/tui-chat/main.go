@@ -23,7 +23,7 @@ import (
 	"os"
 
 	"github.com/andrewhowdencom/ore/cognitive"
-	"github.com/andrewhowdencom/ore/conduit/tui"
+	"github.com/andrewhowdencom/ore/x/conduit/tui"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider/openai"
 	"github.com/andrewhowdencom/ore/session"
