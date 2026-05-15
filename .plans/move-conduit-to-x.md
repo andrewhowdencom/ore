@@ -1,14 +1,28 @@
 # Plan: Move Conduit Packages to x/ Extension Directory
 
+> **Blocked by:** [#99 — Reframe session package into Stream and Manager primitives](https://github.com/andrewhowdencom/ore/issues/99)
+>
+> Do not execute this plan until #99 is complete. After the session reframe, `session` will own its own event vocabulary and will no longer import `conduit`, making this move a pure mechanical relocation with no cross-import from a root package into `x/`.
+
 ## Objective
-Establish the `x/` package convention for all non-core extensions by moving the `conduit/` package tree — including the base `conduit` interface, `conduit/tui/`, and `conduit/http/` — to `x/conduit/`. Update all downstream imports, templates, and tests to reference the new paths. This is the first concrete step toward the architectural boundary described in GitHub issue #93.
+Establish the `x/` package convention for all non-core extensions by moving the `conduit/` package tree — the capability-metadata package (`conduit/conduit.go`), `conduit/tui/`, and `conduit/http/` — to `x/conduit/`. Update all downstream imports, templates, and tests to reference the new paths. This is the first concrete step toward the architectural boundary described in GitHub issue #93.
 
 ## Context
-The ore repository currently co-lates core and extension packages at the root. The `conduit/` package (and its sub-packages `tui/` and `http/`) are I/O frontends — explicitly non-core extensions per the project philosophy. Issue #93 proposes moving them under `x/conduit/` to mirror the `golang.org/x/...` convention, making the core/extension boundary visible at the filesystem level.
+The ore repository currently co-locates core and extension packages at the root. After #99 lands, the architecture will be:
+
+- **`session/`** — owns the per-session `Stream` primitive (events in, output events out) and the `Manager` registry. Defines `session.Event`, `session.UserMessageEvent`, `session.InterruptEvent`.
+- **`conduit/`** — reduced to capability metadata only: `Capability`, `Descriptor`, `Capable`, `Conduit` interface. No event types.
+- **`conduit/tui/`** and **`conduit/http/`** — I/O frontend implementations that import `session` for event types and the `Stream` API, and import `conduit` (or `x/conduit` after this move) for capability descriptors.
+
+With `session` no longer importing `conduit`, the move to `x/conduit/` becomes a clean boundary: no root-level package will import `x/conduit`. The only importers of `x/conduit` will be:
+- `x/conduit/tui` and `x/conduit/http` (self-references within the extension tree)
+- `cmd/docgen` (documentation generator)
+- `cmd/forge` templates (generated code)
+- `examples/` (reference applications)
 
 Key files and packages identified:
-- **Source to move**: `conduit/` (base interface + event types), `conduit/tui/` (Bubble Tea terminal UI), `conduit/http/` (HTTP handler library with SSE/NDJSON streaming, embedded web UI)
-- **Consumers of `github.com/andrewhowdencom/ore/conduit`**: `session/manager.go`, `session/manager_test.go`
+- **Source to move**: `conduit/conduit.go` (capability metadata only — `event.go` will have been deleted by #99), `conduit/tui/` (Bubble Tea terminal UI), `conduit/http/` (HTTP handler library with SSE/NDJSON streaming, embedded web UI)
+- **Consumers of `github.com/andrewhowdencom/ore/conduit` (after #99)**: `cmd/docgen/main.go`, `cmd/forge/templates/main.go.tmpl`, `cmd/forge/generate_test.go`, `cmd/forge/cmd_generate_test.go`, plus self-references in `conduit/tui/*.go` and `conduit/http/*.go`
 - **Consumers of `github.com/andrewhowdencom/ore/conduit/tui`**: `examples/tui-chat/main.go`, `cmd/docgen/main.go`, `cmd/forge/templates/main.go.tmpl`, `cmd/forge/generate_test.go`, `cmd/forge/cmd_generate_test.go`, plus self-references in `conduit/tui/*.go`
 - **Consumers of `github.com/andrewhowdencom/ore/conduit/http`**: `examples/http-chat/main.go`, `cmd/forge/templates/main.go.tmpl`, `cmd/forge/generate_test.go`, plus self-references in `conduit/http/*.go`
 - The module path is `github.com/andrewhowdencom/ore`; no `go.mod` changes are required because this is an intra-module move.
@@ -16,41 +30,42 @@ Key files and packages identified:
 
 ## Architectural Blueprint
 
-The move creates this layout:
+The post-#99, post-move layout:
 
 ```
+session/
+  event.go            — Event, UserMessageEvent, InterruptEvent (from #99)
+  stream.go           — Stream primitive (from #99)
+  manager.go          — slimmed Manager (registry only, from #99)
 x/
   conduit/
-    conduit.go          — moved from conduit/conduit.go
-    event.go            — moved from conduit/event.go
-    conduit_test.go     — moved from conduit/conduit_test.go
+    conduit.go        — Capability, Descriptor, Capable, Conduit interface
+    conduit_test.go   — tests for capability model
     http/
       doc.go, handler.go, handler_test.go, sse.go, static.go, stream.go, types.go, types_test.go
-      static/           — embedded web UI assets
+      static/         — embedded web UI assets
     tui/
       markdown.go, model.go, model_test.go, styles.go, styles/, tui.go, tui_test.go, view.go, view_test.go
 ```
 
-All importers update their import paths from `github.com/andrewhowdencom/ore/conduit` to `github.com/andrewhowdencom/ore/x/conduit`, and similarly for `conduit/http` and `conduit/tui`. The `session/` package is explicitly non-core (per issue #93), so importing `x/conduit` from `session/` is acceptable as an interim state until follow-up work evaluates migrating `session/` itself.
+All importers update their import paths from `github.com/andrewhowdencom/ore/conduit` to `github.com/andrewhowdencom/ore/x/conduit`, and similarly for `conduit/http` and `conduit/tui`.
 
 ## Requirements
-1. Move `conduit/` directory tree to `x/conduit/` preserving git history (`git mv`).
+1. Move `conduit/` directory tree to `x/conduit/` preserving git history (`git mv`). Note: `conduit/event.go` will not exist (deleted by #99).
 2. Update all self-referencing imports within the moved `x/conduit/tui/` and `x/conduit/http/` packages.
-3. Update `session/` imports to reference `x/conduit`.
-4. Update `cmd/docgen/` imports to reference `x/conduit` and `x/conduit/tui`.
-5. Update `cmd/forge/templates/main.go.tmpl` generated import paths to `x/conduit/http` and `x/conduit/tui`.
-6. Update `cmd/forge/` test assertions that check for the old import paths in generated code.
-7. Update `examples/tui-chat/main.go` and `examples/http-chat/main.go` imports.
-8. Ensure `go test -race ./...` passes after all changes.
+3. Update `cmd/docgen/` imports to reference `x/conduit` and `x/conduit/tui`.
+4. Update `cmd/forge/templates/main.go.tmpl` generated import paths to `x/conduit/http` and `x/conduit/tui`.
+5. Update `cmd/forge/` test assertions that check for the old import paths in generated code.
+6. Update `examples/tui-chat/main.go` and `examples/http-chat/main.go` imports.
+7. Ensure `go test -race ./...` passes after all changes.
 
 ## Task Breakdown
 
 ### Task 1: Move conduit/ to x/conduit/ and Fix Internal Imports
 - **Goal**: Physically move the directory tree and update imports inside the moved packages so they reference each other via the new `x/` prefix.
-- **Dependencies**: None.
+- **Dependencies**: #99 complete.
 - **Files Affected**:
   - `conduit/conduit.go` → `x/conduit/conduit.go`
-  - `conduit/event.go` → `x/conduit/event.go`
   - `conduit/conduit_test.go` → `x/conduit/conduit_test.go`
   - `conduit/http/doc.go` → `x/conduit/http/doc.go`
   - `conduit/http/handler.go` → `x/conduit/http/handler.go`
@@ -74,18 +89,9 @@ All importers update their import paths from `github.com/andrewhowdencom/ore/con
 - **Validation**:
   - `go build ./x/conduit/...` must succeed.
   - `go test ./x/conduit/...` must pass.
-- **Details**: Use `git mv` to move the entire `conduit/` directory to `x/conduit/`. Then update every `.go` file inside `x/conduit/tui/` and `x/conduit/http/` that imports `github.com/andrewhowdencom/ore/conduit` to import `github.com/andrewhowdencom/ore/x/conduit` instead.
+- **Details**: Use `git mv` to move the entire `conduit/` directory to `x/conduit/`. Note: `conduit/event.go` will have been deleted by #99 and should not exist. Update every `.go` file inside `x/conduit/tui/` and `x/conduit/http/` that imports `github.com/andrewhowdencom/ore/conduit` to import `github.com/andrewhowdencom/ore/x/conduit` instead.
 
-### Task 2: Update session/ Imports
-- **Goal**: Change `session/` package imports from `ore/conduit` to `ore/x/conduit`.
-- **Dependencies**: Task 1.
-- **Files Affected**: `session/manager.go`, `session/manager_test.go`
-- **New Files**: None.
-- **Interfaces**: No changes.
-- **Validation**: `go build ./session/...` and `go test ./session/...` pass.
-- **Details**: Replace the import path `github.com/andrewhowdencom/ore/conduit` with `github.com/andrewhowdencom/ore/x/conduit` in both `session/manager.go` and `session/manager_test.go`. No other code changes are needed.
-
-### Task 3: Update cmd/docgen/ Imports
+### Task 2: Update cmd/docgen/ Imports
 - **Goal**: Update the docgen tool to import conduit descriptors from the new `x/` paths.
 - **Dependencies**: Task 1.
 - **Files Affected**: `cmd/docgen/main.go`
@@ -96,7 +102,7 @@ All importers update their import paths from `github.com/andrewhowdencom/ore/con
   - `github.com/andrewhowdencom/ore/conduit` → `github.com/andrewhowdencom/ore/x/conduit`
   - `github.com/andrewhowdencom/ore/conduit/tui` → `github.com/andrewhowdencom/ore/x/conduit/tui`
 
-### Task 4: Update cmd/forge/ Templates and Tests
+### Task 3: Update cmd/forge/ Templates and Tests
 - **Goal**: Update the forge CLI code generator and its tests to emit and assert the new `x/conduit` import paths.
 - **Dependencies**: Task 1.
 - **Files Affected**:
@@ -117,7 +123,7 @@ All importers update their import paths from `github.com/andrewhowdencom/ore/con
      - `assert.Contains(t, out, "github.com/andrewhowdencom/ore/conduit/tui")` → `...ore/x/conduit/tui`
      - `assert.Contains(t, string(mainGo), "github.com/andrewhowdencom/ore/conduit/tui")` → `...ore/x/conduit/tui`
 
-### Task 5: Update Examples
+### Task 4: Update Examples
 - **Goal**: Update example applications to import conduits from the new `x/` paths.
 - **Dependencies**: Task 1.
 - **Files Affected**: `examples/tui-chat/main.go`, `examples/http-chat/main.go`
@@ -128,9 +134,9 @@ All importers update their import paths from `github.com/andrewhowdencom/ore/con
   - In `examples/tui-chat/main.go`, change `"github.com/andrewhowdencom/ore/conduit/tui"` to `"github.com/andrewhowdencom/ore/x/conduit/tui"`.
   - In `examples/http-chat/main.go`, change `httpc "github.com/andrewhowdencom/ore/conduit/http"` to `httpc "github.com/andrewhowdencom/ore/x/conduit/http"`.
 
-### Task 6: Final Validation
+### Task 5: Final Validation
 - **Goal**: Verify the entire repository builds and tests cleanly after all moves.
-- **Dependencies**: Task 1, Task 2, Task 3, Task 4, Task 5.
+- **Dependencies**: Task 1, Task 2, Task 3, Task 4.
 - **Files Affected**: None (validation only).
 - **New Files**: None.
 - **Interfaces**: No changes.
@@ -141,24 +147,24 @@ All importers update their import paths from `github.com/andrewhowdencom/ore/con
 - **Details**: Run the full build and test suite. If any remaining import references to the old `ore/conduit` (without `/x/`) paths exist outside of prose comments, fix them. The old `conduit/` directory should no longer exist at the repository root. Commit the entire change set as a single commit with a message like `refactor: Move conduit packages to x/conduit/`.
 
 ## Dependency Graph
-- Task 1 → Task 2 → Task 6
-- Task 1 → Task 3 → Task 6
-- Task 1 → Task 4 → Task 6
-- Task 1 → Task 5 → Task 6
-- Task 2 || Task 3 || Task 4 || Task 5 (all are parallelizable after Task 1)
+- #99 → Task 1 → Task 2 → Task 5
+- Task 1 → Task 3 → Task 5
+- Task 1 → Task 4 → Task 5
+- Task 2 || Task 3 || Task 4 (all are parallelizable after Task 1)
 
 ## Risks & Mitigations
 
 | Risk | Impact | Likelihood | Mitigation |
 |---|---|---|---|
-| Missing an import reference in a file not scanned during planning | Medium | Medium | Task 6 runs `go build ./...` which will catch any unresolved imports immediately. |
-| Forge template tests assert on exact import path strings and are missed | Medium | Low | Task 4 explicitly lists `generate_test.go` and `cmd_generate_test.go`; `go test ./cmd/forge/...` will catch any remaining old-path assertions. |
+| #99 changes scope after this plan is written | Medium | Low | Review this plan against the actual #99 implementation before executing. The core assumption is that `session` no longer imports `conduit` after #99. |
+| Missing an import reference in a file not scanned during planning | Medium | Medium | Task 5 runs `go build ./...` which will catch any unresolved imports immediately. |
+| Forge template tests assert on exact import path strings and are missed | Medium | Low | Task 3 explicitly lists `generate_test.go` and `cmd_generate_test.go`; `go test ./cmd/forge/...` will catch any remaining old-path assertions. |
 | `git mv` is not used and history is lost | Low | Low | The task instructions explicitly specify `git mv`. |
 | External consumers outside this repo break | Low | Low | This is acceptable per the project's aggressive-refactoring convention (AGENTS.md). No backwards-compatibility guarantee at this stage. |
 
 ## Validation Criteria
 - [ ] `conduit/` directory no longer exists at repository root.
-- [ ] `x/conduit/` directory exists with all former `conduit/` contents.
+- [ ] `x/conduit/` directory exists with all former `conduit/` contents (minus `event.go`, removed by #99).
 - [ ] No `.go` file in the repository imports `github.com/andrewhowdencom/ore/conduit` (without `/x/`), except possibly in prose doc comments.
 - [ ] `go build ./...` succeeds with zero errors.
 - [ ] `go test -race ./...` passes with zero failures.
