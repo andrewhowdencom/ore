@@ -113,8 +113,9 @@ func (f *FanOut) closeAll() {
 }
 
 // Subscribe returns a receive-only channel that receives all OutputEvents
-// whose Kind() matches any of the given kinds. The channel is closed when
-// the FanOut is closed.
+// whose Kind() matches any of the given kinds. If no kinds are provided,
+// the channel receives all events regardless of kind. The channel is closed
+// when the FanOut is closed.
 //
 // Events are sent non-blocking with a fixed buffer of 100. If a subscriber
 // falls behind and its buffer fills, subsequent matching events are dropped
