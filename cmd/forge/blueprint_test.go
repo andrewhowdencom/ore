@@ -89,6 +89,24 @@ conduits:
 			wantErr: "conduits[0].module is required",
 		},
 		{
+			name: "duplicate conduit entries",
+			input: `
+dist:
+  name: dup-agent
+  output_path: ./out
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/http
+  - module: github.com/andrewhowdencom/ore/x/conduit/http
+`,
+			want: &Blueprint{
+				Dist: Dist{Name: "dup-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{
+					{Module: "github.com/andrewhowdencom/ore/x/conduit/http"},
+					{Module: "github.com/andrewhowdencom/ore/x/conduit/http"},
+				},
+			},
+		},
+		{
 			name: "malformed YAML",
 			input:   "not: valid: yaml: [",
 			wantErr: "decode blueprint",

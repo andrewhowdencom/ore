@@ -83,6 +83,22 @@ func TestGenerateMainGo(t *testing.T) {
 				assert.NotContains(t, content, `port := os.Getenv("PORT")`)
 			},
 		},
+		{
+			name: "duplicate alias disambiguation",
+			blueprint: &Blueprint{
+				Dist: Dist{Name: "dup-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{
+					{Module: "example.com/my/conduit"},
+					{Module: "other.com/my/conduit"},
+				},
+			},
+			check: func(t *testing.T, content string) {
+				assert.Contains(t, content, `conduit "example.com/my/conduit"`)
+				assert.Contains(t, content, `conduit1 "other.com/my/conduit"`)
+				assert.Contains(t, content, `c0, err := conduit.New(mgr)`)
+				assert.Contains(t, content, `c1, err := conduit1.New(mgr)`)
+			},
+		},
 	}
 
 	for _, tt := range tests {

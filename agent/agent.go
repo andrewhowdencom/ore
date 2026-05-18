@@ -20,8 +20,11 @@ func New(mgr *session.Manager) *Agent {
 	return &Agent{mgr: mgr}
 }
 
-// Add registers a conduit to be started by Run.
+// Add registers a conduit to be started by Run. Nil conduits are ignored.
 func (a *Agent) Add(c conduit.Conduit) {
+	if c == nil {
+		return
+	}
 	a.conduits = append(a.conduits, c)
 }
 

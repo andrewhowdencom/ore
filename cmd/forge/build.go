@@ -59,6 +59,8 @@ func Build(blueprint *Blueprint, oreModulePath string, outputPath string) error 
 	return nil
 }
 
+// isExternalModule reports true for conduit modules that are not part of
+// the ore/x/conduit tree.
 func isExternalModule(module string) bool {
 	return !strings.HasPrefix(module, "github.com/andrewhowdencom/ore/x/conduit/")
 }
