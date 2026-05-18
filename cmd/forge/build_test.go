@@ -2,7 +2,9 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -65,4 +67,37 @@ func TestBuild_RelativeOutputPath(t *testing.T) {
 	info, err := os.Stat(blueprint.Dist.OutputPath)
 	require.NoError(t, err)
 	assert.False(t, info.IsDir())
+}
+
+func TestBuildExternalModule(t *testing.T) {
+	orig := execCommand
+	defer func() { execCommand = orig }()
+
+	var calls [][]string
+	execCommand = func(name string, arg ...string) *exec.Cmd {
+		calls = append(calls, append([]string{name}, arg...))
+		if runtime.GOOS == "windows" {
+			return exec.Command("cmd", "/c", "exit", "0")
+		}
+		return exec.Command("true")
+	}
+
+	blueprint := &Blueprint{
+		Dist:     Dist{Name: "ext-agent", OutputPath: "ext-agent"},
+		Conduits: []ConduitConfig{{Module: "example.com/my/conduit"}},
+	}
+
+	oreModulePath, err := FindOreModuleRoot(".")
+	require.NoError(t, err)
+
+	outputDir := t.TempDir()
+	outputPath := filepath.Join(outputDir, "ext-agent")
+
+	err = Build(blueprint, oreModulePath, outputPath)
+	require.NoError(t, err)
+
+	require.Len(t, calls, 3)
+	assert.Equal(t, []string{"go", "get", "example.com/my/conduit"}, calls[0])
+	assert.Equal(t, []string{"go", "mod", "tidy"}, calls[1])
+	assert.Equal(t, []string{"go", "build", "-o", outputPath, "."}, calls[2])
 }
