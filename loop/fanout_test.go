@@ -263,3 +263,26 @@ func TestFanOut_MultipleSubscribersSameKind(t *testing.T) {
 	assert.False(t, open1)
 	assert.False(t, open2)
 }
+
+func TestFanOut_SubscribeAllKinds(t *testing.T) {
+	src := make(chan outputEventEnvelope, 10)
+	f := NewFanOut(src)
+	defer f.Close()
+
+	ch := f.Subscribe() // no kinds = all events
+
+	src <- outputEventEnvelope{event: artifact.TextDelta{Content: "hello"}, done: make(chan struct{})}
+	src <- outputEventEnvelope{event: TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant}}, done: make(chan struct{})}
+	src <- outputEventEnvelope{event: ErrorEvent{Err: assert.AnError}, done: make(chan struct{})}
+	close(src)
+
+	var events []OutputEvent
+	for e := range ch {
+		events = append(events, e)
+	}
+
+	require.Len(t, events, 3)
+	assert.Equal(t, "text_delta", events[0].Kind())
+	assert.Equal(t, "turn_complete", events[1].Kind())
+	assert.Equal(t, "error", events[2].Kind())
+}
