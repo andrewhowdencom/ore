@@ -1,4 +1,4 @@
-# Forge manifest for a TUI chat agent.
+# Forge blueprint for a TUI chat agent.
 # Run with:
 #   cd examples/forge/tui
 #   go run ../../../cmd/forge -config forge.yaml
@@ -6,5 +6,5 @@
 dist:
   name: tui-chat
   output_path: ./tui-chat
-conduit:
-  type: tui
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/tui

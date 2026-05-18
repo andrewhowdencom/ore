@@ -7,18 +7,18 @@ import (
 	"path/filepath"
 )
 
-// Build generates a temporary Go module from manifest, runs go mod tidy,
+// Build generates a temporary Go module from blueprint, runs go mod tidy,
 // and compiles a binary at outputPath using the local ore module.
 // If outputPath is relative it is resolved against the current working
 // directory before compilation.
-func Build(manifest *Manifest, oreModulePath string, outputPath string) error {
+func Build(blueprint *Blueprint, oreModulePath string, outputPath string) error {
 	tmpDir, err := os.MkdirTemp("", "forge-*")
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	if err := Generate(manifest, oreModulePath, tmpDir); err != nil {
+	if err := Generate(blueprint, oreModulePath, tmpDir); err != nil {
 		return fmt.Errorf("generate: %w", err)
 	}
 

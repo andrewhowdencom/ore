@@ -9,32 +9,32 @@ import (
 
 func TestGenerateMainGo(t *testing.T) {
 	tests := []struct {
-		name     string
-		manifest *Manifest
+		name      string
+		blueprint *Blueprint
 	}{
 		{
 			name: "http conduit",
-			manifest: &Manifest{
-				Dist:    Dist{Name: "http-agent", OutputPath: "./out"},
-				Conduit: Conduit{Type: "http"},
+			blueprint: &Blueprint{
+				Dist:     Dist{Name: "http-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
 			},
 		},
 		{
 			name: "tui conduit",
-			manifest: &Manifest{
-				Dist:    Dist{Name: "tui-agent", OutputPath: "./out"},
-				Conduit: Conduit{Type: "tui"},
+			blueprint: &Blueprint{
+				Dist:     Dist{Name: "tui-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/tui"}},
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := GenerateMainGo(tt.manifest)
+			got, err := GenerateMainGo(tt.blueprint)
 			require.NoError(t, err)
 
 			content := string(got)
-			if tt.manifest.Conduit.Type == "http" {
+			if deriveConduitType(tt.blueprint) == "http" {
 				assert.NotContains(t, content, `"net/http"`)
 				assert.Contains(t, content, `httpc "github.com/andrewhowdencom/ore/x/conduit/http"`)
 				assert.NotContains(t, content, `"flag"`)
@@ -47,12 +47,12 @@ func TestGenerateMainGo(t *testing.T) {
 }
 
 func TestGenerateGoMod(t *testing.T) {
-	manifest := &Manifest{
-		Dist:    Dist{Name: "test-agent", OutputPath: "./out"},
-		Conduit: Conduit{Type: "http"},
+	blueprint := &Blueprint{
+		Dist:     Dist{Name: "test-agent", OutputPath: "./out"},
+		Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
 	}
 
-	got, err := GenerateGoMod(manifest, "/absolute/path/to/ore")
+	got, err := GenerateGoMod(blueprint, "/absolute/path/to/ore")
 	require.NoError(t, err)
 
 	content := string(got)

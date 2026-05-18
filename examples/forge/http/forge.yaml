@@ -1,4 +1,4 @@
-# Forge manifest for an HTTP chat agent.
+# Forge blueprint for an HTTP chat agent.
 # Run with:
 #   cd examples/forge/http
 #   go run ../../../cmd/forge -config forge.yaml
@@ -6,5 +6,5 @@
 dist:
   name: http-chat
   output_path: ./http-chat
-conduit:
-  type: http
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/http

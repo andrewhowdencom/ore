@@ -1,5 +1,5 @@
 // Package main provides the forge CLI, a tool that reads a YAML
-// manifest and generates a compilable Go agent application.
+// blueprint and generates a compilable Go agent application.
 //
 // Usage:
 //
@@ -59,7 +59,7 @@ func newForgeCmd() *cobra.Command {
 
 	rootCmd := &cobra.Command{
 		Use:           "forge",
-		Short:         "Generate and build ore agent binaries from YAML manifests",
+		Short:         "Generate and build ore agent binaries from YAML blueprints",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -76,7 +76,7 @@ func newForgeCmd() *cobra.Command {
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "log level (debug, info, warn, error)")
 
 	var configPath string
-	rootCmd.PersistentFlags().StringVar(&configPath, "config", "forge.yaml", "path to manifest file")
+	rootCmd.PersistentFlags().StringVar(&configPath, "config", "forge.yaml", "path to blueprint file")
 
 	buildCmd := &cobra.Command{
 		Use:     "build",
@@ -96,13 +96,13 @@ func newForgeCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			f, err := os.Open(configPath)
 			if err != nil {
-				return fmt.Errorf("open manifest: %w", err)
+				return fmt.Errorf("open blueprint: %w", err)
 			}
 			defer f.Close()
 
-			manifest, err := ParseManifest(f)
+			blueprint, err := ParseBlueprint(f)
 			if err != nil {
-				return fmt.Errorf("parse manifest: %w", err)
+				return fmt.Errorf("parse blueprint: %w", err)
 			}
 
 			oreModulePath, err := FindOreModuleRoot(".")
@@ -114,14 +114,14 @@ func newForgeCmd() *cobra.Command {
 				if err := os.MkdirAll(outputDir, 0755); err != nil {
 					return fmt.Errorf("create output directory: %w", err)
 				}
-				if err := Generate(manifest, oreModulePath, outputDir); err != nil {
+				if err := Generate(blueprint, oreModulePath, outputDir); err != nil {
 					return fmt.Errorf("generate: %w", err)
 				}
 				slog.Info("generate complete", "output", outputDir)
 				return nil
 			}
 
-			mainGo, err := GenerateMainGo(manifest)
+			mainGo, err := GenerateMainGo(blueprint)
 			if err != nil {
 				return fmt.Errorf("generate main.go: %w", err)
 			}
@@ -134,7 +134,7 @@ func newForgeCmd() *cobra.Command {
 				return fmt.Errorf("write separator to stdout: %w", err)
 			}
 
-			goMod, err := GenerateGoMod(manifest, oreModulePath)
+			goMod, err := GenerateGoMod(blueprint, oreModulePath)
 			if err != nil {
 				return fmt.Errorf("generate go.mod: %w", err)
 			}
@@ -170,17 +170,17 @@ func newForgeCmd() *cobra.Command {
 	return rootCmd
 }
 
-// runWithPath executes the forge build pipeline for the manifest at configPath.
+// runWithPath executes the forge build pipeline for the blueprint at configPath.
 func runWithPath(configPath string) error {
 	f, err := os.Open(configPath)
 	if err != nil {
-		return fmt.Errorf("open manifest: %w", err)
+		return fmt.Errorf("open blueprint: %w", err)
 	}
 	defer f.Close()
 
-	manifest, err := ParseManifest(f)
+	blueprint, err := ParseBlueprint(f)
 	if err != nil {
-		return fmt.Errorf("parse manifest: %w", err)
+		return fmt.Errorf("parse blueprint: %w", err)
 	}
 
 	oreModulePath, err := FindOreModuleRoot(".")
@@ -188,10 +188,10 @@ func runWithPath(configPath string) error {
 		return fmt.Errorf("find ore module root: %w", err)
 	}
 
-	if err := Build(manifest, oreModulePath, manifest.Dist.OutputPath); err != nil {
+	if err := Build(blueprint, oreModulePath, blueprint.Dist.OutputPath); err != nil {
 		return fmt.Errorf("build: %w", err)
 	}
 
-	slog.Info("build complete", "output", manifest.Dist.OutputPath)
+	slog.Info("build complete", "output", blueprint.Dist.OutputPath)
 	return nil
 }

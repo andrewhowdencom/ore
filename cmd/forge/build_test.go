@@ -14,21 +14,21 @@ func TestBuild(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := []struct {
-		name     string
-		manifest *Manifest
+		name      string
+		blueprint *Blueprint
 	}{
 		{
 			name: "http",
-			manifest: &Manifest{
-				Dist:    Dist{Name: "http-agent", OutputPath: "http-agent"},
-				Conduit: Conduit{Type: "http"},
+			blueprint: &Blueprint{
+				Dist:     Dist{Name: "http-agent", OutputPath: "http-agent"},
+				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
 			},
 		},
 		{
 			name: "tui",
-			manifest: &Manifest{
-				Dist:    Dist{Name: "tui-agent", OutputPath: "tui-agent"},
-				Conduit: Conduit{Type: "tui"},
+			blueprint: &Blueprint{
+				Dist:     Dist{Name: "tui-agent", OutputPath: "tui-agent"},
+				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/tui"}},
 			},
 		},
 	}
@@ -36,9 +36,9 @@ func TestBuild(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			outputDir := t.TempDir()
-			outputPath := filepath.Join(outputDir, tt.manifest.Dist.OutputPath)
+			outputPath := filepath.Join(outputDir, tt.blueprint.Dist.OutputPath)
 
-			err := Build(tt.manifest, oreModulePath, outputPath)
+			err := Build(tt.blueprint, oreModulePath, outputPath)
 			require.NoError(t, err)
 
 			info, err := os.Stat(outputPath)
@@ -54,15 +54,15 @@ func TestBuild_RelativeOutputPath(t *testing.T) {
 
 	t.Chdir(t.TempDir())
 
-	manifest := &Manifest{
-		Dist:    Dist{Name: "rel-agent", OutputPath: "rel-agent"},
-		Conduit: Conduit{Type: "http"},
+	blueprint := &Blueprint{
+		Dist:     Dist{Name: "rel-agent", OutputPath: "rel-agent"},
+		Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
 	}
 
-	err = Build(manifest, oreModulePath, manifest.Dist.OutputPath)
+	err = Build(blueprint, oreModulePath, blueprint.Dist.OutputPath)
 	require.NoError(t, err)
 
-	info, err := os.Stat(manifest.Dist.OutputPath)
+	info, err := os.Stat(blueprint.Dist.OutputPath)
 	require.NoError(t, err)
 	assert.False(t, info.IsDir())
 }
