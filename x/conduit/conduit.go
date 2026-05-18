@@ -1,7 +1,3 @@
-// Package conduit defines capability constants and descriptors that are
-// the lingua franca for capability discovery across ore frontends (TUI,
-// web, Telegram, etc.). Concrete implementations are composed at build time;
-// the framework does not assume any specific rendering mechanism.
 package conduit
 
 import "context"
