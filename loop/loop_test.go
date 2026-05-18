@@ -1034,7 +1034,9 @@ func TestStep_SetEventContext_PropagatesToTurn(t *testing.T) {
 
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
-			artifact.Text{Content: "world"},
+			artifact.Text{Content: "world1"},
+			artifact.Text{Content: "world2"},
+			artifact.Text{Content: "world3"},
 		},
 	}
 
@@ -1044,12 +1046,18 @@ func TestStep_SetEventContext_PropagatesToTurn(t *testing.T) {
 
 	events := collectEvents(ch, 100*time.Millisecond)
 
-	require.Len(t, events, 2)
+	require.Len(t, events, 4)
 	ae, ok := events[0].(ArtifactEvent)
 	require.True(t, ok)
 	assert.Equal(t, "test-provenance", ae.Ctx.Provenance)
+	ae, ok = events[1].(ArtifactEvent)
+	require.True(t, ok)
+	assert.Equal(t, "test-provenance", ae.Ctx.Provenance)
+	ae, ok = events[2].(ArtifactEvent)
+	require.True(t, ok)
+	assert.Equal(t, "test-provenance", ae.Ctx.Provenance)
 
-	tc, ok := events[1].(TurnCompleteEvent)
+	tc, ok := events[3].(TurnCompleteEvent)
 	require.True(t, ok)
 	assert.Equal(t, "test-provenance", tc.Ctx.Provenance)
 }
@@ -1098,6 +1106,36 @@ func TestStep_SetEventContext_Cleared(t *testing.T) {
 	events = collectEvents(ch, 100*time.Millisecond)
 	require.Len(t, events, 1)
 	tc, ok = events[0].(TurnCompleteEvent)
+	require.True(t, ok)
+	assert.Empty(t, tc.Ctx.Provenance)
+}
+
+func TestStep_ContextClearedOnError(t *testing.T) {
+	s := New()
+	ch := s.Subscribe("error", "turn_complete")
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	wantErr := errors.New("provider failed")
+	prov := &mockProvider{err: wantErr}
+
+	s.SetEventContext(EventContext{Provenance: "first"})
+	_, err := s.Turn(context.Background(), mem, prov)
+	require.ErrorIs(t, err, wantErr)
+
+	events := collectEvents(ch, 100*time.Millisecond)
+	require.Len(t, events, 1)
+	ee, ok := events[0].(ErrorEvent)
+	require.True(t, ok)
+	assert.Equal(t, "first", ee.Ctx.Provenance)
+
+	// Subsequent submit without setting context should have empty provenance
+	_, err = s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "again"})
+	require.NoError(t, err)
+
+	events = collectEvents(ch, 100*time.Millisecond)
+	require.Len(t, events, 1)
+	tc, ok := events[0].(TurnCompleteEvent)
 	require.True(t, ok)
 	assert.Empty(t, tc.Ctx.Provenance)
 }

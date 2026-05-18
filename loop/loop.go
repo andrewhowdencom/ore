@@ -36,7 +36,10 @@ type OutputEvent interface {
 // appended to state and all handlers have run.
 type TurnCompleteEvent struct {
 	Turn state.Turn
-	Ctx  EventContext
+
+	// Ctx carries routing metadata for the event, such as provenance
+	// information for echo suppression.
+	Ctx EventContext
 }
 
 // Kind returns the event kind identifier.
@@ -48,6 +51,9 @@ func (e TurnCompleteEvent) Context() EventContext { return e.Ctx }
 // ErrorEvent is emitted when a turn fails due to a provider or handler error.
 type ErrorEvent struct {
 	Err error
+
+	// Ctx carries routing metadata for the event, such as provenance
+	// information for echo suppression.
 	Ctx EventContext
 }
 
@@ -62,7 +68,10 @@ func (e ErrorEvent) Context() EventContext { return e.Ctx }
 // with routing metadata.
 type ArtifactEvent struct {
 	Artifact artifact.Artifact
-	Ctx      EventContext
+
+	// Ctx carries routing metadata for the event, such as provenance
+	// information for echo suppression.
+	Ctx EventContext
 }
 
 // Kind returns the underlying artifact's kind.
@@ -134,6 +143,13 @@ func (s *Step) SetEventContext(ctx EventContext) {
 	s.eventContext = ctx
 }
 
+// clearEventContext resets the EventContext on the Step to its zero
+// value. It is the counterpart to SetEventContext and is invoked via
+// defer in Turn and Submit to prevent context leakage between calls.
+func (s *Step) clearEventContext() {
+	s.eventContext = EventContext{}
+}
+
 // Close stops the Step's FanOut and closes all subscriber channels.
 func (s *Step) Close() error {
 	return s.fanOut.Close()
@@ -176,6 +192,7 @@ func WithInvokeOptions(opts ...provider.InvokeOption) Option {
 // turn completes, all registered handlers are invoked on each artifact from
 // the assistant turn. The operation is fully synchronous and blocking.
 func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, opts ...provider.InvokeOption) (state.State, error) {
+	defer s.clearEventContext()
 	var err error
 
 	for _, bt := range s.beforeTurns {

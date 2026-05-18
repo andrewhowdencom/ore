@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -368,4 +369,94 @@ func TestRoundTrip_OutputEvent(t *testing.T) {
 			assert.Equal(t, event, got)
 		})
 	}
+}
+
+func TestMarshalOutputEvent_WithContext(t *testing.T) {
+	tests := []struct {
+		name  string
+		event loop.OutputEvent
+		want  string
+	}{
+		{
+			name:  "turn_complete_with_context",
+			event: loop.TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}, Ctx: loop.EventContext{Provenance: "http"}},
+			want:  `{"kind":"turn_complete","turn":{"role":"assistant","artifacts":[{"kind":"text","content":"hello"}]},"context":{"provenance":"http"}}`,
+		},
+		{
+			name:  "error_with_context",
+			event: loop.ErrorEvent{Err: errors.New("boom"), Ctx: loop.EventContext{Provenance: "tui"}},
+			want:  `{"kind":"error","message":"boom","context":{"provenance":"tui"}}`,
+		},
+		{
+			name:  "text_artifact_with_context",
+			event: loop.ArtifactEvent{Artifact: artifact.Text{Content: "hello"}, Ctx: loop.EventContext{Provenance: "http"}},
+			want:  `{"kind":"text","content":"hello","context":{"provenance":"http"}}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := MarshalOutputEvent(tt.event)
+			require.NoError(t, err)
+
+			var gotMap, wantMap map[string]interface{}
+			require.NoError(t, json.Unmarshal(got, &gotMap))
+			require.NoError(t, json.Unmarshal([]byte(tt.want), &wantMap))
+			assert.Equal(t, wantMap, gotMap)
+		})
+	}
+}
+
+func TestUnmarshalOutputEvent_WithContext(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  loop.OutputEvent
+	}{
+		{
+			name:  "turn_complete_with_context",
+			input: `{"kind":"turn_complete","turn":{"role":"assistant","artifacts":[{"kind":"text","content":"hello"}]},"context":{"provenance":"http"}}`,
+			want:  loop.TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}, Ctx: loop.EventContext{Provenance: "http"}},
+		},
+		{
+			name:  "error_with_context",
+			input: `{"kind":"error","message":"boom","context":{"provenance":"tui"}}`,
+			want:  loop.ErrorEvent{Err: errors.New("boom"), Ctx: loop.EventContext{Provenance: "tui"}},
+		},
+		{
+			name:  "text_artifact_with_context",
+			input: `{"kind":"text","content":"hello","context":{"provenance":"http"}}`,
+			want:  loop.ArtifactEvent{Artifact: artifact.Text{Content: "hello"}, Ctx: loop.EventContext{Provenance: "http"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := UnmarshalOutputEvent([]byte(tt.input))
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestMarshalOutputEvent_UnsupportedKind(t *testing.T) {
+	_, err := MarshalOutputEvent(&bogusOutputEvent{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported event kind")
+}
+
+type bogusOutputEvent struct{}
+
+func (b *bogusOutputEvent) Kind() string              { return "bogus" }
+func (b *bogusOutputEvent) Context() loop.EventContext { return loop.EventContext{} }
+
+func TestMarshalOutputEvent_OmitEmptyContext(t *testing.T) {
+	data, err := MarshalOutputEvent(loop.TurnCompleteEvent{
+		Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}},
+	})
+	require.NoError(t, err)
+
+	// Empty context should be omitted from JSON output
+	assert.NotContains(t, string(data), "context")
+	assert.NotContains(t, string(data), "provenance")
 }
