@@ -96,10 +96,9 @@ func TestBuildExternalModule(t *testing.T) {
 	err = Build(blueprint, oreModulePath, outputPath)
 	require.NoError(t, err)
 
-	require.Len(t, calls, 3)
-	assert.Equal(t, []string{"go", "get", "example.com/my/conduit"}, calls[0])
-	assert.Equal(t, []string{"go", "mod", "tidy"}, calls[1])
-	assert.Equal(t, []string{"go", "build", "-o", outputPath, "."}, calls[2])
+	require.Len(t, calls, 2)
+	assert.Equal(t, []string{"go", "mod", "tidy"}, calls[0])
+	assert.Equal(t, []string{"go", "build", "-o", outputPath, "."}, calls[1])
 }
 
 func TestBuildExternalModuleFailure(t *testing.T) {
@@ -126,5 +125,5 @@ func TestBuildExternalModuleFailure(t *testing.T) {
 
 	err = Build(blueprint, oreModulePath, outputPath)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "go get example.com/my/conduit")
+	assert.Contains(t, err.Error(), "go mod tidy")
 }

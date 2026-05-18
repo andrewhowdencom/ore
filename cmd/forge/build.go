@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 )
 
 // execCommand is a testable wrapper around exec.Command.
@@ -24,16 +23,6 @@ func Build(blueprint *Blueprint, oreModulePath string, outputPath string) error 
 
 	if err := Generate(blueprint, oreModulePath, tmpDir); err != nil {
 		return fmt.Errorf("generate: %w", err)
-	}
-
-	for _, c := range blueprint.Conduits {
-		if isExternalModule(c.Module) {
-			get := execCommand("go", "get", c.Module)
-			get.Dir = tmpDir
-			if out, err := get.CombinedOutput(); err != nil {
-				return fmt.Errorf("go get %s: %w\n%s", c.Module, err, out)
-			}
-		}
 	}
 
 	tidy := execCommand("go", "mod", "tidy")
@@ -59,8 +48,4 @@ func Build(blueprint *Blueprint, oreModulePath string, outputPath string) error 
 	return nil
 }
 
-// isExternalModule reports true for conduit modules that are not part of
-// the ore/x/conduit tree.
-func isExternalModule(module string) bool {
-	return !strings.HasPrefix(module, "github.com/andrewhowdencom/ore/x/conduit/")
-}
+
