@@ -51,6 +51,8 @@ func TestGenerateCommand(t *testing.T) {
 				mainGo, err := os.ReadFile(filepath.Join(dir, "main.go"))
 				require.NoError(t, err)
 				assert.Contains(t, string(mainGo), `httpc "github.com/andrewhowdencom/ore/x/conduit/http"`)
+				assert.Contains(t, string(mainGo), `a := agent.New(mgr)`)
+				assert.Contains(t, string(mainGo), `a.Add(c0)`)
 
 				goMod, err := os.ReadFile(filepath.Join(dir, "go.mod"))
 				require.NoError(t, err)
@@ -69,6 +71,8 @@ func TestGenerateCommand(t *testing.T) {
 				mainGo, err := os.ReadFile(filepath.Join(dir, "main.go"))
 				require.NoError(t, err)
 				assert.Contains(t, string(mainGo), `"github.com/andrewhowdencom/ore/x/conduit/tui"`)
+				assert.Contains(t, string(mainGo), `a := agent.New(mgr)`)
+				assert.Contains(t, string(mainGo), `a.Add(c0)`)
 
 				goMod, err := os.ReadFile(filepath.Join(dir, "go.mod"))
 				require.NoError(t, err)
@@ -80,7 +84,7 @@ func TestGenerateCommand(t *testing.T) {
 			setupArgs: func(t *testing.T) []string {
 				return []string{"generate", "--config", filepath.Join(t.TempDir(), "nonexistent.yaml")}
 			},
-			wantErr: "open manifest",
+			wantErr: "open blueprint",
 		},
 		{
 			name: "malformed YAML",
@@ -89,7 +93,7 @@ func TestGenerateCommand(t *testing.T) {
 				require.NoError(t, os.WriteFile(path, []byte("not: valid: yaml: ["), 0644))
 				return []string{"generate", "--config", path}
 			},
-			wantErr: "parse manifest",
+			wantErr: "parse blueprint",
 		},
 		{
 			name: "missing required fields",

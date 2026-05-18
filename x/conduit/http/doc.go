@@ -5,8 +5,9 @@
 // API:
 //
 //	New(mgr, opts...)         - create an HTTP conduit implementing conduit.Conduit
-//	WithUI()                  - enable the built-in web UI (default: disabled)
-//	WithAddr(addr)            - set the listen address (default: ":8080")
+//	WithUI()                  - retained for compatibility; UI is enabled by default
+//	WithoutUI()               - disable the built-in web chat UI
+//	WithAddr(addr)            - set the listen address (default: ":7654")
 //	Start(ctx)                - start the HTTP server and block until ctx cancelled
 //	ServeMux()                - returns *http.ServeMux with all routes registered (testing)
 //

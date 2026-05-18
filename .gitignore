@@ -21,7 +21,8 @@ profile.cov
 # vendor/
 
 # Go workspace file
-go.work
+# go.work is checked in for monorepo workflow
+# go.work.sum is generated and ignored
 go.work.sum
 
 # env file

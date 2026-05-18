@@ -20,16 +20,24 @@ import (
 // Option configures a Handler via functional options.
 type Option func(*Handler)
 
-// WithUI enables serving of an embedded HTML/JS chat client at GET / and
-// GET /chat.js. When enabled, the handler registers these routes in ServeMux.
+// WithUI is a no-op — the built-in web UI is enabled by default in New().
+// It is retained for backward compatibility with explicit call sites.
 func WithUI() Option {
 	return func(h *Handler) {
 		h.withUI = true
 	}
 }
 
-// WithAddr sets the TCP address for the HTTP server (e.g., ":8080").
-// If not specified, the server defaults to ":8080".
+// WithoutUI disables the built-in web chat UI. Use this when embedding the
+// handler in an existing server where the UI routes are not desired.
+func WithoutUI() Option {
+	return func(h *Handler) {
+		h.withUI = false
+	}
+}
+
+// WithAddr sets the TCP address for the HTTP server (e.g., ":7654").
+// If not specified, the server defaults to ":7654".
 func WithAddr(addr string) Option {
 	return func(h *Handler) {
 		h.addr = addr
@@ -52,12 +60,12 @@ func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
 	if mgr == nil {
 		return nil, fmt.Errorf("session manager is required")
 	}
-	h := &Handler{mgr: mgr}
+	h := &Handler{mgr: mgr, withUI: true}
 	for _, opt := range opts {
 		opt(h)
 	}
 	if h.addr == "" {
-		h.addr = ":8080"
+		h.addr = ":7654"
 	}
 	return h, nil
 }

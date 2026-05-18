@@ -1,0 +1,6 @@
+dist:
+  name: multi-smoke-agent
+  output_path: ./multi-smoke-agent
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/http
+  - module: github.com/andrewhowdencom/ore/x/conduit/tui
