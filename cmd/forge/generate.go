@@ -60,7 +60,7 @@ func GenerateMainGo(blueprint *Blueprint) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Generate writes main.go and go.mod into targetDir.
+// Generate writes generated main.go and go.mod files into targetDir.
 func Generate(blueprint *Blueprint, oreModulePath string, targetDir string) error {
 	mainGo, err := GenerateMainGo(blueprint)
 	if err != nil {
@@ -106,7 +106,8 @@ func GenerateGoMod(blueprint *Blueprint, oreModulePath string) ([]byte, error) {
 }
 
 // buildTemplateData converts a Blueprint into the template data structure
-// used by main.go.tmpl.
+// used by main.go.tmpl, populating conduit-specific option strings for
+// built-in conduits.
 func buildTemplateData(blueprint *Blueprint) (*MainGoTemplateData, error) {
 	data := &MainGoTemplateData{}
 	usedAliases := make(map[string]struct{})
@@ -141,10 +142,14 @@ func buildTemplateData(blueprint *Blueprint) (*MainGoTemplateData, error) {
 	return data, nil
 }
 
+// isBuiltInHTTP reports whether the given module path is the built-in HTTP
+// conduit.
 func isBuiltInHTTP(module string) bool {
 	return module == "github.com/andrewhowdencom/ore/x/conduit/http"
 }
 
+// isBuiltInTUI reports whether the given module path is the built-in TUI
+// conduit.
 func isBuiltInTUI(module string) bool {
 	return module == "github.com/andrewhowdencom/ore/x/conduit/tui"
 }

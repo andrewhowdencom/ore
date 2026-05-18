@@ -33,6 +33,12 @@ func TestAgent_Add(t *testing.T) {
 	require.Len(t, a.conduits, 1)
 }
 
+func TestAgent_Add_Nil(t *testing.T) {
+	a := New(nil)
+	a.Add(nil)
+	require.Len(t, a.conduits, 0)
+}
+
 func TestAgent_Run(t *testing.T) {
 	tests := []struct {
 		name      string

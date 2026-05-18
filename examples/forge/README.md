@@ -1,4 +1,4 @@
-# Forge Examples
+# Getting Started with Forge Blueprint Agents
 
 This directory contains forge-native example blueprints that exercise the
 current capabilities of `cmd/forge`. Each subdirectory holds a single
@@ -10,6 +10,20 @@ binaries to the hand-compiled equivalents under `examples/http-chat/` and
 `examples/tui-chat/`, the expressiveness gaps in the current blueprint schema
 and templates become explicit.
 
+## Learning Objectives
+
+By the end of this guide you will be able to:
+
+- Write a forge blueprint YAML file that declares one or more conduits.
+- Generate a compilable Go agent application using `cmd/forge`.
+- Build and run a multi-conduit agent that serves HTTP and TUI simultaneously.
+
+## Prerequisites
+
+- Go toolchain matching the repository's `go.mod`.
+- A valid `ORE_API_KEY` environment variable for the OpenAI-compatible provider.
+- (Optional) `git` for cloning the repository.
+
 ## Quickstart
 
 ### HTTP Agent
@@ -20,6 +34,9 @@ go run ../../../cmd/forge build --config forge.yaml
 ./http-chat
 ```
 
+> **Build succeeded** — the binary is written to `./http-chat` (as configured
+> by `dist.output_path` in the blueprint). Run it to start the agent.
+
 ### TUI Agent
 
 ```bash
@@ -27,6 +44,8 @@ cd examples/forge/tui
 go run ../../../cmd/forge build --config forge.yaml
 ./tui-chat
 ```
+
+> **Build succeeded** — the binary is written to `./tui-chat`.
 
 ### Multi-Conduit Agent (HTTP + TUI)
 
@@ -36,13 +55,15 @@ go run ../../../cmd/forge build --config forge.yaml
 ./multi-agent
 ```
 
+> **Build succeeded** — the binary is written to `./multi-agent`.
+
 > **Note on `output_path`**: Forge resolves `dist.output_path` relative to the
 current working directory at the time `cmd/forge` runs, not relative to the
 blueprint file. Run forge from the example directory (as shown above) or use an
 absolute path to control where the binary is written.
 
-All agents require the same environment variables as their hand-compiled
-counterparts:
+The generated agent binaries read the following environment variables at
+runtime:
 
 - `ORE_API_KEY` — required
 - `ORE_MODEL` — defaults to `gpt-4o`

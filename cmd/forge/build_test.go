@@ -101,3 +101,30 @@ func TestBuildExternalModule(t *testing.T) {
 	assert.Equal(t, []string{"go", "mod", "tidy"}, calls[1])
 	assert.Equal(t, []string{"go", "build", "-o", outputPath, "."}, calls[2])
 }
+
+func TestBuildExternalModuleFailure(t *testing.T) {
+	orig := execCommand
+	defer func() { execCommand = orig }()
+
+	execCommand = func(name string, arg ...string) *exec.Cmd {
+		if runtime.GOOS == "windows" {
+			return exec.Command("cmd", "/c", "exit", "1")
+		}
+		return exec.Command("false")
+	}
+
+	blueprint := &Blueprint{
+		Dist:     Dist{Name: "ext-agent", OutputPath: "ext-agent"},
+		Conduits: []ConduitConfig{{Module: "example.com/my/conduit"}},
+	}
+
+	oreModulePath, err := FindOreModuleRoot(".")
+	require.NoError(t, err)
+
+	outputDir := t.TempDir()
+	outputPath := filepath.Join(outputDir, "ext-agent")
+
+	err = Build(blueprint, oreModulePath, outputPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "go get example.com/my/conduit")
+}
