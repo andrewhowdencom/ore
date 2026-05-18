@@ -21,8 +21,7 @@ func TestStream_Interface(t *testing.T) {
 	assert.NotEmpty(t, stream.ID())
 
 	// Verify all Stream methods are callable.
-	ch, err := stream.Subscribe("text_delta", "turn_complete")
-	require.NoError(t, err)
+	ch := stream.Subscribe("text_delta", "turn_complete")
 	require.NotNil(t, ch)
 
 	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
@@ -34,11 +33,12 @@ func TestStream_Interface(t *testing.T) {
 	err = stream.Close()
 	require.NoError(t, err)
 
-	// After close, Subscribe should error.
-	_, err = stream.Subscribe("text_delta")
-	require.Error(t, err)
+	// After close, Subscribe should return a closed channel.
+	ch = stream.Subscribe("text_delta")
+	_, ok := <-ch
+	require.False(t, ok, "channel should be closed")
 
 	// Thread should still exist in the store.
-	_, ok := store.Get(stream.ID())
+	_, ok = store.Get(stream.ID())
 	assert.True(t, ok)
 }
