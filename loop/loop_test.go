@@ -446,15 +446,19 @@ func TestStep_Turn_OutputEvents(t *testing.T) {
 
 	require.Len(t, events, 5)
 	assert.Equal(t, "text_delta", events[0].Kind())
-	assert.Equal(t, "wor", events[0].(artifact.TextDelta).Content)
+	assert.Equal(t, "wor", events[0].(ArtifactEvent).Artifact.(artifact.TextDelta).Content)
 	assert.Equal(t, "text_delta", events[1].Kind())
-	assert.Equal(t, "ld", events[1].(artifact.TextDelta).Content)
+	assert.Equal(t, "ld", events[1].(ArtifactEvent).Artifact.(artifact.TextDelta).Content)
 	assert.Equal(t, "text", events[2].Kind())
-	text, ok := events[2].(artifact.Text)
+	ae, ok := events[2].(ArtifactEvent)
+	require.True(t, ok)
+	text, ok := ae.Artifact.(artifact.Text)
 	require.True(t, ok)
 	assert.Equal(t, "world", text.Content)
 	assert.Equal(t, "text", events[3].Kind())
-	text, ok = events[3].(artifact.Text)
+	ae, ok = events[3].(ArtifactEvent)
+	require.True(t, ok)
+	text, ok = ae.Artifact.(artifact.Text)
 	require.True(t, ok)
 	assert.Equal(t, "world!", text.Content)
 	assert.Equal(t, "turn_complete", events[4].Kind())
@@ -662,7 +666,9 @@ func TestStep_Turn_CompleteArtifactEvent(t *testing.T) {
 
 	require.Len(t, events, 2)
 	assert.Equal(t, "text", events[0].Kind())
-	text, ok := events[0].(artifact.Text)
+	ae, ok := events[0].(ArtifactEvent)
+	require.True(t, ok)
+	text, ok := ae.Artifact.(artifact.Text)
 	require.True(t, ok)
 	assert.Equal(t, "hello", text.Content)
 	assert.Equal(t, "turn_complete", events[1].Kind())
@@ -700,7 +706,9 @@ func TestStep_Turn_ErrorEmitsCompleteArtifacts(t *testing.T) {
 
 	require.Len(t, events, 2)
 	assert.Equal(t, "text", events[0].Kind())
-	text, ok := events[0].(artifact.Text)
+	ae, ok := events[0].(ArtifactEvent)
+	require.True(t, ok)
+	text, ok := ae.Artifact.(artifact.Text)
 	require.True(t, ok)
 	assert.Equal(t, "partial", text.Content)
 	assert.Equal(t, "error", events[1].Kind())
@@ -999,4 +1007,97 @@ func TestStep_Submit_EmptyArtifacts_ByRole(t *testing.T) {
 			assert.Equal(t, tt.role, events[0].(TurnCompleteEvent).Turn.Role)
 		})
 	}
+}
+
+func TestStep_SetEventContext_PropagatesToSubmit(t *testing.T) {
+	s := New()
+	ch := s.Subscribe("turn_complete")
+	mem := &state.Buffer{}
+
+	s.SetEventContext(EventContext{Provenance: "test-provenance"})
+	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
+	require.NoError(t, err)
+
+	events := collectEvents(ch, 100*time.Millisecond)
+
+	require.Len(t, events, 1)
+	tc, ok := events[0].(TurnCompleteEvent)
+	require.True(t, ok)
+	assert.Equal(t, "test-provenance", tc.Ctx.Provenance)
+}
+
+func TestStep_SetEventContext_PropagatesToTurn(t *testing.T) {
+	s := New()
+	ch := s.Subscribe("text", "turn_complete")
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world"},
+		},
+	}
+
+	s.SetEventContext(EventContext{Provenance: "test-provenance"})
+	_, err := s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+
+	events := collectEvents(ch, 100*time.Millisecond)
+
+	require.Len(t, events, 2)
+	ae, ok := events[0].(ArtifactEvent)
+	require.True(t, ok)
+	assert.Equal(t, "test-provenance", ae.Ctx.Provenance)
+
+	tc, ok := events[1].(TurnCompleteEvent)
+	require.True(t, ok)
+	assert.Equal(t, "test-provenance", tc.Ctx.Provenance)
+}
+
+func TestStep_SetEventContext_PropagatesToError(t *testing.T) {
+	s := New()
+	ch := s.Subscribe("error")
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	wantErr := errors.New("provider failed")
+	prov := &mockProvider{err: wantErr}
+
+	s.SetEventContext(EventContext{Provenance: "test-provenance"})
+	_, err := s.Turn(context.Background(), mem, prov)
+	require.ErrorIs(t, err, wantErr)
+
+	events := collectEvents(ch, 100*time.Millisecond)
+
+	require.Len(t, events, 1)
+	ee, ok := events[0].(ErrorEvent)
+	require.True(t, ok)
+	assert.Equal(t, "test-provenance", ee.Ctx.Provenance)
+}
+
+func TestStep_SetEventContext_Cleared(t *testing.T) {
+	s := New()
+	ch := s.Subscribe("turn_complete")
+	mem := &state.Buffer{}
+
+	s.SetEventContext(EventContext{Provenance: "first"})
+	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
+	require.NoError(t, err)
+
+	events := collectEvents(ch, 100*time.Millisecond)
+	require.Len(t, events, 1)
+	tc, ok := events[0].(TurnCompleteEvent)
+	require.True(t, ok)
+	assert.Equal(t, "first", tc.Ctx.Provenance)
+
+	// Second submit with cleared context should have empty provenance
+	s.SetEventContext(EventContext{})
+	_, err = s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "again"})
+	require.NoError(t, err)
+
+	events = collectEvents(ch, 100*time.Millisecond)
+	require.Len(t, events, 1)
+	tc, ok = events[0].(TurnCompleteEvent)
+	require.True(t, ok)
+	assert.Empty(t, tc.Ctx.Provenance)
 }
