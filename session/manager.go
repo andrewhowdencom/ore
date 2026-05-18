@@ -243,15 +243,19 @@ func (m *Manager) RegisterSink(kinds []string, fn SinkFunc) func() {
 	}
 }
 
+func callSink(fn SinkFunc, streamID string, event loop.OutputEvent) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("sink callback panicked", "recover", r)
+		}
+	}()
+	fn(streamID, event)
+}
+
 func (m *Manager) startSinkForwarding(stream *Stream) {
 	stream.forwardOnce.Do(func() {
 		ch := stream.Subscribe()
 		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					slog.Error("sink forwarding goroutine panicked", "stream_id", stream.ID(), "recover", r)
-				}
-			}()
 			for event := range ch {
 				m.sinksMu.RLock()
 				sinks := make([]sink, len(m.sinks))
@@ -260,11 +264,11 @@ func (m *Manager) startSinkForwarding(stream *Stream) {
 
 				for _, s := range sinks {
 					if s.kinds == nil {
-						s.fn(stream.ID(), event)
+						callSink(s.fn, stream.ID(), event)
 						continue
 					}
 					if _, ok := s.kinds[event.Kind()]; ok {
-						s.fn(stream.ID(), event)
+						callSink(s.fn, stream.ID(), event)
 					}
 				}
 			}
