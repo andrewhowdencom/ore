@@ -15,31 +15,70 @@ type BeforeTurn interface {
 	BeforeTurn(ctx context.Context, s state.State) (state.State, error)
 }
 
-// OutputEvent represents any event emitted by a Step. Artifacts
-// (e.g. TextDelta, ReasoningDelta) and turn-related events
-// (TurnCompleteEvent, ErrorEvent) all implement this interface via
-// their Kind() method, allowing subscribers to filter the event
-// stream by kind (e.g. "text_delta", "turn_complete", "error").
+// EventContext carries metadata for an event, analogous to context.Context.
+// It travels with an event through the event stream so subscribers can
+// access routing metadata (provenance, trace IDs, etc.) uniformly.
+type EventContext struct {
+	Provenance string
+}
+
+// OutputEvent represents any event emitted by a Step.
+// All output events carry an EventContext so subscribers can access
+// routing metadata uniformly. Events include wrapped artifacts
+// (ArtifactEvent), turn completions (TurnCompleteEvent), and errors
+// (ErrorEvent).
 type OutputEvent interface {
 	Kind() string
+	Context() EventContext
 }
 
 // TurnCompleteEvent is emitted when an assistant turn has been fully
 // appended to state and all handlers have run.
 type TurnCompleteEvent struct {
 	Turn state.Turn
+
+	// Ctx carries routing metadata for the event, such as provenance
+	// information for echo suppression.
+	Ctx EventContext
 }
 
 // Kind returns the event kind identifier.
 func (e TurnCompleteEvent) Kind() string { return "turn_complete" }
 
+// Context returns the event context.
+func (e TurnCompleteEvent) Context() EventContext { return e.Ctx }
+
 // ErrorEvent is emitted when a turn fails due to a provider or handler error.
 type ErrorEvent struct {
 	Err error
+
+	// Ctx carries routing metadata for the event, such as provenance
+	// information for echo suppression.
+	Ctx EventContext
 }
 
 // Kind returns the event kind identifier.
 func (e ErrorEvent) Kind() string { return "error" }
+
+// Context returns the event context.
+func (e ErrorEvent) Context() EventContext { return e.Ctx }
+
+// ArtifactEvent wraps an artifact.Artifact with an EventContext so it
+// can be emitted as an OutputEvent without polluting the artifact type
+// with routing metadata.
+type ArtifactEvent struct {
+	Artifact artifact.Artifact
+
+	// Ctx carries routing metadata for the event, such as provenance
+	// information for echo suppression.
+	Ctx EventContext
+}
+
+// Kind returns the underlying artifact's kind.
+func (e ArtifactEvent) Kind() string { return e.Artifact.Kind() }
+
+// Context returns the event context.
+func (e ArtifactEvent) Context() EventContext { return e.Ctx }
 
 // outputEventEnvelope wraps an OutputEvent with an acknowledgment channel.
 // The producer blocks until the FanOut closes done after delivering the event.
@@ -52,11 +91,12 @@ type outputEventEnvelope struct {
 // distributes streaming artifacts to subscribers via an embedded FanOut, and
 // runs registered artifact handlers synchronously on the complete response.
 type Step struct {
-	events      chan outputEventEnvelope
-	fanOut      *FanOut
-	beforeTurns []BeforeTurn
-	handlers    []Handler
-	invokeOpts  []provider.InvokeOption
+	events        chan outputEventEnvelope
+	fanOut        *FanOut
+	beforeTurns   []BeforeTurn
+	handlers      []Handler
+	invokeOpts    []provider.InvokeOption
+	eventContext  EventContext
 }
 
 // New creates a Step with the given options.
@@ -92,6 +132,22 @@ func (s *Step) emit(ctx context.Context, event OutputEvent) {
 // may drop events.
 func (s *Step) Subscribe(kinds ...string) <-chan OutputEvent {
 	return s.fanOut.Subscribe(kinds...)
+}
+
+// SetEventContext sets the EventContext that will be attached to all
+// subsequent output events emitted by this Step. It is used by
+// Stream.Process to thread context from the input event through the
+// turn pipeline. Callers must ensure this is called before Turn or
+// Submit and cleared after (typically via defer).
+func (s *Step) SetEventContext(ctx EventContext) {
+	s.eventContext = ctx
+}
+
+// clearEventContext resets the EventContext on the Step to its zero
+// value. It is the counterpart to SetEventContext and is invoked via
+// defer in Turn and Submit to prevent context leakage between calls.
+func (s *Step) clearEventContext() {
+	s.eventContext = EventContext{}
 }
 
 // Close stops the Step's FanOut and closes all subscriber channels.
@@ -136,6 +192,7 @@ func WithInvokeOptions(opts ...provider.InvokeOption) Option {
 // turn completes, all registered handlers are invoked on each artifact from
 // the assistant turn. The operation is fully synchronous and blocking.
 func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, opts ...provider.InvokeOption) (state.State, error) {
+	defer s.clearEventContext()
 	var err error
 
 	for _, bt := range s.beforeTurns {
@@ -160,20 +217,20 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 				if text, ok := currentBlock.(artifact.Text); ok {
 					text.Content += d.Content
 					currentBlock = text
-					s.emit(ctx, art)
+					s.emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
 					if ctx.Err() != nil {
 						return
 					}
 				} else {
 					if currentBlock != nil {
-						s.emit(ctx, currentBlock)
+						s.emit(ctx, ArtifactEvent{Artifact: currentBlock, Ctx: s.eventContext})
 						if ctx.Err() != nil {
 							return
 						}
 						accumulatedArtifacts = append(accumulatedArtifacts, currentBlock)
 					}
 					currentBlock = artifact.Text(d)
-					s.emit(ctx, art)
+					s.emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
 					if ctx.Err() != nil {
 						return
 					}
@@ -182,34 +239,34 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 				if reasoning, ok := currentBlock.(artifact.Reasoning); ok {
 					reasoning.Content += d.Content
 					currentBlock = reasoning
-					s.emit(ctx, art)
+					s.emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
 					if ctx.Err() != nil {
 						return
 					}
 				} else {
 					if currentBlock != nil {
-						s.emit(ctx, currentBlock)
+						s.emit(ctx, ArtifactEvent{Artifact: currentBlock, Ctx: s.eventContext})
 						if ctx.Err() != nil {
 							return
 						}
 						accumulatedArtifacts = append(accumulatedArtifacts, currentBlock)
 					}
 					currentBlock = artifact.Reasoning(d)
-					s.emit(ctx, art)
+					s.emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
 					if ctx.Err() != nil {
 						return
 					}
 				}
 			default:
 				if currentBlock != nil {
-					s.emit(ctx, currentBlock)
+					s.emit(ctx, ArtifactEvent{Artifact: currentBlock, Ctx: s.eventContext})
 					if ctx.Err() != nil {
 						return
 					}
 					accumulatedArtifacts = append(accumulatedArtifacts, currentBlock)
 					currentBlock = nil
 				}
-				s.emit(ctx, art)
+				s.emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
 				if ctx.Err() != nil {
 					return
 				}
@@ -219,7 +276,7 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 			}
 		}
 		if currentBlock != nil {
-			s.emit(ctx, currentBlock)
+			s.emit(ctx, ArtifactEvent{Artifact: currentBlock, Ctx: s.eventContext})
 			if ctx.Err() != nil {
 				return
 			}
@@ -236,7 +293,7 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 	wg.Wait()
 
 	if err != nil {
-		s.emit(ctx, ErrorEvent{Err: err})
+		s.emit(ctx, ErrorEvent{Err: err, Ctx: s.eventContext})
 		
 		return st, fmt.Errorf("turn failed: %w", err)
 	}
@@ -285,7 +342,7 @@ func (s *Step) finalizeTurn(ctx context.Context, st state.State, role state.Role
 		}
 	}
 
-	s.emit(ctx, TurnCompleteEvent{Turn: last})
+	s.emit(ctx, TurnCompleteEvent{Turn: last, Ctx: s.eventContext})
 	
 
 	return st, nil
