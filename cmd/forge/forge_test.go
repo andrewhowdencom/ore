@@ -36,6 +36,14 @@ func TestForgeSmoke(t *testing.T) {
 			name:         "tui-example",
 			manifestPath: "../../examples/forge/tui/forge.yaml",
 		},
+		{
+			name:         "multi",
+			manifestPath: "testdata/multi-forge.yaml",
+		},
+		{
+			name:         "multi-example",
+			manifestPath: "../../examples/forge/multi/forge.yaml",
+		},
 	}
 
 	for _, tt := range tests {
@@ -44,13 +52,13 @@ func TestForgeSmoke(t *testing.T) {
 			require.NoError(t, err)
 			defer f.Close()
 
-			manifest, err := ParseManifest(f)
+			blueprint, err := ParseBlueprint(f)
 			require.NoError(t, err)
 
 			outputDir := t.TempDir()
-			outputPath := filepath.Join(outputDir, filepath.Base(manifest.Dist.OutputPath))
+			outputPath := filepath.Join(outputDir, filepath.Base(blueprint.Dist.OutputPath))
 
-			err = Build(manifest, oreModulePath, outputPath)
+			err = Build(blueprint, oreModulePath, outputPath)
 			require.NoError(t, err)
 
 			info, err := os.Stat(outputPath)
@@ -64,15 +72,15 @@ func TestForgeSmoke_RuntimeGuard(t *testing.T) {
 	oreModulePath, err := FindOreModuleRoot(".")
 	require.NoError(t, err)
 
-	manifest := &Manifest{
-		Dist:    Dist{Name: "guard-agent", OutputPath: "guard-agent"},
-		Conduit: Conduit{Type: "http"},
+	blueprint := &Blueprint{
+		Dist:     Dist{Name: "guard-agent", OutputPath: "guard-agent"},
+		Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
 	}
 
 	outputDir := t.TempDir()
-	outputPath := filepath.Join(outputDir, manifest.Dist.OutputPath)
+	outputPath := filepath.Join(outputDir, blueprint.Dist.OutputPath)
 
-	err = Build(manifest, oreModulePath, outputPath)
+	err = Build(blueprint, oreModulePath, outputPath)
 	require.NoError(t, err)
 
 	cmd := exec.Command(outputPath)

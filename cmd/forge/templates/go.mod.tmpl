@@ -3,5 +3,6 @@ module {{.ModuleName}}
 go 1.26.2
 
 require github.com/andrewhowdencom/ore v0.0.0
-
-replace github.com/andrewhowdencom/ore => {{.OreModulePath}}
+{{range .Replaces}}
+replace {{.ModulePath}} => {{.LocalPath}}
+{{end}}replace github.com/andrewhowdencom/ore => {{.OreModulePath}}
