@@ -11,6 +11,16 @@ type subscription struct {
 	kinds map[string]struct{}
 }
 
+// matches reports whether the subscription accepts the given event kind.
+// A nil kinds map means the subscription accepts all kinds.
+func (s subscription) matches(kind string) bool {
+	if s.kinds == nil {
+		return true
+	}
+	_, ok := s.kinds[kind]
+	return ok
+}
+
 // FanOut distributes OutputEvent values from a source channel to multiple
 // subscribers, filtered by event kind.
 type FanOut struct {
@@ -65,7 +75,7 @@ func (f *FanOut) send(event OutputEvent) {
 	copy(subs, f.subs)
 	f.mu.Unlock()
 	for _, sub := range subs {
-		if _, ok := sub.kinds[event.Kind()]; ok {
+		if sub.matches(event.Kind()) {
 			select {
 			case sub.ch <- event:
 			case <-f.done:
@@ -116,9 +126,12 @@ func (f *FanOut) closeAll() {
 // from the source.
 func (f *FanOut) Subscribe(kinds ...string) <-chan OutputEvent {
 	ch := make(chan OutputEvent, 100)
-	kindSet := make(map[string]struct{}, len(kinds))
-	for _, k := range kinds {
-		kindSet[k] = struct{}{}
+	var kindSet map[string]struct{}
+	if len(kinds) > 0 {
+		kindSet = make(map[string]struct{}, len(kinds))
+		for _, k := range kinds {
+			kindSet[k] = struct{}{}
+		}
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
