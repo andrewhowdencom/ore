@@ -170,7 +170,7 @@ func run() error {
 	mgr := session.NewManager(threadStore, prov, stepFactory, cognitive.NewTurnProcessor())
 
 	// Create the HTTP conduit.
-	// WithUI() is optional; omit it to serve only the API without the chat UI.
+	// UI is enabled by default in New(); use httpc.WithoutUI() to disable it.
 	c, err := httpc.New(mgr, httpc.WithUI(), httpc.WithAddr(":"+port))
 	if err != nil {
 		return fmt.Errorf("create HTTP conduit: %w", err)

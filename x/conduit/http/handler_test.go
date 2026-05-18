@@ -186,7 +186,7 @@ func TestHandler_ServeMux_Routing(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := newTestHandler(t, mgr)
+	h := newTestHandler(t, mgr, WithoutUI())
 	server := httptest.NewServer(h.ServeMux())
 	defer server.Close()
 
@@ -787,7 +787,7 @@ func TestHandler_ServeMux_UnknownPaths(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := newTestHandler(t, mgr)
+	h := newTestHandler(t, mgr, WithoutUI())
 
 	tests := []struct {
 		name       string
@@ -874,7 +874,7 @@ func TestHandler_WithoutUI_Root404(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
-	h := newTestHandler(t, mgr)
+	h := newTestHandler(t, mgr, WithoutUI())
 
 	req := httptest.NewRequest("GET", "/", nil)
 	rr := httptest.NewRecorder()

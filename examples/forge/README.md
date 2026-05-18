@@ -69,11 +69,6 @@ runtime:
 - `ORE_MODEL` — defaults to `gpt-4o`
 - `ORE_BASE_URL` — optional, for custom OpenAI-compatible endpoints
 - `STORE_DIR` — optional, enables persistent JSON thread store
-- `PORT` — for the HTTP conduit only, defaults to `8080`
-
-The TUI agent accepts an optional flag:
-
-- `--thread` — resume an existing session by thread UUID
 
 Multi-conduit agents expose all capabilities of their constituent conduits.
 For example, an HTTP+TUI agent listens on HTTP and also presents a TUI,
@@ -110,13 +105,12 @@ conduit-specific configuration:
 conduits:
   - module: github.com/andrewhowdencom/ore/x/conduit/http
     options:
-      ui: true
-      port: 8080
+      model: gpt-4o
 ```
 
 > **Note**: The `options` field is parsed and stored but not yet translated
-> into Go constructor options in the generated template. Built-in conduits
-> receive their default options (e.g. `WithUI()`, `WithAddr()` for HTTP).
+> into Go constructor options in the generated template. Conduits are
+> instantiated as `alias.New(mgr)` with no arguments.
 
 ## Comparison with Hand-Compiled Examples
 
@@ -138,7 +132,7 @@ express in the blueprint schema.
 | Feature | Hand-Compiled | Forge-Generated |
 |---|---|---|
 | TUI conduit | ✅ | ✅ |
-| `--thread` flag for resuming sessions | ✅ | ✅ |
+| `--thread` flag for resuming sessions | ✅ | ❌ |
 | JSON / memory thread store via `STORE_DIR` | ✅ | ✅ |
 | Tool registry | ✅ | ❌ |
 | Rich package documentation / usage guide | ✅ | ❌ (generic template) |
