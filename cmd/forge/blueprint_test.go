@@ -8,39 +8,43 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseManifest(t *testing.T) {
+func TestParseBlueprint(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
-		want    *Manifest
+		want    *Blueprint
 		wantErr string
 	}{
 		{
-			name: "valid http manifest",
+			name: "valid http blueprint",
 			input: `
 dist:
   name: my-http-agent
   output_path: ./my-http-agent
-conduit:
-  type: http
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/http
 `,
-			want: &Manifest{
-				Dist:    Dist{Name: "my-http-agent", OutputPath: "./my-http-agent"},
-				Conduit: Conduit{Type: "http"},
+			want: &Blueprint{
+				Dist: Dist{Name: "my-http-agent", OutputPath: "./my-http-agent"},
+				Conduits: []ConduitConfig{
+					{Module: "github.com/andrewhowdencom/ore/x/conduit/http"},
+				},
 			},
 		},
 		{
-			name: "valid tui manifest",
+			name: "valid tui blueprint",
 			input: `
 dist:
   name: my-tui-agent
   output_path: ./my-tui-agent
-conduit:
-  type: tui
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/tui
 `,
-			want: &Manifest{
-				Dist:    Dist{Name: "my-tui-agent", OutputPath: "./my-tui-agent"},
-				Conduit: Conduit{Type: "tui"},
+			want: &Blueprint{
+				Dist: Dist{Name: "my-tui-agent", OutputPath: "./my-tui-agent"},
+				Conduits: []ConduitConfig{
+					{Module: "github.com/andrewhowdencom/ore/x/conduit/tui"},
+				},
 			},
 		},
 		{
@@ -48,8 +52,8 @@ conduit:
 			input: `
 dist:
   output_path: ./out
-conduit:
-  type: http
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/http
 `,
 			wantErr: "dist.name is required",
 		},
@@ -58,43 +62,42 @@ conduit:
 			input: `
 dist:
   name: agent
-conduit:
-  type: http
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/http
 `,
 			wantErr: "dist.output_path is required",
 		},
 		{
-			name: "unknown conduit type",
+			name: "empty conduits",
 			input: `
 dist:
   name: agent
   output_path: ./out
-conduit:
-  type: grpc
+conduits: []
 `,
-			wantErr: `conduit.type must be "http" or "tui"`,
+			wantErr: "conduits must contain at least one entry",
 		},
 		{
-			name: "empty conduit type",
+			name: "missing conduit module",
 			input: `
 dist:
   name: agent
   output_path: ./out
-conduit:
-  type: ""
+conduits:
+  - module: ""
 `,
-			wantErr: `conduit.type must be "http" or "tui"`,
+			wantErr: "conduits[0].module is required",
 		},
 		{
 			name: "malformed YAML",
 			input:   "not: valid: yaml: [",
-			wantErr: "decode manifest",
+			wantErr: "decode blueprint",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseManifest(strings.NewReader(tt.input))
+			got, err := ParseBlueprint(strings.NewReader(tt.input))
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)

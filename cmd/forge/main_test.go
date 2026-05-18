@@ -21,7 +21,7 @@ func TestRunWithPath(t *testing.T) {
 			setup: func(t *testing.T) string {
 				return filepath.Join(t.TempDir(), "nonexistent.yaml")
 			},
-			wantErr: "open manifest",
+			wantErr: "open blueprint",
 		},
 		{
 			name: "malformed YAML",
@@ -30,7 +30,7 @@ func TestRunWithPath(t *testing.T) {
 				require.NoError(t, os.WriteFile(path, []byte("not: valid: yaml: ["), 0644))
 				return path
 			},
-			wantErr: "parse manifest",
+			wantErr: "parse blueprint",
 		},
 		{
 			name: "missing required fields",
@@ -64,7 +64,7 @@ func TestBuildCommand_ErrorPaths(t *testing.T) {
 			setupArgs: func(t *testing.T) []string {
 				return []string{"build", "--config", filepath.Join(t.TempDir(), "nonexistent.yaml")}
 			},
-			wantErr: "open manifest",
+			wantErr: "open blueprint",
 		},
 		{
 			name: "malformed YAML",
@@ -73,7 +73,7 @@ func TestBuildCommand_ErrorPaths(t *testing.T) {
 				require.NoError(t, os.WriteFile(path, []byte("not: valid: yaml: ["), 0644))
 				return []string{"build", "--config", path}
 			},
-			wantErr: "parse manifest",
+			wantErr: "parse blueprint",
 		},
 		{
 			name: "missing required fields",
@@ -109,7 +109,7 @@ func TestGenerateCommand_ErrorPaths(t *testing.T) {
 			setupArgs: func(t *testing.T) []string {
 				return []string{"generate", "--config", filepath.Join(t.TempDir(), "nonexistent.yaml")}
 			},
-			wantErr: "open manifest",
+			wantErr: "open blueprint",
 		},
 		{
 			name: "malformed YAML",
@@ -118,7 +118,7 @@ func TestGenerateCommand_ErrorPaths(t *testing.T) {
 				require.NoError(t, os.WriteFile(path, []byte("not: valid: yaml: ["), 0644))
 				return []string{"generate", "--config", path}
 			},
-			wantErr: "parse manifest",
+			wantErr: "parse blueprint",
 		},
 		{
 			name: "missing required fields",
@@ -193,7 +193,7 @@ func TestRootCommand_DefaultsToBuild(t *testing.T) {
 	cmd.SetArgs([]string{"--config", filepath.Join(t.TempDir(), "nonexistent.yaml")})
 	err := cmd.Execute()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "open manifest")
+	assert.Contains(t, err.Error(), "open blueprint")
 }
 
 func TestLogLevel_Invalid(t *testing.T) {
