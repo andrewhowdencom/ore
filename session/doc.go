@@ -18,6 +18,9 @@
 // Migration note: the Session interface has been removed. Use
 // *session.Stream directly. Event types (Event, UserMessageEvent,
 // InterruptEvent) have moved from the conduit package to session.
+// All event types carry an optional loop.EventContext for routing
+// metadata (e.g., provenance). Set it when constructing the event:
+//   UserMessageEvent{Content: "hello", Ctx: loop.EventContext{Provenance: "slack-123"}}
 //
 // Typical composition:
 //

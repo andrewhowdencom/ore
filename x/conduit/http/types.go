@@ -33,16 +33,49 @@ type turnJSON struct {
 	Artifacts []artifactJSON `json:"artifacts"`
 }
 
+// eventContextJSON is the JSON representation of an EventContext.
+type eventContextJSON struct {
+	Provenance string `json:"provenance,omitempty"`
+}
+
 // turnCompleteEventJSON is the JSON representation of a TurnCompleteEvent.
 type turnCompleteEventJSON struct {
-	Kind string    `json:"kind"`
-	Turn turnJSON `json:"turn"`
+	Kind    string            `json:"kind"`
+	Turn    turnJSON          `json:"turn"`
+	Context *eventContextJSON `json:"context,omitempty"`
 }
 
 // errorEventJSON is the JSON representation of an ErrorEvent.
 type errorEventJSON struct {
-	Kind    string `json:"kind"`
-	Message string `json:"message"`
+	Kind    string            `json:"kind"`
+	Message string            `json:"message"`
+	Context *eventContextJSON `json:"context,omitempty"`
+}
+
+// artifactEventJSON is the JSON representation of an ArtifactEvent.
+// It embeds artifactJSON so the artifact fields appear at the top level
+// alongside the context envelope. The Context field is omitted when empty.
+type artifactEventJSON struct {
+	artifactJSON
+	Context *eventContextJSON `json:"context,omitempty"`
+}
+
+// eventContextToJSON converts a loop.EventContext to a JSON DTO pointer.
+// Returns nil when the context is empty so omitempty removes it from JSON.
+func eventContextToJSON(ctx loop.EventContext) *eventContextJSON {
+	if ctx.Provenance == "" {
+		return nil
+	}
+	return &eventContextJSON{Provenance: ctx.Provenance}
+}
+
+// eventContextFromJSON converts a JSON DTO pointer to a loop.EventContext.
+// Returns an empty EventContext when the pointer is nil.
+func eventContextFromJSON(ctx *eventContextJSON) loop.EventContext {
+	if ctx == nil {
+		return loop.EventContext{}
+	}
+	return loop.EventContext{Provenance: ctx.Provenance}
 }
 
 // --- Marshal functions ---
@@ -92,7 +125,8 @@ func artifactToJSON(art artifact.Artifact) (*artifactJSON, bool) {
 }
 
 // MarshalOutputEvent serializes a loop.OutputEvent to JSON bytes.
-// It handles TurnCompleteEvent, ErrorEvent, and all artifact.Artifact types.
+// It handles TurnCompleteEvent, ErrorEvent, and all loop.ArtifactEvent
+// wrapper types that contain an artifact.Artifact.
 // Unknown artifact kinds are silently skipped (returns nil, nil).
 // Returns an error only for unsupported event kinds.
 func MarshalOutputEvent(event loop.OutputEvent) ([]byte, error) {
@@ -102,15 +136,26 @@ func MarshalOutputEvent(event loop.OutputEvent) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(turnCompleteEventJSON{Kind: "turn_complete", Turn: turn})
+		return json.Marshal(turnCompleteEventJSON{
+			Kind:    "turn_complete",
+			Turn:    turn,
+			Context: eventContextToJSON(e.Ctx),
+		})
 	case loop.ErrorEvent:
-		return json.Marshal(errorEventJSON{Kind: "error", Message: e.Err.Error()})
-	case artifact.Artifact:
-		dto, ok := artifactToJSON(e)
+		return json.Marshal(errorEventJSON{
+			Kind:    "error",
+			Message: e.Err.Error(),
+			Context: eventContextToJSON(e.Ctx),
+		})
+	case loop.ArtifactEvent:
+		dto, ok := artifactToJSON(e.Artifact)
 		if !ok {
 			return nil, nil
 		}
-		return json.Marshal(dto)
+		return json.Marshal(artifactEventJSON{
+			artifactJSON: *dto,
+			Context:      eventContextToJSON(e.Ctx),
+		})
 	default:
 		return nil, fmt.Errorf("unsupported event kind: %s", event.Kind())
 	}
@@ -174,8 +219,8 @@ func artifactFromJSON(dto artifactJSON) (artifact.Artifact, error) {
 }
 
 // UnmarshalOutputEvent deserializes JSON bytes into a loop.OutputEvent.
-// It handles "turn_complete", "error", and all artifact kinds.
-// Returns an error for unsupported kinds or malformed JSON.
+// It handles "turn_complete", "error", and all loop.ArtifactEvent types
+// carrying artifact kinds. Returns an error for unsupported kinds or malformed JSON.
 func UnmarshalOutputEvent(data []byte) (loop.OutputEvent, error) {
 	var peek struct {
 		Kind string `json:"kind"`
@@ -194,16 +239,24 @@ func UnmarshalOutputEvent(data []byte) (loop.OutputEvent, error) {
 		if err != nil {
 			return nil, err
 		}
-		return loop.TurnCompleteEvent{Turn: turn}, nil
+		return loop.TurnCompleteEvent{Turn: turn, Ctx: eventContextFromJSON(dto.Context)}, nil
 	case "error":
 		var dto errorEventJSON
 		if err := json.Unmarshal(data, &dto); err != nil {
 			return nil, err
 		}
-		return loop.ErrorEvent{Err: fmt.Errorf("%s", dto.Message)}, nil
+		return loop.ErrorEvent{Err: fmt.Errorf("%s", dto.Message), Ctx: eventContextFromJSON(dto.Context)}, nil
 	default:
 		// Treat as artifact.
-		return UnmarshalArtifact(data)
+		var dto artifactEventJSON
+		if err := json.Unmarshal(data, &dto); err != nil {
+			return nil, err
+		}
+		art, err := artifactFromJSON(dto.artifactJSON)
+		if err != nil {
+			return nil, err
+		}
+		return loop.ArtifactEvent{Artifact: art, Ctx: eventContextFromJSON(dto.Context)}, nil
 	}
 }
 

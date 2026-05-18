@@ -18,8 +18,8 @@ func TestFanOut_SingleSubscriber(t *testing.T) {
 
 	ch := f.Subscribe("text_delta")
 
-	src <- outputEventEnvelope{event: artifact.TextDelta{Content: "hello"}, done: make(chan struct{})}
-	src <- outputEventEnvelope{event: artifact.TextDelta{Content: "world"}, done: make(chan struct{})}
+	src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "hello"}}, done: make(chan struct{})}
+	src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "world"}}, done: make(chan struct{})}
 	close(src)
 
 	var events []OutputEvent
@@ -29,8 +29,8 @@ func TestFanOut_SingleSubscriber(t *testing.T) {
 
 	require.Len(t, events, 2)
 	assert.Equal(t, "text_delta", events[0].Kind())
-	assert.Equal(t, "hello", events[0].(artifact.TextDelta).Content)
-	assert.Equal(t, "world", events[1].(artifact.TextDelta).Content)
+	assert.Equal(t, "hello", events[0].(ArtifactEvent).Artifact.(artifact.TextDelta).Content)
+	assert.Equal(t, "world", events[1].(ArtifactEvent).Artifact.(artifact.TextDelta).Content)
 }
 
 func TestFanOut_MultipleSubscribersDifferentKinds(t *testing.T) {
@@ -41,7 +41,7 @@ func TestFanOut_MultipleSubscribersDifferentKinds(t *testing.T) {
 	deltaCh := f.Subscribe("text_delta")
 	turnCh := f.Subscribe("turn_complete")
 
-	src <- outputEventEnvelope{event: artifact.TextDelta{Content: "hello"}, done: make(chan struct{})}
+	src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "hello"}}, done: make(chan struct{})}
 	src <- outputEventEnvelope{event: TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant}}, done: make(chan struct{})}
 	close(src)
 
@@ -113,12 +113,12 @@ func TestFanOut_LateSubscribe(t *testing.T) {
 	// before run() drains the buffer, the late subscriber may receive buffered
 	// events. This is acceptable — subscribers should be created before events
 	// are produced.
-	src <- outputEventEnvelope{event: artifact.TextDelta{Content: "early"}, done: make(chan struct{})}
+	src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "early"}}, done: make(chan struct{})}
 
 	ch := f.Subscribe("text_delta")
 
 	// Send events after subscribing.
-	src <- outputEventEnvelope{event: artifact.TextDelta{Content: "late"}, done: make(chan struct{})}
+	src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "late"}}, done: make(chan struct{})}
 	close(src)
 
 	var events []OutputEvent
@@ -128,7 +128,7 @@ func TestFanOut_LateSubscribe(t *testing.T) {
 
 	// The late subscriber receives at least the event sent after subscription.
 	require.GreaterOrEqual(t, len(events), 1)
-	assert.Equal(t, "late", events[len(events)-1].(artifact.TextDelta).Content)
+	assert.Equal(t, "late", events[len(events)-1].(ArtifactEvent).Artifact.(artifact.TextDelta).Content)
 }
 
 func TestFanOut_ConcurrentSubscribeAndSend(t *testing.T) {
@@ -142,7 +142,7 @@ func TestFanOut_ConcurrentSubscribeAndSend(t *testing.T) {
 	go func() {
 		defer sendWg.Done()
 		for i := 0; i < 50; i++ {
-			src <- outputEventEnvelope{event: artifact.TextDelta{Content: "msg"}, done: make(chan struct{})}
+			src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "msg"}}, done: make(chan struct{})}
 		}
 	}()
 
@@ -171,7 +171,7 @@ func TestFanOut_MultipleKindsOneSubscriber(t *testing.T) {
 
 	ch := f.Subscribe("text_delta", "turn_complete")
 
-	src <- outputEventEnvelope{event: artifact.TextDelta{Content: "hello"}, done: make(chan struct{})}
+	src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "hello"}}, done: make(chan struct{})}
 	src <- outputEventEnvelope{event: TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant}}, done: make(chan struct{})}
 	close(src)
 
@@ -195,14 +195,14 @@ func TestFanOut_SlowSubscriberDoesNotBlock(t *testing.T) {
 
 	// Fill its buffer (100 events)
 	for i := 0; i < 100; i++ {
-		src <- outputEventEnvelope{event: artifact.TextDelta{Content: "filler"}, done: make(chan struct{})}
+		src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "filler"}}, done: make(chan struct{})}
 	}
 
 	// Send 50 more events — these should be dropped without blocking.
 	// If send() blocked on the full channel, the FanOut's run() goroutine
 	// would deadlock and f.Close() (via defer) would hang, failing the test.
 	for i := 0; i < 50; i++ {
-		src <- outputEventEnvelope{event: artifact.TextDelta{Content: "msg"}, done: make(chan struct{})}
+		src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "msg"}}, done: make(chan struct{})}
 	}
 
 	close(src)
@@ -217,7 +217,7 @@ func TestFanOut_SlowSubscriberDoesNotBlockOthers(t *testing.T) {
 
 	// Send 100 events to fill the slow subscriber's buffer
 	for i := 0; i < 100; i++ {
-		src <- outputEventEnvelope{event: artifact.TextDelta{Content: "filler"}, done: make(chan struct{})}
+		src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "filler"}}, done: make(chan struct{})}
 	}
 
 	// Give the FanOut time to process the initial batch before creating
@@ -228,13 +228,13 @@ func TestFanOut_SlowSubscriberDoesNotBlockOthers(t *testing.T) {
 	fastCh := f.Subscribe("text_delta")
 
 	// Send distinctive event
-	src <- outputEventEnvelope{event: artifact.TextDelta{Content: "after-full"}, done: make(chan struct{})}
+	src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "after-full"}}, done: make(chan struct{})}
 	close(src)
 
 	// Fast subscriber should receive the distinctive event
 	found := false
 	for event := range fastCh {
-		if event.(artifact.TextDelta).Content == "after-full" {
+		if event.(ArtifactEvent).Artifact.(artifact.TextDelta).Content == "after-full" {
 			found = true
 		}
 	}
@@ -249,14 +249,14 @@ func TestFanOut_MultipleSubscribersSameKind(t *testing.T) {
 	ch1 := f.Subscribe("text_delta")
 	ch2 := f.Subscribe("text_delta")
 
-	src <- outputEventEnvelope{event: artifact.TextDelta{Content: "hello"}, done: make(chan struct{})}
+	src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "hello"}}, done: make(chan struct{})}
 	close(src)
 
 	e1 := <-ch1
 	e2 := <-ch2
 
-	assert.Equal(t, "hello", e1.(artifact.TextDelta).Content)
-	assert.Equal(t, "hello", e2.(artifact.TextDelta).Content)
+	assert.Equal(t, "hello", e1.(ArtifactEvent).Artifact.(artifact.TextDelta).Content)
+	assert.Equal(t, "hello", e2.(ArtifactEvent).Artifact.(artifact.TextDelta).Content)
 
 	_, open1 := <-ch1
 	_, open2 := <-ch2
@@ -271,7 +271,7 @@ func TestFanOut_SubscribeAllKinds(t *testing.T) {
 
 	ch := f.Subscribe() // no kinds = all events
 
-	src <- outputEventEnvelope{event: artifact.TextDelta{Content: "hello"}, done: make(chan struct{})}
+	src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "hello"}}, done: make(chan struct{})}
 	src <- outputEventEnvelope{event: TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant}}, done: make(chan struct{})}
 	src <- outputEventEnvelope{event: ErrorEvent{Err: assert.AnError}, done: make(chan struct{})}
 	close(src)
