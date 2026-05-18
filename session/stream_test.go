@@ -42,3 +42,27 @@ func TestStream_Interface(t *testing.T) {
 	_, ok = store.Get(stream.ID())
 	assert.True(t, ok)
 }
+
+func TestStream_Process_ContextPropagation(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	ch := stream.Subscribe("turn_complete")
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi", Ctx: loop.EventContext{Provenance: "test-provenance"}})
+	require.NoError(t, err)
+
+	events := drainWithClose(t, ch, func() { _ = stream.Close() })
+
+	require.Len(t, events, 2) // user turn + assistant turn
+	tc, ok := events[0].(loop.TurnCompleteEvent)
+	require.True(t, ok)
+	assert.Equal(t, "test-provenance", tc.Ctx.Provenance)
+	tc, ok = events[1].(loop.TurnCompleteEvent)
+	require.True(t, ok)
+	assert.Equal(t, "test-provenance", tc.Ctx.Provenance)
+}

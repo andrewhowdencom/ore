@@ -181,8 +181,10 @@ func TestManager_Process(t *testing.T) {
 	var turnComplete bool
 	for _, event := range events {
 		switch e := event.(type) {
-		case artifact.TextDelta:
-			deltas = append(deltas, e)
+		case loop.ArtifactEvent:
+			if td, ok := e.Artifact.(artifact.TextDelta); ok {
+				deltas = append(deltas, td)
+			}
 		case loop.TurnCompleteEvent:
 			turnComplete = true
 		}
@@ -243,6 +245,8 @@ func TestStream_Process_Closed(t *testing.T) {
 type unsupportedEvent struct{}
 
 func (e *unsupportedEvent) Kind() string { return "unsupported" }
+
+func (e *unsupportedEvent) Context() loop.EventContext { return loop.EventContext{} }
 
 func TestManager_Process_UnsupportedEvent(t *testing.T) {
 	store := thread.NewMemoryStore()
@@ -1045,3 +1049,43 @@ func (e *errStore) Get(id string) (*thread.Thread, bool)            { return thr
 func (e *errStore) Save(*thread.Thread) error                        { return fmt.Errorf("save failed") }
 func (e *errStore) Delete(string) bool                              { return false }
 func (e *errStore) List() ([]*thread.Thread, error)                  { return nil, nil }
+
+func TestManager_RegisterSink_ContextEchoSuppression(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+			artifact.TextDelta{Content: " world"},
+		},
+	}
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	var mu sync.Mutex
+	var provenances []string
+
+	unregister := mgr.RegisterSink([]string{"turn_complete"}, func(id string, event loop.OutputEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		if tc, ok := event.(loop.TurnCompleteEvent); ok {
+			provenances = append(provenances, tc.Ctx.Provenance)
+		}
+	})
+	defer unregister()
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi", Ctx: loop.EventContext{Provenance: "test-provenance"}})
+	require.NoError(t, err)
+
+	// Wait for events to propagate through the forwarding goroutine.
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Both user turn and assistant turn should carry the input provenance.
+	require.Len(t, provenances, 2)
+	assert.Equal(t, "test-provenance", provenances[0])
+	assert.Equal(t, "test-provenance", provenances[1])
+}
