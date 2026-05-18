@@ -13,8 +13,10 @@
 // options is valid for non-streaming, non-handler use cases.
 //
 // Conduits subscribe to specific artifact kinds via Step.Subscribe(),
-// receiving artifacts directly (which satisfy OutputEvent via Kind()) as
-// they are emitted by the provider. The artifact.Delta marker interface
+// receiving ArtifactEvent wrappers (which satisfy OutputEvent via Kind())
+// as they are emitted by the provider. Each ArtifactEvent carries the
+// underlying artifact and an EventContext for routing metadata. The
+// artifact.Delta marker interface
 // controls whether an artifact is persisted to state; it does NOT filter
 // event-stream visibility. All artifacts are forwarded to subscribers.
 package loop
