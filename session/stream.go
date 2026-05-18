@@ -17,16 +17,17 @@ import (
 // ingress (Process) and egress (Subscribe) for the session, plus lifecycle
 // controls (Cancel, Close).
 type Stream struct {
-	id        string
-	thread    *thread.Thread
-	step      *loop.Step
-	provider  provider.Provider
-	processor TurnProcessor
-	store     thread.Store
-	mu        sync.Mutex
-	busy      bool
-	cancel    context.CancelFunc
-	closed    bool
+	id          string
+	thread      *thread.Thread
+	step        *loop.Step
+	provider    provider.Provider
+	processor   TurnProcessor
+	store       thread.Store
+	mu          sync.Mutex
+	busy        bool
+	cancel      context.CancelFunc
+	closed      bool
+	forwardOnce sync.Once
 }
 
 // Process submits the event to the stream's state and runs the inference
@@ -100,23 +101,26 @@ func (s *Stream) Cancel() error {
 }
 
 // Subscribe returns a filtered output event channel for the stream's
-// loop.Step FanOut. An error is returned if the stream is closed.
+// loop.Step FanOut. If the stream is closed, the returned channel is
+// immediately closed.
 //
 // The returned channel is closed when the session is closed.
 // Callers should range over the channel and handle closure:
 //
-//	ch, _ := stream.Subscribe("text_delta", "turn_complete")
+//	ch := stream.Subscribe("text_delta", "turn_complete")
 //	for event := range ch {
 //	    // process event
 //	}
-func (s *Stream) Subscribe(kinds ...string) (<-chan loop.OutputEvent, error) {
+func (s *Stream) Subscribe(kinds ...string) <-chan loop.OutputEvent {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
-		return nil, fmt.Errorf("session %s is closed", s.id)
+		ch := make(chan loop.OutputEvent)
+		close(ch)
+		return ch
 	}
 	s.mu.Unlock()
-	return s.step.Subscribe(kinds...), nil
+	return s.step.Subscribe(kinds...)
 }
 
 // ID returns the stream's unique identifier (same as the thread ID).
