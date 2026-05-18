@@ -21,7 +21,8 @@ import (
 type Option func(*Handler)
 
 // WithUI is a no-op — the built-in web UI is enabled by default in New().
-// It is retained for backward compatibility with explicit call sites.
+// It exists only for legacy callers and may be removed in a future release.
+// Use WithoutUI to explicitly disable the UI.
 func WithUI() Option {
 	return func(h *Handler) {
 		h.withUI = true
@@ -212,11 +213,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 
 	// Subscribe to the session's FanOut before the goroutine starts.
-	subCh, err := stream.Subscribe(req.Kinds...)
-	if err != nil {
-		w.WriteHeader(stdhttp.StatusInternalServerError)
-		return
-	}
+	subCh := stream.Subscribe(req.Kinds...)
 
 	// Run the inference pipeline in a goroutine.
 	done := make(chan error)
@@ -239,7 +236,10 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	// Stream events from the subscription until the pipeline completes.
 	for {
 		select {
-		case event := <-subCh:
+		case event, ok := <-subCh:
+			if !ok {
+				return
+			}
 			data, err := MarshalOutputEvent(event)
 			if err != nil {
 				// Skip events that can't be marshaled.
@@ -310,11 +310,7 @@ func (h *Handler) sessionEvents(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		w.WriteHeader(stdhttp.StatusNotFound)
 		return
 	}
-	subCh, err := stream.Subscribe(kinds...)
-	if err != nil {
-		w.WriteHeader(stdhttp.StatusInternalServerError)
-		return
-	}
+	subCh := stream.Subscribe(kinds...)
 
 	// Setup SSE writer.
 	sw, err := newSSEWriter(w)

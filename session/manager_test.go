@@ -168,8 +168,7 @@ func TestManager_Process(t *testing.T) {
 	require.NoError(t, err)
 
 	// Subscribe to output before processing.
-	ch, err := stream.Subscribe("text_delta", "turn_complete")
-	require.NoError(t, err)
+	ch := stream.Subscribe("text_delta", "turn_complete")
 
 	// Process a user message.
 	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
@@ -264,8 +263,7 @@ func TestManager_Process_ContextCancel(t *testing.T) {
 	stream, err := mgr.Create()
 	require.NoError(t, err)
 
-	ch, err := stream.Subscribe("text_delta", "turn_complete", "error")
-	require.NoError(t, err)
+	ch := stream.Subscribe("text_delta", "turn_complete", "error")
 
 	// Start processing with a cancellable context.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -345,10 +343,10 @@ func TestStream_Subscribe_Closed(t *testing.T) {
 	err = stream.Close()
 	require.NoError(t, err)
 
-	// Subscribe on a closed session should return an error.
-	_, err = stream.Subscribe("text_delta")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "closed")
+	// Subscribe on a closed session should return a closed channel.
+	ch := stream.Subscribe("text_delta")
+	_, ok := <-ch
+	require.False(t, ok, "channel should be closed")
 }
 
 func TestManager_Close(t *testing.T) {
@@ -365,12 +363,13 @@ func TestManager_Close(t *testing.T) {
 	active := mgr.List()
 	assert.Empty(t, active)
 
-	// Subscribe should fail after close (via Session-level close).
-	_, err = stream.Subscribe("text_delta")
-	require.Error(t, err)
+	// Subscribe should return a closed channel after close.
+	ch := stream.Subscribe("text_delta")
+	_, ok := <-ch
+	require.False(t, ok, "channel should be closed")
 
 	// Thread should still exist in the store.
-	_, ok := store.Get(stream.ID())
+	_, ok = store.Get(stream.ID())
 	assert.True(t, ok)
 }
 
@@ -498,9 +497,10 @@ func TestStream_Close_Idempotent(t *testing.T) {
 	err = stream.Close()
 	require.NoError(t, err)
 
-	// Subscribe should still error after double-close.
-	_, err = stream.Subscribe("text_delta")
-	require.Error(t, err)
+	// Subscribe should still return a closed channel after double-close.
+	ch := stream.Subscribe("text_delta")
+	_, ok := <-ch
+	require.False(t, ok, "channel should be closed")
 }
 
 func TestManager_Check_Busy(t *testing.T) {
@@ -587,6 +587,454 @@ func TestManager_Attach_Concurrent(t *testing.T) {
 	active := mgr.List()
 	require.Len(t, active, 1)
 	assert.Equal(t, thr.ID, active[0].ID())
+}
+
+func TestManager_RegisterSink_ReceivesEventsFromNewStream(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+			artifact.TextDelta{Content: " world"},
+		},
+	}
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	var mu sync.Mutex
+	var events []loop.OutputEvent
+	var streamID string
+
+	unregister := mgr.RegisterSink([]string{"text_delta", "turn_complete"}, func(id string, event loop.OutputEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		streamID = id
+		events = append(events, event)
+	})
+	defer unregister()
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.NoError(t, err)
+
+	// Wait for events to propagate through the forwarding goroutine.
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	require.Len(t, events, 4)
+	assert.Equal(t, stream.ID(), streamID)
+	assert.Equal(t, "turn_complete", events[0].Kind()) // user turn from Submit
+	assert.Equal(t, "text_delta", events[1].Kind())
+	assert.Equal(t, "text_delta", events[2].Kind())
+	assert.Equal(t, "turn_complete", events[3].Kind()) // assistant turn from Turn
+}
+
+func TestManager_RegisterSink_ReceivesEventsFromExistingStream(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+		},
+	}
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	var mu sync.Mutex
+	var events []loop.OutputEvent
+
+	unregister := mgr.RegisterSink([]string{"text_delta", "turn_complete"}, func(id string, event loop.OutputEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, event)
+	})
+	defer unregister()
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	require.GreaterOrEqual(t, len(events), 2)
+}
+
+func TestManager_RegisterSink_UnregisterStopsDelivery(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+		},
+	}
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	var mu sync.Mutex
+	var events []loop.OutputEvent
+
+	unregister := mgr.RegisterSink([]string{"text_delta", "turn_complete"}, func(id string, event loop.OutputEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, event)
+	})
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	countAfterFirst := len(events)
+	mu.Unlock()
+
+	unregister()
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "again"})
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, countAfterFirst, len(events))
+}
+
+func TestManager_RegisterSink_MultipleSinks(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+		},
+	}
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	var mu sync.Mutex
+	var events1 []loop.OutputEvent
+	var events2 []loop.OutputEvent
+
+	unregister1 := mgr.RegisterSink([]string{"text_delta", "turn_complete"}, func(id string, event loop.OutputEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		events1 = append(events1, event)
+	})
+	defer unregister1()
+
+	unregister2 := mgr.RegisterSink([]string{"text_delta", "turn_complete"}, func(id string, event loop.OutputEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		events2 = append(events2, event)
+	})
+	defer unregister2()
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	require.Len(t, events1, len(events2))
+	require.GreaterOrEqual(t, len(events1), 2)
+}
+
+func TestManager_RegisterSink_KindFiltering(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+		},
+	}
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	var mu sync.Mutex
+	var deltaEvents []loop.OutputEvent
+	var turnEvents []loop.OutputEvent
+
+	unregister1 := mgr.RegisterSink([]string{"text_delta"}, func(id string, event loop.OutputEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		deltaEvents = append(deltaEvents, event)
+	})
+	defer unregister1()
+
+	unregister2 := mgr.RegisterSink([]string{"turn_complete"}, func(id string, event loop.OutputEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		turnEvents = append(turnEvents, event)
+	})
+	defer unregister2()
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	require.Len(t, deltaEvents, 1)
+	assert.Equal(t, "text_delta", deltaEvents[0].Kind())
+
+	require.Len(t, turnEvents, 2)
+	assert.Equal(t, "turn_complete", turnEvents[0].Kind())
+	assert.Equal(t, "turn_complete", turnEvents[1].Kind())
+}
+
+func TestManager_RegisterSink_ClosedStreamNoEvents(t *testing.T) {
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, &mockProvider{}, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+	err = stream.Close()
+	require.NoError(t, err)
+
+	var mu sync.Mutex
+	var events []loop.OutputEvent
+
+	unregister := mgr.RegisterSink([]string{"text_delta"}, func(id string, event loop.OutputEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, event)
+	})
+	defer unregister()
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.Error(t, err)
+
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Empty(t, events)
+}
+
+func TestManager_RegisterSink_WildcardKinds(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+		},
+	}
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	var mu sync.Mutex
+	var events []loop.OutputEvent
+
+	unregister := mgr.RegisterSink([]string{}, func(id string, event loop.OutputEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, event)
+	})
+	defer unregister()
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Should receive: user turn_complete, text_delta, text (accumulated), assistant turn_complete
+	require.Len(t, events, 4)
+	var kinds []string
+	for _, e := range events {
+		kinds = append(kinds, e.Kind())
+	}
+	assert.Contains(t, kinds, "turn_complete")
+	assert.Contains(t, kinds, "text_delta")
+	assert.Contains(t, kinds, "text")
+}
+
+func TestManager_RegisterSink_MultipleStreams(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+		},
+	}
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	var mu sync.Mutex
+	eventsByStream := make(map[string][]loop.OutputEvent)
+
+	unregister := mgr.RegisterSink([]string{"text_delta"}, func(id string, event loop.OutputEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		eventsByStream[id] = append(eventsByStream[id], event)
+	})
+	defer unregister()
+
+	stream1, err := mgr.Create()
+	require.NoError(t, err)
+
+	stream2, err := mgr.Create()
+	require.NoError(t, err)
+
+	err = stream1.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.NoError(t, err)
+
+	err = stream2.Process(context.Background(), UserMessageEvent{Content: "hello"})
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	require.Len(t, eventsByStream, 2)
+	require.Len(t, eventsByStream[stream1.ID()], 1)
+	require.Len(t, eventsByStream[stream2.ID()], 1)
+	assert.Equal(t, "text_delta", eventsByStream[stream1.ID()][0].Kind())
+	assert.Equal(t, "text_delta", eventsByStream[stream2.ID()][0].Kind())
+}
+
+func TestManager_RegisterSink_ConcurrentRegisterUnregister(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+		},
+	}
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+
+	// Goroutine that continuously processes events.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for j := 0; j < 50; j++ {
+			for {
+				err := stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+				if err == nil || errors.Is(err, ErrSessionBusy) {
+					break
+				}
+			}
+		}
+	}()
+
+	// Goroutines that continuously register and unregister sinks.
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 50; j++ {
+				unregister := mgr.RegisterSink([]string{"text_delta"}, func(id string, event loop.OutputEvent) {})
+				time.Sleep(time.Millisecond)
+				unregister()
+			}
+		}()
+	}
+
+	wg.Wait()
+}
+
+func TestManager_RegisterSink_PanicRecovery(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+		},
+	}
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	var mu sync.Mutex
+	var normalEvents []loop.OutputEvent
+
+	// Panicking sink.
+	unregisterPanic := mgr.RegisterSink([]string{"text_delta"}, func(id string, event loop.OutputEvent) {
+		panic("intentional sink panic")
+	})
+	defer unregisterPanic()
+
+	// Normal sink that should still receive events.
+	unregisterNormal := mgr.RegisterSink([]string{"text_delta"}, func(id string, event loop.OutputEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		normalEvents = append(normalEvents, event)
+	})
+	defer unregisterNormal()
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, normalEvents, 1)
+	assert.Equal(t, "text_delta", normalEvents[0].Kind())
+}
+
+func TestManager_RegisterSink_DoubleUnregister(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+		},
+	}
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	var mu sync.Mutex
+	var events []loop.OutputEvent
+
+	unregister := mgr.RegisterSink([]string{"text_delta"}, func(id string, event loop.OutputEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, event)
+	})
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	// First process - sink should receive events.
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	countAfterFirst := len(events)
+	mu.Unlock()
+
+	// Unregister twice - should be safe and idempotent.
+	unregister()
+	unregister()
+
+	// Second process - sink should NOT receive events.
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "again"})
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, countAfterFirst, len(events))
 }
 
 // errStore is a Store that always returns an error from Save.
