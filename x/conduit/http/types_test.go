@@ -248,17 +248,17 @@ func TestMarshalOutputEvent(t *testing.T) {
 		},
 		{
 			name:  "text_artifact",
-			event: artifact.Text{Content: "hello"},
+			event: loop.ArtifactEvent{Artifact: artifact.Text{Content: "hello"}},
 			want:  `{"kind":"text","content":"hello"}`,
 		},
 		{
 			name:  "text_delta_artifact",
-			event: artifact.TextDelta{Content: "he"},
+			event: loop.ArtifactEvent{Artifact: artifact.TextDelta{Content: "he"}},
 			want:  `{"kind":"text_delta","content":"he"}`,
 		},
 		{
 			name:  "unsupported_artifact",
-			event: &unknownOutputEvent{},
+			event: loop.ArtifactEvent{Artifact: &unknownArtifact{}},
 			want:  "",
 		},
 	}
@@ -276,9 +276,7 @@ func TestMarshalOutputEvent(t *testing.T) {
 	}
 }
 
-type unknownOutputEvent struct{}
 
-func (u *unknownOutputEvent) Kind() string { return "unknown_event" }
 
 func TestTurnToJSON(t *testing.T) {
 	turn := state.Turn{
@@ -329,7 +327,7 @@ func TestUnmarshalOutputEvent(t *testing.T) {
 		{
 			name:  "text_artifact",
 			input: `{"kind":"text","content":"hello"}`,
-			want:  artifact.Text{Content: "hello"},
+			want:  loop.ArtifactEvent{Artifact: artifact.Text{Content: "hello"}},
 		},
 		{
 			name:    "unknown_kind",
@@ -355,9 +353,9 @@ func TestRoundTrip_OutputEvent(t *testing.T) {
 	events := []loop.OutputEvent{
 		loop.TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}},
 		loop.ErrorEvent{Err: errors.New("something went wrong")},
-		artifact.Text{Content: "some text"},
-		artifact.TextDelta{Content: "so"},
-		artifact.ToolCall{ID: "1", Name: "calc", Arguments: `{"a":1}`},
+		loop.ArtifactEvent{Artifact: artifact.Text{Content: "some text"}},
+		loop.ArtifactEvent{Artifact: artifact.TextDelta{Content: "so"}},
+		loop.ArtifactEvent{Artifact: artifact.ToolCall{ID: "1", Name: "calc", Arguments: `{"a":1}`}},
 	}
 
 	for _, event := range events {
