@@ -108,25 +108,20 @@ func (t *TUI) Start(ctx context.Context) error {
 	t.program = p
 
 	// Subscribe to the stream's output.
-	outputCh, err := stream.Subscribe("turn_complete")
-	if err != nil {
-		slog.Error("failed to subscribe to session output", "err", err)
-	}
+	outputCh := stream.Subscribe("turn_complete")
 
 	// Goroutine to stream output events into the Bubble Tea message loop.
-	if err == nil {
-		go func() {
-			for event := range outputCh {
-				switch e := event.(type) {
-				case loop.TurnCompleteEvent:
-					t.program.Send(turnMsg{turn: e.Turn})
-				case loop.ErrorEvent:
-					// Errors are exposed via status updates rather than the
-					// message loop; the application goroutine handles them.
-				}
+	go func() {
+		for event := range outputCh {
+			switch e := event.(type) {
+			case loop.TurnCompleteEvent:
+				t.program.Send(turnMsg{turn: e.Turn})
+			case loop.ErrorEvent:
+				// Errors are exposed via status updates rather than the
+				// message loop; the application goroutine handles them.
 			}
-		}()
-	}
+		}
+	}()
 
 	// Goroutine to process user events through the session.
 	go func() {

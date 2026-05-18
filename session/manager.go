@@ -23,6 +23,26 @@ type ManagerOption func(*Manager)
 // ErrSessionBusy is returned when a stream is already processing a turn.
 var ErrSessionBusy = errors.New("session is busy processing another turn")
 
+// SinkFunc receives OutputEvents from a specific stream.
+type SinkFunc func(streamID string, event loop.OutputEvent)
+
+type sink struct {
+	id    int64
+	kinds map[string]struct{}
+	fn    SinkFunc
+}
+
+func makeKindsSet(kinds []string) map[string]struct{} {
+	if len(kinds) == 0 {
+		return nil
+	}
+	kindSet := make(map[string]struct{}, len(kinds))
+	for _, k := range kinds {
+		kindSet[k] = struct{}{}
+	}
+	return kindSet
+}
+
 // Manager owns the Thread↔Step binding and acts as a factory/registry for
 // Stream handles.
 type Manager struct {
@@ -32,6 +52,9 @@ type Manager struct {
 	processor TurnProcessor
 	sessions  map[string]*Stream
 	mu        sync.RWMutex
+	sinks     []sink
+	sinksMu   sync.RWMutex
+	sinkID    int64
 }
 
 // NewManager creates a new Manager with the given dependencies.
@@ -69,6 +92,8 @@ func (m *Manager) Create() (*Stream, error) {
 	m.sessions[thr.ID] = stream
 	m.mu.Unlock()
 
+	m.startSinkForwarding(stream)
+
 	return stream, nil
 }
 
@@ -104,6 +129,8 @@ func (m *Manager) Attach(threadID string) (*Stream, error) {
 	}
 	m.sessions[threadID] = stream
 	m.mu.Unlock()
+
+	m.startSinkForwarding(stream)
 
 	return stream, nil
 }
@@ -169,4 +196,67 @@ func (m *Manager) Check(sessionID string) error {
 		return ErrSessionBusy
 	}
 	return nil
+}
+
+// RegisterSink registers a callback that receives OutputEvents from all
+// active and future streams matching the given kinds. An empty kinds slice
+// means all event kinds. It returns a function that unregisters the sink.
+func (m *Manager) RegisterSink(kinds []string, fn SinkFunc) func() {
+	m.sinksMu.Lock()
+	id := m.sinkID
+	m.sinkID++
+	s := sink{
+		id:    id,
+		kinds: makeKindsSet(kinds),
+		fn:    fn,
+	}
+	m.sinks = append(m.sinks, s)
+	m.sinksMu.Unlock()
+
+	// Start forwarding for all existing streams.
+	m.mu.RLock()
+	streams := make([]*Stream, 0, len(m.sessions))
+	for _, stream := range m.sessions {
+		streams = append(streams, stream)
+	}
+	m.mu.RUnlock()
+
+	for _, stream := range streams {
+		m.startSinkForwarding(stream)
+	}
+
+	return func() {
+		m.sinksMu.Lock()
+		defer m.sinksMu.Unlock()
+		for i, existing := range m.sinks {
+			if existing.id == id {
+				m.sinks = append(m.sinks[:i], m.sinks[i+1:]...)
+				return
+			}
+		}
+	}
+}
+
+func (m *Manager) startSinkForwarding(stream *Stream) {
+	stream.forwardOnce.Do(func() {
+		ch := stream.Subscribe()
+		go func() {
+			for event := range ch {
+				m.sinksMu.RLock()
+				sinks := make([]sink, len(m.sinks))
+				copy(sinks, m.sinks)
+				m.sinksMu.RUnlock()
+
+				for _, s := range sinks {
+					if s.kinds == nil {
+						s.fn(stream.ID(), event)
+						continue
+					}
+					if _, ok := s.kinds[event.Kind()]; ok {
+						s.fn(stream.ID(), event)
+					}
+				}
+			}
+		}()
+	})
 }

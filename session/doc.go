@@ -30,7 +30,7 @@
 //	stream, _ := mgr.Create()
 //
 //	// Subscribe to output events via the Stream handle.
-//	ch, _ := stream.Subscribe("text_delta", "turn_complete")
+//	ch := stream.Subscribe("text_delta", "turn_complete")
 //
 //	// Process an event via the Stream handle.
 //	_ = stream.Process(ctx, UserMessageEvent{Content: "hello"})
