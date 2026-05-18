@@ -881,3 +881,9 @@ func TestHandler_WithoutUI_Root404(t *testing.T) {
 	h.ServeMux().ServeHTTP(rr, req)
 	assert.Equal(t, 404, rr.Code)
 }
+
+func TestDescriptor(t *testing.T) {
+	assert.NotEmpty(t, Descriptor.Name)
+	assert.NotEmpty(t, Descriptor.Description)
+	assert.NotEmpty(t, Descriptor.Capabilities)
+}

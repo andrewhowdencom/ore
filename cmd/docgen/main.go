@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/andrewhowdencom/ore/x/conduit"
+	"github.com/andrewhowdencom/ore/x/conduit/http"
 	"github.com/andrewhowdencom/ore/x/conduit/tui"
 )
 
@@ -25,6 +26,7 @@ import (
 // Future descriptors are added here when they are implemented.
 var descriptors = []conduit.Descriptor{
 	tui.Descriptor,
+	http.Descriptor,
 }
 
 func main() {
