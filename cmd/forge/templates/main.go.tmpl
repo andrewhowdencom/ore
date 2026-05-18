@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-{{- if eq .ConduitType "tui" }}
+{{- if .HasFlag }}
 	"flag"
 {{- end }}
 	"fmt"
@@ -10,11 +10,10 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/andrewhowdencom/ore/agent"
 	"github.com/andrewhowdencom/ore/cognitive"
-{{- if eq .ConduitType "http" }}
-	httpc "github.com/andrewhowdencom/ore/x/conduit/http"
-{{- else }}
-	"github.com/andrewhowdencom/ore/x/conduit/tui"
+{{- range .Conduits }}
+	{{.ImportAlias}} "{{.ModulePath}}"
 {{- end }}
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider/openai"
@@ -33,7 +32,7 @@ func main() {
 }
 
 func run() error {
-{{- if eq .ConduitType "tui" }}
+{{- if .HasFlag }}
 	var threadID string
 	flag.StringVar(&threadID, "thread", "", "existing thread UUID to resume")
 	flag.Parse()
@@ -74,31 +73,25 @@ func run() error {
 
 	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())
 
-{{- if eq .ConduitType "http" }}
+{{- if .HasHTTP }}
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
-
-	c, err := httpc.New(mgr, httpc.WithUI(), httpc.WithAddr(":"+port))
-	if err != nil {
-		return err
-	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-
-	slog.Info("starting HTTP server", "addr", ":"+port)
-	return c.Start(ctx)
-{{- else }}
-	c, err := tui.New(mgr, tui.WithThreadID(threadID))
-	if err != nil {
-		return err
-	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-
-	return c.Start(ctx)
 {{- end }}
+
+	a := agent.New(mgr)
+
+{{- range .Conduits }}
+	c{{.Index}}, err := {{.ImportAlias}}.New(mgr{{range .Options}}, {{.}}{{end}})
+	if err != nil {
+		return err
+	}
+	a.Add(c{{.Index}})
+{{- end }}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	return a.Run(ctx)
 }
