@@ -18,6 +18,21 @@ var mainGoTmpl string
 //go:embed templates/go.mod.tmpl
 var goModTmpl string
 
+// ConduitTemplateData holds per-conduit information for main.go.tmpl.
+type ConduitTemplateData struct {
+	Index       int
+	ImportAlias string
+	ModulePath  string
+	Options     []string
+}
+
+// MainGoTemplateData holds the top-level data for main.go.tmpl.
+type MainGoTemplateData struct {
+	HasFlag  bool
+	HasHTTP  bool
+	Conduits []ConduitTemplateData
+}
+
 // GenerateMainGo produces a compilable main.go for the conduits specified
 // in blueprint.
 func GenerateMainGo(blueprint *Blueprint) ([]byte, error) {
@@ -26,13 +41,12 @@ func GenerateMainGo(blueprint *Blueprint) ([]byte, error) {
 		return nil, fmt.Errorf("parse main.go template: %w", err)
 	}
 
-	var buf bytes.Buffer
-	data := struct {
-		ConduitType string
-	}{
-		ConduitType: deriveConduitType(blueprint),
+	data, err := buildTemplateData(blueprint)
+	if err != nil {
+		return nil, fmt.Errorf("build template data: %w", err)
 	}
 
+	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
 		return nil, fmt.Errorf("execute main.go template: %w", err)
 	}
@@ -91,21 +105,71 @@ func GenerateGoMod(blueprint *Blueprint, oreModulePath string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// deriveConduitType returns the legacy conduit type ("http" or "tui") from
-// the first conduit module path, for backward compatibility with the current
-// template. This will be removed when the template is rewritten for multi-
-// conduit support.
-func deriveConduitType(blueprint *Blueprint) string {
-	if len(blueprint.Conduits) == 0 {
-		return ""
+// buildTemplateData converts a Blueprint into the template data structure
+// used by main.go.tmpl.
+func buildTemplateData(blueprint *Blueprint) (*MainGoTemplateData, error) {
+	data := &MainGoTemplateData{}
+	usedAliases := make(map[string]struct{})
+
+	for i, c := range blueprint.Conduits {
+		alias := deriveImportAlias(c.Module, usedAliases)
+		cond := ConduitTemplateData{
+			Index:       i,
+			ImportAlias: alias,
+			ModulePath:  c.Module,
+		}
+
+		switch {
+		case isBuiltInHTTP(c.Module):
+			data.HasHTTP = true
+			cond.Options = []string{
+				alias + ".WithUI()",
+				alias + `.WithAddr(":" + port)`,
+			}
+		case isBuiltInTUI(c.Module):
+			data.HasFlag = true
+			cond.Options = []string{
+				alias + ".WithThreadID(threadID)",
+			}
+		}
+		// External conduits have no options for the first iteration.
+
+		data.Conduits = append(data.Conduits, cond)
+		usedAliases[alias] = struct{}{}
 	}
-	module := blueprint.Conduits[0].Module
-	switch {
-	case strings.HasSuffix(module, "/http"):
-		return "http"
-	case strings.HasSuffix(module, "/tui"):
+
+	return data, nil
+}
+
+func isBuiltInHTTP(module string) bool {
+	return module == "github.com/andrewhowdencom/ore/x/conduit/http"
+}
+
+func isBuiltInTUI(module string) bool {
+	return module == "github.com/andrewhowdencom/ore/x/conduit/tui"
+}
+
+// deriveImportAlias returns a Go import alias for module.
+//
+// Built-in conduits use hardcoded aliases (httpc, tui) to avoid stdlib
+// conflicts. External conduits derive the alias from the last path element
+// and disambiguate collisions with numeric suffixes.
+func deriveImportAlias(module string, used map[string]struct{}) string {
+	switch module {
+	case "github.com/andrewhowdencom/ore/x/conduit/http":
+		return "httpc"
+	case "github.com/andrewhowdencom/ore/x/conduit/tui":
 		return "tui"
-	default:
-		return ""
+	}
+
+	parts := strings.Split(module, "/")
+	alias := parts[len(parts)-1]
+
+	base := alias
+	for i := 1; ; i++ {
+		if _, ok := used[alias]; !ok {
+			return alias
+		}
+		alias = fmt.Sprintf("%s%d", base, i)
 	}
 }
