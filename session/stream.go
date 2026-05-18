@@ -56,6 +56,8 @@ func (s *Stream) Process(ctx context.Context, event Event) error {
 	var runErr error
 	switch e := event.(type) {
 	case UserMessageEvent:
+		s.step.SetEventContext(e.Context())
+		defer s.step.SetEventContext(loop.EventContext{})
 		_, runErr = s.step.Submit(turnCtx, s.thread.State, state.RoleUser, artifact.Text{Content: e.Content})
 		if runErr == nil {
 			_, runErr = s.processor(turnCtx, s.step, s.thread.State, s.provider)
@@ -63,6 +65,8 @@ func (s *Stream) Process(ctx context.Context, event Event) error {
 	case InterruptEvent:
 		// Interrupt is handled by cancelling the ongoing turn context.
 		// No inference is started for an interrupt event itself.
+		s.step.SetEventContext(e.Context())
+		defer s.step.SetEventContext(loop.EventContext{})
 		cancel()
 	default:
 		runErr = fmt.Errorf("unsupported event kind: %s", event.Kind())
