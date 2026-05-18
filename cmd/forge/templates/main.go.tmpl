@@ -2,9 +2,6 @@ package main
 
 import (
 	"context"
-{{- if .HasFlag }}
-	"flag"
-{{- end }}
 	"fmt"
 	"log/slog"
 	"os"
@@ -32,12 +29,6 @@ func main() {
 }
 
 func run() error {
-{{- if .HasFlag }}
-	var threadID string
-	flag.StringVar(&threadID, "thread", "", "existing thread UUID to resume")
-	flag.Parse()
-{{- end }}
-
 	apiKey := os.Getenv("ORE_API_KEY")
 	if apiKey == "" {
 		return fmt.Errorf("ORE_API_KEY not set")
@@ -73,17 +64,10 @@ func run() error {
 
 	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())
 
-{{- if .HasHTTP }}
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-{{- end }}
-
 	a := agent.New(mgr)
 
 {{- range .Conduits }}
-	c{{.Index}}, err := {{.ImportAlias}}.New(mgr{{range .Options}}, {{.}}{{end}})
+	c{{.Index}}, err := {{.ImportAlias}}.New(mgr)
 	if err != nil {
 		return err
 	}

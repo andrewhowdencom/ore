@@ -23,13 +23,10 @@ type ConduitTemplateData struct {
 	Index       int
 	ImportAlias string
 	ModulePath  string
-	Options     []string
 }
 
 // MainGoTemplateData holds the top-level data for main.go.tmpl.
 type MainGoTemplateData struct {
-	HasFlag  bool
-	HasHTTP  bool
 	Conduits []ConduitTemplateData
 }
 
@@ -106,52 +103,22 @@ func GenerateGoMod(blueprint *Blueprint, oreModulePath string) ([]byte, error) {
 }
 
 // buildTemplateData converts a Blueprint into the template data structure
-// used by main.go.tmpl, populating conduit-specific option strings for
-// built-in conduits.
+// used by main.go.tmpl.
 func buildTemplateData(blueprint *Blueprint) (*MainGoTemplateData, error) {
 	data := &MainGoTemplateData{}
 	usedAliases := make(map[string]struct{})
 
 	for i, c := range blueprint.Conduits {
 		alias := deriveImportAlias(c.Module, usedAliases)
-		cond := ConduitTemplateData{
+		data.Conduits = append(data.Conduits, ConduitTemplateData{
 			Index:       i,
 			ImportAlias: alias,
 			ModulePath:  c.Module,
-		}
-
-		switch {
-		case isBuiltInHTTP(c.Module):
-			data.HasHTTP = true
-			cond.Options = []string{
-				alias + ".WithUI()",
-				alias + `.WithAddr(":" + port)`,
-			}
-		case isBuiltInTUI(c.Module):
-			data.HasFlag = true
-			cond.Options = []string{
-				alias + ".WithThreadID(threadID)",
-			}
-		}
-		// External conduits have no options for the first iteration.
-
-		data.Conduits = append(data.Conduits, cond)
+		})
 		usedAliases[alias] = struct{}{}
 	}
 
 	return data, nil
-}
-
-// isBuiltInHTTP reports whether the given module path is the built-in HTTP
-// conduit.
-func isBuiltInHTTP(module string) bool {
-	return module == "github.com/andrewhowdencom/ore/x/conduit/http"
-}
-
-// isBuiltInTUI reports whether the given module path is the built-in TUI
-// conduit.
-func isBuiltInTUI(module string) bool {
-	return module == "github.com/andrewhowdencom/ore/x/conduit/tui"
 }
 
 // deriveImportAlias returns a Go import alias for module.
