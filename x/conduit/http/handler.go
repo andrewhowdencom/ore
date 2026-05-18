@@ -21,7 +21,8 @@ import (
 type Option func(*Handler)
 
 // WithUI is a no-op — the built-in web UI is enabled by default in New().
-// It is retained for backward compatibility with explicit call sites.
+// It exists only for legacy callers and may be removed in a future release.
+// Use WithoutUI to explicitly disable the UI.
 func WithUI() Option {
 	return func(h *Handler) {
 		h.withUI = true

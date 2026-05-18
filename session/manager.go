@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/andrewhowdencom/ore/loop"
@@ -23,7 +24,8 @@ type ManagerOption func(*Manager)
 // ErrSessionBusy is returned when a stream is already processing a turn.
 var ErrSessionBusy = errors.New("session is busy processing another turn")
 
-// SinkFunc receives OutputEvents from a specific stream.
+// SinkFunc receives OutputEvents from a specific stream, together with the
+// originating stream ID. It may be invoked concurrently for multiple streams.
 type SinkFunc func(streamID string, event loop.OutputEvent)
 
 type sink struct {
@@ -200,7 +202,11 @@ func (m *Manager) Check(sessionID string) error {
 
 // RegisterSink registers a callback that receives OutputEvents from all
 // active and future streams matching the given kinds. An empty kinds slice
-// means all event kinds. It returns a function that unregisters the sink.
+// means all event kinds. Registration also triggers forwarding for any
+// streams that already exist at the time of registration.
+//
+// It returns a function that removes the sink from the manager. Calling
+// the returned function more than once is safe and idempotent.
 func (m *Manager) RegisterSink(kinds []string, fn SinkFunc) func() {
 	m.sinksMu.Lock()
 	id := m.sinkID
@@ -241,6 +247,11 @@ func (m *Manager) startSinkForwarding(stream *Stream) {
 	stream.forwardOnce.Do(func() {
 		ch := stream.Subscribe()
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("sink forwarding goroutine panicked", "stream_id", stream.ID(), "recover", r)
+				}
+			}()
 			for event := range ch {
 				m.sinksMu.RLock()
 				sinks := make([]sink, len(m.sinks))

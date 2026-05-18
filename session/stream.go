@@ -101,8 +101,9 @@ func (s *Stream) Cancel() error {
 }
 
 // Subscribe returns a filtered output event channel for the stream's
-// loop.Step FanOut. If the stream is closed, the returned channel is
-// immediately closed.
+// loop.Step FanOut. If no kinds are provided, the channel receives all
+// events regardless of kind. If the stream is closed, the returned channel
+// is immediately closed.
 //
 // The returned channel is closed when the session is closed.
 // Callers should range over the channel and handle closure:
