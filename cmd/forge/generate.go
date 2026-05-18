@@ -30,6 +30,12 @@ type MainGoTemplateData struct {
 	Conduits []ConduitTemplateData
 }
 
+// replaceDirective holds a single replace entry for go.mod.tmpl.
+type replaceDirective struct {
+	ModulePath string
+	LocalPath  string
+}
+
 // GenerateMainGo produces a compilable main.go for the conduits specified
 // in blueprint.
 func GenerateMainGo(blueprint *Blueprint) ([]byte, error) {
@@ -79,20 +85,39 @@ func Generate(blueprint *Blueprint, oreModulePath string, targetDir string) erro
 }
 
 // GenerateGoMod produces a go.mod that depends on the local ore module via
-// a replace directive.
+// a replace directive. For conduits that are submodules of ore (i.e. their
+// module path starts with github.com/andrewhowdencom/ore/), an additional
+// replace directive points from the conduit module path to its local path
+// derived from oreModulePath.
 func GenerateGoMod(blueprint *Blueprint, oreModulePath string) ([]byte, error) {
 	tmpl, err := template.New("gomod").Parse(goModTmpl)
 	if err != nil {
 		return nil, fmt.Errorf("parse go.mod template: %w", err)
 	}
 
+	var replaces []replaceDirective
+	orePrefix := "github.com/andrewhowdencom/ore"
+	for _, c := range blueprint.Conduits {
+		if strings.HasPrefix(c.Module, orePrefix+"/") {
+			rel := strings.TrimPrefix(c.Module, orePrefix)
+			rel = strings.TrimPrefix(rel, "/")
+			localPath := filepath.Join(oreModulePath, filepath.FromSlash(rel))
+			replaces = append(replaces, replaceDirective{
+				ModulePath: c.Module,
+				LocalPath:  localPath,
+			})
+		}
+	}
+
 	var buf bytes.Buffer
 	data := struct {
 		ModuleName    string
 		OreModulePath string
+		Replaces      []replaceDirective
 	}{
 		ModuleName:    blueprint.Dist.Name,
 		OreModulePath: oreModulePath,
+		Replaces:      replaces,
 	}
 
 	if err := tmpl.Execute(&buf, data); err != nil {
@@ -123,19 +148,17 @@ func buildTemplateData(blueprint *Blueprint) (*MainGoTemplateData, error) {
 
 // deriveImportAlias returns a Go import alias for module.
 //
-// Built-in conduits use hardcoded aliases (httpc, tui) to avoid stdlib
-// conflicts. External conduits derive the alias from the last path element
-// and disambiguate collisions with numeric suffixes.
+// The alias is derived from the last path element. Collisions with the
+// standard library (e.g. "http" vs net/http) are avoided by using a
+// well-known alternative. Numeric suffixes disambiguate duplicate aliases.
 func deriveImportAlias(module string, used map[string]struct{}) string {
-	switch module {
-	case "github.com/andrewhowdencom/ore/x/conduit/http":
-		return "httpc"
-	case "github.com/andrewhowdencom/ore/x/conduit/tui":
-		return "tui"
-	}
-
 	parts := strings.Split(module, "/")
 	alias := parts[len(parts)-1]
+
+	// Avoid stdlib collisions.
+	if alias == "http" {
+		alias = "httpc"
+	}
 
 	base := alias
 	for i := 1; ; i++ {
