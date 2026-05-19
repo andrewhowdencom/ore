@@ -154,3 +154,31 @@ func TestThread_Lock_HighContention(t *testing.T) {
 
 	assert.Equal(t, 1, maxConcurrent, "at most one goroutine should hold the lock at any time")
 }
+
+func TestMemoryStore_GetBy(t *testing.T) {
+	store := NewMemoryStore()
+	thread1, err := store.Create()
+	require.NoError(t, err)
+	_, err = store.Create()
+	require.NoError(t, err)
+
+	thread1.Metadata["slack.thread_ts"] = "1234567890.123456"
+	err = store.Save(thread1)
+	require.NoError(t, err)
+
+	got, ok := store.GetBy("slack.thread_ts", "1234567890.123456")
+	require.True(t, ok)
+	assert.Equal(t, thread1.ID, got.ID)
+
+	_, ok = store.GetBy("slack.thread_ts", "999")
+	assert.False(t, ok)
+}
+
+func TestMemoryStore_GetBy_NotFound(t *testing.T) {
+	store := NewMemoryStore()
+	_, err := store.Create()
+	require.NoError(t, err)
+
+	_, ok := store.GetBy("channel_id", "999")
+	assert.False(t, ok)
+}
