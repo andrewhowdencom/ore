@@ -86,6 +86,7 @@ type errStore struct{}
 
 func (e *errStore) Create() (*thread.Thread, error)   { return nil, fmt.Errorf("store error") }
 func (e *errStore) Get(string) (*thread.Thread, bool) { return nil, false }
+func (e *errStore) GetBy(string, string) (*thread.Thread, bool) { return nil, false }
 func (e *errStore) Save(*thread.Thread) error         { return nil }
 func (e *errStore) Delete(string) bool                { return false }
 func (e *errStore) List() ([]*thread.Thread, error)   { return nil, nil }
@@ -101,6 +102,7 @@ func newSaveErrStore() *saveErrStore {
 
 func (s *saveErrStore) Create() (*thread.Thread, error)      { return s.inner.Create() }
 func (s *saveErrStore) Get(id string) (*thread.Thread, bool) { return s.inner.Get(id) }
+func (s *saveErrStore) GetBy(key, value string) (*thread.Thread, bool) { return s.inner.GetBy(key, value) }
 func (s *saveErrStore) Save(*thread.Thread) error            { return fmt.Errorf("save failed") }
 func (s *saveErrStore) Delete(string) bool                   { return s.inner.Delete("") }
 func (s *saveErrStore) List() ([]*thread.Thread, error)      { return s.inner.List() }
@@ -110,6 +112,7 @@ type listErrStore struct{}
 
 func (s *listErrStore) Create() (*thread.Thread, error)   { return nil, nil }
 func (s *listErrStore) Get(string) (*thread.Thread, bool) { return nil, false }
+func (s *listErrStore) GetBy(string, string) (*thread.Thread, bool) { return nil, false }
 func (s *listErrStore) Save(*thread.Thread) error         { return nil }
 func (s *listErrStore) Delete(string) bool                { return false }
 func (s *listErrStore) List() ([]*thread.Thread, error)   { return nil, fmt.Errorf("list failed") }

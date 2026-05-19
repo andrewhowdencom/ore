@@ -53,6 +53,18 @@ func (s *MemoryStore) Get(id string) (*Thread, bool) {
 	return thread, ok
 }
 
+// GetBy retrieves a thread by a metadata key-value pair.
+func (s *MemoryStore) GetBy(key, value string) (*Thread, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, thread := range s.threads {
+		if thread.Metadata[key] == value {
+			return thread, true
+		}
+	}
+	return nil, false
+}
+
 // Save updates the thread's UpdatedAt and stores it.
 func (s *MemoryStore) Save(thread *Thread) error {
 	s.mu.Lock()

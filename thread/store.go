@@ -17,6 +17,9 @@ type Store interface {
 	// Get retrieves a Thread by ID. The second return value is false
 	// if the thread does not exist.
 	Get(id string) (*Thread, bool)
+	// GetBy retrieves a Thread by a metadata key-value pair.
+	// The second return value is false if no thread matches.
+	GetBy(key, value string) (*Thread, bool)
 	// Save persists the given Thread, updating its UpdatedAt timestamp.
 	Save(thread *Thread) error
 	// Delete removes a Thread by ID and returns true if it existed.
