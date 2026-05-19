@@ -36,7 +36,7 @@ func main() {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	if err := run(*out, *title); err != nil {
+	if err := run(*out, *title, descriptors); err != nil {
 		logger.Error("docgen failed", "err", err)
 		os.Exit(1)
 	}
@@ -44,7 +44,7 @@ func main() {
 	logger.Info("generated capability matrix", "path", *out)
 }
 
-func run(outPath, title string) error {
+func run(outPath, title string, descriptors []conduit.Descriptor) error {
 	// Collect all unique capabilities.
 	capSet := make(map[conduit.Capability]struct{})
 	for _, desc := range descriptors {

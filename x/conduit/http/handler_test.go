@@ -18,6 +18,7 @@ import (
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/thread"
+	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -883,7 +884,12 @@ func TestHandler_WithoutUI_Root404(t *testing.T) {
 }
 
 func TestDescriptor(t *testing.T) {
-	assert.NotEmpty(t, Descriptor.Name)
-	assert.NotEmpty(t, Descriptor.Description)
-	assert.NotEmpty(t, Descriptor.Capabilities)
+	assert.Equal(t, "HTTP", Descriptor.Name)
+	assert.Contains(t, Descriptor.Description, "HTTP conduit")
+	assert.ElementsMatch(t, []conduit.Capability{
+		conduit.CapEventSource,
+		conduit.CapShowStatus,
+		conduit.CapRenderTurn,
+		conduit.CapRenderMarkdown,
+	}, Descriptor.Capabilities)
 }

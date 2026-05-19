@@ -38,7 +38,9 @@
 //   1. Constructor — New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error)
 //
 //      The constructor uses the functional-options pattern. It MUST validate that
-//      mgr is non-nil. It returns a value that satisfies conduit.Conduit.
+//      mgr is non-nil. It returns a value that satisfies conduit.Conduit and may
+//      be type-asserted to the concrete type for package-specific extensions
+//      (e.g., *http.Handler).
 //
 //   2. Exported Descriptor — var Descriptor = conduit.Descriptor{...}
 //
@@ -63,6 +65,9 @@
 //
 //      On ctx.Done(), the conduit MUST release resources (close channels,
 //      shutdown servers, close subscriptions) and return promptly.
+//
+//      See AGENTS.md for the agent-level guidance that conduits must not import
+//      cognitive packages or invoke providers directly.
 //
 // This package lives under x/ because the conduit abstraction and capability
 // vocabulary are still evolving as new frontend types are explored.
