@@ -124,11 +124,20 @@ func (s *JSONStore) Get(id string) (*Thread, bool) {
 }
 
 // GetBy retrieves a thread by a metadata key-value pair.
+// It performs a linear scan over all cached threads and returns the first match.
 func (s *JSONStore) GetBy(key, value string) (*Thread, bool) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
+	candidates := make([]*Thread, 0, len(s.cache))
 	for _, thread := range s.cache {
-		if thread.Metadata[key] == value {
+		candidates = append(candidates, thread)
+	}
+	s.mu.RUnlock()
+
+	for _, thread := range candidates {
+		thread.mu.RLock()
+		match := thread.Metadata[key] == value
+		thread.mu.RUnlock()
+		if match {
 			return thread, true
 		}
 	}

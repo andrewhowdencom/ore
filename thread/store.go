@@ -43,7 +43,7 @@ type Thread struct {
 	// Metadata holds arbitrary key-value pairs for conduit-specific
 	// thread mapping (e.g., external system identifiers).
 	Metadata map[string]string
-	mu        sync.Mutex
+	mu        sync.RWMutex
 	busy      bool
 }
 
