@@ -265,7 +265,7 @@ func TestJSONStore_GetBy(t *testing.T) {
 	_, err = store1.Create()
 	require.NoError(t, err)
 
-	thread1.Metadata["slack.thread_ts"] = "1234567890.123456"
+	thread1.SetMetadata("slack.thread_ts", "1234567890.123456")
 	err = store1.Save(thread1)
 	require.NoError(t, err)
 
@@ -290,5 +290,75 @@ func TestJSONStore_GetBy_NotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	_, ok := store.GetBy("channel_id", "999")
+	assert.False(t, ok)
+}
+
+func TestJSONStore_LegacyJSONNoMetadata(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write a JSON file in the old format (no metadata field).
+	oldJSON := `{"id":"legacy-thread","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z","turns":[]}`
+	err := os.WriteFile(filepath.Join(dir, "legacy-thread.json"), []byte(oldJSON), 0644)
+	require.NoError(t, err)
+
+	store, err := NewJSONStore(dir)
+	require.NoError(t, err)
+
+	got, ok := store.Get("legacy-thread")
+	require.True(t, ok)
+	assert.NotNil(t, got.Metadata)
+	assert.Len(t, got.Metadata, 0)
+
+	_, ok = store.GetBy("any_key", "any_value")
+	assert.False(t, ok)
+}
+
+func TestJSONStore_GetBy_Duplicate(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewJSONStore(dir)
+	require.NoError(t, err)
+
+	thread1, err := store.Create()
+	require.NoError(t, err)
+	thread2, err := store.Create()
+	require.NoError(t, err)
+
+	thread1.SetMetadata("channel_id", "same")
+	thread2.SetMetadata("channel_id", "same")
+	require.NoError(t, store.Save(thread1))
+	require.NoError(t, store.Save(thread2))
+
+	got, ok := store.GetBy("channel_id", "same")
+	require.True(t, ok)
+	assert.True(t, got.ID == thread1.ID || got.ID == thread2.ID)
+}
+
+func TestJSONStore_GetBy_AfterDelete(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewJSONStore(dir)
+	require.NoError(t, err)
+
+	thread, err := store.Create()
+	require.NoError(t, err)
+
+	thread.SetMetadata("channel_id", "123")
+	require.NoError(t, store.Save(thread))
+
+	ok := store.Delete(thread.ID)
+	assert.True(t, ok)
+
+	_, ok = store.GetBy("channel_id", "123")
+	assert.False(t, ok)
+}
+
+func TestJSONStore_GetBy_EmptyMetadata(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewJSONStore(dir)
+	require.NoError(t, err)
+
+	_, err = store.Create()
+	require.NoError(t, err)
+
+	_, ok := store.GetBy("any_key", "any_value")
 	assert.False(t, ok)
 }
