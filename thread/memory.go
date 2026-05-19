@@ -36,6 +36,7 @@ func (s *MemoryStore) Create() (*Thread, error) {
 		State:     &state.Buffer{},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
+		Metadata:  make(map[string]string),
 	}
 
 	s.mu.Lock()

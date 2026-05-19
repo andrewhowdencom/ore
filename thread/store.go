@@ -37,6 +37,9 @@ type Thread struct {
 	CreatedAt time.Time
 	// UpdatedAt is advanced on every successful Save.
 	UpdatedAt time.Time
+	// Metadata holds arbitrary key-value pairs for conduit-specific
+	// thread mapping (e.g., external system identifiers).
+	Metadata map[string]string
 	mu        sync.Mutex
 	busy      bool
 }
@@ -64,10 +67,11 @@ func (c *Thread) Unlock() {
 // MarshalJSON serializes the thread to JSON.
 func (c *Thread) MarshalJSON() ([]byte, error) {
 	type jsonThread struct {
-		ID        string          `json:"id"`
-		CreatedAt time.Time       `json:"created_at"`
-		UpdatedAt time.Time       `json:"updated_at"`
-		Turns     json.RawMessage `json:"turns"`
+		ID        string            `json:"id"`
+		CreatedAt time.Time         `json:"created_at"`
+		UpdatedAt time.Time         `json:"updated_at"`
+		Metadata  map[string]string `json:"metadata,omitempty"`
+		Turns     json.RawMessage   `json:"turns"`
 	}
 
 	turnsJSON, err := marshalTurns(c.State.Turns())
@@ -79,6 +83,7 @@ func (c *Thread) MarshalJSON() ([]byte, error) {
 		ID:        c.ID,
 		CreatedAt: c.CreatedAt,
 		UpdatedAt: c.UpdatedAt,
+		Metadata:  c.Metadata,
 		Turns:     turnsJSON,
 	}
 
@@ -88,10 +93,11 @@ func (c *Thread) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON deserializes a thread from JSON.
 func (c *Thread) UnmarshalJSON(data []byte) error {
 	type jsonThread struct {
-		ID        string          `json:"id"`
-		CreatedAt time.Time       `json:"created_at"`
-		UpdatedAt time.Time       `json:"updated_at"`
-		Turns     json.RawMessage `json:"turns"`
+		ID        string            `json:"id"`
+		CreatedAt time.Time         `json:"created_at"`
+		UpdatedAt time.Time         `json:"updated_at"`
+		Metadata  map[string]string `json:"metadata,omitempty"`
+		Turns     json.RawMessage   `json:"turns"`
 	}
 
 	var jc jsonThread
@@ -107,6 +113,11 @@ func (c *Thread) UnmarshalJSON(data []byte) error {
 	c.ID = jc.ID
 	c.CreatedAt = jc.CreatedAt
 	c.UpdatedAt = jc.UpdatedAt
+	if jc.Metadata != nil {
+		c.Metadata = jc.Metadata
+	} else {
+		c.Metadata = make(map[string]string)
+	}
 	c.State = &state.Buffer{}
 	for _, turn := range turns {
 		c.State.Append(turn.Role, turn.Artifacts...)
