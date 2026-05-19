@@ -64,9 +64,9 @@ func (s *MemoryStore) GetBy(key, value string) (*Thread, bool) {
 	s.mu.RUnlock()
 
 	for _, thread := range candidates {
-		thread.mu.RLock()
+		thread.metaMu.RLock()
 		match := thread.Metadata[key] == value
-		thread.mu.RUnlock()
+		thread.metaMu.RUnlock()
 		if match {
 			return thread, true
 		}
