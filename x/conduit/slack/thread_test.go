@@ -64,7 +64,7 @@ func TestResolveThread_Create(t *testing.T) {
 	sc, ok := c.(*SlackConduit)
 	require.True(t, ok)
 
-	stream, thr, err := sc.resolveThread("test-slack-thread-1")
+	stream, thr, err := sc.resolveThread("test-slack-thread-1", "C999")
 	require.NoError(t, err)
 	require.NotNil(t, stream)
 	require.NotNil(t, thr)
@@ -73,6 +73,10 @@ func TestResolveThread_Create(t *testing.T) {
 	val, ok := thr.GetMetadata("slack_thread_id")
 	require.True(t, ok)
 	assert.Equal(t, "test-slack-thread-1", val)
+
+	channelID, ok := thr.GetMetadata("slack_channel_id")
+	require.True(t, ok)
+	assert.Equal(t, "C999", channelID)
 }
 
 func TestResolveThread_Resume(t *testing.T) {
@@ -87,13 +91,18 @@ func TestResolveThread_Resume(t *testing.T) {
 	require.True(t, ok)
 
 	// Create a thread first.
-	stream1, thr1, err := sc.resolveThread("test-slack-thread-2")
+	stream1, thr1, err := sc.resolveThread("test-slack-thread-2", "C999")
 	require.NoError(t, err)
 	require.NotNil(t, stream1)
 	require.NotNil(t, thr1)
 
+	// Verify channel metadata was stored.
+	channelID, ok := thr1.GetMetadata("slack_channel_id")
+	require.True(t, ok)
+	assert.Equal(t, "C999", channelID)
+
 	// Resolve again — should attach to the same thread.
-	stream2, thr2, err := sc.resolveThread("test-slack-thread-2")
+	stream2, thr2, err := sc.resolveThread("test-slack-thread-2", "C999")
 	require.NoError(t, err)
 	require.NotNil(t, stream2)
 	require.NotNil(t, thr2)

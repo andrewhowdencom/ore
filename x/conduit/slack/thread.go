@@ -10,9 +10,9 @@ import (
 )
 
 // resolveThread looks up or creates an ore Thread mapped to the given
-// Slack thread identifier, then returns the active session Stream and
-// the underlying Thread.
-func (c *SlackConduit) resolveThread(slackThreadID string) (*session.Stream, *thread.Thread, error) {
+// Slack thread identifier and channel ID, then returns the active session
+// Stream and the underlying Thread.
+func (c *SlackConduit) resolveThread(slackThreadID string, channelID string) (*session.Stream, *thread.Thread, error) {
 	store := c.mgr.Store()
 
 	// Try to resume an existing thread by slack_thread_id metadata.
@@ -21,6 +21,9 @@ func (c *SlackConduit) resolveThread(slackThreadID string) (*session.Stream, *th
 		if err != nil {
 			return nil, nil, fmt.Errorf("attach to thread %q: %w", thr.ID, err)
 		}
+		c.streamsMu.Lock()
+		c.activeStreams[stream.ID()] = stream
+		c.streamsMu.Unlock()
 		return stream, thr, nil
 	}
 
@@ -36,9 +39,14 @@ func (c *SlackConduit) resolveThread(slackThreadID string) (*session.Stream, *th
 	}
 
 	thr.SetMetadata("slack_thread_id", slackThreadID)
+	thr.SetMetadata("slack_channel_id", channelID)
 	if err := store.Save(thr); err != nil {
 		return nil, nil, fmt.Errorf("save thread metadata: %w", err)
 	}
+
+	c.streamsMu.Lock()
+	c.activeStreams[stream.ID()] = stream
+	c.streamsMu.Unlock()
 
 	return stream, thr, nil
 }
