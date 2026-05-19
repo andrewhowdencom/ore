@@ -64,6 +64,7 @@ func TestThread_MarshalJSON(t *testing.T) {
 		State:     &state.Buffer{},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
+		Metadata:  map[string]string{"channel_id": "123", "user_id": "abc"},
 	}
 	thread.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
 	thread.State.Append(state.RoleAssistant, artifact.Text{Content: "hi there"})
@@ -78,6 +79,7 @@ func TestThread_MarshalJSON(t *testing.T) {
 	assert.Equal(t, thread.ID, got.ID)
 	assert.True(t, thread.CreatedAt.Equal(got.CreatedAt))
 	assert.True(t, thread.UpdatedAt.Equal(got.UpdatedAt))
+	assert.Equal(t, thread.Metadata, got.Metadata)
 	turns := got.State.Turns()
 	require.Len(t, turns, 2)
 	assert.Equal(t, state.RoleUser, turns[0].Role)

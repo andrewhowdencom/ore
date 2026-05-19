@@ -80,6 +80,7 @@ func (s *JSONStore) Create() (*Thread, error) {
 		State:     &state.Buffer{},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
+		Metadata:  make(map[string]string),
 	}
 
 	if err := s.Save(thread); err != nil {
