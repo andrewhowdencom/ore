@@ -45,6 +45,18 @@ func WithAddr(addr string) Option {
 	}
 }
 
+// Descriptor enumerates the capabilities of the HTTP conduit.
+var Descriptor = conduit.Descriptor{
+	Name:        "HTTP",
+	Description: "HTTP conduit with embedded web chat UI",
+	Capabilities: []conduit.Capability{
+		conduit.CapEventSource,
+		conduit.CapShowStatus,
+		conduit.CapRenderTurn,
+		conduit.CapRenderMarkdown,
+	},
+}
+
 // Handler provides HTTP endpoints for the ore framework's thread
 // primitives. It is mounted on an http.ServeMux via ServeMux().
 type Handler struct {

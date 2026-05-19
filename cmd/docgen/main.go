@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/andrewhowdencom/ore/x/conduit"
+	"github.com/andrewhowdencom/ore/x/conduit/http"
 	"github.com/andrewhowdencom/ore/x/conduit/tui"
 )
 
@@ -25,6 +26,7 @@ import (
 // Future descriptors are added here when they are implemented.
 var descriptors = []conduit.Descriptor{
 	tui.Descriptor,
+	http.Descriptor,
 }
 
 func main() {
@@ -34,7 +36,7 @@ func main() {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	if err := run(*out, *title); err != nil {
+	if err := run(*out, *title, descriptors); err != nil {
 		logger.Error("docgen failed", "err", err)
 		os.Exit(1)
 	}
@@ -42,7 +44,7 @@ func main() {
 	logger.Info("generated capability matrix", "path", *out)
 }
 
-func run(outPath, title string) error {
+func run(outPath, title string, descriptors []conduit.Descriptor) error {
 	// Collect all unique capabilities.
 	capSet := make(map[conduit.Capability]struct{})
 	for _, desc := range descriptors {

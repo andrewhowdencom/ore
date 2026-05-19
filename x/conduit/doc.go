@@ -29,6 +29,46 @@
 // enumerates the well-known capabilities it supports (e.g., event-source,
 // render-delta, show-status, accept-text, render-markdown).
 //
+// Standard Conduit Contract
+//
+// All conduit packages MUST satisfy the following contract so that framework
+// consumers and generators (e.g., forge) have a single, predictable pattern
+// to follow:
+//
+//   1. Constructor — New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error)
+//
+//      The constructor uses the functional-options pattern. It MUST validate that
+//      mgr is non-nil. It returns a value that satisfies conduit.Conduit and may
+//      be type-asserted to the concrete type for package-specific extensions
+//      (e.g., *http.Handler).
+//
+//   2. Exported Descriptor — var Descriptor = conduit.Descriptor{...}
+//
+//      Each package exports a package-level Descriptor variable that lists the
+//      well-known capabilities the conduit supports. The variable is consumed by
+//      documentation generators (cmd/docgen) and static discovery tools.
+//
+//   3. Sink registration inside Start()
+//
+//      Conduits that maintain a persistent connection to a session stream MUST
+//      subscribe to output events (e.g., stream.Subscribe(...)) inside Start()
+//      before entering the blocking loop. Request-driven conduits MAY defer
+//      subscription to per-request handlers.
+//
+//   4. Blocking Start(ctx context.Context) error
+//
+//      Start MUST block until ctx is cancelled or a fatal error occurs. It MUST
+//      return a non-nil error only on fatal startup or runtime errors; clean
+//      shutdown on ctx.Done() should return nil.
+//
+//   5. Graceful shutdown
+//
+//      On ctx.Done(), the conduit MUST release resources (close channels,
+//      shutdown servers, close subscriptions) and return promptly.
+//
+//      See AGENTS.md for the agent-level guidance that conduits must not import
+//      cognitive packages or invoke providers directly.
+//
 // This package lives under x/ because the conduit abstraction and capability
 // vocabulary are still evolving as new frontend types are explored.
 package conduit
