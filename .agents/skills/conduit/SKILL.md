@@ -1,12 +1,14 @@
 ---
-name: ore-conduit
+name: conduit
 description: |
-  Implements I/O conduits for the ore framework. Creates packages under
-  x/conduit/<name>/ with independent go.mod. Translates external events into
-  session.UserMessageEvent via session.Manager, subscribes to loop.OutputEvent
-  FanOut streams, and routes text/reasoning/image artifacts back to external
-  systems using the broadcast subscriber-closure pattern. Does NOT handle
-  cognitive orchestration, provider invocation, or turn-loop management.
+  Implements a new ore I/O conduit package under x/conduit/<name>/ using the
+  functional-options constructor pattern, exported Descriptor for discovery, and
+  blocking Start(ctx) lifecycle. Dumb pipe that translates external system events
+  (HTTP, TUI, chat bot, webhook) into ore session events via session.Manager,
+  subscribes to broadcast FanOut output streams, and routes text/reasoning/image
+  artifacts back to external systems. Compatible with forge YAML blueprints and
+  the broadcast multi-conduit model. Does NOT handle cognitive orchestration,
+  provider invocation, or turn-loop management.
 ---
 
 # Ore Conduit
@@ -22,12 +24,30 @@ Do NOT use this skill for:
 - Go language or tooling questions (see `go/` skill instead)
 - Ore architectural philosophy or package boundary decisions (see `AGENTS.md`)
 
+## What is a Conduit
+
+An ore conduit is a dumb pipe that translates events between an external system
+and the ore framework. It is not a "UI" in the narrow sense, nor is it a
+cognitive agent. A conduit's only job is ingress (mapping external events into
+`session.UserMessageEvent` and pushing them into a stream) and egress
+(subscribing to the stream's broadcast output and routing assistant artifacts
+back to the external system).
+
+Conduits must never import `cognitive/` packages, invoke `provider.Invoke()`
+directly, or manage turn loops. Those are application-level concerns composed
+in `examples/` or `cmd/` packages. The conduit library exposes `Session`,
+`Step`, and `State` via exported accessors so the application layer can call
+`Step.Submit()`, `Step.Turn()`, or run a full `cognitive.ReAct` loop as
+needed. See `AGENTS.md` for the full Conduit/Library vs. Application boundary.
+
 ## Execution Procedure
 
 Follow these steps in order. Do not skip or reorder.
 
 1. **Create package `x/conduit/<name>/`** with its own `go.mod`. Use
    `replace github.com/andrewhowdencom/ore => ../../..` to link the core module.
+   The package must be declarable in a `forge.yaml` by its module path
+   (e.g., `github.com/andrewhowdencom/ore/x/conduit/<name>`).
 2. **Implement `conduit.Conduit`** — a type with exactly one method:
    `Start(ctx context.Context) error`.
 3. **Accept `*session.Manager`** via the constructor using the functional options
@@ -36,23 +56,36 @@ Follow these steps in order. Do not skip or reorder.
    func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error)
    ```
    Validate `mgr != nil`; return an error if nil.
+   Note: `cmd/forge` calls `alias.New(mgr)` with no arguments, so the conduit
+   MUST work with zero options. Functional options can override defaults but
+   must not be required.
 4. **In `Start()`**: create or attach a session:
    - `stream, err := mgr.Create()` for a new session
    - `stream, err := mgr.Attach(threadID)` to resume an existing thread
+   In multi-conduit agents, multiple conduits share the same `*session.Manager`.
+   Each conduit calls `mgr.Create()` or `mgr.Attach()` independently.
 5. **Subscribe to output events** from the stream:
    ```go
    outputCh := stream.Subscribe("turn_complete")
    ```
    For streaming conduits, subscribe to artifact kinds directly
    (`"text_delta"`, `"reasoning_delta"`, etc.).
+   The stream uses a FanOut broadcast model. Multiple conduits can subscribe
+   concurrently; each receives all events independently.
 6. **Capture your delivery mechanism in the subscriber closure.** The subscriber
    goroutine must close over the external-system client (HTTP writer, Slack
    client, TUI program, etc.). Destination routing is **NOT** carried in
    `EventContext.Provenance`.
+   If delivery to the external system fails, log the error (non-fatal) and
+   continue. Optionally render a failure message if the transport supports it.
 7. **Set up the external input → `stream.Process()` loop.** Map all external
    events to `session.UserMessageEvent{Content: ...}` and call
    `stream.Process(ctx, event)`. For cancellation, use
    `session.InterruptEvent{}`.
+   Before calling `stream.Process()`, set `EventContext.Provenance` to the
+   conduit's identifier on outbound `UserMessageEvent`. When receiving events,
+   check if `Provenance` matches your own identifier and skip processing to
+   avoid echo loops.
 8. **Export a `Descriptor` variable** at the package level enumerating the
    well-known capabilities this conduit supports:
    ```go
@@ -67,11 +100,31 @@ Follow these steps in order. Do not skip or reorder.
    ```
 9. **Block in `Start()`** until `ctx.Done()` signals shutdown. Return `nil` on
    clean shutdown; return non-nil only on fatal startup or runtime errors.
+   Fatal errors (startup failure, unrecoverable connection loss to the external
+   system) MUST return non-nil from `Start()`, which triggers agent-level
+   shutdown. Non-fatal errors (delivery failure to one recipient, transient
+   timeout) MUST be logged and the conduit MUST continue.
 10. **Add table-driven tests** with a mock `session.Manager` or
     `httptest.Server`. Verify `Start()` blocks, `Descriptor` is exported, and
     the constructor rejects nil manager.
 11. **Run `go test -race ./...`** from the package directory. All tests must
     pass.
+
+> See `./SKELETON.md` for a compilable skeleton and `x/conduit/doc.go` for
+> the standard contract.
+
+## Success Criteria
+
+After implementing a conduit, verify:
+
+- [ ] Package exports `Descriptor` with valid capabilities
+- [ ] Constructor accepts `*session.Manager` and validates non-nil
+- [ ] `Start(ctx)` blocks until `ctx.Done()`
+- [ ] Subscribes to output events before blocking
+- [ ] Maps all external inputs to `UserMessageEvent` or `InterruptEvent`
+- [ ] Passes `go test -race ./...`
+- [ ] Is declarable in a `forge.yaml` by module path
+- [ ] Handles provenance echo suppression
 
 ## Boolean Guards
 
@@ -88,108 +141,9 @@ If any of the following are true, **STOP** and reassess:
 - ⚠️ **IF** putting destination routing metadata (channel ID, thread ID, email
   address) into `EventContext.Provenance` → STOP. Capture the delivery mechanism
   in the subscriber closure. `Provenance` is for source metadata only.
-
-## Inlined Expertise: The Conduit Skeleton
-
-Copy and adapt this skeleton. Replace `<name>` with your conduit identifier.
-
-```go
-package myconduit
-
-import (
-    "context"
-    "fmt"
-
-    "github.com/andrewhowdencom/ore/x/conduit"
-    "github.com/andrewhowdencom/ore/loop"
-    "github.com/andrewhowdencom/ore/session"
-)
-
-// Descriptor enumerates the capabilities this conduit provides.
-var Descriptor = conduit.Descriptor{
-    Name:        "MyConduit",
-    Description: "One-line description of what this conduit does",
-    Capabilities: []conduit.Capability{
-        conduit.CapEventSource,
-        conduit.CapRenderTurn,
-    },
-}
-
-// MyConduit is the conduit implementation. Keep it minimal.
-type MyConduit struct {
-    mgr      *session.Manager
-    threadID string // optional; for resuming an existing thread
-}
-
-// Option configures the conduit via functional options.
-type Option func(*MyConduit)
-
-// WithThreadID sets the thread ID to resume on Start.
-func WithThreadID(id string) Option {
-    return func(c *MyConduit) {
-        c.threadID = id
-    }
-}
-
-// New creates the conduit. It does NOT start I/O.
-func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
-    if mgr == nil {
-        return nil, fmt.Errorf("session manager is required")
-    }
-    c := &MyConduit{mgr: mgr}
-    for _, opt := range opts {
-        opt(c)
-    }
-    return c, nil
-}
-
-// Start creates or attaches to a session, sets up the output subscriber,
-// initializes external I/O, and blocks until ctx is cancelled.
-func (c *MyConduit) Start(ctx context.Context) error {
-    var stream *session.Stream
-    var err error
-    if c.threadID != "" {
-        stream, err = c.mgr.Attach(c.threadID)
-    } else {
-        stream, err = c.mgr.Create()
-    }
-    if err != nil {
-        return err
-    }
-
-    // Subscribe to the output events your conduit renders.
-    // "turn_complete" is the common choice for batched rendering.
-    // For streaming, subscribe to artifact kinds directly.
-    outputCh := stream.Subscribe("turn_complete")
-
-    // Capture your delivery mechanism in this closure.
-    // Examples: http.ResponseWriter, Slack API client, tea.Program.
-    go func() {
-        for event := range outputCh {
-            switch e := event.(type) {
-            case loop.TurnCompleteEvent:
-                // TODO: deliver e.Turn to the external system
-                _ = e
-            case loop.ErrorEvent:
-                // TODO: handle or log delivery errors
-                _ = e
-            }
-        }
-    }()
-
-    // TODO: Set up external input → stream.Process() loop.
-    //
-    // Interactive: read input, then:
-    //   stream.Process(ctx, session.UserMessageEvent{Content: text})
-    //
-    // Webhook/polling: in your receiver goroutine:
-    //   stream.Process(ctx, session.UserMessageEvent{Content: payload})
-
-    // Block until the framework signals shutdown.
-    <-ctx.Done()
-    return nil
-}
-```
+- ⚠️ **IF** the conduit requires mandatory constructor options (not just
+  functional options with defaults) → STOP. `cmd/forge` calls `alias.New(mgr)`
+  with no arguments; mandatory options will break forge compatibility.
 
 ## Gotchas
 
@@ -215,6 +169,9 @@ func (c *MyConduit) Start(ctx context.Context) error {
    patterns: NDJSON streaming over a request/response connection, and SSE over a
    persistent ambient connection. The TUI subscribes to `"turn_complete"` for
    batched rendering. Choose the pattern that matches your transport.
+7. **Forge calls `alias.New(mgr)` with no arguments.** Conduits that require
+   mandatory constructor options are currently incompatible with
+   forge-generated binaries. Use functional options with sensible defaults.
 
 ## References
 
@@ -222,10 +179,12 @@ func (c *MyConduit) Start(ctx context.Context) error {
   Application contract.
 - `x/conduit/doc.go` — standard conduit contract documentation (constructor,
   Descriptor, blocking Start, graceful shutdown).
+- `./SKELETON.md` — compilable reference skeleton with contract cross-references.
 - `x/conduit/http/` — HTTP conduit reference (NDJSON streaming, SSE,
   embedded web UI, RESTful session endpoints).
 - `x/conduit/tui/` — TUI conduit reference (Bubble Tea, turn_complete
   subscription, channel-based Process loop).
+- `examples/forge/README.md` — forge blueprints for multi-conduit agents.
 - `go/` skill — Go conventions (functional options, table-driven tests,
   error wrapping with `fmt.Errorf`, `log/slog`).
 - `.plans/standardize-conduit-patterns.md` — repo-internal plan that
