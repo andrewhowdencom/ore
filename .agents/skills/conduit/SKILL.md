@@ -109,9 +109,14 @@ Follow these steps in order. Do not skip or reorder.
     the constructor rejects nil manager.
 11. **Run `go test -race ./...`** from the package directory. All tests must
     pass.
+12. **Write `README.md`** in the package root (`x/conduit/<name>/README.md`)
+    documenting how to compose the conduit. Follow the structure in
+    `./README_EXAMPLE.md`. Include: Overview, Capabilities, Composition,
+    Configuration, Runtime Semantics, Forge Blueprint, and Error Handling.
 
-> See `./SKELETON.md` for a compilable skeleton and `x/conduit/doc.go` for
-> the standard contract.
+> See `./SKELETON.md` for a compilable skeleton, `x/conduit/doc.go` for
+> the standard contract, and `./README_EXAMPLE.md` for the composition guide
+> template.
 
 ## Success Criteria
 
@@ -125,6 +130,7 @@ After implementing a conduit, verify:
 - [ ] Passes `go test -race ./...`
 - [ ] Is declarable in a `forge.yaml` by module path
 - [ ] Handles provenance echo suppression
+- [ ] `README.md` is present with all required sections (see `./README_EXAMPLE.md`)
 
 ## Boolean Guards
 
@@ -190,6 +196,9 @@ If any of the following are true, **STOP** and reassess:
 - `.plans/standardize-conduit-patterns.md` — repo-internal plan that
   standardized the HTTP `Descriptor` export and the `x/conduit/doc.go`
   conduit contract.
+- `./README_EXAMPLE.md` — filled-out reference README demonstrating the
+  standardized sections for composer-facing documentation.
 
 > **Note:** This skill is a living document. After implementing a new conduit,
-> review whether any pattern you discovered should be added here.
+> review whether any pattern you discovered should be added here, and whether
+> the `README_EXAMPLE.md` template should be updated.
