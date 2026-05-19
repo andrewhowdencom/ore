@@ -15,6 +15,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/thread"
 	"github.com/andrewhowdencom/ore/x/conduit"
 )
 
@@ -181,9 +182,9 @@ func (c *telegramConduit) poll(ctx context.Context, botUserID int64) {
 			}
 
 			chatIDStr := strconv.FormatInt(update.Message.Chat.ID, 10)
-			stream, err := c.mgr.Attach(chatIDStr)
+			stream, err := c.getOrCreateStream(chatIDStr)
 			if err != nil {
-				slog.Error("telegram: attach stream failed", "chat_id", chatIDStr, "err", err)
+				slog.Error("telegram: get or create stream failed", "chat_id", chatIDStr, "err", err)
 				continue
 			}
 
@@ -200,6 +201,31 @@ func (c *telegramConduit) poll(ctx context.Context, botUserID int64) {
 			}
 		}
 	}
+}
+
+// getOrCreateStream attempts to attach to an existing stream for the given
+// thread ID (Telegram chat_id). If the thread does not exist in the store, it
+// creates one with the chat_id as its deterministic ID so that future sessions
+// for the same chat can be resumed.
+func (c *telegramConduit) getOrCreateStream(chatIDStr string) (*session.Stream, error) {
+	stream, err := c.mgr.Attach(chatIDStr)
+	if err == nil {
+		return stream, nil
+	}
+
+	// Thread not found; create it with the chat_id as the thread ID.
+	thr := &thread.Thread{
+		ID:        chatIDStr,
+		State:     &state.Buffer{},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Metadata:  make(map[string]string),
+	}
+	if err := c.mgr.Store().Save(thr); err != nil {
+		return nil, fmt.Errorf("create thread: %w", err)
+	}
+
+	return c.mgr.Attach(chatIDStr)
 }
 
 // Telegram API structs.
