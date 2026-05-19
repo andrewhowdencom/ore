@@ -1,5 +1,5 @@
 ---
-name: ore-conduit
+name: conduit
 description: |
   Implements I/O conduits for the ore framework. Creates packages under
   x/conduit/<name>/ with independent go.mod. Translates external events into
