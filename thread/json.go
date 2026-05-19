@@ -123,6 +123,18 @@ func (s *JSONStore) Get(id string) (*Thread, bool) {
 	return thread, true
 }
 
+// GetBy retrieves a thread by a metadata key-value pair.
+func (s *JSONStore) GetBy(key, value string) (*Thread, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, thread := range s.cache {
+		if thread.Metadata[key] == value {
+			return thread, true
+		}
+	}
+	return nil, false
+}
+
 // Save writes the thread to disk atomically (via a temporary file
 // and os.Rename) and updates the in-memory cache. The thread's
 // UpdatedAt timestamp is also advanced.

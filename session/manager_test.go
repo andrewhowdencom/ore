@@ -1046,6 +1046,7 @@ type errStore struct{}
 
 func (e *errStore) Create() (*thread.Thread, error)                { return thread.NewMemoryStore().Create() }
 func (e *errStore) Get(id string) (*thread.Thread, bool)            { return thread.NewMemoryStore().Get(id) }
+func (e *errStore) GetBy(key, value string) (*thread.Thread, bool) { return thread.NewMemoryStore().GetBy(key, value) }
 func (e *errStore) Save(*thread.Thread) error                        { return fmt.Errorf("save failed") }
 func (e *errStore) Delete(string) bool                              { return false }
 func (e *errStore) List() ([]*thread.Thread, error)                  { return nil, nil }
