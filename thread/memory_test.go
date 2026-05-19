@@ -1,6 +1,7 @@
 package thread
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -153,4 +154,96 @@ func TestThread_Lock_HighContention(t *testing.T) {
 	wg.Wait()
 
 	assert.Equal(t, 1, maxConcurrent, "at most one goroutine should hold the lock at any time")
+}
+
+func TestMemoryStore_GetBy(t *testing.T) {
+	store := NewMemoryStore()
+	thread1, err := store.Create()
+	require.NoError(t, err)
+	_, err = store.Create()
+	require.NoError(t, err)
+
+	thread1.SetMetadata("slack.thread_ts", "1234567890.123456")
+	err = store.Save(thread1)
+	require.NoError(t, err)
+
+	got, ok := store.GetBy("slack.thread_ts", "1234567890.123456")
+	require.True(t, ok)
+	assert.Equal(t, thread1.ID, got.ID)
+
+	_, ok = store.GetBy("slack.thread_ts", "999")
+	assert.False(t, ok)
+}
+
+func TestMemoryStore_GetBy_NotFound(t *testing.T) {
+	store := NewMemoryStore()
+	_, err := store.Create()
+	require.NoError(t, err)
+
+	_, ok := store.GetBy("channel_id", "999")
+	assert.False(t, ok)
+}
+
+func TestMemoryStore_GetBy_Duplicate(t *testing.T) {
+	store := NewMemoryStore()
+	thread1, err := store.Create()
+	require.NoError(t, err)
+	thread2, err := store.Create()
+	require.NoError(t, err)
+
+	thread1.SetMetadata("channel_id", "same")
+	thread2.SetMetadata("channel_id", "same")
+	require.NoError(t, store.Save(thread1))
+	require.NoError(t, store.Save(thread2))
+
+	got, ok := store.GetBy("channel_id", "same")
+	require.True(t, ok)
+	assert.True(t, got.ID == thread1.ID || got.ID == thread2.ID)
+}
+
+func TestMemoryStore_GetBy_AfterDelete(t *testing.T) {
+	store := NewMemoryStore()
+	thread, err := store.Create()
+	require.NoError(t, err)
+
+	thread.SetMetadata("channel_id", "123")
+	require.NoError(t, store.Save(thread))
+
+	ok := store.Delete(thread.ID)
+	assert.True(t, ok)
+
+	_, ok = store.GetBy("channel_id", "123")
+	assert.False(t, ok)
+}
+
+func TestMemoryStore_GetBy_EmptyMetadata(t *testing.T) {
+	store := NewMemoryStore()
+	_, err := store.Create()
+	require.NoError(t, err)
+
+	_, ok := store.GetBy("any_key", "any_value")
+	assert.False(t, ok)
+}
+
+func TestMemoryStore_GetBy_ConcurrentMutation(t *testing.T) {
+	store := NewMemoryStore()
+	thread, err := store.Create()
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(2)
+		go func(i int) {
+			defer wg.Done()
+			if thread.Lock() {
+				thread.SetMetadata(fmt.Sprintf("key-%d", i), fmt.Sprintf("value-%d", i))
+				thread.Unlock()
+			}
+		}(i)
+		go func(i int) {
+			defer wg.Done()
+			store.GetBy(fmt.Sprintf("key-%d", i), fmt.Sprintf("value-%d", i))
+		}(i)
+	}
+	wg.Wait()
 }

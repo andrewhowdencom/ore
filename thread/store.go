@@ -17,6 +17,9 @@ type Store interface {
 	// Get retrieves a Thread by ID. The second return value is false
 	// if the thread does not exist.
 	Get(id string) (*Thread, bool)
+	// GetBy retrieves a Thread by a metadata key-value pair.
+	// The second return value is false if no thread matches.
+	GetBy(key, value string) (*Thread, bool)
 	// Save persists the given Thread, updating its UpdatedAt timestamp.
 	Save(thread *Thread) error
 	// Delete removes a Thread by ID and returns true if it existed.
@@ -37,8 +40,12 @@ type Thread struct {
 	CreatedAt time.Time
 	// UpdatedAt is advanced on every successful Save.
 	UpdatedAt time.Time
+	// Metadata holds arbitrary key-value pairs for conduit-specific
+	// thread mapping (e.g., external system identifiers).
+	Metadata map[string]string
 	mu        sync.Mutex
 	busy      bool
+	metaMu    sync.RWMutex
 }
 
 // Lock attempts to acquire the thread lock in a non-blocking manner.
@@ -61,13 +68,29 @@ func (c *Thread) Unlock() {
 	c.busy = false
 }
 
+// GetMetadata retrieves a metadata value by key.
+func (c *Thread) GetMetadata(key string) (string, bool) {
+	c.metaMu.RLock()
+	defer c.metaMu.RUnlock()
+	v, ok := c.Metadata[key]
+	return v, ok
+}
+
+// SetMetadata sets a metadata key-value pair.
+func (c *Thread) SetMetadata(key, value string) {
+	c.metaMu.Lock()
+	defer c.metaMu.Unlock()
+	c.Metadata[key] = value
+}
+
 // MarshalJSON serializes the thread to JSON.
 func (c *Thread) MarshalJSON() ([]byte, error) {
 	type jsonThread struct {
-		ID        string          `json:"id"`
-		CreatedAt time.Time       `json:"created_at"`
-		UpdatedAt time.Time       `json:"updated_at"`
-		Turns     json.RawMessage `json:"turns"`
+		ID        string            `json:"id"`
+		CreatedAt time.Time         `json:"created_at"`
+		UpdatedAt time.Time         `json:"updated_at"`
+		Metadata  map[string]string `json:"metadata,omitempty"`
+		Turns     json.RawMessage   `json:"turns"`
 	}
 
 	turnsJSON, err := marshalTurns(c.State.Turns())
@@ -79,6 +102,7 @@ func (c *Thread) MarshalJSON() ([]byte, error) {
 		ID:        c.ID,
 		CreatedAt: c.CreatedAt,
 		UpdatedAt: c.UpdatedAt,
+		Metadata:  c.Metadata,
 		Turns:     turnsJSON,
 	}
 
@@ -88,10 +112,11 @@ func (c *Thread) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON deserializes a thread from JSON.
 func (c *Thread) UnmarshalJSON(data []byte) error {
 	type jsonThread struct {
-		ID        string          `json:"id"`
-		CreatedAt time.Time       `json:"created_at"`
-		UpdatedAt time.Time       `json:"updated_at"`
-		Turns     json.RawMessage `json:"turns"`
+		ID        string            `json:"id"`
+		CreatedAt time.Time         `json:"created_at"`
+		UpdatedAt time.Time         `json:"updated_at"`
+		Metadata  map[string]string `json:"metadata,omitempty"`
+		Turns     json.RawMessage   `json:"turns"`
 	}
 
 	var jc jsonThread
@@ -107,6 +132,11 @@ func (c *Thread) UnmarshalJSON(data []byte) error {
 	c.ID = jc.ID
 	c.CreatedAt = jc.CreatedAt
 	c.UpdatedAt = jc.UpdatedAt
+	if jc.Metadata != nil {
+		c.Metadata = jc.Metadata
+	} else {
+		c.Metadata = make(map[string]string)
+	}
 	c.State = &state.Buffer{}
 	for _, turn := range turns {
 		c.State.Append(turn.Role, turn.Artifacts...)

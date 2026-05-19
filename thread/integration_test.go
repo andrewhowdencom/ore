@@ -22,6 +22,9 @@ func TestJSONStore_CrossConduitContinuity(t *testing.T) {
 	require.NoError(t, err)
 	createdAt := thread.CreatedAt
 
+	// Set metadata for conduit thread mapping.
+	thread.SetMetadata("slack.thread_ts", "1234567890.123456")
+
 	// Step 2: Append user and assistant turns.
 	thread.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
 	thread.State.Append(state.RoleAssistant, artifact.Text{Content: "hi there"})
@@ -53,9 +56,11 @@ func TestJSONStore_CrossConduitContinuity(t *testing.T) {
 	assert.Equal(t, "text", turns[1].Artifacts[0].Kind())
 	assert.Equal(t, &artifact.Text{Content: "hi there"}, turns[1].Artifacts[0])
 
-	// Step 6: Verify timestamps.
+	// Step 6: Verify timestamps and metadata.
 	assert.True(t, createdAt.Equal(got.CreatedAt), "CreatedAt should be preserved")
 	assert.True(t, got.UpdatedAt.After(createdAt), "UpdatedAt should reflect the save")
+	v, _ := got.GetMetadata("slack.thread_ts")
+	assert.Equal(t, "1234567890.123456", v)
 }
 
 func TestThread_MarshalJSON(t *testing.T) {
@@ -64,6 +69,7 @@ func TestThread_MarshalJSON(t *testing.T) {
 		State:     &state.Buffer{},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
+		Metadata:  map[string]string{"channel_id": "123", "user_id": "abc"},
 	}
 	thread.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
 	thread.State.Append(state.RoleAssistant, artifact.Text{Content: "hi there"})
@@ -78,6 +84,7 @@ func TestThread_MarshalJSON(t *testing.T) {
 	assert.Equal(t, thread.ID, got.ID)
 	assert.True(t, thread.CreatedAt.Equal(got.CreatedAt))
 	assert.True(t, thread.UpdatedAt.Equal(got.UpdatedAt))
+	assert.Equal(t, thread.Metadata, got.Metadata)
 	turns := got.State.Turns()
 	require.Len(t, turns, 2)
 	assert.Equal(t, state.RoleUser, turns[0].Role)
