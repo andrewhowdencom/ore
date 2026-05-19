@@ -54,11 +54,20 @@ func (s *MemoryStore) Get(id string) (*Thread, bool) {
 }
 
 // GetBy retrieves a thread by a metadata key-value pair.
+// It performs a linear scan over all threads and returns the first match.
 func (s *MemoryStore) GetBy(key, value string) (*Thread, bool) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
+	candidates := make([]*Thread, 0, len(s.threads))
 	for _, thread := range s.threads {
-		if thread.Metadata[key] == value {
+		candidates = append(candidates, thread)
+	}
+	s.mu.RUnlock()
+
+	for _, thread := range candidates {
+		thread.mu.RLock()
+		match := thread.Metadata[key] == value
+		thread.mu.RUnlock()
+		if match {
 			return thread, true
 		}
 	}
