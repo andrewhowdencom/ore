@@ -36,6 +36,7 @@ func (s *MemoryStore) Create() (*Thread, error) {
 		State:     &state.Buffer{},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
+		Metadata:  make(map[string]string),
 	}
 
 	s.mu.Lock()
@@ -50,6 +51,27 @@ func (s *MemoryStore) Get(id string) (*Thread, bool) {
 	defer s.mu.RUnlock()
 	thread, ok := s.threads[id]
 	return thread, ok
+}
+
+// GetBy retrieves a thread by a metadata key-value pair.
+// It performs a linear scan over all threads and returns the first match.
+func (s *MemoryStore) GetBy(key, value string) (*Thread, bool) {
+	s.mu.RLock()
+	candidates := make([]*Thread, 0, len(s.threads))
+	for _, thread := range s.threads {
+		candidates = append(candidates, thread)
+	}
+	s.mu.RUnlock()
+
+	for _, thread := range candidates {
+		thread.metaMu.RLock()
+		match := thread.Metadata[key] == value
+		thread.metaMu.RUnlock()
+		if match {
+			return thread, true
+		}
+	}
+	return nil, false
 }
 
 // Save updates the thread's UpdatedAt and stores it.

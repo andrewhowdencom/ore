@@ -80,6 +80,7 @@ func (s *JSONStore) Create() (*Thread, error) {
 		State:     &state.Buffer{},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
+		Metadata:  make(map[string]string),
 	}
 
 	if err := s.Save(thread); err != nil {
@@ -120,6 +121,27 @@ func (s *JSONStore) Get(id string) (*Thread, bool) {
 	}
 	s.cache[id] = thread
 	return thread, true
+}
+
+// GetBy retrieves a thread by a metadata key-value pair.
+// It performs a linear scan over all cached threads and returns the first match.
+func (s *JSONStore) GetBy(key, value string) (*Thread, bool) {
+	s.mu.RLock()
+	candidates := make([]*Thread, 0, len(s.cache))
+	for _, thread := range s.cache {
+		candidates = append(candidates, thread)
+	}
+	s.mu.RUnlock()
+
+	for _, thread := range candidates {
+		thread.metaMu.RLock()
+		match := thread.Metadata[key] == value
+		thread.metaMu.RUnlock()
+		if match {
+			return thread, true
+		}
+	}
+	return nil, false
 }
 
 // Save writes the thread to disk atomically (via a temporary file

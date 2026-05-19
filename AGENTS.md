@@ -10,6 +10,8 @@ ore is a **framework for building agentic applications**, not a specific agent i
 
 Agents have a tendency to preserve backwards compatibility when modifying code. **Do not do this.** At this stage of the project, prefer **aggressive refactoring** — rename packages, move files, delete indirection, and break internal APIs when doing so produces cleaner module boundaries. Backwards compatibility is a liability until the architecture has stabilised.
 
+This application has never been run in production and has no persisted state. There are no users to break, no migrations to write, and no legacy data to preserve. This is exactly the time to be ruthless about structural cleanliness.
+
 ## Package Structure
 
 Follow a **cycle-free dependency graph**:
