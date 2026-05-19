@@ -254,3 +254,41 @@ func TestJSONStore_ConcurrentCreateSaveGet(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, list, 50)
 }
+
+func TestJSONStore_GetBy(t *testing.T) {
+	dir := t.TempDir()
+	store1, err := NewJSONStore(dir)
+	require.NoError(t, err)
+
+	thread1, err := store1.Create()
+	require.NoError(t, err)
+	_, err = store1.Create()
+	require.NoError(t, err)
+
+	thread1.Metadata["slack.thread_ts"] = "1234567890.123456"
+	err = store1.Save(thread1)
+	require.NoError(t, err)
+
+	// Verify via fresh store (restart simulation).
+	store2, err := NewJSONStore(dir)
+	require.NoError(t, err)
+
+	got, ok := store2.GetBy("slack.thread_ts", "1234567890.123456")
+	require.True(t, ok)
+	assert.Equal(t, thread1.ID, got.ID)
+
+	_, ok = store2.GetBy("slack.thread_ts", "999")
+	assert.False(t, ok)
+}
+
+func TestJSONStore_GetBy_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewJSONStore(dir)
+	require.NoError(t, err)
+
+	_, err = store.Create()
+	require.NoError(t, err)
+
+	_, ok := store.GetBy("channel_id", "999")
+	assert.False(t, ok)
+}
