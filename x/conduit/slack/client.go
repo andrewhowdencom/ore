@@ -11,3 +11,10 @@ type slackPoster interface {
 type slackAuthTester interface {
 	AuthTest() (*slack.AuthTestResponse, error)
 }
+
+// slackClient is the combined interface used by Start() for both
+// authentication testing and message delivery.
+type slackClient interface {
+	slackPoster
+	slackAuthTester
+}

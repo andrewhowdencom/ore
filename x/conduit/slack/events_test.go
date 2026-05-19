@@ -114,6 +114,10 @@ func TestHandleMessageEvent_DM(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "D123", val)
 
+	channelID, ok := thr.GetMetadata("slack_channel_id")
+	require.True(t, ok)
+	assert.Equal(t, "D123", channelID)
+
 	// Verify the message was added to thread state.
 	turns := thr.State.Turns()
 	require.GreaterOrEqual(t, len(turns), 1)
@@ -150,6 +154,10 @@ func TestHandleMessageEvent_ChannelMention(t *testing.T) {
 	val, ok := threads[0].GetMetadata("slack_thread_id")
 	require.True(t, ok)
 	assert.Equal(t, "1234567890.123456", val)
+
+	channelID, ok := threads[0].GetMetadata("slack_channel_id")
+	require.True(t, ok)
+	assert.Equal(t, "C123", channelID)
 }
 
 func TestHandleMessageEvent_SessionBusy(t *testing.T) {
@@ -163,7 +171,7 @@ func TestHandleMessageEvent_SessionBusy(t *testing.T) {
 	sc := c.(*SlackConduit)
 
 	// Create the thread first so both messages resolve to the same stream.
-	_, _, err = sc.resolveThread("D123")
+	_, _, err = sc.resolveThread("D123", "D123")
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
