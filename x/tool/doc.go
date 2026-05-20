@@ -18,7 +18,7 @@
 // deliberately an extension, not core behavior — it validates that the
 // extension model works.
 //
-// Tool calling composes three mechanisms:
+// Tool calling composes two mechanisms:
 //
 //   1. Provider adapter (e.g., provider/openai/) — accepts tool configuration
 //      per-invocation via openai.WithTools(), serializes them in requests,
@@ -27,8 +27,6 @@
 //   2. Artifact Handler (this package) — a Registry maps names to Go functions
 //      and remote sources, and a Handler implements loop.Handler to execute
 //      them.
-//   3. Optional BeforeTurn hook (loop.BeforeTurn) — injects system prompts or
-//      tool usage instructions before the provider call.
 //
 // The application wires them together:
 //

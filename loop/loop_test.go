@@ -51,18 +51,6 @@ func (m *mockHandler) Handle(ctx context.Context, art artifact.Artifact, s state
 // Compile-time interface check.
 var _ Handler = (*mockHandler)(nil)
 
-// mockBeforeTurn implements BeforeTurn for testing.
-type mockBeforeTurn struct {
-	fn func(ctx context.Context, s state.State) (state.State, error)
-}
-
-func (m *mockBeforeTurn) BeforeTurn(ctx context.Context, s state.State) (state.State, error) {
-	return m.fn(ctx, s)
-}
-
-// Compile-time interface check.
-var _ BeforeTurn = (*mockBeforeTurn)(nil)
-
 // collectEvents reads all available events from a channel until the timeout
 // expires. It returns the collected events without closing the channel.
 func collectEvents(ch <-chan OutputEvent, timeout time.Duration) []OutputEvent {
@@ -230,138 +218,6 @@ func TestStep_Turn_HandlerError(t *testing.T) {
 
 	_, err := s.Turn(context.Background(), mem, prov)
 	require.ErrorIs(t, err, wantErr)
-}
-
-func TestStep_Turn_BeforeTurn_TransformsState(t *testing.T) {
-	before := &mockBeforeTurn{
-		fn: func(ctx context.Context, s state.State) (state.State, error) {
-			s.Append(state.RoleSystem, artifact.Text{Content: "system-prompt"})
-			return s, nil
-		},
-	}
-	s := New(WithBeforeTurn(before))
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
-
-	mock := &mockProvider{
-		artifacts: []artifact.Artifact{
-			artifact.Text{Content: "world"},
-		},
-	}
-
-	_, err := s.Turn(context.Background(), mem, mock)
-	require.NoError(t, err)
-
-	turns := mem.Turns()
-	require.Len(t, turns, 3)
-	assert.Equal(t, state.RoleUser, turns[0].Role)
-	assert.Equal(t, state.RoleSystem, turns[1].Role)
-	assert.Equal(t, state.RoleAssistant, turns[2].Role)
-}
-
-func TestStep_Turn_BeforeTurn_ErrorAborts(t *testing.T) {
-	wantErr := errors.New("before turn failed")
-	before := &mockBeforeTurn{
-		fn: func(ctx context.Context, s state.State) (state.State, error) {
-			return s, wantErr
-		},
-	}
-	s := New(WithBeforeTurn(before))
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
-
-	mock := &mockProvider{
-		artifacts: []artifact.Artifact{
-			artifact.Text{Content: "world"},
-		},
-	}
-
-	_, err := s.Turn(context.Background(), mem, mock)
-	require.ErrorIs(t, err, wantErr)
-
-	assert.Len(t, mem.Turns(), 1)
-}
-
-func TestStep_Turn_BeforeTurn_MultipleInOrder(t *testing.T) {
-	var order []int
-	before1 := &mockBeforeTurn{
-		fn: func(ctx context.Context, s state.State) (state.State, error) {
-			order = append(order, 1)
-			return s, nil
-		},
-	}
-	before2 := &mockBeforeTurn{
-		fn: func(ctx context.Context, s state.State) (state.State, error) {
-			order = append(order, 2)
-			return s, nil
-		},
-	}
-	s := New(WithBeforeTurn(before1, before2))
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
-
-	mock := &mockProvider{
-		artifacts: []artifact.Artifact{
-			artifact.Text{Content: "world"},
-		},
-	}
-
-	_, err := s.Turn(context.Background(), mem, mock)
-	require.NoError(t, err)
-	assert.Equal(t, []int{1, 2}, order)
-}
-
-func TestStep_Turn_BeforeTurnAndHandler_EndToEnd(t *testing.T) {
-	before := &mockBeforeTurn{
-		fn: func(ctx context.Context, s state.State) (state.State, error) {
-			s.Append(state.RoleSystem, artifact.Text{Content: "system prompt"})
-			return s, nil
-		},
-	}
-
-	h := &mockHandler{
-		fn: func(ctx context.Context, art artifact.Artifact, s state.State) error {
-			if tc, ok := art.(artifact.ToolCall); ok {
-				s.Append(state.RoleTool, artifact.ToolResult{
-					ToolCallID: tc.ID,
-					Content:    "result",
-				})
-			}
-			return nil
-		},
-	}
-
-	s := New(WithBeforeTurn(before), WithHandlers(h))
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
-
-	prov := &mockProvider{
-		artifacts: []artifact.Artifact{
-			artifact.Text{Content: "calling tool"},
-			artifact.ToolCall{ID: "call_1", Name: "test", Arguments: "{}"},
-		},
-	}
-
-	result, err := s.Turn(context.Background(), mem, prov)
-	require.NoError(t, err)
-
-	turns := result.Turns()
-	require.Len(t, turns, 4)
-	assert.Equal(t, state.RoleUser, turns[0].Role)
-	assert.Equal(t, state.RoleSystem, turns[1].Role)
-	assert.Equal(t, state.RoleAssistant, turns[2].Role)
-	assert.Equal(t, state.RoleTool, turns[3].Role)
-
-	require.Len(t, h.called, 2)
-	assert.Equal(t, "text", h.called[0].Kind())
-	assert.Equal(t, "tool_call", h.called[1].Kind())
-
-	last := turns[3]
-	require.Len(t, last.Artifacts, 1)
-	tr, ok := last.Artifacts[0].(artifact.ToolResult)
-	require.True(t, ok)
-	assert.Equal(t, "call_1", tr.ToolCallID)
-	assert.Equal(t, "result", tr.Content)
 }
 
 func TestStep_Turn_UsageArtifact(t *testing.T) {
@@ -784,41 +640,6 @@ func TestStep_Submit_EmitsTurnCompleteEvent(t *testing.T) {
 	text, ok := turnComplete.Turn.Artifacts[0].(artifact.Text)
 	require.True(t, ok)
 	assert.Equal(t, "hello", text.Content)
-}
-
-func TestStep_Submit_BeforeTurn_TransformsState(t *testing.T) {
-	before := &mockBeforeTurn{
-		fn: func(ctx context.Context, s state.State) (state.State, error) {
-			s.Append(state.RoleSystem, artifact.Text{Content: "system-prompt"})
-			return s, nil
-		},
-	}
-	s := New(WithBeforeTurn(before))
-	mem := &state.Buffer{}
-
-	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
-	require.NoError(t, err)
-
-	turns := mem.Turns()
-	require.Len(t, turns, 2)
-	assert.Equal(t, state.RoleSystem, turns[0].Role)
-	assert.Equal(t, state.RoleUser, turns[1].Role)
-}
-
-func TestStep_Submit_BeforeTurn_ErrorAborts(t *testing.T) {
-	wantErr := errors.New("before turn failed")
-	before := &mockBeforeTurn{
-		fn: func(ctx context.Context, s state.State) (state.State, error) {
-			return s, wantErr
-		},
-	}
-	s := New(WithBeforeTurn(before))
-	mem := &state.Buffer{}
-
-	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
-	require.ErrorIs(t, err, wantErr)
-
-	assert.Len(t, mem.Turns(), 0)
 }
 
 func TestStep_Submit_Handler(t *testing.T) {
