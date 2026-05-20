@@ -61,19 +61,11 @@ func main() {
 			if err != nil {
 				return nil, err
 			}
-			tr, err := {{.ImportAlias}}.New({{.ImportAlias}}Opts...)
-			if err != nil {
-				return nil, err
-			}
-			return tr.AsTransform(), nil
+			return {{.ImportAlias}}.New({{.ImportAlias}}Opts...)
 		}, {{.OptionsLiteral}}),
 {{- else }}
 		app.WithTransform("{{.Name}}", func(opts map[string]any) (loop.Transform, error) {
-			tr, err := {{.ImportAlias}}.New()
-			if err != nil {
-				return nil, err
-			}
-			return tr.AsTransform(), nil
+			return {{.ImportAlias}}.New()
 		}, nil),
 {{- end }}
 {{- end }}

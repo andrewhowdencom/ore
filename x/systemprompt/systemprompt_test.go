@@ -100,3 +100,9 @@ func TestOptionsFromMap_Empty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, opts)
 }
+
+func TestOptionsFromMap_InvalidContentType(t *testing.T) {
+	_, err := OptionsFromMap(map[string]any{"content": 123})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "content")
+}
