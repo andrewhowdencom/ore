@@ -10,9 +10,15 @@ import (
 	"github.com/andrewhowdencom/ore/state"
 )
 
-// BeforeTurn transforms state before the provider call.
-type BeforeTurn interface {
-	BeforeTurn(ctx context.Context, s state.State) (state.State, error)
+// Transform modifies the state view presented to the provider during
+// inference. Implementations must not mutate the underlying persistent
+// buffer; they may return a derived state.State wrapper instead.
+//
+// Multiple transforms compose in registration order. Each transform
+// receives the state returned by the previous one. An error from any
+// transform aborts the turn before the provider is invoked.
+type Transform interface {
+	Transform(ctx context.Context, st state.State) (state.State, error)
 }
 
 // EventContext carries metadata for an event, analogous to context.Context.
@@ -93,7 +99,7 @@ type outputEventEnvelope struct {
 type Step struct {
 	events        chan outputEventEnvelope
 	fanOut        *FanOut
-	beforeTurns   []BeforeTurn
+	transforms    []Transform
 	handlers      []Handler
 	invokeOpts    []provider.InvokeOption
 	eventContext  EventContext
@@ -158,13 +164,13 @@ func (s *Step) Close() error {
 // Option configures a Step.
 type Option func(*Step)
 
-// WithBeforeTurn configures before-turn hooks that run before any turn,
-// including both inference turns (Turn) and submitted turns (Submit).
-// Hooks run in registration order; each receives the state returned by
-// the previous hook. An error from any hook aborts the turn.
-func WithBeforeTurn(beforeTurns ...BeforeTurn) Option {
+// WithTransforms configures inference assembly transforms that run
+// before each provider call in Turn(). Transforms receive the state
+// after any user/system/tool submissions and before the provider
+// serializes it. They must not mutate the underlying buffer.
+func WithTransforms(transforms ...Transform) Option {
 	return func(s *Step) {
-		s.beforeTurns = beforeTurns
+		s.transforms = transforms
 	}
 }
 
@@ -195,10 +201,10 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 	defer s.clearEventContext()
 	var err error
 
-	for _, bt := range s.beforeTurns {
-		st, err = bt.BeforeTurn(ctx, st)
+	for _, tr := range s.transforms {
+		st, err = tr.Transform(ctx, st)
 		if err != nil {
-			return st, fmt.Errorf("before turn hook failed: %w", err)
+			return st, fmt.Errorf("transform failed: %w", err)
 		}
 	}
 
@@ -306,15 +312,6 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 // mechanism for user, system, or tool turns to enter the same artifact stream
 // as assistant responses from Turn().
 func (s *Step) Submit(ctx context.Context, st state.State, role state.Role, artifacts ...artifact.Artifact) (state.State, error) {
-	var err error
-
-	for _, bt := range s.beforeTurns {
-		st, err = bt.BeforeTurn(ctx, st)
-		if err != nil {
-			return st, fmt.Errorf("before turn hook failed: %w", err)
-		}
-	}
-
 	return s.finalizeTurn(ctx, st, role, artifacts)
 }
 

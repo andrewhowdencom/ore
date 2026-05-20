@@ -39,11 +39,22 @@ type HandlerTemplateData struct {
 	OptionsLiteral string
 }
 
+// TransformTemplateData holds per-transform information for main.go.tmpl.
+type TransformTemplateData struct {
+	Index          int
+	Name           string
+	ImportAlias    string
+	ModulePath     string
+	HasOptions     bool
+	OptionsLiteral string
+}
+
 // MainGoTemplateData holds the top-level data for main.go.tmpl.
 type MainGoTemplateData struct {
-	Name     string
-	Conduits []ConduitTemplateData
-	Handlers []HandlerTemplateData
+	Name       string
+	Conduits   []ConduitTemplateData
+	Handlers   []HandlerTemplateData
+	Transforms []TransformTemplateData
 }
 
 // replaceDirective holds a single replace entry for go.mod.tmpl.
@@ -131,6 +142,17 @@ func GenerateGoMod(blueprint *Blueprint, oreModulePath string) ([]byte, error) {
 			localPath := filepath.Join(oreModulePath, filepath.FromSlash(rel))
 			replaces = append(replaces, replaceDirective{
 				ModulePath: h.Module,
+				LocalPath:  localPath,
+			})
+		}
+	}
+	for _, tr := range blueprint.Transforms {
+		if strings.HasPrefix(tr.Module, orePrefix+"/") {
+			rel := strings.TrimPrefix(tr.Module, orePrefix)
+			rel = strings.TrimPrefix(rel, "/")
+			localPath := filepath.Join(oreModulePath, filepath.FromSlash(rel))
+			replaces = append(replaces, replaceDirective{
+				ModulePath: tr.Module,
 				LocalPath:  localPath,
 			})
 		}
@@ -231,6 +253,26 @@ func buildTemplateData(blueprint *Blueprint) (*MainGoTemplateData, error) {
 			htd.OptionsLiteral = formatGoMapStringAny(h.Options)
 		}
 		data.Handlers = append(data.Handlers, htd)
+		usedAliases[alias] = struct{}{}
+	}
+
+	for i, tr := range blueprint.Transforms {
+		alias := deriveImportAlias(tr.Module, usedAliases)
+		name := tr.Name
+		if name == "" {
+			name = alias
+		}
+		ttd := TransformTemplateData{
+			Index:       i,
+			Name:        name,
+			ImportAlias: alias,
+			ModulePath:  tr.Module,
+		}
+		if len(tr.Options) > 0 {
+			ttd.HasOptions = true
+			ttd.OptionsLiteral = formatGoMapStringAny(tr.Options)
+		}
+		data.Transforms = append(data.Transforms, ttd)
 		usedAliases[alias] = struct{}{}
 	}
 

@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/andrewhowdencom/ore/app"
-{{- if .Handlers }}
+{{- if or .Handlers .Transforms }}
 	"github.com/andrewhowdencom/ore/loop"
 {{- end }}
 	"github.com/andrewhowdencom/ore/session"
@@ -14,6 +14,9 @@ import (
 	{{.ImportAlias}} "{{.ModulePath}}"
 {{- end }}
 {{- range .Handlers }}
+	{{.ImportAlias}} "{{.ModulePath}}"
+{{- end }}
+{{- range .Transforms }}
 	{{.ImportAlias}} "{{.ModulePath}}"
 {{- end }}
 )
@@ -47,6 +50,21 @@ func main() {
 		}, {{.OptionsLiteral}}),
 {{- else }}
 		app.WithHandler("{{.Name}}", func(opts map[string]any) (loop.Handler, error) {
+			return {{.ImportAlias}}.New()
+		}, nil),
+{{- end }}
+{{- end }}
+{{- range .Transforms }}
+{{- if .HasOptions }}
+		app.WithTransform("{{.Name}}", func(opts map[string]any) (loop.Transform, error) {
+			{{.ImportAlias}}Opts, err := {{.ImportAlias}}.OptionsFromMap(opts)
+			if err != nil {
+				return nil, err
+			}
+			return {{.ImportAlias}}.New({{.ImportAlias}}Opts...)
+		}, {{.OptionsLiteral}}),
+{{- else }}
+		app.WithTransform("{{.Name}}", func(opts map[string]any) (loop.Transform, error) {
 			return {{.ImportAlias}}.New()
 		}, nil),
 {{- end }}
