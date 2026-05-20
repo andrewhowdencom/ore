@@ -120,6 +120,101 @@ func TestWriteFile_DirectoryExists(t *testing.T) {
 	assert.Contains(t, err.Error(), "already exists")
 }
 
+func TestEditFile_SingleLine(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "edit.txt")
+	require.NoError(t, os.WriteFile(p, []byte("hello world\n"), 0o644))
+
+	result, err := EditFile(context.Background(), map[string]any{
+		"path":       p,
+		"old_string": "hello",
+		"new_string": "goodbye",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, fmt.Sprintf("edited %q", p), result)
+
+	data, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "goodbye world\n", string(data))
+}
+
+func TestEditFile_MultiLine(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "edit.txt")
+	require.NoError(t, os.WriteFile(p, []byte("line one\nline two\nline three\n"), 0o644))
+
+	result, err := EditFile(context.Background(), map[string]any{
+		"path":       p,
+		"old_string": "line two\nline three",
+		"new_string": "replaced two\nreplaced three",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, fmt.Sprintf("edited %q", p), result)
+
+	data, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "line one\nreplaced two\nreplaced three\n", string(data))
+}
+
+func TestEditFile_EmptyOldString(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "edit.txt")
+	require.NoError(t, os.WriteFile(p, []byte("content\n"), 0o644))
+
+	_, err := EditFile(context.Background(), map[string]any{
+		"path":       p,
+		"old_string": "",
+		"new_string": "x",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "old_string cannot be empty")
+}
+
+func TestEditFile_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "edit.txt")
+	require.NoError(t, os.WriteFile(p, []byte("content\n"), 0o644))
+
+	_, err := EditFile(context.Background(), map[string]any{
+		"path":       p,
+		"old_string": "missing",
+		"new_string": "x",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "old_string not found")
+}
+
+func TestEditFile_MissingFile(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "missing.txt")
+
+	_, err := EditFile(context.Background(), map[string]any{
+		"path":       p,
+		"old_string": "x",
+		"new_string": "y",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read file")
+}
+
+func TestEditFile_FirstOccurrenceOnly(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "edit.txt")
+	require.NoError(t, os.WriteFile(p, []byte("ab ab ab\n"), 0o644))
+
+	result, err := EditFile(context.Background(), map[string]any{
+		"path":       p,
+		"old_string": "ab",
+		"new_string": "XX",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, fmt.Sprintf("edited %q", p), result)
+
+	data, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "XX ab ab\n", string(data))
+}
+
 func TestWriteFile_EmptyContent(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "empty.txt")
