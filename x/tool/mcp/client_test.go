@@ -1,7 +1,9 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	mcptypes "github.com/mark3labs/mcp-go/mcp"
@@ -13,6 +15,16 @@ import (
 
 // Compile-time interface check.
 var _ tool.RemoteSource = (*Client)(nil)
+
+// mockCaller implements the caller interface for unit tests.
+type mockCaller struct {
+	result *mcptypes.CallToolResult
+	err    error
+}
+
+func (m *mockCaller) CallTool(ctx context.Context, request mcptypes.CallToolRequest) (*mcptypes.CallToolResult, error) {
+	return m.result, m.err
+}
 
 func TestOptions_WithName(t *testing.T) {
 	cfg := &config{}
@@ -45,13 +57,29 @@ func TestOptions_WithHeader(t *testing.T) {
 	assert.Equal(t, "value", cfg.headers["X-Custom"])
 }
 
-func TestOptions_BuildSSEOptions(t *testing.T) {
+func TestOptions_WithHeader_Multiple(t *testing.T) {
+	cfg := &config{}
+	WithHeader("X-First", "one")(cfg)
+	WithHeader("X-Second", "two")(cfg)
+	assert.Equal(t, "one", cfg.headers["X-First"])
+	assert.Equal(t, "two", cfg.headers["X-Second"])
+}
+
+func TestBuildSSEOptions_WithBearerToken(t *testing.T) {
+	cfg := &config{
+		bearerToken: "token",
+	}
+	opts := buildSSEOptions(cfg)
+	require.Len(t, opts, 1)
+}
+
+func TestBuildSSEOptions_WithBearerTokenAndHeaders(t *testing.T) {
 	cfg := &config{
 		bearerToken: "token",
 		headers:     map[string]string{"X-Custom": "value"},
 	}
 	opts := buildSSEOptions(cfg)
-	assert.Len(t, opts, 1)
+	require.Len(t, opts, 1)
 }
 
 func TestNewClient_MissingTransport(t *testing.T) {
@@ -81,6 +109,31 @@ func TestToolInputSchemaToMap_Empty(t *testing.T) {
 	assert.NotNil(t, m)
 }
 
+func TestToolInputSchemaToMap_RoundTrip(t *testing.T) {
+	schema := mcptypes.ToolInputSchema{
+		Type:       "object",
+		Properties: map[string]any{"path": map[string]any{"type": "string"}},
+		Required:   []string{"path"},
+	}
+
+	m, err := toolInputSchemaToMap(schema)
+	require.NoError(t, err)
+
+	data, err := json.Marshal(m)
+	require.NoError(t, err)
+
+	var back mcptypes.ToolInputSchema
+	require.NoError(t, json.Unmarshal(data, &back))
+
+	assert.Equal(t, schema.Type, back.Type)
+	assert.Equal(t, schema.Required, back.Required)
+}
+
+func TestClient_Name(t *testing.T) {
+	c := &Client{name: "filesystem"}
+	assert.Equal(t, "filesystem", c.Name())
+}
+
 func TestClient_Tools_DefensiveCopy(t *testing.T) {
 	c := &Client{
 		name:  "filesystem",
@@ -99,75 +152,98 @@ func TestClient_Tools_DefensiveCopy(t *testing.T) {
 	assert.Equal(t, "read_file", c.tools[0].Name)
 }
 
-func TestClient_Name(t *testing.T) {
-	c := &Client{name: "filesystem"}
-	assert.Equal(t, "filesystem", c.Name())
-}
-
-func TestClient_Call_IsError(t *testing.T) {
-	// This test verifies that Call correctly formats IsError responses.
-	// A full end-to-end test with a real or mock MCP server is complex;
-	// this test validates the error extraction path by constructing a
-	// CallToolResult directly.
-
-	result := &mcptypes.CallToolResult{
-		IsError: true,
-		Content: []mcptypes.Content{
-			mcptypes.TextContent{Text: "file not found"},
-		},
-	}
-
-	// Since we can't easily inject a mocked mcpclient.Client, we verify the
-	// extraction logic by testing the helper-like behavior through a
-	// lightweight interface test. The actual error path is exercised by the
-	// integration-level mock server test (TestNewClient_SSE when expanded).
-	_ = result
-}
-
 func TestClient_Call_StructuredContent(t *testing.T) {
-	result := &mcptypes.CallToolResult{
-		StructuredContent: map[string]any{"lines": 42},
-		Content:           []mcptypes.Content{},
-	}
-	_ = result
-}
-
-func TestClient_Call_TextContent(t *testing.T) {
-	result := &mcptypes.CallToolResult{
-		Content: []mcptypes.Content{
-			mcptypes.TextContent{Text: "hello"},
+	c := &Client{
+		name: "test",
+		caller: &mockCaller{
+			result: &mcptypes.CallToolResult{
+				StructuredContent: map[string]any{"lines": 42},
+				Content:           []mcptypes.Content{},
+			},
 		},
 	}
-	_ = result
+
+	result, err := c.Call(context.Background(), "read_file", map[string]any{"path": "/tmp/test"})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"lines": 42}, result)
+}
+
+func TestClient_Call_SingleTextContent(t *testing.T) {
+	c := &Client{
+		name: "test",
+		caller: &mockCaller{
+			result: &mcptypes.CallToolResult{
+				Content: []mcptypes.Content{
+					mcptypes.TextContent{Text: "hello"},
+				},
+			},
+		},
+	}
+
+	result, err := c.Call(context.Background(), "echo", map[string]any{"msg": "hi"})
+	require.NoError(t, err)
+	assert.Equal(t, "hello", result)
 }
 
 func TestClient_Call_MultipleTextContent(t *testing.T) {
-	result := &mcptypes.CallToolResult{
-		Content: []mcptypes.Content{
-			mcptypes.TextContent{Text: "line1"},
-			mcptypes.TextContent{Text: "line2"},
+	c := &Client{
+		name: "test",
+		caller: &mockCaller{
+			result: &mcptypes.CallToolResult{
+				Content: []mcptypes.Content{
+					mcptypes.TextContent{Text: "line1"},
+					mcptypes.TextContent{Text: "line2"},
+				},
+			},
 		},
 	}
-	_ = result
+
+	result, err := c.Call(context.Background(), "multi", nil)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"line1", "line2"}, result)
 }
 
-func TestToolInputSchemaToMap_RawSchema(t *testing.T) {
-	schema := mcptypes.ToolInputSchema{
-		Type:       "object",
-		Properties: map[string]any{"path": map[string]any{"type": "string"}},
-		Required:   []string{"path"},
+func TestClient_Call_Error(t *testing.T) {
+	c := &Client{
+		name: "test",
+		caller: &mockCaller{
+			result: &mcptypes.CallToolResult{
+				IsError: true,
+				Content: []mcptypes.Content{
+					mcptypes.TextContent{Text: "file not found"},
+				},
+			},
+		},
 	}
 
-	m, err := toolInputSchemaToMap(schema)
-	require.NoError(t, err)
+	_, err := c.Call(context.Background(), "read_file", map[string]any{"path": "/missing"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "file not found")
+}
 
-	// Verify round-trip through JSON.
-	data, err := json.Marshal(m)
-	require.NoError(t, err)
+func TestClient_Call_Error_NoContent(t *testing.T) {
+	c := &Client{
+		name: "test",
+		caller: &mockCaller{
+			result: &mcptypes.CallToolResult{
+				IsError: true,
+				Content: []mcptypes.Content{},
+			},
+		},
+	}
 
-	var back mcptypes.ToolInputSchema
-	require.NoError(t, json.Unmarshal(data, &back))
+	_, err := c.Call(context.Background(), "fail", nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "MCP tool call failed")
+}
 
-	assert.Equal(t, schema.Type, back.Type)
-	assert.Equal(t, schema.Required, back.Required)
+func TestClient_Call_CallerError(t *testing.T) {
+	c := &Client{
+		name:   "test",
+		caller: &mockCaller{err: errors.New("network down")},
+	}
+
+	_, err := c.Call(context.Background(), "read_file", nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "network down")
 }
