@@ -12,6 +12,9 @@ import (
 {{- range .Conduits }}
 	{{.ImportAlias}} "{{.ModulePath}}"
 {{- end }}
+{{- range .Handlers }}
+	{{.ImportAlias}} "{{.ModulePath}}"
+{{- end }}
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider/openai"
 	"github.com/andrewhowdencom/ore/session"
@@ -58,8 +61,31 @@ func run() error {
 	}
 	prov := openai.New(apiKey, modelName, opts...)
 
-	stepFactory := func() *loop.Step {
-		return loop.New()
+	stepFactory := func() (*loop.Step, error) {
+{{- range .Handlers }}
+{{- if .HasOptions }}
+		{{.ImportAlias}}OptsMap := {{.OptionsLiteral}}
+		{{.ImportAlias}}Opts, err := {{.ImportAlias}}.OptionsFromMap({{.ImportAlias}}OptsMap)
+		if err != nil {
+			return nil, fmt.Errorf("create handler options: %w", err)
+		}
+		h{{.Index}}, err := {{.ImportAlias}}.New({{.ImportAlias}}Opts...)
+{{- else }}
+		h{{.Index}}, err := {{.ImportAlias}}.New()
+{{- end }}
+		if err != nil {
+			return nil, fmt.Errorf("create handler: %w", err)
+		}
+{{- end }}
+{{- if .Handlers }}
+		return loop.New(
+{{- range .Handlers }}
+			loop.WithHandlers(h{{.Index}}),
+{{- end }}
+		), nil
+{{- else }}
+		return loop.New(), nil
+{{- end }}
 	}
 
 	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())

@@ -50,7 +50,7 @@ func makeKindsSet(kinds []string) map[string]struct{} {
 type Manager struct {
 	store     thread.Store
 	provider  provider.Provider
-	newStep   func() *loop.Step
+	newStep   func() (*loop.Step, error)
 	processor TurnProcessor
 	sessions  map[string]*Stream
 	mu        sync.RWMutex
@@ -60,7 +60,7 @@ type Manager struct {
 }
 
 // NewManager creates a new Manager with the given dependencies.
-func NewManager(store thread.Store, prov provider.Provider, newStep func() *loop.Step, processor TurnProcessor, opts ...ManagerOption) *Manager {
+func NewManager(store thread.Store, prov provider.Provider, newStep func() (*loop.Step, error), processor TurnProcessor, opts ...ManagerOption) *Manager {
 	m := &Manager{
 		store:     store,
 		provider:  prov,
@@ -75,12 +75,17 @@ func NewManager(store thread.Store, prov provider.Provider, newStep func() *loop
 }
 
 // Create creates a new thread and an active stream backed by it.
+// Returns an error if the underlying thread store cannot create a thread
+// or if the step factory fails.
 func (m *Manager) Create() (*Stream, error) {
 	thr, err := m.store.Create()
 	if err != nil {
 		return nil, fmt.Errorf("create thread: %w", err)
 	}
-	step := m.newStep()
+	step, err := m.newStep()
+	if err != nil {
+		return nil, fmt.Errorf("create step: %w", err)
+	}
 	stream := &Stream{
 		id:        thr.ID,
 		thread:    thr,
@@ -101,6 +106,7 @@ func (m *Manager) Create() (*Stream, error) {
 
 // Attach gets or creates an active stream for an existing thread.
 // If the thread does not exist in the store, an error is returned.
+// May also return an error if the step factory fails.
 func (m *Manager) Attach(threadID string) (*Stream, error) {
 	m.mu.RLock()
 	stream, ok := m.sessions[threadID]
@@ -114,7 +120,10 @@ func (m *Manager) Attach(threadID string) (*Stream, error) {
 		return nil, fmt.Errorf("thread %s not found", threadID)
 	}
 
-	step := m.newStep()
+	step, err := m.newStep()
+	if err != nil {
+		return nil, fmt.Errorf("create step: %w", err)
+	}
 	stream = &Stream{
 		id:        threadID,
 		thread:    thr,

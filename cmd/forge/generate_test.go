@@ -153,6 +153,68 @@ func TestGenerateMainGo(t *testing.T) {
 				assert.Contains(t, content, `c2, err := conduit2.New(mgr)`)
 			},
 		},
+		{
+			name: "single handler",
+			blueprint: &Blueprint{
+				Dist:     Dist{Name: "handler-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Handlers: []HandlerConfig{{Module: "github.com/andrewhowdencom/ore/tool"}},
+			},
+			check: func(t *testing.T, content string) {
+				assert.Contains(t, content, `tool "github.com/andrewhowdencom/ore/tool"`)
+				assert.Contains(t, content, `h0, err := tool.New()`)
+				assert.Contains(t, content, `loop.WithHandlers(h0)`)
+				assert.Contains(t, content, `c0, err := httpc.New(mgr)`)
+			},
+		},
+		{
+			name: "handler with options",
+			blueprint: &Blueprint{
+				Dist:     Dist{Name: "handler-opts-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Handlers: []HandlerConfig{
+					{Module: "github.com/andrewhowdencom/ore/tool", Options: map[string]any{"verbose": true}},
+				},
+			},
+			check: func(t *testing.T, content string) {
+				assert.Contains(t, content, `toolOptsMap := map[string]any{"verbose": true}`)
+				assert.Contains(t, content, `toolOpts, err := tool.OptionsFromMap(toolOptsMap)`)
+				assert.Contains(t, content, `h0, err := tool.New(toolOpts...)`)
+				assert.Contains(t, content, `loop.WithHandlers(h0)`)
+			},
+		},
+		{
+			name: "conduit and handler alias collision",
+			blueprint: &Blueprint{
+				Dist: Dist{Name: "collision-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{
+					{Module: "example.com/my/handler"},
+				},
+				Handlers: []HandlerConfig{
+					{Module: "other.com/my/handler"},
+				},
+			},
+			check: func(t *testing.T, content string) {
+				assert.Contains(t, content, `handler "example.com/my/handler"`)
+				assert.Contains(t, content, `handler1 "other.com/my/handler"`)
+				assert.Contains(t, content, `c0, err := handler.New(mgr)`)
+				assert.Contains(t, content, `h0, err := handler1.New()`)
+				assert.Contains(t, content, `loop.WithHandlers(h0)`)
+			},
+		},
+		{
+			name: "http stdlib collision with handler",
+			blueprint: &Blueprint{
+				Dist:     Dist{Name: "http-collision-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Handlers: []HandlerConfig{{Module: "example.com/my/http"}},
+			},
+			check: func(t *testing.T, content string) {
+				assert.Contains(t, content, `httpc "github.com/andrewhowdencom/ore/x/conduit/http"`)
+				assert.Contains(t, content, `httpc1 "example.com/my/http"`)
+				assert.Contains(t, content, `h0, err := httpc1.New()`)
+			},
+		},
 	}
 
 	for _, tt := range tests {

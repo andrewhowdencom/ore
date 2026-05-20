@@ -14,7 +14,7 @@ import (
 func TestStream_Interface(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	mgr := NewManager(store, prov, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	stream, err := mgr.Create()
 	require.NoError(t, err)
@@ -47,7 +47,7 @@ func TestStream_Interface(t *testing.T) {
 func TestStream_Process_ContextPropagation(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	mgr := NewManager(store, prov, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	stream, err := mgr.Create()
 	require.NoError(t, err)
@@ -71,7 +71,7 @@ func TestStream_Process_ContextPropagation(t *testing.T) {
 func TestStream_ContextClearedBetweenProcesses(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	mgr := NewManager(store, prov, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	stream, err := mgr.Create()
 	require.NoError(t, err)
@@ -116,7 +116,7 @@ func TestStream_ContextClearedBetweenProcesses(t *testing.T) {
 func TestStream_InterruptEvent_ContextPropagation(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	mgr := NewManager(store, prov, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	stream, err := mgr.Create()
 	require.NoError(t, err)
@@ -156,7 +156,7 @@ func (e testCustomEvent) Context() loop.EventContext { return e.Ctx }
 func TestStream_Emit_DeliversToSubscribers(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	mgr := NewManager(store, prov, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	stream, err := mgr.Create()
 	require.NoError(t, err)
@@ -182,7 +182,7 @@ func TestStream_Emit_DeliversToSubscribers(t *testing.T) {
 func TestStream_Emit_ClosedReturnsError(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	mgr := NewManager(store, prov, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	stream, err := mgr.Create()
 	require.NoError(t, err)
@@ -198,7 +198,7 @@ func TestStream_Emit_ClosedReturnsError(t *testing.T) {
 func TestStream_Emit_AllowedWhileBusy(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &blockingProvider{}
-	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	mgr := NewManager(store, prov, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	stream, err := mgr.Create()
 	require.NoError(t, err)
