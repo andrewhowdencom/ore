@@ -107,3 +107,9 @@ func TestOptionsFromMap_Empty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, opts)
 }
+
+func TestOptionsFromMap_InvalidRulesType(t *testing.T) {
+	_, err := OptionsFromMap(map[string]any{"rules": "not-a-list"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rules")
+}
