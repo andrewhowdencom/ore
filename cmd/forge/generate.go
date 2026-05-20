@@ -41,6 +41,7 @@ type HandlerTemplateData struct {
 
 // MainGoTemplateData holds the top-level data for main.go.tmpl.
 type MainGoTemplateData struct {
+	Name     string
 	Conduits []ConduitTemplateData
 	Handlers []HandlerTemplateData
 }
@@ -196,7 +197,9 @@ func goValue(v any) string {
 // buildTemplateData converts a Blueprint into the template data structure
 // used by main.go.tmpl.
 func buildTemplateData(blueprint *Blueprint) (*MainGoTemplateData, error) {
-	data := &MainGoTemplateData{}
+	data := &MainGoTemplateData{
+		Name: blueprint.Dist.Name,
+	}
 	usedAliases := make(map[string]struct{})
 
 	for i, c := range blueprint.Conduits {

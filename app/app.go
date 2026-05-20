@@ -33,6 +33,13 @@ func WithConduit(name string, factory ConduitFactory, defaults map[string]any) O
 	}
 }
 
+// WithName sets the application name used in CLI help text.
+func WithName(name string) Option {
+	return func(cfg *appConfig) {
+		cfg.name = name
+	}
+}
+
 // WithHandler registers a handler factory and its compile-time defaults.
 func WithHandler(name string, factory HandlerFactory, defaults map[string]any) Option {
 	return func(cfg *appConfig) {
