@@ -383,3 +383,450 @@ func TestProvenanceFiltering(t *testing.T) {
 		t.Fatal("Start did not return after cancellation")
 	}
 }
+
+
+// TestMultipleTextArtifacts verifies that multiple text artifacts from an
+// assistant turn are joined with newlines before sending.
+func TestMultipleTextArtifacts(t *testing.T) {
+	token := "test-token"
+	prefix := "/bot" + token + "/"
+	var updatesGiven int32
+	sendMsgCh := make(chan sendMessageReq, 1)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case prefix + "getMe":
+			_ = json.NewEncoder(w).Encode(getMeResp{OK: true, Result: user{ID: 789}})
+		case prefix + "getUpdates":
+			if atomic.AddInt32(&updatesGiven, 1) == 1 {
+				_ = json.NewEncoder(w).Encode(getUpdatesResp{
+					OK: true,
+					Result: []update{
+						{
+							UpdateID: 1,
+							Message: &message{
+								MessageID: 1,
+								From:      &user{ID: 123, IsBot: false},
+								Chat:      &chat{ID: 456},
+								Text:      "Hello bot",
+							},
+						},
+					},
+				})
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+			_ = json.NewEncoder(w).Encode(getUpdatesResp{OK: true})
+		case prefix + "sendMessage":
+			var req sendMessageReq
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			select {
+			case sendMsgCh <- req:
+			default:
+			}
+			_ = json.NewEncoder(w).Encode(sendMessageResp{OK: true})
+		}
+	}))
+	defer srv.Close()
+
+	m := session.NewManager(
+		thread.NewMemoryStore(),
+		&mockProvider{},
+		func() *loop.Step { return loop.New() },
+		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+			return step.Submit(ctx, st, state.RoleAssistant,
+				artifact.Text{Content: "Hello"},
+				artifact.Text{Content: "World"},
+			)
+		},
+	)
+
+	c, err := New(m, WithBotToken(token), withBaseURL(srv.URL), WithGetUpdatesTimeout(1))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- c.Start(ctx)
+	}()
+
+	select {
+	case req := <-sendMsgCh:
+		assert.Equal(t, int64(456), req.ChatID)
+		assert.Equal(t, "Hello\nWorld", req.Text)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for sendMessage")
+	}
+
+	cancel()
+
+	select {
+	case err := <-startErr:
+		assert.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start did not return after cancellation")
+	}
+}
+
+// TestEmptyAssistantTurn verifies that when an assistant turn contains no text
+// artifacts, the conduit does not call sendMessage.
+func TestEmptyAssistantTurn(t *testing.T) {
+	token := "test-token"
+	prefix := "/bot" + token + "/"
+	var updatesGiven int32
+	sendMsgCh := make(chan struct{}, 1)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case prefix + "getMe":
+			_ = json.NewEncoder(w).Encode(getMeResp{OK: true, Result: user{ID: 789}})
+		case prefix + "getUpdates":
+			if atomic.AddInt32(&updatesGiven, 1) == 1 {
+				_ = json.NewEncoder(w).Encode(getUpdatesResp{
+					OK: true,
+					Result: []update{
+						{
+							UpdateID: 1,
+							Message: &message{
+								MessageID: 1,
+								From:      &user{ID: 123, IsBot: false},
+								Chat:      &chat{ID: 456},
+								Text:      "Hello bot",
+							},
+						},
+					},
+				})
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+			_ = json.NewEncoder(w).Encode(getUpdatesResp{OK: true})
+		case prefix + "sendMessage":
+			select {
+			case sendMsgCh <- struct{}{}:
+			default:
+			}
+			_ = json.NewEncoder(w).Encode(sendMessageResp{OK: true})
+		}
+	}))
+	defer srv.Close()
+
+	m := session.NewManager(
+		thread.NewMemoryStore(),
+		&mockProvider{},
+		func() *loop.Step { return loop.New() },
+		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+			return step.Submit(ctx, st, state.RoleAssistant)
+		},
+	)
+
+	c, err := New(m, WithBotToken(token), withBaseURL(srv.URL), WithGetUpdatesTimeout(1))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- c.Start(ctx)
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+
+	select {
+	case <-sendMsgCh:
+		t.Fatal("sendMessage should not be called for empty assistant turn")
+	default:
+	}
+
+	cancel()
+
+	select {
+	case err := <-startErr:
+		assert.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start did not return after cancellation")
+	}
+}
+
+// mockArtifact implements artifact.Artifact but is not artifact.Text.
+type mockArtifact struct{}
+
+func (mockArtifact) Kind() string { return "mock" }
+
+// TestNonTextArtifact verifies that non-text artifacts in an assistant turn are
+// silently skipped and do not trigger sendMessage.
+func TestNonTextArtifact(t *testing.T) {
+	token := "test-token"
+	prefix := "/bot" + token + "/"
+	var updatesGiven int32
+	sendMsgCh := make(chan struct{}, 1)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case prefix + "getMe":
+			_ = json.NewEncoder(w).Encode(getMeResp{OK: true, Result: user{ID: 789}})
+		case prefix + "getUpdates":
+			if atomic.AddInt32(&updatesGiven, 1) == 1 {
+				_ = json.NewEncoder(w).Encode(getUpdatesResp{
+					OK: true,
+					Result: []update{
+						{
+							UpdateID: 1,
+							Message: &message{
+								MessageID: 1,
+								From:      &user{ID: 123, IsBot: false},
+								Chat:      &chat{ID: 456},
+								Text:      "Hello bot",
+							},
+						},
+					},
+				})
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+			_ = json.NewEncoder(w).Encode(getUpdatesResp{OK: true})
+		case prefix + "sendMessage":
+			select {
+			case sendMsgCh <- struct{}{}:
+			default:
+			}
+			_ = json.NewEncoder(w).Encode(sendMessageResp{OK: true})
+		}
+	}))
+	defer srv.Close()
+
+	m := session.NewManager(
+		thread.NewMemoryStore(),
+		&mockProvider{},
+		func() *loop.Step { return loop.New() },
+		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+			return step.Submit(ctx, st, state.RoleAssistant, mockArtifact{})
+		},
+	)
+
+	c, err := New(m, WithBotToken(token), withBaseURL(srv.URL), WithGetUpdatesTimeout(1))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- c.Start(ctx)
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+
+	select {
+	case <-sendMsgCh:
+		t.Fatal("sendMessage should not be called for non-text artifacts")
+	default:
+	}
+
+	cancel()
+
+	select {
+	case err := <-startErr:
+		assert.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start did not return after cancellation")
+	}
+}
+
+// TestOffsetAdvancement verifies that after processing an update, the next
+// getUpdates request uses offset = UpdateID + 1.
+func TestOffsetAdvancement(t *testing.T) {
+	token := "test-token"
+	prefix := "/bot" + token + "/"
+	var correctOffsetSeen atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case prefix + "getMe":
+			_ = json.NewEncoder(w).Encode(getMeResp{OK: true, Result: user{ID: 789}})
+		case prefix + "getUpdates":
+			var req getUpdatesReq
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			if req.Offset == 2 {
+				correctOffsetSeen.Store(1)
+			}
+			if req.Offset == 0 {
+				_ = json.NewEncoder(w).Encode(getUpdatesResp{
+					OK: true,
+					Result: []update{
+						{
+							UpdateID: 1,
+							Message: &message{
+								MessageID: 1,
+								From:      &user{ID: 123, IsBot: false},
+								Chat:      &chat{ID: 456},
+								Text:      "Hello bot",
+							},
+						},
+					},
+				})
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+			_ = json.NewEncoder(w).Encode(getUpdatesResp{OK: true})
+		case prefix + "sendMessage":
+			_ = json.NewEncoder(w).Encode(sendMessageResp{OK: true})
+		}
+	}))
+	defer srv.Close()
+
+	m := session.NewManager(
+		thread.NewMemoryStore(),
+		&mockProvider{},
+		func() *loop.Step { return loop.New() },
+		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "Test reply"})
+		},
+	)
+
+	c, err := New(m, WithBotToken(token), withBaseURL(srv.URL), WithGetUpdatesTimeout(1))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- c.Start(ctx)
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+
+	cancel()
+
+	select {
+	case err := <-startErr:
+		assert.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start did not return after cancellation")
+	}
+
+	assert.Equal(t, int32(1), correctOffsetSeen.Load(), "expected getUpdates with offset=2")
+}
+
+// TestGetUpdatesHTTPError verifies that transient HTTP errors in getUpdates are
+// logged and swallowed; Start does not exit prematurely.
+func TestGetUpdatesHTTPError(t *testing.T) {
+	token := "test-token"
+	prefix := "/bot" + token + "/"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case prefix + "getMe":
+			_ = json.NewEncoder(w).Encode(getMeResp{OK: true, Result: user{ID: 789}})
+		case prefix + "getUpdates":
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"ok":false,"error_code":500,"description":"Internal Server Error"}`))
+		}
+	}))
+	defer srv.Close()
+
+	m := session.NewManager(
+		thread.NewMemoryStore(),
+		&mockProvider{},
+		func() *loop.Step { return loop.New() },
+		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "Test reply"})
+		},
+	)
+
+	c, err := New(m, WithBotToken(token), withBaseURL(srv.URL), WithGetUpdatesTimeout(1))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- c.Start(ctx)
+	}()
+
+	time.Sleep(1500 * time.Millisecond)
+
+	cancel()
+
+	select {
+	case err := <-startErr:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start did not return after cancellation")
+	}
+}
+
+// TestNilChatField verifies that an update with a missing Chat field is
+// skipped gracefully without causing a panic.
+func TestNilChatField(t *testing.T) {
+	token := "test-token"
+	prefix := "/bot" + token + "/"
+	var updatesGiven int32
+	var processCalled atomic.Bool
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case prefix + "getMe":
+			_ = json.NewEncoder(w).Encode(getMeResp{OK: true, Result: user{ID: 789}})
+		case prefix + "getUpdates":
+			if atomic.AddInt32(&updatesGiven, 1) == 1 {
+				_ = json.NewEncoder(w).Encode(getUpdatesResp{
+					OK: true,
+					Result: []update{
+						{
+							UpdateID: 1,
+							Message: &message{
+								MessageID: 1,
+								From:      &user{ID: 123, IsBot: false},
+								// Chat deliberately omitted (nil)
+								Text: "Hello bot",
+							},
+						},
+					},
+				})
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+			_ = json.NewEncoder(w).Encode(getUpdatesResp{OK: true})
+		}
+	}))
+	defer srv.Close()
+
+	m := session.NewManager(
+		thread.NewMemoryStore(),
+		&mockProvider{},
+		func() *loop.Step { return loop.New() },
+		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+			processCalled.Store(true)
+			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "reply"})
+		},
+	)
+
+	c, err := New(m, WithBotToken(token), withBaseURL(srv.URL), WithGetUpdatesTimeout(1))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- c.Start(ctx)
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+
+	require.False(t, processCalled.Load(), "TurnProcessor should not be called when Chat is nil")
+
+	cancel()
+
+	select {
+	case err := <-startErr:
+		assert.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start did not return after cancellation")
+	}
+}
