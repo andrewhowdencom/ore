@@ -29,6 +29,16 @@ type HandlerRegistration struct {
 	Defaults map[string]any
 }
 
+// TransformFactory creates a transform from runtime options.
+type TransformFactory func(opts map[string]any) (loop.Transform, error)
+
+// TransformRegistration holds compile-time defaults for a transform.
+type TransformRegistration struct {
+	Name     string
+	Factory  TransformFactory
+	Defaults map[string]any
+}
+
 // getOpts reads a nested map[string]any from Viper using dot notation.
 // For example, getOpts(v, "conduits", "http") returns the value at
 // key "conduits.http" if it is a map; otherwise it returns nil.

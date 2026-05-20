@@ -25,7 +25,7 @@ import (
 // not work correctly with local viper.New() instances when flags are
 // parsed after binding.  Explicit flag syncing is used for all other flags
 // as well.
-func loadConfig(cmd *cobra.Command, v *viper.Viper, configFile string, conduits []ConduitRegistration, handlers []HandlerRegistration) error {
+func loadConfig(cmd *cobra.Command, v *viper.Viper, configFile string, conduits []ConduitRegistration, handlers []HandlerRegistration, transforms []TransformRegistration) error {
 	v.SetEnvPrefix("ORE")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 
@@ -104,6 +104,25 @@ func loadConfig(cmd *cobra.Command, v *viper.Viper, configFile string, conduits 
 			}
 
 			envVar := fmt.Sprintf("ORE_HANDLER_%s_%s",
+				strings.ToUpper(strings.ReplaceAll(reg.Name, "-", "_")),
+				strings.ToUpper(strings.ReplaceAll(k, "-", "_")))
+			v.BindEnv(key, envVar)
+		}
+	}
+
+	// Set transform defaults, bind env vars, and sync changed flags.
+	for _, reg := range transforms {
+		for k, val := range reg.Defaults {
+			key := fmt.Sprintf("transforms.%s.%s", reg.Name, k)
+			flagName := fmt.Sprintf("%s-%s", reg.Name, k)
+
+			v.SetDefault(key, val)
+
+			if f := cmd.Flags().Lookup(flagName); f != nil && f.Changed {
+				v.Set(key, f.Value.String())
+			}
+
+			envVar := fmt.Sprintf("ORE_TRANSFORM_%s_%s",
 				strings.ToUpper(strings.ReplaceAll(reg.Name, "-", "_")),
 				strings.ToUpper(strings.ReplaceAll(k, "-", "_")))
 			v.BindEnv(key, envVar)

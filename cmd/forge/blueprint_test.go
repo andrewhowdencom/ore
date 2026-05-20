@@ -261,3 +261,93 @@ conduits:
 		})
 	}
 }
+
+func TestParseBlueprint_Transforms(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    *Blueprint
+		wantErr string
+	}{
+		{
+			name: "valid blueprint with transforms",
+			input: `
+dist:
+  name: transform-agent
+  output_path: ./out
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/http
+transforms:
+  - module: github.com/andrewhowdencom/ore/x/systemprompt
+`,
+			want: &Blueprint{
+				Dist:       Dist{Name: "transform-agent", OutputPath: "./out"},
+				Conduits:   []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Transforms: []TransformConfig{{Module: "github.com/andrewhowdencom/ore/x/systemprompt"}},
+			},
+		},
+		{
+			name: "valid blueprint with transform options",
+			input: `
+dist:
+  name: transform-opts-agent
+  output_path: ./out
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/http
+transforms:
+  - module: github.com/andrewhowdencom/ore/x/systemprompt
+    options:
+      content: "You are a helpful assistant."
+`,
+			want: &Blueprint{
+				Dist:     Dist{Name: "transform-opts-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Transforms: []TransformConfig{
+					{Module: "github.com/andrewhowdencom/ore/x/systemprompt", Options: map[string]any{"content": "You are a helpful assistant."}},
+				},
+			},
+		},
+		{
+			name: "empty transforms list",
+			input: `
+dist:
+  name: no-transform-agent
+  output_path: ./out
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/http
+transforms: []
+`,
+			want: &Blueprint{
+				Dist:       Dist{Name: "no-transform-agent", OutputPath: "./out"},
+				Conduits:   []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Transforms: []TransformConfig{},
+			},
+		},
+		{
+			name: "missing transform module",
+			input: `
+dist:
+  name: bad-transform-agent
+  output_path: ./out
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/http
+transforms:
+  - module: ""
+`,
+			wantErr: "transforms[0].module is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseBlueprint(strings.NewReader(tt.input))
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

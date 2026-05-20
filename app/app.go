@@ -51,10 +51,22 @@ func WithHandler(name string, factory HandlerFactory, defaults map[string]any) O
 	}
 }
 
+// WithTransform registers a transform factory and its compile-time defaults.
+func WithTransform(name string, factory TransformFactory, defaults map[string]any) Option {
+	return func(cfg *appConfig) {
+		cfg.transforms = append(cfg.transforms, TransformRegistration{
+			Name:     name,
+			Factory:  factory,
+			Defaults: defaults,
+		})
+	}
+}
+
 type appConfig struct {
 	name                 string
 	conduits             []ConduitRegistration
 	handlers             []HandlerRegistration
+	transforms           []TransformRegistration
 	providerFactory      func(apiKey, model, baseURL string) (provider.Provider, error)
 	storeFactory         func(dir string) (thread.Store, error)
 	contextFactory       func() (context.Context, func())
@@ -141,7 +153,7 @@ func runWithArgs(args []string, cfg *appConfig) error {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := loadConfig(cmd, v, configFile, cfg.conduits, cfg.handlers); err != nil {
+			if err := loadConfig(cmd, v, configFile, cfg.conduits, cfg.handlers, cfg.transforms); err != nil {
 				return err
 			}
 			return runAgent(cmd, v, cfg)
@@ -171,6 +183,14 @@ func runWithArgs(args []string, cfg *appConfig) error {
 		for k, val := range reg.Defaults {
 			flagName := fmt.Sprintf("%s-%s", reg.Name, k)
 			cmd.Flags().String(flagName, fmt.Sprint(val), fmt.Sprintf("%s handler %s", reg.Name, k))
+		}
+	}
+
+	// Transform flags (defaults from forge.yaml).
+	for _, reg := range cfg.transforms {
+		for k, val := range reg.Defaults {
+			flagName := fmt.Sprintf("%s-%s", reg.Name, k)
+			cmd.Flags().String(flagName, fmt.Sprint(val), fmt.Sprintf("%s transform %s", reg.Name, k))
 		}
 	}
 
@@ -231,11 +251,46 @@ func runAgent(cmd *cobra.Command, v *viper.Viper, cfg *appConfig) error {
 		handlerOptMaps[reg.Name] = optsMap
 	}
 
-	// --- Step factory (lazy handler creation) ---
+	// --- Transform option maps (pre-computed from Viper) ---
+	transformOptMaps := make(map[string]map[string]any)
+	for _, reg := range cfg.transforms {
+		optsMap := make(map[string]any)
+		for k, v := range reg.Defaults {
+			optsMap[k] = v
+		}
+		for k := range reg.Defaults {
+			key := fmt.Sprintf("transforms.%s.%s", reg.Name, k)
+			val := v.Get(key)
+			if val != nil {
+				optsMap[k] = val
+			}
+		}
+		transformOptMaps[reg.Name] = optsMap
+	}
+
+	// --- Step factory (lazy transform and handler creation) ---
 	if cfg.turnProcessorFactory == nil {
 		cfg.turnProcessorFactory = defaultTurnProcessor
 	}
 	stepFactory := func() (*loop.Step, error) {
+		var transforms []loop.Transform
+		for _, reg := range cfg.transforms {
+			optsMap := make(map[string]any)
+			for k, v := range reg.Defaults {
+				optsMap[k] = v
+			}
+			if o, ok := transformOptMaps[reg.Name]; ok {
+				for k, v := range o {
+					optsMap[k] = v
+				}
+			}
+			tr, err := reg.Factory(optsMap)
+			if err != nil {
+				return nil, fmt.Errorf("create transform %s: %w", reg.Name, err)
+			}
+			transforms = append(transforms, tr)
+		}
+
 		var handlers []loop.Handler
 		for _, reg := range cfg.handlers {
 			optsMap := make(map[string]any)
@@ -253,7 +308,15 @@ func runAgent(cmd *cobra.Command, v *viper.Viper, cfg *appConfig) error {
 			}
 			handlers = append(handlers, h)
 		}
-		return loop.New(loop.WithHandlers(handlers...)), nil
+
+		var stepOpts []loop.Option
+		if len(transforms) > 0 {
+			stepOpts = append(stepOpts, loop.WithTransforms(transforms...))
+		}
+		if len(handlers) > 0 {
+			stepOpts = append(stepOpts, loop.WithHandlers(handlers...))
+		}
+		return loop.New(stepOpts...), nil
 	}
 
 	// --- Session manager ---
