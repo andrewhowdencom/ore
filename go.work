@@ -7,5 +7,6 @@ use (
 	./x/conduit/telegram
 	./x/conduit/tui
 	./x/tool/calculator
+	./x/tool/filesystem
 	./x/tool/mcp
 )
