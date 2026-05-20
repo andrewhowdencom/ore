@@ -143,3 +143,99 @@ func TestStream_InterruptEvent_ContextPropagation(t *testing.T) {
 	assert.Empty(t, events[0].(loop.TurnCompleteEvent).Ctx.Provenance)
 	assert.Empty(t, events[1].(loop.TurnCompleteEvent).Ctx.Provenance)
 }
+
+// testCustomEvent is a test-only OutputEvent for verifying Stream.Emit().
+type testCustomEvent struct {
+	Value string
+	Ctx   loop.EventContext
+}
+
+func (e testCustomEvent) Kind() string          { return "test_custom" }
+func (e testCustomEvent) Context() loop.EventContext { return e.Ctx }
+
+func TestStream_Emit_DeliversToSubscribers(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	ch := stream.Subscribe("test_custom")
+
+	err = stream.Emit(context.Background(), testCustomEvent{Value: "hello", Ctx: loop.EventContext{Provenance: "emit-test"}})
+	require.NoError(t, err)
+
+	select {
+	case event := <-ch:
+		custom, ok := event.(testCustomEvent)
+		require.True(t, ok)
+		assert.Equal(t, "hello", custom.Value)
+		assert.Equal(t, "emit-test", custom.Ctx.Provenance)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for custom event")
+	}
+
+	_ = stream.Close()
+}
+
+func TestStream_Emit_ClosedReturnsError(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	err = stream.Close()
+	require.NoError(t, err)
+
+	err = stream.Emit(context.Background(), testCustomEvent{Value: "should-fail"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is closed")
+}
+
+func TestStream_Emit_AllowedWhileBusy(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &blockingProvider{}
+	mgr := NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	ch := stream.Subscribe("test_custom")
+
+	// Start processing — this will block on the provider.
+	done := make(chan error)
+	go func() {
+		done <- stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	}()
+
+	// Wait for Process to acquire the busy lock.
+	time.Sleep(50 * time.Millisecond)
+
+	// Emit should succeed even though the stream is busy.
+	err = stream.Emit(context.Background(), testCustomEvent{Value: "during-turn"})
+	require.NoError(t, err)
+
+	// The custom event should be delivered through the subscription.
+	select {
+	case event := <-ch:
+		custom, ok := event.(testCustomEvent)
+		require.True(t, ok)
+		assert.Equal(t, "during-turn", custom.Value)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for custom event")
+	}
+
+	// Cancel to unblock Process.
+	_ = stream.Cancel()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for Process to return")
+	}
+
+	_ = stream.Close()
+}
