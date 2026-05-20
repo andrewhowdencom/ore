@@ -94,6 +94,46 @@ func TestGenerateMainGo(t *testing.T) {
 				assert.Contains(t, content, `c1, err := conduit1.New(mgr)`)
 			},
 		},
+		{
+			name: "http conduit with options",
+			blueprint: &Blueprint{
+				Dist: Dist{Name: "http-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{
+					{
+						Module:  "github.com/andrewhowdencom/ore/x/conduit/http",
+						Options: map[string]any{"addr": ":8080", "ui": false},
+					},
+				},
+			},
+			check: func(t *testing.T, content string) {
+				assert.Contains(t, content, `httpc "github.com/andrewhowdencom/ore/x/conduit/http"`)
+				assert.Contains(t, content, `httpcOptsMap := map[string]any{"addr": ":8080", "ui": false}`)
+				assert.Contains(t, content, `httpcOpts, err := httpc.OptionsFromMap(httpcOptsMap)`)
+				assert.Contains(t, content, `c0, err := httpc.New(mgr, httpcOpts...)`)
+				assert.Contains(t, content, `a.Add(c0)`)
+			},
+		},
+		{
+			name: "multi-conduit mixed options",
+			blueprint: &Blueprint{
+				Dist: Dist{Name: "mixed-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{
+					{
+						Module:  "github.com/andrewhowdencom/ore/x/conduit/http",
+						Options: map[string]any{"addr": ":8080"},
+					},
+					{Module: "github.com/andrewhowdencom/ore/x/conduit/tui"},
+				},
+			},
+			check: func(t *testing.T, content string) {
+				assert.Contains(t, content, `httpcOptsMap := map[string]any{"addr": ":8080"}`)
+				assert.Contains(t, content, `httpcOpts, err := httpc.OptionsFromMap(httpcOptsMap)`)
+				assert.Contains(t, content, `c0, err := httpc.New(mgr, httpcOpts...)`)
+				assert.Contains(t, content, `c1, err := tui.New(mgr)`)
+				assert.Contains(t, content, `a.Add(c0)`)
+				assert.Contains(t, content, `a.Add(c1)`)
+			},
+		},
 	}
 
 	for _, tt := range tests {
