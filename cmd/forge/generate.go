@@ -42,6 +42,7 @@ type HandlerTemplateData struct {
 // TransformTemplateData holds per-transform information for main.go.tmpl.
 type TransformTemplateData struct {
 	Index          int
+	Name           string
 	ImportAlias    string
 	ModulePath     string
 	HasOptions     bool
@@ -257,8 +258,13 @@ func buildTemplateData(blueprint *Blueprint) (*MainGoTemplateData, error) {
 
 	for i, tr := range blueprint.Transforms {
 		alias := deriveImportAlias(tr.Module, usedAliases)
+		name := tr.Name
+		if name == "" {
+			name = alias
+		}
 		ttd := TransformTemplateData{
 			Index:       i,
+			Name:        name,
 			ImportAlias: alias,
 			ModulePath:  tr.Module,
 		}

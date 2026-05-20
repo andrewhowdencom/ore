@@ -59,6 +59,7 @@ type HandlerConfig struct {
 // in the generated agent. Transforms are instantiated per-stream and wired
 // into loop.Step via loop.WithTransforms.
 type TransformConfig struct {
+	Name    string         `yaml:"name,omitempty"`
 	Module  string         `yaml:"module"`
 	Options map[string]any `yaml:"options,omitempty"`
 }
