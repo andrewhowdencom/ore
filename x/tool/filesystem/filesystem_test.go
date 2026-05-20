@@ -197,6 +197,45 @@ func TestEditFile_MissingFile(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to read file")
 }
 
+func TestListDirectory_MixedEntries(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.txt"), []byte("b"), 0o644))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "c_dir"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".hidden"), []byte("hidden"), 0o644))
+
+	result, err := ListDirectory(context.Background(), map[string]any{"path": dir})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a.txt", "b.txt", "c_dir"}, result)
+}
+
+func TestListDirectory_Empty(t *testing.T) {
+	dir := t.TempDir()
+
+	result, err := ListDirectory(context.Background(), map[string]any{"path": dir})
+	require.NoError(t, err)
+	assert.Equal(t, []string{}, result)
+}
+
+func TestListDirectory_MissingPath(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "missing")
+
+	_, err := ListDirectory(context.Background(), map[string]any{"path": p})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to stat path")
+}
+
+func TestListDirectory_FileAsPath(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "file.txt")
+	require.NoError(t, os.WriteFile(p, []byte("content"), 0o644))
+
+	_, err := ListDirectory(context.Background(), map[string]any{"path": p})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is not a directory")
+}
+
 func TestEditFile_FirstOccurrenceOnly(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "edit.txt")
