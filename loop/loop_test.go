@@ -262,6 +262,38 @@ func TestStep_Submit_DoesNotRunTransforms(t *testing.T) {
 	assert.True(t, transformCalled, "transforms must run during Turn")
 }
 
+func TestStep_Turn_Transform_VirtualTurnStateChaining(t *testing.T) {
+	var seenTurns []state.Turn
+	tr1 := &mockTransform{
+		fn: func(ctx context.Context, s state.State) (state.State, error) {
+			return state.NewVirtualTurnState(s, []state.Turn{
+				{Role: state.RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "system"}}},
+			}), nil
+		},
+	}
+	tr2 := &mockTransform{
+		fn: func(ctx context.Context, s state.State) (state.State, error) {
+			seenTurns = s.Turns()
+			return s, nil
+		},
+	}
+	s := New(WithTransforms(tr1, tr2))
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world"},
+		},
+	}
+	_, err := s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+
+	require.Len(t, seenTurns, 2)
+	assert.Equal(t, state.RoleSystem, seenTurns[0].Role)
+	assert.Equal(t, state.RoleUser, seenTurns[1].Role)
+}
+
 func TestStep_Turn_Handler(t *testing.T) {
 	h := &mockHandler{}
 	s := New(WithHandlers(h))
