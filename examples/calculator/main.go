@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strconv"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
@@ -18,7 +17,8 @@ import (
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/provider/openai"
 	"github.com/andrewhowdencom/ore/state"
-	"github.com/andrewhowdencom/ore/tool"
+	"github.com/andrewhowdencom/ore/x/tool"
+	"github.com/andrewhowdencom/ore/x/tool/calculator"
 )
 
 func main() {
@@ -75,44 +75,11 @@ func run() error {
 
 	// Create tool registry with calculator functions.
 	registry := tool.NewRegistry()
-	registry.Register("add", func(ctx context.Context, args map[string]any) (any, error) {
-		a := toFloat64(args["a"])
-		b := toFloat64(args["b"])
-		return a + b, nil
-	})
-	registry.Register("multiply", func(ctx context.Context, args map[string]any) (any, error) {
-		a := toFloat64(args["a"])
-		b := toFloat64(args["b"])
-		return a * b, nil
-	})
+	registry.Register(calculator.AddTool.Name, calculator.Add)
+	registry.Register(calculator.MultiplyTool.Name, calculator.Multiply)
 
 	// Define tools for the provider.
-	tools := []provider.Tool{
-		{
-			Name:        "add",
-			Description: "Add two numbers together",
-			Schema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"a": map[string]any{"type": "number", "description": "The first number"},
-					"b": map[string]any{"type": "number", "description": "The second number"},
-				},
-				"required": []string{"a", "b"},
-			},
-		},
-		{
-			Name:        "multiply",
-			Description: "Multiply two numbers together",
-			Schema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"a": map[string]any{"type": "number", "description": "The first number"},
-					"b": map[string]any{"type": "number", "description": "The second number"},
-				},
-				"required": []string{"a", "b"},
-			},
-		},
-	}
+	tools := []provider.Tool{calculator.AddTool, calculator.MultiplyTool}
 
 	// Build provider.
 	var opts []openai.Option
@@ -164,16 +131,3 @@ func run() error {
 	return nil
 }
 
-// toFloat64 converts a JSON-decoded number (or string) to float64.
-func toFloat64(v any) float64 {
-	switch n := v.(type) {
-	case float64:
-		return n
-	case int:
-		return float64(n)
-	case string:
-		f, _ := strconv.ParseFloat(n, 64)
-		return f
-	}
-	return 0
-}
