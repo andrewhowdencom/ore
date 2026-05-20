@@ -101,7 +101,7 @@ func TestForgeSmoke_RuntimeGuard(t *testing.T) {
 		var exitErr *exec.ExitError
 		require.ErrorAs(t, err, &exitErr)
 		assert.NotZero(t, exitErr.ExitCode())
-		assert.Contains(t, stderr.String(), "ORE_API_KEY not set")
+		assert.Contains(t, stderr.String(), "api-key is required")
 	case <-time.After(5 * time.Second):
 		cmd.Process.Kill()
 		t.Fatal("binary did not exit within timeout")
