@@ -9,4 +9,4 @@ dist:
 conduits:
   - module: github.com/andrewhowdencom/ore/x/conduit/http
     options:
-      addr: ":8080"
+      addr: ":8080"  # TCP listen address
