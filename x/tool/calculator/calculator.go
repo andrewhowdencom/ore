@@ -3,6 +3,7 @@ package calculator
 import (
 	"context"
 	"strconv"
+	"strings"
 
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/x/tool"
@@ -55,14 +56,21 @@ var MultiplyTool = provider.Tool{
 }
 
 // ToFloat64 converts a JSON-decoded number (or string) to float64.
+// Unrecognized types and unparseable strings silently return 0.
 func ToFloat64(v any) float64 {
 	switch n := v.(type) {
 	case float64:
 		return n
+	case float32:
+		return float64(n)
 	case int:
 		return float64(n)
+	case int64:
+		return float64(n)
+	case uint:
+		return float64(n)
 	case string:
-		f, _ := strconv.ParseFloat(n, 64)
+		f, _ := strconv.ParseFloat(strings.TrimSpace(n), 64)
 		return f
 	}
 	return 0
