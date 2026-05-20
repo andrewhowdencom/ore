@@ -6,7 +6,6 @@
 // Options include:
 //
 //   - WithHandlers — run artifact handlers on the complete response.
-//   - WithBeforeTurn — transform state before the provider call.
 //
 // Step is the single canonical single-turn execution primitive with
 // optional, opt-in capabilities via functional options. A Step with no

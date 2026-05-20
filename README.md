@@ -48,7 +48,7 @@ building agents, not a specific agent implementation).
 | `artifact` | Extensible Artifact interface and common types (Text, ToolCall, Image, Reasoning, deltas) | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/artifact) |
 | `state` | Conversation history model: State interface with Turns() and Append() | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/state) |
 | `provider` | Provider interface and InvokeOption for LLM adapter contracts | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/provider) |
-| `loop` | Single-turn execution primitive: Step with Turn(), handlers, and BeforeTurn hooks | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/loop) |
+| `loop` | Single-turn execution primitive: Step with Turn(), handlers, and inference assembly transforms | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/loop) |
 | `x/tool` | Provider-agnostic tool registry and artifact handler for executing LLM tool calls | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/x/tool) |
 | `x/tool/calculator` | Reusable calculator tool implementations (Add, Multiply) | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/x/tool/calculator) |
 | `x/tool/mcp` | MCP client implementing tool.RemoteSource for composing remote tools | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/x/tool/mcp) |
