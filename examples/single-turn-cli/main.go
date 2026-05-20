@@ -74,14 +74,11 @@ func run() error {
 	// and step setup immediately above and below it):
 	//
 	//   registry := tool.NewRegistry()
-	//   registry.Register("calculator", func(ctx context.Context, args map[string]any) (any, error) {
+	//   registry.Register("calculator", "A simple calculator", map[string]any{"type": "object"}, func(ctx context.Context, args map[string]any) (any, error) {
 	//       return "42", nil
 	//   })
 	//   p := openai.New(apiKey, model, opts...)
-	//   tools := []provider.Tool{
-	//       {Name: "calculator", Description: "A simple calculator", Schema: map[string]any{"type": "object"}},
-	//   }
-	//   s := loop.New(loop.WithHandlers(registry.Handler()), loop.WithInvokeOptions(openai.WithTools(tools)))
+	//   s := loop.New(loop.WithHandlers(registry.Handler()), loop.WithInvokeOptions(openai.WithTools(registry.Tools())))
 	//
 	// Note: to use tools, loop until the assistant responds with text rather
 	// than a single turn. See examples/calculator for a complete example.
