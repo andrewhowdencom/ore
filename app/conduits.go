@@ -29,6 +29,9 @@ type HandlerRegistration struct {
 	Defaults map[string]any
 }
 
+// getOpts reads a nested map[string]any from Viper using dot notation.
+// For example, getOpts(v, "conduits", "http") returns the value at
+// key "conduits.http" if it is a map; otherwise it returns nil.
 func getOpts(v *viper.Viper, prefix, name string) map[string]any {
 	key := fmt.Sprintf("%s.%s", prefix, name)
 	val := v.Get(key)

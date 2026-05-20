@@ -24,4 +24,17 @@
 // creating the OpenAI provider, thread store, session manager, and agent;
 // instantiating conduits with merged runtime options; and running the agent
 // until interrupt.
+//
+// Environment variables follow the ORE_ prefix convention:
+//
+//   - ORE_API_KEY, ORE_MODEL, ORE_BASE_URL, ORE_STORE_DIR, ORE_LOG_LEVEL
+//     for global settings
+//   - ORE_CONDUIT_<NAME>_<KEY> for conduit-specific options
+//     (e.g. ORE_CONDUIT_HTTP_ADDR for the "http" conduit's addr option)
+//   - ORE_HANDLER_<NAME>_<KEY> for handler-specific options
+//     (e.g. ORE_HANDLER_TOOLS_VERBOSE for the "tools" handler's verbose option)
+//
+// Dots and hyphens in names are normalised to underscores. For example,
+// a conduit named "public-api" with an option "addr" becomes
+// ORE_CONDUIT_PUBLIC_API_ADDR.
 package app
