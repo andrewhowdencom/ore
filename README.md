@@ -48,7 +48,7 @@ building agents, not a specific agent implementation).
 | `artifact` | Extensible Artifact interface and common types (Text, ToolCall, Image, Reasoning, deltas) | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/artifact) |
 | `state` | Conversation history model: State interface with Turns() and Append() | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/state) |
 | `provider` | Provider interface and InvokeOption for LLM adapter contracts | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/provider) |
-| `loop` | Single-turn execution primitive: Step with Turn(), handlers, and BeforeTurn hooks | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/loop) |
+| `loop` | Single-turn execution primitive: Step with Turn(), handlers, and inference assembly transforms | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/loop) |
 | `x/tool` | Provider-agnostic tool registry and artifact handler for executing LLM tool calls | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/x/tool) |
 | `x/tool/calculator` | Reusable calculator tool implementations (Add, Multiply) | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/x/tool/calculator) |
 | `x/tool/mcp` | MCP client implementing tool.RemoteSource for composing remote tools | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/x/tool/mcp) |
@@ -65,3 +65,8 @@ The fastest way to build an agent is with **Forge**. See
 [`cmd/forge/README.md`](cmd/forge/README.md) for CLI usage and
 [`examples/forge/README.md`](examples/forge/README.md) for a guided tutorial
 with HTTP, TUI, and multi-conduit blueprints.
+
+Forge blueprints also support **inference assembly transforms** — inject
+system prompts, guardrails, and other virtual content at inference time
+without mutating conversation history. See the `transforms:` section in
+[`examples/forge/http/forge.yaml`](examples/forge/http/forge.yaml).

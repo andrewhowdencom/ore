@@ -1,5 +1,8 @@
 // single-turn-cli is a reference application demonstrating composition of the
 // ore loop.Step with an OpenAI-compatible provider adapter.
+//
+// This example shows both inline transform construction and the extension
+// module pattern for injecting system prompts into the inference context.
 package main
 
 import (
@@ -15,6 +18,19 @@ import (
 	"github.com/andrewhowdencom/ore/provider/openai"
 	"github.com/andrewhowdencom/ore/state"
 )
+
+// systemPromptTransform is an inline loop.Transform that prepends a
+// RoleSystem turn to the inference context without mutating the
+// persistent conversation buffer. It demonstrates the transform
+// interface for ad-hoc, application-specific state assembly.
+type systemPromptTransform struct{ content string }
+
+func (t *systemPromptTransform) Transform(ctx context.Context, st state.State) (state.State, error) {
+	return state.NewVirtualTurnState(st, []state.Turn{{
+		Role:      state.RoleSystem,
+		Artifacts: []artifact.Artifact{artifact.Text{Content: t.content}},
+	}}), nil
+}
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -83,8 +99,21 @@ func run() error {
 	// Note: to use tools, loop until the assistant responds with text rather
 	// than a single turn. See examples/calculator for a complete example.
 
+	// Build the step. If ORE_SYSTEM_PROMPT is set, wire an inline
+	// transform that injects it as a virtual RoleSystem turn. For
+	// reusable transforms, use the extension module pattern:
+	//
+	//   import "github.com/andrewhowdencom/ore/x/systemprompt"
+	//   s := loop.New(loop.WithTransforms(
+	//       systemprompt.New(systemprompt.WithContent("You are a helpful assistant.")),
+	//   ))
+	var stepOpts []loop.Option
+	if sysPrompt := os.Getenv("ORE_SYSTEM_PROMPT"); sysPrompt != "" {
+		stepOpts = append(stepOpts, loop.WithTransforms(&systemPromptTransform{content: sysPrompt}))
+	}
+	s := loop.New(stepOpts...)
+
 	// Execute a single loop turn.
-	s := loop.New()
 	_, err := s.Turn(ctx, mem, p)
 	if err != nil {
 		return fmt.Errorf("turn failed: %w", err)
