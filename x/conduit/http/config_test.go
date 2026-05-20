@@ -77,3 +77,30 @@ func TestFromConfig_UI(t *testing.T) {
 	opts = FromConfig(Config{UI: &uiFalse})
 	require.Len(t, opts, 1)
 }
+
+func TestFromConfig_Combined(t *testing.T) {
+	uiFalse := false
+	opts := FromConfig(Config{Addr: ":9090", UI: &uiFalse})
+	require.Len(t, opts, 2)
+
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	h := newTestHandler(t, mgr, opts...)
+
+	assert.Equal(t, ":9090", h.addr)
+	assert.False(t, h.withUI)
+}
+
+func TestOptionsFromMap_UnknownFields(t *testing.T) {
+	opts, err := OptionsFromMap(map[string]any{"addr": ":0", "unknown_key": "ignored"})
+	require.NoError(t, err)
+	require.Len(t, opts, 1)
+
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	h := newTestHandler(t, mgr, opts...)
+
+	assert.Equal(t, ":0", h.addr)
+}
