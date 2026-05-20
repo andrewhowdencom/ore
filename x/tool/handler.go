@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
@@ -31,16 +32,6 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, s state.Sta
 		return nil
 	}
 
-	fn, ok := h.registry.lookup(tc.Name)
-	if !ok {
-		s.Append(state.RoleTool, artifact.ToolResult{
-			ToolCallID: tc.ID,
-			Content:    fmt.Sprintf("tool %q not found", tc.Name),
-			IsError:    true,
-		})
-		return nil
-	}
-
 	var args map[string]any
 	if tc.Arguments != "" {
 		if err := json.Unmarshal([]byte(tc.Arguments), &args); err != nil {
@@ -51,6 +42,56 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, s state.Sta
 			})
 			return nil
 		}
+	}
+
+	// Check for namespaced tool call (e.g., "filesystem/read_file")
+	if namespace, name, ok := splitNamespace(tc.Name); ok {
+		source := h.registry.lookupRemoteSource(namespace)
+		if source == nil {
+			s.Append(state.RoleTool, artifact.ToolResult{
+				ToolCallID: tc.ID,
+				Content:    fmt.Sprintf("tool namespace %q not found", namespace),
+				IsError:    true,
+			})
+			return nil
+		}
+
+		result, err := source.Call(ctx, name, args)
+		if err != nil {
+			s.Append(state.RoleTool, artifact.ToolResult{
+				ToolCallID: tc.ID,
+				Content:    fmt.Sprintf("tool execution error: %v", err),
+				IsError:    true,
+			})
+			return nil
+		}
+
+		content, err := json.Marshal(result)
+		if err != nil {
+			s.Append(state.RoleTool, artifact.ToolResult{
+				ToolCallID: tc.ID,
+				Content:    fmt.Sprintf("failed to serialize result: %v", err),
+				IsError:    true,
+			})
+			return nil
+		}
+
+		s.Append(state.RoleTool, artifact.ToolResult{
+			ToolCallID: tc.ID,
+			Content:    string(content),
+		})
+		return nil
+	}
+
+	// Local tool lookup
+	fn, ok := h.registry.lookup(tc.Name)
+	if !ok {
+		s.Append(state.RoleTool, artifact.ToolResult{
+			ToolCallID: tc.ID,
+			Content:    fmt.Sprintf("tool %q not found", tc.Name),
+			IsError:    true,
+		})
+		return nil
 	}
 
 	result, err := fn(ctx, args)
@@ -78,4 +119,14 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, s state.Sta
 		Content:    string(content),
 	})
 	return nil
+}
+
+// splitNamespace splits a namespaced tool name into its namespace and tool
+// name components. It returns ok=false if the name is not namespaced.
+func splitNamespace(name string) (namespace, toolName string, ok bool) {
+	parts := strings.SplitN(name, "/", 2)
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
 }
