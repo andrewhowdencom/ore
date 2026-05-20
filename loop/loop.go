@@ -201,6 +201,13 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 	defer s.clearEventContext()
 	var err error
 
+	for _, tr := range s.transforms {
+		st, err = tr.Transform(ctx, st)
+		if err != nil {
+			return st, fmt.Errorf("transform failed: %w", err)
+		}
+	}
+
 	provCh := make(chan artifact.Artifact, 100)
 	var accumulatedArtifacts []artifact.Artifact
 
