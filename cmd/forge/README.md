@@ -54,7 +54,7 @@ to work.
 
 ## Manifest Format
 
-The manifest is a single YAML file with two top-level sections:
+The manifest is a single YAML file with three top-level sections:
 
 ```yaml
 dist:
@@ -70,6 +70,22 @@ Multiple conduits can be declared to run concurrently:
 conduits:
   - module: github.com/andrewhowdencom/ore/x/conduit/http
   - module: github.com/andrewhowdencom/ore/x/conduit/tui
+```
+
+An optional `handlers` list declares artifact handler modules that are
+instantiated per-stream and wired into `loop.Step` via `loop.WithHandlers`.
+Handlers follow the same `module`/`options` pattern as conduits:
+
+```yaml
+dist:
+  name: my-agent
+  output_path: ./my-agent
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/http
+handlers:
+  - module: github.com/andrewhowdencom/ore/tool
+    options:
+      verbose: true
 ```
 
 ## Environment Variables
