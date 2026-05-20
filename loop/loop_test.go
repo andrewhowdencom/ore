@@ -1139,3 +1139,26 @@ func TestStep_ContextClearedOnError(t *testing.T) {
 	require.True(t, ok)
 	assert.Empty(t, tc.Ctx.Provenance)
 }
+
+// testCustomEvent is a test-only OutputEvent for verifying Emit() with custom events.
+type testCustomEvent struct {
+	Value string
+	Ctx   EventContext
+}
+
+func (e testCustomEvent) Kind() string             { return "test_custom" }
+func (e testCustomEvent) Context() EventContext    { return e.Ctx }
+
+func TestStep_Emit_DeliversCustomEvents(t *testing.T) {
+	s := New()
+	ch := s.Subscribe("test_custom")
+
+	s.Emit(context.Background(), testCustomEvent{Value: "hello", Ctx: EventContext{Provenance: "test"}})
+
+	events := collectEvents(ch, 100*time.Millisecond)
+	require.Len(t, events, 1)
+	custom, ok := events[0].(testCustomEvent)
+	require.True(t, ok)
+	assert.Equal(t, "hello", custom.Value)
+	assert.Equal(t, "test", custom.Ctx.Provenance)
+}
