@@ -11,7 +11,8 @@ import (
 )
 
 func TestTransform_PrependsGuardrails(t *testing.T) {
-	tr := New(WithRules("rule one", "rule two"))
+	tr, err := New(WithRules("rule one", "rule two"))
+	require.NoError(t, err)
 	base := &state.Buffer{}
 	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -34,7 +35,8 @@ func TestTransform_PrependsGuardrails(t *testing.T) {
 }
 
 func TestTransform_NoRules(t *testing.T) {
-	tr := New()
+	tr, err := New()
+	require.NoError(t, err)
 	base := &state.Buffer{}
 	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -49,7 +51,8 @@ func TestTransform_NoRules(t *testing.T) {
 }
 
 func TestTransform_DelegatesAppend(t *testing.T) {
-	tr := New(WithRules("rule"))
+	tr, err := New(WithRules("rule"))
+	require.NoError(t, err)
 	base := &state.Buffer{}
 	base.Append(state.RoleUser, artifact.Text{Content: "user"})
 
@@ -70,16 +73,18 @@ func TestTransform_DelegatesAppend(t *testing.T) {
 }
 
 func TestRules(t *testing.T) {
-	tr := New(WithRules("a", "b")).(*Transform)
-	assert.Equal(t, []string{"a", "b"}, tr.Rules())
+	tr, err := New(WithRules("a", "b"))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a", "b"}, tr.(*Transform).Rules())
 }
 
 func TestFromConfig(t *testing.T) {
 	opts := FromConfig(Config{Rules: []string{"a", "b"}})
 	require.Len(t, opts, 1)
 
-	tr := New(opts...).(*Transform)
-	assert.Equal(t, []string{"a", "b"}, tr.Rules())
+	tr, err := New(opts...)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a", "b"}, tr.(*Transform).Rules())
 }
 
 func TestFromConfig_Empty(t *testing.T) {
@@ -92,8 +97,9 @@ func TestOptionsFromMap(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, opts, 1)
 
-	tr := New(opts...).(*Transform)
-	assert.Equal(t, []string{"one", "two"}, tr.Rules())
+	tr, err := New(opts...)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"one", "two"}, tr.(*Transform).Rules())
 }
 
 func TestOptionsFromMap_Empty(t *testing.T) {

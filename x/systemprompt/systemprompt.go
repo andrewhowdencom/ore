@@ -16,12 +16,12 @@ type Transform struct {
 }
 
 // New creates a system prompt transform with the given options.
-func New(opts ...Option) loop.Transform {
+func New(opts ...Option) (loop.Transform, error) {
 	cfg := &config{}
 	for _, opt := range opts {
 		opt(cfg)
 	}
-	return &Transform{content: cfg.content}
+	return &Transform{content: cfg.content}, nil
 }
 
 // Transform implements loop.Transform. It returns a state view with a

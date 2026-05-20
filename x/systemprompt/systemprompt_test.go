@@ -11,7 +11,8 @@ import (
 )
 
 func TestTransform_PrependSystemPrompt(t *testing.T) {
-	tr := New(WithContent("You are a helpful assistant."))
+	tr, err := New(WithContent("You are a helpful assistant."))
+	require.NoError(t, err)
 	base := &state.Buffer{}
 	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -29,7 +30,8 @@ func TestTransform_PrependSystemPrompt(t *testing.T) {
 }
 
 func TestTransform_EmptyContent(t *testing.T) {
-	tr := New()
+	tr, err := New()
+	require.NoError(t, err)
 	base := &state.Buffer{}
 	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -46,7 +48,8 @@ func TestTransform_EmptyContent(t *testing.T) {
 }
 
 func TestTransform_DelegatesAppend(t *testing.T) {
-	tr := New(WithContent("system"))
+	tr, err := New(WithContent("system"))
+	require.NoError(t, err)
 	base := &state.Buffer{}
 	base.Append(state.RoleUser, artifact.Text{Content: "user"})
 
@@ -72,8 +75,9 @@ func TestFromConfig(t *testing.T) {
 	opts := FromConfig(Config{Content: "Hello"})
 	require.Len(t, opts, 1)
 
-	tr := New(opts...).(*Transform)
-	assert.Equal(t, "Hello", tr.content)
+	tr, err := New(opts...)
+	require.NoError(t, err)
+	assert.Equal(t, "Hello", tr.(*Transform).content)
 }
 
 func TestFromConfig_Empty(t *testing.T) {
@@ -86,8 +90,9 @@ func TestOptionsFromMap(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, opts, 1)
 
-	tr := New(opts...).(*Transform)
-	assert.Equal(t, "from map", tr.content)
+	tr, err := New(opts...)
+	require.NoError(t, err)
+	assert.Equal(t, "from map", tr.(*Transform).content)
 }
 
 func TestOptionsFromMap_Empty(t *testing.T) {
