@@ -8,9 +8,9 @@
 // Usage:
 //
 //	registry := tool.NewRegistry()
-//	registry.Register(AddTool.Name, Add)
-//	registry.Register(MultiplyTool.Name, Multiply)
+//	registry.Register(AddTool.Name, AddTool.Description, AddTool.Schema, Add)
+//	registry.Register(MultiplyTool.Name, MultiplyTool.Description, MultiplyTool.Schema, Multiply)
 //
-//	// Pass the schemas to the provider.
-//	tools := []provider.Tool{AddTool, MultiplyTool}
+//	// Registry.Tools() is the single source of truth for the provider.
+//	tools := registry.Tools()
 package calculator
