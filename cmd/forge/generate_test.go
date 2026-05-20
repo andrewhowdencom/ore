@@ -134,6 +134,25 @@ func TestGenerateMainGo(t *testing.T) {
 				assert.Contains(t, content, `a.Add(c1)`)
 			},
 		},
+		{
+			name: "triple alias disambiguation",
+			blueprint: &Blueprint{
+				Dist: Dist{Name: "triple-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{
+					{Module: "example.com/my/conduit"},
+					{Module: "other.com/my/conduit"},
+					{Module: "third.com/my/conduit"},
+				},
+			},
+			check: func(t *testing.T, content string) {
+				assert.Contains(t, content, `conduit "example.com/my/conduit"`)
+				assert.Contains(t, content, `conduit1 "other.com/my/conduit"`)
+				assert.Contains(t, content, `conduit2 "third.com/my/conduit"`)
+				assert.Contains(t, content, `c0, err := conduit.New(mgr)`)
+				assert.Contains(t, content, `c1, err := conduit1.New(mgr)`)
+				assert.Contains(t, content, `c2, err := conduit2.New(mgr)`)
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -159,4 +178,15 @@ func TestGenerateGoMod(t *testing.T) {
 	assert.Contains(t, content, "go 1.26.2")
 	assert.Contains(t, content, "require github.com/andrewhowdencom/ore v0.0.0")
 	assert.Contains(t, content, "replace github.com/andrewhowdencom/ore => /absolute/path/to/ore")
+}
+
+func TestFormatGoMapStringAny(t *testing.T) {
+	m := map[string]any{
+		"addr":   ":8080",
+		"nested": map[string]any{"key": "value"},
+		"list":   []any{1, "two", true},
+	}
+	got := formatGoMapStringAny(m)
+	want := `map[string]any{"addr": ":8080", "list": []any{1, "two", true}, "nested": map[string]any{"key": "value"}}`
+	assert.Equal(t, want, got)
 }

@@ -64,3 +64,11 @@ func TestFromConfig_EventsAPITrue(t *testing.T) {
 	opts[0](sc)
 	assert.Equal(t, modeEventsAPI, sc.mode)
 }
+
+func TestFromConfig_AppToken(t *testing.T) {
+	opts := FromConfig(Config{AppToken: "xapp-test"})
+	require.Len(t, opts, 1)
+	sc := &SlackConduit{}
+	opts[0](sc)
+	assert.Equal(t, "xapp-test", sc.appToken)
+}
