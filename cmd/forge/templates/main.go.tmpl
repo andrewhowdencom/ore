@@ -58,8 +58,8 @@ func run() error {
 	}
 	prov := openai.New(apiKey, modelName, opts...)
 
-	stepFactory := func() *loop.Step {
-		return loop.New()
+	stepFactory := func() (*loop.Step, error) {
+		return loop.New(), nil
 	}
 
 	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())

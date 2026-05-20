@@ -26,7 +26,7 @@
 //
 //	store := thread.NewMemoryStore()
 //	prov := openai.New(apiKey, model)
-//	stepFactory := func() *loop.Step { return loop.New() }
+//	stepFactory := func() (*loop.Step, error) { return loop.New(), nil }
 //	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())
 //
 //	// Obtain a *Stream from the manager.
