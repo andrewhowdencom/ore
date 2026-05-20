@@ -65,3 +65,8 @@ The fastest way to build an agent is with **Forge**. See
 [`cmd/forge/README.md`](cmd/forge/README.md) for CLI usage and
 [`examples/forge/README.md`](examples/forge/README.md) for a guided tutorial
 with HTTP, TUI, and multi-conduit blueprints.
+
+Forge blueprints also support **inference assembly transforms** — inject
+system prompts, guardrails, and other virtual content at inference time
+without mutating conversation history. See the `transforms:` section in
+[`examples/forge/http/forge.yaml`](examples/forge/http/forge.yaml).
