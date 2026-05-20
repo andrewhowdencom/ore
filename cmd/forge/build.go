@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 // execCommand is a testable wrapper around exec.Command.
@@ -23,6 +24,38 @@ func Build(blueprint *Blueprint, oreModulePath string, outputPath string) error 
 
 	if err := Generate(blueprint, oreModulePath, tmpDir); err != nil {
 		return fmt.Errorf("generate: %w", err)
+	}
+
+	// Resolve external modules (not under github.com/andrewhowdencom/ore/).
+	orePrefix := "github.com/andrewhowdencom/ore"
+	seen := make(map[string]struct{})
+	for _, c := range blueprint.Conduits {
+		if strings.HasPrefix(c.Module, orePrefix+"/") {
+			continue
+		}
+		if _, ok := seen[c.Module]; ok {
+			continue
+		}
+		seen[c.Module] = struct{}{}
+		get := execCommand("go", "get", c.Module)
+		get.Dir = tmpDir
+		if out, err := get.CombinedOutput(); err != nil {
+			return fmt.Errorf("go get %s: %w\n%s", c.Module, err, out)
+		}
+	}
+	for _, h := range blueprint.Handlers {
+		if strings.HasPrefix(h.Module, orePrefix+"/") {
+			continue
+		}
+		if _, ok := seen[h.Module]; ok {
+			continue
+		}
+		seen[h.Module] = struct{}{}
+		get := execCommand("go", "get", h.Module)
+		get.Dir = tmpDir
+		if out, err := get.CombinedOutput(); err != nil {
+			return fmt.Errorf("go get %s: %w\n%s", h.Module, err, out)
+		}
 	}
 
 	tidy := execCommand("go", "mod", "tidy")
