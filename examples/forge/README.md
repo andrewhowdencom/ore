@@ -84,18 +84,27 @@ dist:
   name: my-agent
   output_path: ./my-agent
 conduits:
-  - module: github.com/andrewhowdencom/ore/x/conduit/http
+  - name: http
+    module: github.com/andrewhowdencom/ore/x/conduit/http
 ```
 
-Multiple conduits can be declared to run concurrently:
+Multiple conduits can be declared to run concurrently. Each entry must
+have a unique `name` so that runtime configuration can target specific
+instances. If `name` is omitted, it is derived from the last path element
+of `module` (e.g. `http` for `.../x/conduit/http`). Duplicate modules
+receive numeric suffixes (`http1`, `http2`, ...):
 
 ```yaml
 dist:
   name: my-agent
   output_path: ./my-agent
 conduits:
-  - module: github.com/andrewhowdencom/ore/x/conduit/http
-  - module: github.com/andrewhowdencom/ore/x/conduit/tui
+  - name: public-api
+    module: github.com/andrewhowdencom/ore/x/conduit/http
+  - name: internal-admin
+    module: github.com/andrewhowdencom/ore/x/conduit/http
+  - name: tui
+    module: github.com/andrewhowdencom/ore/x/conduit/tui
 ```
 
 Each conduit entry can optionally include an `options` map for
@@ -111,13 +120,14 @@ conduits:
       ui: false
 ```
 
-Handler entries follow the same pattern. Handlers are instantiated
-inside the per-stream `stepFactory` closure and wired into `loop.Step`
-via `loop.WithHandlers`:
+Handler entries follow the same pattern, with the same `name` field
+semantics. Handlers are instantiated inside the per-stream `stepFactory`
+closure and wired into `loop.Step` via `loop.WithHandlers`:
 
 ```yaml
 handlers:
-  - module: github.com/andrewhowdencom/ore/tool
+  - name: tools
+    module: github.com/andrewhowdencom/ore/tool
     options:
       verbose: true
 ```
