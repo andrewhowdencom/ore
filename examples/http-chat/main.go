@@ -44,7 +44,7 @@
 //	STORE_DIR=/tmp/ore-store go run ./examples/http-chat
 //
 // The server optionally registers calculator tools (add, multiply) to
-// demonstrate server-side ReAct loop execution. See package tool for details
+// demonstrate server-side ReAct loop execution. See package x/tool for details
 // on the registry.
 package main
 
@@ -54,7 +54,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"strconv"
 
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
@@ -62,7 +61,8 @@ import (
 	"github.com/andrewhowdencom/ore/provider/openai"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/thread"
-	"github.com/andrewhowdencom/ore/tool"
+	"github.com/andrewhowdencom/ore/x/tool"
+	"github.com/andrewhowdencom/ore/x/tool/calculator"
 
 	httpc "github.com/andrewhowdencom/ore/x/conduit/http"
 )
@@ -107,43 +107,10 @@ func run() error {
 	// Create a tool registry with calculator functions.
 	// These are optional — remove them for a simple chat server.
 	registry := tool.NewRegistry()
-	registry.Register("add", func(ctx context.Context, args map[string]any) (any, error) {
-		a := toFloat64(args["a"])
-		b := toFloat64(args["b"])
-		return a + b, nil
-	})
-	registry.Register("multiply", func(ctx context.Context, args map[string]any) (any, error) {
-		a := toFloat64(args["a"])
-		b := toFloat64(args["b"])
-		return a * b, nil
-	})
+	registry.Register(calculator.AddTool.Name, calculator.Add)
+	registry.Register(calculator.MultiplyTool.Name, calculator.Multiply)
 
-	tools := []provider.Tool{
-		{
-			Name:        "add",
-			Description: "Add two numbers together",
-			Schema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"a": map[string]any{"type": "number", "description": "The first number"},
-					"b": map[string]any{"type": "number", "description": "The second number"},
-				},
-				"required": []string{"a", "b"},
-			},
-		},
-		{
-			Name:        "multiply",
-			Description: "Multiply two numbers together",
-			Schema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"a": map[string]any{"type": "number", "description": "The first number"},
-					"b": map[string]any{"type": "number", "description": "The second number"},
-				},
-				"required": []string{"a", "b"},
-			},
-		},
-	}
+	tools := []provider.Tool{calculator.AddTool, calculator.MultiplyTool}
 
 	// Step factory: each session gets its own Step with tool handler
 	// and provider tool options bound.
@@ -184,16 +151,3 @@ func run() error {
 	return c.Start(ctx)
 }
 
-// toFloat64 converts a JSON-decoded number (or string) to float64.
-func toFloat64(v any) float64 {
-	switch n := v.(type) {
-	case float64:
-		return n
-	case int:
-		return float64(n)
-	case string:
-		f, _ := strconv.ParseFloat(n, 64)
-		return f
-	}
-	return 0
-}

@@ -24,7 +24,7 @@
 //
 // The application wires them together:
 //
-//	registry := tool.NewRegistry()
+//	registry := NewRegistry()
 //	registry.Register("add", func(ctx context.Context, args map[string]any) (any, error) {
 //	    a, _ := args["a"].(float64)
 //	    b, _ := args["b"].(float64)

@@ -5,6 +5,7 @@ go 1.26.2
 require (
 	github.com/andrewhowdencom/ore/x/conduit/http v0.0.0-00010101000000-000000000000
 	github.com/andrewhowdencom/ore/x/conduit/tui v0.0.0-00010101000000-000000000000
+	github.com/andrewhowdencom/ore/x/tool/calculator v0.0.0-00010101000000-000000000000
 	github.com/openai/openai-go v1.12.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
@@ -62,3 +63,5 @@ require (
 replace github.com/andrewhowdencom/ore/x/conduit/http => ./x/conduit/http
 
 replace github.com/andrewhowdencom/ore/x/conduit/tui => ./x/conduit/tui
+
+replace github.com/andrewhowdencom/ore/x/tool/calculator => ./x/tool/calculator
