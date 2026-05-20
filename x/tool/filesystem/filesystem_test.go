@@ -226,6 +226,96 @@ func TestListDirectory_MissingPath(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to stat path")
 }
 
+func TestSearchFiles_SingleFile(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "search.txt")
+	require.NoError(t, os.WriteFile(p, []byte("hello world\ngoodbye world\nhello moon\n"), 0o644))
+
+	result, err := SearchFiles(context.Background(), map[string]any{
+		"path":  p,
+		"query": "hello",
+	})
+	require.NoError(t, err)
+
+	results := result.([]SearchResult)
+	require.Len(t, results, 2)
+	assert.Equal(t, 1, results[0].LineNumber)
+	assert.Equal(t, "hello world", results[0].Content)
+	assert.Equal(t, 3, results[1].LineNumber)
+	assert.Equal(t, "hello moon", results[1].Content)
+}
+
+func TestSearchFiles_DirectoryRecursive(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "subdir")
+	require.NoError(t, os.Mkdir(sub, 0o755))
+	p1 := filepath.Join(dir, "a.txt")
+	p2 := filepath.Join(sub, "b.txt")
+	require.NoError(t, os.WriteFile(p1, []byte("alpha\n"), 0o644))
+	require.NoError(t, os.WriteFile(p2, []byte("gamma\n"), 0o644))
+
+	result, err := SearchFiles(context.Background(), map[string]any{
+		"path":  dir,
+		"query": "a",
+	})
+	require.NoError(t, err)
+
+	results := result.([]SearchResult)
+	require.Len(t, results, 2)
+	assert.Equal(t, p1, results[0].Path)
+	assert.Equal(t, 1, results[0].LineNumber)
+	assert.Equal(t, "alpha", results[0].Content)
+	assert.Equal(t, p2, results[1].Path)
+	assert.Equal(t, 1, results[1].LineNumber)
+	assert.Equal(t, "gamma", results[1].Content)
+}
+
+func TestSearchFiles_NoMatches(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "search.txt")
+	require.NoError(t, os.WriteFile(p, []byte("content\n"), 0o644))
+
+	result, err := SearchFiles(context.Background(), map[string]any{
+		"path":  p,
+		"query": "nomatch",
+	})
+	require.NoError(t, err)
+
+	results := result.([]SearchResult)
+	assert.Len(t, results, 0)
+}
+
+func TestSearchFiles_InvalidRegex(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "search.txt")
+	require.NoError(t, os.WriteFile(p, []byte("content\n"), 0o644))
+
+	_, err := SearchFiles(context.Background(), map[string]any{
+		"path":  p,
+		"query": "[invalid",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid regex")
+}
+
+func TestSearchFiles_SkipsHidden(t *testing.T) {
+	dir := t.TempDir()
+	visible := filepath.Join(dir, "visible.txt")
+	hidden := filepath.Join(dir, ".hidden.txt")
+	require.NoError(t, os.WriteFile(visible, []byte("visible content\n"), 0o644))
+	require.NoError(t, os.WriteFile(hidden, []byte("hidden content\n"), 0o644))
+
+	result, err := SearchFiles(context.Background(), map[string]any{
+		"path":  dir,
+		"query": "content",
+	})
+	require.NoError(t, err)
+
+	results := result.([]SearchResult)
+	require.Len(t, results, 1)
+	assert.Equal(t, visible, results[0].Path)
+}
+
 func TestListDirectory_FileAsPath(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "file.txt")
