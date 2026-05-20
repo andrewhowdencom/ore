@@ -92,8 +92,9 @@ func runWithArgs(args []string, opts ...Option) error {
 	v := viper.New()
 
 	cmd := &cobra.Command{
-		Use:   "agent",
-		Short: "Generated ore agent",
+		Use:           "agent",
+		Short:         "Generated ore agent",
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := loadConfig(cmd, v, cfg.conduits, cfg.handlers); err != nil {
 				return err

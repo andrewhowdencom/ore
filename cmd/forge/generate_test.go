@@ -17,15 +17,14 @@ func TestGenerateMainGo(t *testing.T) {
 			name: "http conduit",
 			blueprint: &Blueprint{
 				Dist:     Dist{Name: "http-agent", OutputPath: "./out"},
-				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Conduits: []ConduitConfig{{Name: "http", Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
 			},
 			check: func(t *testing.T, content string) {
 				assert.Contains(t, content, `httpc "github.com/andrewhowdencom/ore/x/conduit/http"`)
-				assert.Contains(t, content, `"github.com/andrewhowdencom/ore/agent"`)
-				assert.Contains(t, content, `a := agent.New(mgr)`)
-				assert.Contains(t, content, `c0, err := httpc.New(mgr)`)
-				assert.Contains(t, content, `a.Add(c0)`)
-				assert.Contains(t, content, `return a.Run(ctx)`)
+				assert.Contains(t, content, `"github.com/andrewhowdencom/ore/app"`)
+				assert.Contains(t, content, `app.Run(`)
+				assert.Contains(t, content, `app.WithConduit("http"`)
+				assert.Contains(t, content, `return httpc.New(mgr)`)
 				assert.NotContains(t, content, `"flag"`)
 				assert.NotContains(t, content, `"github.com/andrewhowdencom/ore/x/conduit/tui"`)
 			},
@@ -34,15 +33,14 @@ func TestGenerateMainGo(t *testing.T) {
 			name: "tui conduit",
 			blueprint: &Blueprint{
 				Dist:     Dist{Name: "tui-agent", OutputPath: "./out"},
-				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/tui"}},
+				Conduits: []ConduitConfig{{Name: "tui", Module: "github.com/andrewhowdencom/ore/x/conduit/tui"}},
 			},
 			check: func(t *testing.T, content string) {
 				assert.Contains(t, content, `"github.com/andrewhowdencom/ore/x/conduit/tui"`)
-				assert.Contains(t, content, `"github.com/andrewhowdencom/ore/agent"`)
-				assert.Contains(t, content, `a := agent.New(mgr)`)
-				assert.Contains(t, content, `c0, err := tui.New(mgr)`)
-				assert.Contains(t, content, `a.Add(c0)`)
-				assert.Contains(t, content, `return a.Run(ctx)`)
+				assert.Contains(t, content, `"github.com/andrewhowdencom/ore/app"`)
+				assert.Contains(t, content, `app.Run(`)
+				assert.Contains(t, content, `app.WithConduit("tui"`)
+				assert.Contains(t, content, `return tui.New(mgr)`)
 				assert.NotContains(t, content, `"flag"`)
 			},
 		},
@@ -51,30 +49,29 @@ func TestGenerateMainGo(t *testing.T) {
 			blueprint: &Blueprint{
 				Dist: Dist{Name: "multi-agent", OutputPath: "./out"},
 				Conduits: []ConduitConfig{
-					{Module: "github.com/andrewhowdencom/ore/x/conduit/http"},
-					{Module: "github.com/andrewhowdencom/ore/x/conduit/tui"},
+					{Name: "http", Module: "github.com/andrewhowdencom/ore/x/conduit/http"},
+					{Name: "tui", Module: "github.com/andrewhowdencom/ore/x/conduit/tui"},
 				},
 			},
 			check: func(t *testing.T, content string) {
 				assert.Contains(t, content, `httpc "github.com/andrewhowdencom/ore/x/conduit/http"`)
 				assert.Contains(t, content, `"github.com/andrewhowdencom/ore/x/conduit/tui"`)
-				assert.Contains(t, content, `c0, err := httpc.New(mgr)`)
-				assert.Contains(t, content, `c1, err := tui.New(mgr)`)
-				assert.Contains(t, content, `a.Add(c0)`)
-				assert.Contains(t, content, `a.Add(c1)`)
-				assert.Contains(t, content, `return a.Run(ctx)`)
-				assert.NotContains(t, content, `"flag"`)
+				assert.Contains(t, content, `app.WithConduit("http"`)
+				assert.Contains(t, content, `app.WithConduit("tui"`)
+				assert.Contains(t, content, `return httpc.New(mgr)`)
+				assert.Contains(t, content, `return tui.New(mgr)`)
 			},
 		},
 		{
 			name: "external conduit",
 			blueprint: &Blueprint{
 				Dist:     Dist{Name: "ext-agent", OutputPath: "./out"},
-				Conduits: []ConduitConfig{{Module: "example.com/my/conduit"}},
+				Conduits: []ConduitConfig{{Name: "conduit", Module: "example.com/my/conduit"}},
 			},
 			check: func(t *testing.T, content string) {
 				assert.Contains(t, content, `conduit "example.com/my/conduit"`)
-				assert.Contains(t, content, `c0, err := conduit.New(mgr)`)
+				assert.Contains(t, content, `app.WithConduit("conduit"`)
+				assert.Contains(t, content, `return conduit.New(mgr)`)
 				assert.NotContains(t, content, `"flag"`)
 			},
 		},
@@ -83,15 +80,17 @@ func TestGenerateMainGo(t *testing.T) {
 			blueprint: &Blueprint{
 				Dist: Dist{Name: "dup-agent", OutputPath: "./out"},
 				Conduits: []ConduitConfig{
-					{Module: "example.com/my/conduit"},
-					{Module: "other.com/my/conduit"},
+					{Name: "conduit", Module: "example.com/my/conduit"},
+					{Name: "conduit1", Module: "other.com/my/conduit"},
 				},
 			},
 			check: func(t *testing.T, content string) {
 				assert.Contains(t, content, `conduit "example.com/my/conduit"`)
 				assert.Contains(t, content, `conduit1 "other.com/my/conduit"`)
-				assert.Contains(t, content, `c0, err := conduit.New(mgr)`)
-				assert.Contains(t, content, `c1, err := conduit1.New(mgr)`)
+				assert.Contains(t, content, `app.WithConduit("conduit"`)
+				assert.Contains(t, content, `app.WithConduit("conduit1"`)
+				assert.Contains(t, content, `return conduit.New(mgr)`)
+				assert.Contains(t, content, `return conduit1.New(mgr)`)
 			},
 		},
 		{
@@ -100,6 +99,7 @@ func TestGenerateMainGo(t *testing.T) {
 				Dist: Dist{Name: "http-agent", OutputPath: "./out"},
 				Conduits: []ConduitConfig{
 					{
+						Name:    "http",
 						Module:  "github.com/andrewhowdencom/ore/x/conduit/http",
 						Options: map[string]any{"addr": ":8080", "ui": false},
 					},
@@ -107,10 +107,10 @@ func TestGenerateMainGo(t *testing.T) {
 			},
 			check: func(t *testing.T, content string) {
 				assert.Contains(t, content, `httpc "github.com/andrewhowdencom/ore/x/conduit/http"`)
-				assert.Contains(t, content, `httpcOptsMap := map[string]any{"addr": ":8080", "ui": false}`)
-				assert.Contains(t, content, `httpcOpts, err := httpc.OptionsFromMap(httpcOptsMap)`)
-				assert.Contains(t, content, `c0, err := httpc.New(mgr, httpcOpts...)`)
-				assert.Contains(t, content, `a.Add(c0)`)
+				assert.Contains(t, content, `map[string]any{"addr": ":8080", "ui": false}`)
+				assert.Contains(t, content, `httpcOpts, err := httpc.OptionsFromMap(opts)`)
+				assert.Contains(t, content, `return httpc.New(mgr, httpcOpts...)`)
+				assert.Contains(t, content, `app.WithConduit("http"`)
 			},
 		},
 		{
@@ -119,19 +119,20 @@ func TestGenerateMainGo(t *testing.T) {
 				Dist: Dist{Name: "mixed-agent", OutputPath: "./out"},
 				Conduits: []ConduitConfig{
 					{
+						Name:    "http",
 						Module:  "github.com/andrewhowdencom/ore/x/conduit/http",
 						Options: map[string]any{"addr": ":8080"},
 					},
-					{Module: "github.com/andrewhowdencom/ore/x/conduit/tui"},
+					{Name: "tui", Module: "github.com/andrewhowdencom/ore/x/conduit/tui"},
 				},
 			},
 			check: func(t *testing.T, content string) {
-				assert.Contains(t, content, `httpcOptsMap := map[string]any{"addr": ":8080"}`)
-				assert.Contains(t, content, `httpcOpts, err := httpc.OptionsFromMap(httpcOptsMap)`)
-				assert.Contains(t, content, `c0, err := httpc.New(mgr, httpcOpts...)`)
-				assert.Contains(t, content, `c1, err := tui.New(mgr)`)
-				assert.Contains(t, content, `a.Add(c0)`)
-				assert.Contains(t, content, `a.Add(c1)`)
+				assert.Contains(t, content, `map[string]any{"addr": ":8080"}`)
+				assert.Contains(t, content, `httpcOpts, err := httpc.OptionsFromMap(opts)`)
+				assert.Contains(t, content, `return httpc.New(mgr, httpcOpts...)`)
+				assert.Contains(t, content, `return tui.New(mgr)`)
+				assert.Contains(t, content, `app.WithConduit("http"`)
+				assert.Contains(t, content, `app.WithConduit("tui"`)
 			},
 		},
 		{
@@ -139,48 +140,52 @@ func TestGenerateMainGo(t *testing.T) {
 			blueprint: &Blueprint{
 				Dist: Dist{Name: "triple-agent", OutputPath: "./out"},
 				Conduits: []ConduitConfig{
-					{Module: "example.com/my/conduit"},
-					{Module: "other.com/my/conduit"},
-					{Module: "third.com/my/conduit"},
+					{Name: "conduit", Module: "example.com/my/conduit"},
+					{Name: "conduit1", Module: "other.com/my/conduit"},
+					{Name: "conduit2", Module: "third.com/my/conduit"},
 				},
 			},
 			check: func(t *testing.T, content string) {
 				assert.Contains(t, content, `conduit "example.com/my/conduit"`)
 				assert.Contains(t, content, `conduit1 "other.com/my/conduit"`)
 				assert.Contains(t, content, `conduit2 "third.com/my/conduit"`)
-				assert.Contains(t, content, `c0, err := conduit.New(mgr)`)
-				assert.Contains(t, content, `c1, err := conduit1.New(mgr)`)
-				assert.Contains(t, content, `c2, err := conduit2.New(mgr)`)
+				assert.Contains(t, content, `app.WithConduit("conduit"`)
+				assert.Contains(t, content, `app.WithConduit("conduit1"`)
+				assert.Contains(t, content, `app.WithConduit("conduit2"`)
+				assert.Contains(t, content, `return conduit.New(mgr)`)
+				assert.Contains(t, content, `return conduit1.New(mgr)`)
+				assert.Contains(t, content, `return conduit2.New(mgr)`)
 			},
 		},
 		{
 			name: "single handler",
 			blueprint: &Blueprint{
 				Dist:     Dist{Name: "handler-agent", OutputPath: "./out"},
-				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
-				Handlers: []HandlerConfig{{Module: "github.com/andrewhowdencom/ore/tool"}},
+				Conduits: []ConduitConfig{{Name: "http", Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Handlers: []HandlerConfig{{Name: "tool", Module: "github.com/andrewhowdencom/ore/tool"}},
 			},
 			check: func(t *testing.T, content string) {
 				assert.Contains(t, content, `tool "github.com/andrewhowdencom/ore/tool"`)
-				assert.Contains(t, content, `h0, err := tool.New()`)
-				assert.Contains(t, content, `loop.WithHandlers(h0)`)
-				assert.Contains(t, content, `c0, err := httpc.New(mgr)`)
+				assert.Contains(t, content, `"github.com/andrewhowdencom/ore/loop"`)
+				assert.Contains(t, content, `app.WithHandler("tool"`)
+				assert.Contains(t, content, `return tool.New()`)
+				assert.Contains(t, content, `app.WithConduit("http"`)
 			},
 		},
 		{
 			name: "handler with options",
 			blueprint: &Blueprint{
 				Dist:     Dist{Name: "handler-opts-agent", OutputPath: "./out"},
-				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Conduits: []ConduitConfig{{Name: "http", Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
 				Handlers: []HandlerConfig{
-					{Module: "github.com/andrewhowdencom/ore/tool", Options: map[string]any{"verbose": true}},
+					{Name: "tool", Module: "github.com/andrewhowdencom/ore/tool", Options: map[string]any{"verbose": true}},
 				},
 			},
 			check: func(t *testing.T, content string) {
-				assert.Contains(t, content, `toolOptsMap := map[string]any{"verbose": true}`)
-				assert.Contains(t, content, `toolOpts, err := tool.OptionsFromMap(toolOptsMap)`)
-				assert.Contains(t, content, `h0, err := tool.New(toolOpts...)`)
-				assert.Contains(t, content, `loop.WithHandlers(h0)`)
+				assert.Contains(t, content, `map[string]any{"verbose": true}`)
+				assert.Contains(t, content, `toolOpts, err := tool.OptionsFromMap(opts)`)
+				assert.Contains(t, content, `return tool.New(toolOpts...)`)
+				assert.Contains(t, content, `app.WithHandler("tool"`)
 			},
 		},
 		{
@@ -188,31 +193,32 @@ func TestGenerateMainGo(t *testing.T) {
 			blueprint: &Blueprint{
 				Dist: Dist{Name: "collision-agent", OutputPath: "./out"},
 				Conduits: []ConduitConfig{
-					{Module: "example.com/my/handler"},
+					{Name: "handler", Module: "example.com/my/handler"},
 				},
 				Handlers: []HandlerConfig{
-					{Module: "other.com/my/handler"},
+					{Name: "handler1", Module: "other.com/my/handler"},
 				},
 			},
 			check: func(t *testing.T, content string) {
 				assert.Contains(t, content, `handler "example.com/my/handler"`)
 				assert.Contains(t, content, `handler1 "other.com/my/handler"`)
-				assert.Contains(t, content, `c0, err := handler.New(mgr)`)
-				assert.Contains(t, content, `h0, err := handler1.New()`)
-				assert.Contains(t, content, `loop.WithHandlers(h0)`)
+				assert.Contains(t, content, `app.WithConduit("handler"`)
+				assert.Contains(t, content, `app.WithHandler("handler1"`)
+				assert.Contains(t, content, `return handler.New(mgr)`)
+				assert.Contains(t, content, `return handler1.New()`)
 			},
 		},
 		{
 			name: "http stdlib collision with handler",
 			blueprint: &Blueprint{
 				Dist:     Dist{Name: "http-collision-agent", OutputPath: "./out"},
-				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
-				Handlers: []HandlerConfig{{Module: "example.com/my/http"}},
+				Conduits: []ConduitConfig{{Name: "http", Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Handlers: []HandlerConfig{{Name: "httpc", Module: "example.com/my/http"}},
 			},
 			check: func(t *testing.T, content string) {
 				assert.Contains(t, content, `httpc "github.com/andrewhowdencom/ore/x/conduit/http"`)
 				assert.Contains(t, content, `httpc1 "example.com/my/http"`)
-				assert.Contains(t, content, `h0, err := httpc1.New()`)
+				assert.Contains(t, content, `return httpc1.New()`)
 			},
 		},
 	}
@@ -229,7 +235,7 @@ func TestGenerateMainGo(t *testing.T) {
 func TestGenerateGoMod(t *testing.T) {
 	blueprint := &Blueprint{
 		Dist:     Dist{Name: "test-agent", OutputPath: "./out"},
-		Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+		Conduits: []ConduitConfig{{Name: "http", Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
 	}
 
 	got, err := GenerateGoMod(blueprint, "/absolute/path/to/ore")
