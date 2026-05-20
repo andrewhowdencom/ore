@@ -15,6 +15,7 @@ import (
 var (
 	_ tool.ToolFunc = ReadFile
 	_ tool.ToolFunc = WriteFile
+	_ tool.ToolFunc = EditFile
 )
 
 // ReadFile reads a file and returns its contents with line-number prefixes.
@@ -145,6 +146,67 @@ var WriteFileTool = provider.Tool{
 			},
 		},
 		"required": []string{"path", "content"},
+	},
+}
+
+// EditFile performs an exact-match search-and-replace on an existing file.
+// It replaces the first occurrence of old_string with new_string.
+// Parameters:
+//   - path       (string, required): relative or absolute file path.
+//   - old_string (string, required): exact text to search for.
+//   - new_string (string, required): replacement text.
+func EditFile(ctx context.Context, args map[string]any) (any, error) {
+	path := toString(args["path"])
+	if path == "" {
+		return nil, fmt.Errorf("path is required")
+	}
+
+	oldStr := toString(args["old_string"])
+	if oldStr == "" {
+		return nil, fmt.Errorf("old_string cannot be empty")
+	}
+	newStr := toString(args["new_string"])
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	content := string(data)
+	idx := strings.Index(content, oldStr)
+	if idx == -1 {
+		return nil, fmt.Errorf("old_string not found in %q", path)
+	}
+
+	updated := content[:idx] + newStr + content[idx+len(oldStr):]
+	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
+		return nil, fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return fmt.Sprintf("edited %q", path), nil
+}
+
+// EditFileTool is the provider.Tool descriptor for EditFile.
+var EditFileTool = provider.Tool{
+	Name:        "edit_file",
+	Description: "Edit an existing file by replacing the first exact occurrence of old_string with new_string. Fails if old_string is empty or not found.",
+	Schema: map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"path": map[string]any{
+				"type":        "string",
+				"description": "The relative or absolute path to the file to edit.",
+			},
+			"old_string": map[string]any{
+				"type":        "string",
+				"description": "The exact text to search for in the file. Must match literally (case-sensitive).",
+			},
+			"new_string": map[string]any{
+				"type":        "string",
+				"description": "The replacement text to insert in place of old_string.",
+			},
+		},
+		"required": []string{"path", "old_string", "new_string"},
 	},
 }
 
