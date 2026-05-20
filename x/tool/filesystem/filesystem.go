@@ -1,10 +1,12 @@
 package filesystem
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/andrewhowdencom/ore/provider"
@@ -17,6 +19,7 @@ var (
 	_ tool.ToolFunc = WriteFile
 	_ tool.ToolFunc = EditFile
 	_ tool.ToolFunc = ListDirectory
+	_ tool.ToolFunc = SearchFiles
 )
 
 // ReadFile reads a file and returns its contents with line-number prefixes.
@@ -258,6 +261,122 @@ var ListDirectoryTool = provider.Tool{
 			},
 		},
 		"required": []string{"path"},
+	},
+}
+
+// SearchResult represents a single regex match found by SearchFiles.
+type SearchResult struct {
+	Path       string `json:"path"`
+	LineNumber int    `json:"line_number"`
+	Content    string `json:"content"`
+}
+
+// SearchFiles searches files for lines matching a regex query.
+// Parameters:
+//   - path  (string, required): file or directory path to search.
+//   - query (string, required): regex pattern to match.
+func SearchFiles(ctx context.Context, args map[string]any) (any, error) {
+	path := toString(args["path"])
+	if path == "" {
+		return nil, fmt.Errorf("path is required")
+	}
+	query := toString(args["query"])
+	if query == "" {
+		return nil, fmt.Errorf("query is required")
+	}
+
+	re, err := regexp.Compile(query)
+	if err != nil {
+		return nil, fmt.Errorf("invalid regex: %w", err)
+	}
+
+	results := make([]SearchResult, 0)
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat path: %w", err)
+	}
+
+	if !info.IsDir() {
+		matches, err := searchFile(path, re)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, matches...)
+	} else {
+		err = filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil // Skip entries we cannot read.
+			}
+			if d.IsDir() {
+				if strings.HasPrefix(filepath.Base(p), ".") && p != path {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if strings.HasPrefix(filepath.Base(p), ".") {
+				return nil
+			}
+			matches, err := searchFile(p, re)
+			if err != nil {
+				return nil // Skip files we cannot read.
+			}
+			results = append(results, matches...)
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to walk directory: %w", err)
+		}
+	}
+
+	return results, nil
+}
+
+// searchFile scans a single file for lines matching the given regex.
+func searchFile(path string, re *regexp.Regexp) ([]SearchResult, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer f.Close()
+
+	results := make([]SearchResult, 0)
+	scanner := bufio.NewScanner(f)
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+		if re.MatchString(line) {
+			results = append(results, SearchResult{
+				Path:       path,
+				LineNumber: lineNum,
+				Content:    line,
+			})
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("failed to scan file: %w", err)
+	}
+	return results, nil
+}
+
+// SearchFilesTool is the provider.Tool descriptor for SearchFiles.
+var SearchFilesTool = provider.Tool{
+	Name:        "search_files",
+	Description: "Search files for lines matching a regex query. Returns matches with file path, line number, and matching line content. If the path is a directory, searches recursively. Hidden files and directories are skipped.",
+	Schema: map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"path": map[string]any{
+				"type":        "string",
+				"description": "The relative or absolute file or directory path to search.",
+			},
+			"query": map[string]any{
+				"type":        "string",
+				"description": "The regex pattern to search for.",
+			},
+		},
+		"required": []string{"path", "query"},
 	},
 }
 
