@@ -28,9 +28,19 @@ type ConduitTemplateData struct {
 	OptionsLiteral string
 }
 
+// HandlerTemplateData holds per-handler information for main.go.tmpl.
+type HandlerTemplateData struct {
+	Index          int
+	ImportAlias    string
+	ModulePath     string
+	HasOptions     bool
+	OptionsLiteral string
+}
+
 // MainGoTemplateData holds the top-level data for main.go.tmpl.
 type MainGoTemplateData struct {
 	Conduits []ConduitTemplateData
+	Handlers []HandlerTemplateData
 }
 
 // replaceDirective holds a single replace entry for go.mod.tmpl.
@@ -107,6 +117,17 @@ func GenerateGoMod(blueprint *Blueprint, oreModulePath string) ([]byte, error) {
 			localPath := filepath.Join(oreModulePath, filepath.FromSlash(rel))
 			replaces = append(replaces, replaceDirective{
 				ModulePath: c.Module,
+				LocalPath:  localPath,
+			})
+		}
+	}
+	for _, h := range blueprint.Handlers {
+		if strings.HasPrefix(h.Module, orePrefix+"/") {
+			rel := strings.TrimPrefix(h.Module, orePrefix)
+			rel = strings.TrimPrefix(rel, "/")
+			localPath := filepath.Join(oreModulePath, filepath.FromSlash(rel))
+			replaces = append(replaces, replaceDirective{
+				ModulePath: h.Module,
 				LocalPath:  localPath,
 			})
 		}
@@ -188,6 +209,21 @@ func buildTemplateData(blueprint *Blueprint) (*MainGoTemplateData, error) {
 			ctd.OptionsLiteral = formatGoMapStringAny(c.Options)
 		}
 		data.Conduits = append(data.Conduits, ctd)
+		usedAliases[alias] = struct{}{}
+	}
+
+	for i, h := range blueprint.Handlers {
+		alias := deriveImportAlias(h.Module, usedAliases)
+		htd := HandlerTemplateData{
+			Index:       i,
+			ImportAlias: alias,
+			ModulePath:  h.Module,
+		}
+		if len(h.Options) > 0 {
+			htd.HasOptions = true
+			htd.OptionsLiteral = formatGoMapStringAny(h.Options)
+		}
+		data.Handlers = append(data.Handlers, htd)
 		usedAliases[alias] = struct{}{}
 	}
 
