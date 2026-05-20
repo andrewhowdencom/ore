@@ -1,0 +1,10 @@
+# Blueprint with HTTP conduit and tool handler with options.
+dist:
+  name: handler-opts-smoke-agent
+  output_path: ./handler-opts-smoke-agent
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/http
+handlers:
+  - module: github.com/andrewhowdencom/ore/tool
+    options:
+      verbose: true
