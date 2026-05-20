@@ -2,7 +2,9 @@ dist:
   name: multi-agent
   output_path: ./multi-agent
 conduits:
-  - module: github.com/andrewhowdencom/ore/x/conduit/http
+  - name: http
+    module: github.com/andrewhowdencom/ore/x/conduit/http
     options:
       addr: ":8080"  # TCP listen address
-  - module: github.com/andrewhowdencom/ore/x/conduit/tui
+  - name: tui
+    module: github.com/andrewhowdencom/ore/x/conduit/tui

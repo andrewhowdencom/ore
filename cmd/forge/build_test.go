@@ -23,14 +23,14 @@ func TestBuild(t *testing.T) {
 			name: "http",
 			blueprint: &Blueprint{
 				Dist:     Dist{Name: "http-agent", OutputPath: "http-agent"},
-				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Conduits: []ConduitConfig{{Name: "http", Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
 			},
 		},
 		{
 			name: "tui",
 			blueprint: &Blueprint{
 				Dist:     Dist{Name: "tui-agent", OutputPath: "tui-agent"},
-				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/tui"}},
+				Conduits: []ConduitConfig{{Name: "tui", Module: "github.com/andrewhowdencom/ore/x/conduit/tui"}},
 			},
 		},
 		{
@@ -39,6 +39,7 @@ func TestBuild(t *testing.T) {
 				Dist: Dist{Name: "http-opts-agent", OutputPath: "http-opts-agent"},
 				Conduits: []ConduitConfig{
 					{
+						Name:    "http",
 						Module:  "github.com/andrewhowdencom/ore/x/conduit/http",
 						Options: map[string]any{"addr": ":0", "ui": false},
 					},
@@ -70,7 +71,7 @@ func TestBuild_RelativeOutputPath(t *testing.T) {
 
 	blueprint := &Blueprint{
 		Dist:     Dist{Name: "rel-agent", OutputPath: "rel-agent"},
-		Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+		Conduits: []ConduitConfig{{Name: "http", Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
 	}
 
 	err = Build(blueprint, oreModulePath, blueprint.Dist.OutputPath)
@@ -96,7 +97,7 @@ func TestBuildExternalModule(t *testing.T) {
 
 	blueprint := &Blueprint{
 		Dist:     Dist{Name: "ext-agent", OutputPath: "ext-agent"},
-		Conduits: []ConduitConfig{{Module: "example.com/my/conduit"}},
+		Conduits: []ConduitConfig{{Name: "conduit", Module: "example.com/my/conduit"}},
 	}
 
 	oreModulePath, err := FindOreModuleRoot(".")
@@ -129,8 +130,8 @@ func TestBuildExternalHandlerModule(t *testing.T) {
 
 	blueprint := &Blueprint{
 		Dist:     Dist{Name: "ext-handler-agent", OutputPath: "ext-handler-agent"},
-		Conduits: []ConduitConfig{{Module: "example.com/my/conduit"}},
-		Handlers: []HandlerConfig{{Module: "example.com/my/handler"}},
+		Conduits: []ConduitConfig{{Name: "conduit", Module: "example.com/my/conduit"}},
+		Handlers: []HandlerConfig{{Name: "handler", Module: "example.com/my/handler"}},
 	}
 
 	oreModulePath, err := FindOreModuleRoot(".")
@@ -165,12 +166,12 @@ func TestBuildDuplicateExternalModules(t *testing.T) {
 	blueprint := &Blueprint{
 		Dist: Dist{Name: "dup-ext-agent", OutputPath: "dup-ext-agent"},
 		Conduits: []ConduitConfig{
-			{Module: "example.com/my/conduit"},
-			{Module: "example.com/my/conduit"},
+			{Name: "conduit", Module: "example.com/my/conduit"},
+			{Name: "conduit1", Module: "example.com/my/conduit"},
 		},
 		Handlers: []HandlerConfig{
-			{Module: "example.com/my/conduit"},
-			{Module: "example.com/my/handler"},
+			{Name: "conduit2", Module: "example.com/my/conduit"},
+			{Name: "handler", Module: "example.com/my/handler"},
 		},
 	}
 
@@ -208,7 +209,7 @@ func TestBuildExternalModuleFailure(t *testing.T) {
 
 	blueprint := &Blueprint{
 		Dist:     Dist{Name: "ext-agent", OutputPath: "ext-agent"},
-		Conduits: []ConduitConfig{{Module: "example.com/my/conduit"}},
+		Conduits: []ConduitConfig{{Name: "conduit", Module: "example.com/my/conduit"}},
 	}
 
 	oreModulePath, err := FindOreModuleRoot(".")

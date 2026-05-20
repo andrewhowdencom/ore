@@ -68,7 +68,13 @@ runtime:
 - `ORE_API_KEY` — required
 - `ORE_MODEL` — defaults to `gpt-4o`
 - `ORE_BASE_URL` — optional, for custom OpenAI-compatible endpoints
-- `STORE_DIR` — optional, enables persistent JSON thread store
+- `ORE_STORE_DIR` — optional, enables persistent JSON thread store
+
+Conduit-specific options can also be overridden via environment variables
+using the `ORE_CONDUIT_<NAME>_<KEY>` convention. For example, the HTTP
+conduit's listen address can be set with `ORE_CONDUIT_HTTP_ADDR=:9090`.
+Handler options follow the same pattern: `ORE_HANDLER_<NAME>_<KEY>`.
+Dots and hyphens in names are normalised to underscores.
 
 Multi-conduit agents expose all capabilities of their constituent conduits.
 For example, an HTTP+TUI agent listens on HTTP and also presents a TUI,
@@ -84,18 +90,27 @@ dist:
   name: my-agent
   output_path: ./my-agent
 conduits:
-  - module: github.com/andrewhowdencom/ore/x/conduit/http
+  - name: http
+    module: github.com/andrewhowdencom/ore/x/conduit/http
 ```
 
-Multiple conduits can be declared to run concurrently:
+Multiple conduits can be declared to run concurrently. Each entry must
+have a unique `name` so that runtime configuration can target specific
+instances. If `name` is omitted, it is derived from the last path element
+of `module` (e.g. `http` for `.../x/conduit/http`). Duplicate modules
+receive numeric suffixes (`http1`, `http2`, ...):
 
 ```yaml
 dist:
   name: my-agent
   output_path: ./my-agent
 conduits:
-  - module: github.com/andrewhowdencom/ore/x/conduit/http
-  - module: github.com/andrewhowdencom/ore/x/conduit/tui
+  - name: public-api
+    module: github.com/andrewhowdencom/ore/x/conduit/http
+  - name: internal-admin
+    module: github.com/andrewhowdencom/ore/x/conduit/http
+  - name: tui
+    module: github.com/andrewhowdencom/ore/x/conduit/tui
 ```
 
 Each conduit entry can optionally include an `options` map for
@@ -111,13 +126,14 @@ conduits:
       ui: false
 ```
 
-Handler entries follow the same pattern. Handlers are instantiated
-inside the per-stream `stepFactory` closure and wired into `loop.Step`
-via `loop.WithHandlers`:
+Handler entries follow the same pattern, with the same `name` field
+semantics. Handlers are instantiated inside the per-stream `stepFactory`
+closure and wired into `loop.Step` via `loop.WithHandlers`:
 
 ```yaml
 handlers:
-  - module: github.com/andrewhowdencom/ore/tool
+  - name: tools
+    module: github.com/andrewhowdencom/ore/tool
     options:
       verbose: true
 ```
@@ -158,7 +174,7 @@ express in the blueprint schema.
 | TUI conduit | ✅ | ✅ |
 | `--thread` flag for resuming sessions | ✅ | ❌ |
 | Conduit options (`thread_id`) | ✅ | ✅ |
-| JSON / memory thread store via `STORE_DIR` | ✅ | ✅ |
+| JSON / memory thread store via `ORE_STORE_DIR` | ✅ | ✅ |
 | Tool registry | ✅ | ⚠️ (via handler modules) |
 | Rich package documentation / usage guide | ✅ | ❌ (generic template) |
 

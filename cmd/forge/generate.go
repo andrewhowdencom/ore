@@ -22,6 +22,7 @@ var goModTmpl string
 // ConduitTemplateData holds per-conduit information for main.go.tmpl.
 type ConduitTemplateData struct {
 	Index          int
+	Name           string
 	ImportAlias    string
 	ModulePath     string
 	HasOptions     bool
@@ -31,6 +32,7 @@ type ConduitTemplateData struct {
 // HandlerTemplateData holds per-handler information for main.go.tmpl.
 type HandlerTemplateData struct {
 	Index          int
+	Name           string
 	ImportAlias    string
 	ModulePath     string
 	HasOptions     bool
@@ -39,6 +41,7 @@ type HandlerTemplateData struct {
 
 // MainGoTemplateData holds the top-level data for main.go.tmpl.
 type MainGoTemplateData struct {
+	Name     string
 	Conduits []ConduitTemplateData
 	Handlers []HandlerTemplateData
 }
@@ -194,13 +197,16 @@ func goValue(v any) string {
 // buildTemplateData converts a Blueprint into the template data structure
 // used by main.go.tmpl.
 func buildTemplateData(blueprint *Blueprint) (*MainGoTemplateData, error) {
-	data := &MainGoTemplateData{}
+	data := &MainGoTemplateData{
+		Name: blueprint.Dist.Name,
+	}
 	usedAliases := make(map[string]struct{})
 
 	for i, c := range blueprint.Conduits {
 		alias := deriveImportAlias(c.Module, usedAliases)
 		ctd := ConduitTemplateData{
 			Index:       i,
+			Name:        c.Name,
 			ImportAlias: alias,
 			ModulePath:  c.Module,
 		}
@@ -216,6 +222,7 @@ func buildTemplateData(blueprint *Blueprint) (*MainGoTemplateData, error) {
 		alias := deriveImportAlias(h.Module, usedAliases)
 		htd := HandlerTemplateData{
 			Index:       i,
+			Name:        h.Name,
 			ImportAlias: alias,
 			ModulePath:  h.Module,
 		}
