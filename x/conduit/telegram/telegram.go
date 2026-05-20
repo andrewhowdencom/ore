@@ -174,7 +174,7 @@ func (c *telegramConduit) poll(ctx context.Context, botUserID int64) {
 				return
 			}
 
-			if update.Message == nil || update.Message.Text == "" {
+			if update.Message == nil || update.Message.Text == "" || update.Message.Chat == nil {
 				continue
 			}
 			if update.Message.From != nil && update.Message.From.ID == botUserID {
