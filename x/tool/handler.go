@@ -13,6 +13,7 @@ import (
 // Handler implements loop.Handler for executing tool calls.
 // It looks up the tool by name in its registry, parses JSON arguments, executes
 // the function, and appends a RoleTool turn with a ToolResult artifact.
+// Handlers are obtained from a Registry via the Registry.Handler() method.
 type Handler struct {
 	registry *Registry
 }
