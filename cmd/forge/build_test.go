@@ -108,9 +108,45 @@ func TestBuildExternalModule(t *testing.T) {
 	err = Build(blueprint, oreModulePath, outputPath)
 	require.NoError(t, err)
 
-	require.Len(t, calls, 2)
-	assert.Equal(t, []string{"go", "mod", "tidy"}, calls[0])
-	assert.Equal(t, []string{"go", "build", "-o", outputPath, "."}, calls[1])
+	require.Len(t, calls, 3)
+	assert.Equal(t, []string{"go", "get", "example.com/my/conduit"}, calls[0])
+	assert.Equal(t, []string{"go", "mod", "tidy"}, calls[1])
+	assert.Equal(t, []string{"go", "build", "-o", outputPath, "."}, calls[2])
+}
+
+func TestBuildExternalHandlerModule(t *testing.T) {
+	orig := execCommand
+	defer func() { execCommand = orig }()
+
+	var calls [][]string
+	execCommand = func(name string, arg ...string) *exec.Cmd {
+		calls = append(calls, append([]string{name}, arg...))
+		if runtime.GOOS == "windows" {
+			return exec.Command("cmd", "/c", "exit", "0")
+		}
+		return exec.Command("true")
+	}
+
+	blueprint := &Blueprint{
+		Dist:     Dist{Name: "ext-handler-agent", OutputPath: "ext-handler-agent"},
+		Conduits: []ConduitConfig{{Module: "example.com/my/conduit"}},
+		Handlers: []HandlerConfig{{Module: "example.com/my/handler"}},
+	}
+
+	oreModulePath, err := FindOreModuleRoot(".")
+	require.NoError(t, err)
+
+	outputDir := t.TempDir()
+	outputPath := filepath.Join(outputDir, "ext-handler-agent")
+
+	err = Build(blueprint, oreModulePath, outputPath)
+	require.NoError(t, err)
+
+	require.Len(t, calls, 4)
+	assert.Equal(t, []string{"go", "get", "example.com/my/conduit"}, calls[0])
+	assert.Equal(t, []string{"go", "get", "example.com/my/handler"}, calls[1])
+	assert.Equal(t, []string{"go", "mod", "tidy"}, calls[2])
+	assert.Equal(t, []string{"go", "build", "-o", outputPath, "."}, calls[3])
 }
 
 func TestBuildExternalModuleFailure(t *testing.T) {
@@ -137,5 +173,5 @@ func TestBuildExternalModuleFailure(t *testing.T) {
 
 	err = Build(blueprint, oreModulePath, outputPath)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "go mod tidy")
+	assert.Contains(t, err.Error(), "go get example.com/my/conduit")
 }
