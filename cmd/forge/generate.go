@@ -28,9 +28,19 @@ type ConduitTemplateData struct {
 	OptionsLiteral string
 }
 
+// HandlerTemplateData holds per-handler information for main.go.tmpl.
+type HandlerTemplateData struct {
+	Index          int
+	ImportAlias    string
+	ModulePath     string
+	HasOptions     bool
+	OptionsLiteral string
+}
+
 // MainGoTemplateData holds the top-level data for main.go.tmpl.
 type MainGoTemplateData struct {
 	Conduits []ConduitTemplateData
+	Handlers []HandlerTemplateData
 }
 
 // replaceDirective holds a single replace entry for go.mod.tmpl.
@@ -39,8 +49,8 @@ type replaceDirective struct {
 	LocalPath  string
 }
 
-// GenerateMainGo produces a compilable main.go for the conduits specified
-// in blueprint.
+// GenerateMainGo produces a compilable main.go for the conduits and
+// handlers specified in the blueprint.
 func GenerateMainGo(blueprint *Blueprint) ([]byte, error) {
 	tmpl, err := template.New("main").Parse(mainGoTmpl)
 	if err != nil {
@@ -88,9 +98,9 @@ func Generate(blueprint *Blueprint, oreModulePath string, targetDir string) erro
 }
 
 // GenerateGoMod produces a go.mod that depends on the local ore module via
-// a replace directive. For conduits that are submodules of ore (i.e. their
-// module path starts with github.com/andrewhowdencom/ore/), an additional
-// replace directive points from the conduit module path to its local path
+// a replace directive. For conduits and handlers that are submodules of ore
+// (i.e. their module path starts with github.com/andrewhowdencom/ore/), an
+// additional replace directive points from the module path to its local path
 // derived from oreModulePath.
 func GenerateGoMod(blueprint *Blueprint, oreModulePath string) ([]byte, error) {
 	tmpl, err := template.New("gomod").Parse(goModTmpl)
@@ -107,6 +117,17 @@ func GenerateGoMod(blueprint *Blueprint, oreModulePath string) ([]byte, error) {
 			localPath := filepath.Join(oreModulePath, filepath.FromSlash(rel))
 			replaces = append(replaces, replaceDirective{
 				ModulePath: c.Module,
+				LocalPath:  localPath,
+			})
+		}
+	}
+	for _, h := range blueprint.Handlers {
+		if strings.HasPrefix(h.Module, orePrefix+"/") {
+			rel := strings.TrimPrefix(h.Module, orePrefix)
+			rel = strings.TrimPrefix(rel, "/")
+			localPath := filepath.Join(oreModulePath, filepath.FromSlash(rel))
+			replaces = append(replaces, replaceDirective{
+				ModulePath: h.Module,
 				LocalPath:  localPath,
 			})
 		}
@@ -188,6 +209,21 @@ func buildTemplateData(blueprint *Blueprint) (*MainGoTemplateData, error) {
 			ctd.OptionsLiteral = formatGoMapStringAny(c.Options)
 		}
 		data.Conduits = append(data.Conduits, ctd)
+		usedAliases[alias] = struct{}{}
+	}
+
+	for i, h := range blueprint.Handlers {
+		alias := deriveImportAlias(h.Module, usedAliases)
+		htd := HandlerTemplateData{
+			Index:       i,
+			ImportAlias: alias,
+			ModulePath:  h.Module,
+		}
+		if len(h.Options) > 0 {
+			htd.HasOptions = true
+			htd.OptionsLiteral = formatGoMapStringAny(h.Options)
+		}
+		data.Handlers = append(data.Handlers, htd)
 		usedAliases[alias] = struct{}{}
 	}
 

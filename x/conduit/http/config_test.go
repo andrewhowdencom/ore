@@ -18,7 +18,7 @@ func TestOptionsFromMap_Valid(t *testing.T) {
 
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 	h := newTestHandler(t, mgr, opts...)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -56,7 +56,7 @@ func TestFromConfig_Addr(t *testing.T) {
 
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 	h := newTestHandler(t, mgr, opts...)
 
 	assert.NotNil(t, h)
@@ -85,7 +85,7 @@ func TestFromConfig_Combined(t *testing.T) {
 
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 	h := newTestHandler(t, mgr, opts...)
 
 	assert.Equal(t, ":9090", h.addr)
@@ -99,7 +99,7 @@ func TestOptionsFromMap_UnknownFields(t *testing.T) {
 
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 	h := newTestHandler(t, mgr, opts...)
 
 	assert.Equal(t, ":0", h.addr)

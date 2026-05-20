@@ -80,6 +80,48 @@ func TestGenerateCommand(t *testing.T) {
 			},
 		},
 		{
+			name: "directory output handler",
+			setupArgs: func(t *testing.T) []string {
+				return []string{"generate", "--config", "testdata/handler-forge.yaml", "-o", t.TempDir()}
+			},
+			checkOut: func(t *testing.T, out string) {
+				assert.Empty(t, out)
+			},
+			checkDir: func(t *testing.T, dir string) {
+				mainGo, err := os.ReadFile(filepath.Join(dir, "main.go"))
+				require.NoError(t, err)
+				assert.Contains(t, string(mainGo), `tool "github.com/andrewhowdencom/ore/tool"`)
+				assert.Contains(t, string(mainGo), `h0, err := tool.New()`)
+				assert.Contains(t, string(mainGo), `loop.WithHandlers(h0)`)
+				assert.Contains(t, string(mainGo), `a.Add(c0)`)
+
+				goMod, err := os.ReadFile(filepath.Join(dir, "go.mod"))
+				require.NoError(t, err)
+				assert.Contains(t, string(goMod), "module handler-smoke-agent")
+			},
+		},
+		{
+			name: "directory output handler options",
+			setupArgs: func(t *testing.T) []string {
+				return []string{"generate", "--config", "testdata/handler-options-forge.yaml", "-o", t.TempDir()}
+			},
+			checkOut: func(t *testing.T, out string) {
+				assert.Empty(t, out)
+			},
+			checkDir: func(t *testing.T, dir string) {
+				mainGo, err := os.ReadFile(filepath.Join(dir, "main.go"))
+				require.NoError(t, err)
+				assert.Contains(t, string(mainGo), `toolOptsMap := map[string]any{"verbose": true}`)
+				assert.Contains(t, string(mainGo), `toolOpts, err := tool.OptionsFromMap(toolOptsMap)`)
+				assert.Contains(t, string(mainGo), `h0, err := tool.New(toolOpts...)`)
+				assert.Contains(t, string(mainGo), `loop.WithHandlers(h0)`)
+
+				goMod, err := os.ReadFile(filepath.Join(dir, "go.mod"))
+				require.NoError(t, err)
+				assert.Contains(t, string(goMod), "module handler-opts-smoke-agent")
+			},
+		},
+		{
 			name: "missing file",
 			setupArgs: func(t *testing.T) []string {
 				return []string{"generate", "--config", filepath.Join(t.TempDir(), "nonexistent.yaml")}

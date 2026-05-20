@@ -107,6 +107,73 @@ conduits:
 			},
 		},
 		{
+			name: "valid blueprint with handlers",
+			input: `
+dist:
+  name: handler-agent
+  output_path: ./out
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/http
+handlers:
+  - module: github.com/andrewhowdencom/ore/tool
+`,
+			want: &Blueprint{
+				Dist:     Dist{Name: "handler-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Handlers: []HandlerConfig{{Module: "github.com/andrewhowdencom/ore/tool"}},
+			},
+		},
+		{
+			name: "valid blueprint with handler options",
+			input: `
+dist:
+  name: handler-opts-agent
+  output_path: ./out
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/http
+handlers:
+  - module: github.com/andrewhowdencom/ore/tool
+    options:
+      verbose: true
+`,
+			want: &Blueprint{
+				Dist:     Dist{Name: "handler-opts-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Handlers: []HandlerConfig{
+					{Module: "github.com/andrewhowdencom/ore/tool", Options: map[string]any{"verbose": true}},
+				},
+			},
+		},
+		{
+			name: "empty handlers list",
+			input: `
+dist:
+  name: no-handler-agent
+  output_path: ./out
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/http
+handlers: []
+`,
+			want: &Blueprint{
+				Dist:     Dist{Name: "no-handler-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Handlers: []HandlerConfig{},
+			},
+		},
+		{
+			name: "missing handler module",
+			input: `
+dist:
+  name: bad-handler-agent
+  output_path: ./out
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/http
+handlers:
+  - module: ""
+`,
+			wantErr: "handlers[0].module is required",
+		},
+		{
 			name: "malformed YAML",
 			input:   "not: valid: yaml: [",
 			wantErr: "decode blueprint",
