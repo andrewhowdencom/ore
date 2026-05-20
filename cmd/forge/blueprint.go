@@ -28,8 +28,9 @@ import (
 //   - conduits: must contain at least one entry with a non-empty module path
 type Blueprint struct {
 	Dist     Dist            `yaml:"dist"`
-	Conduits []ConduitConfig `yaml:"conduits"`
-	Handlers []HandlerConfig `yaml:"handlers,omitempty"`
+	Conduits   []ConduitConfig   `yaml:"conduits"`
+	Handlers   []HandlerConfig   `yaml:"handlers,omitempty"`
+	Transforms []TransformConfig `yaml:"transforms,omitempty"`
 }
 
 // Dist describes the distribution (compiled binary) to produce.
@@ -50,6 +51,14 @@ type ConduitConfig struct {
 // loop.Step via loop.WithHandlers.
 type HandlerConfig struct {
 	Name    string         `yaml:"name,omitempty"`
+	Module  string         `yaml:"module"`
+	Options map[string]any `yaml:"options,omitempty"`
+}
+
+// TransformConfig describes a single inference assembly transform to include
+// in the generated agent. Transforms are instantiated per-stream and wired
+// into loop.Step via loop.WithTransforms.
+type TransformConfig struct {
 	Module  string         `yaml:"module"`
 	Options map[string]any `yaml:"options,omitempty"`
 }
@@ -79,6 +88,11 @@ func ParseBlueprint(r io.Reader) (*Blueprint, error) {
 	for i, h := range b.Handlers {
 		if h.Module == "" {
 			return nil, fmt.Errorf("blueprint handlers[%d].module is required", i)
+		}
+	}
+	for i, tr := range b.Transforms {
+		if tr.Module == "" {
+			return nil, fmt.Errorf("blueprint transforms[%d].module is required", i)
 		}
 	}
 

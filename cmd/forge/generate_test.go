@@ -258,3 +258,97 @@ func TestFormatGoMapStringAny(t *testing.T) {
 	want := `map[string]any{"addr": ":8080", "list": []any{1, "two", true}, "nested": map[string]any{"key": "value"}}`
 	assert.Equal(t, want, got)
 }
+
+func TestGenerateMainGo_Transforms(t *testing.T) {
+	tests := []struct {
+		name      string
+		blueprint *Blueprint
+		check     func(t *testing.T, content string)
+	}{
+		{
+			name: "single transform",
+			blueprint: &Blueprint{
+				Dist:       Dist{Name: "transform-agent", OutputPath: "./out"},
+				Conduits:   []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Transforms: []TransformConfig{{Module: "github.com/andrewhowdencom/ore/x/systemprompt"}},
+			},
+			check: func(t *testing.T, content string) {
+				assert.Contains(t, content, `systemprompt "github.com/andrewhowdencom/ore/x/systemprompt"`)
+				assert.Contains(t, content, `tr0, err := systemprompt.New()`)
+				assert.Contains(t, content, `stepOpts = append(stepOpts, loop.WithTransforms(tr0))`)
+			},
+		},
+		{
+			name: "transform with options",
+			blueprint: &Blueprint{
+				Dist:     Dist{Name: "transform-opts-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Transforms: []TransformConfig{
+					{Module: "github.com/andrewhowdencom/ore/x/systemprompt", Options: map[string]any{"content": "You are a helpful assistant."}},
+				},
+			},
+			check: func(t *testing.T, content string) {
+				assert.Contains(t, content, `systempromptOptsMap := map[string]any{"content": "You are a helpful assistant."}`)
+				assert.Contains(t, content, `systempromptOpts, err := systemprompt.OptionsFromMap(systempromptOptsMap)`)
+				assert.Contains(t, content, `tr0, err := systemprompt.New(systempromptOpts...)`)
+			},
+		},
+		{
+			name: "transform and handler",
+			blueprint: &Blueprint{
+				Dist:       Dist{Name: "both-agent", OutputPath: "./out"},
+				Conduits:   []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Handlers:   []HandlerConfig{{Module: "github.com/andrewhowdencom/ore/tool"}},
+				Transforms: []TransformConfig{{Module: "github.com/andrewhowdencom/ore/x/systemprompt"}},
+			},
+			check: func(t *testing.T, content string) {
+				assert.Contains(t, content, `systemprompt "github.com/andrewhowdencom/ore/x/systemprompt"`)
+				assert.Contains(t, content, `tool "github.com/andrewhowdencom/ore/tool"`)
+				assert.Contains(t, content, `tr0, err := systemprompt.New()`)
+				assert.Contains(t, content, `h0, err := tool.New()`)
+				assert.Contains(t, content, `stepOpts = append(stepOpts, loop.WithTransforms(tr0))`)
+				assert.Contains(t, content, `stepOpts = append(stepOpts, loop.WithHandlers(h0))`)
+			},
+		},
+		{
+			name: "transform alias collision with handler",
+			blueprint: &Blueprint{
+				Dist:       Dist{Name: "collision-agent", OutputPath: "./out"},
+				Conduits:   []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Handlers:   []HandlerConfig{{Module: "example.com/my/systemprompt"}},
+				Transforms: []TransformConfig{{Module: "github.com/andrewhowdencom/ore/x/systemprompt"}},
+			},
+			check: func(t *testing.T, content string) {
+				assert.Contains(t, content, `systemprompt "example.com/my/systemprompt"`)
+				assert.Contains(t, content, `systemprompt1 "github.com/andrewhowdencom/ore/x/systemprompt"`)
+				assert.Contains(t, content, `tr0, err := systemprompt1.New()`)
+				assert.Contains(t, content, `h0, err := systemprompt.New()`)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := GenerateMainGo(tt.blueprint)
+			require.NoError(t, err)
+			tt.check(t, string(got))
+		})
+	}
+}
+
+func TestGenerateGoMod_Transforms(t *testing.T) {
+	blueprint := &Blueprint{
+		Dist:     Dist{Name: "test-agent", OutputPath: "./out"},
+		Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+		Transforms: []TransformConfig{
+			{Module: "github.com/andrewhowdencom/ore/x/systemprompt"},
+		},
+	}
+
+	got, err := GenerateGoMod(blueprint, "/absolute/path/to/ore")
+	require.NoError(t, err)
+
+	content := string(got)
+	assert.Contains(t, content, "module test-agent")
+	assert.Contains(t, content, `replace github.com/andrewhowdencom/ore/x/systemprompt => /absolute/path/to/ore/x/systemprompt`)
+}
