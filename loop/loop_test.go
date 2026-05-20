@@ -48,8 +48,18 @@ func (m *mockHandler) Handle(ctx context.Context, art artifact.Artifact, s state
 	return m.err
 }
 
+// mockTransform implements Transform for testing.
+type mockTransform struct {
+	fn func(ctx context.Context, s state.State) (state.State, error)
+}
+
+func (m *mockTransform) Transform(ctx context.Context, s state.State) (state.State, error) {
+	return m.fn(ctx, s)
+}
+
 // Compile-time interface check.
 var _ Handler = (*mockHandler)(nil)
+var _ Transform = (*mockTransform)(nil)
 
 // collectEvents reads all available events from a channel until the timeout
 // expires. It returns the collected events without closing the channel.
@@ -150,6 +160,80 @@ func TestStep_Turn_EmptyArtifacts(t *testing.T) {
 	last := turns[1]
 	assert.Equal(t, state.RoleAssistant, last.Role)
 	assert.Empty(t, last.Artifacts)
+}
+
+func TestStep_Turn_Transform_Composition(t *testing.T) {
+	var order []int
+	tr1 := &mockTransform{
+		fn: func(ctx context.Context, s state.State) (state.State, error) {
+			order = append(order, 1)
+			return s, nil
+		},
+	}
+	tr2 := &mockTransform{
+		fn: func(ctx context.Context, s state.State) (state.State, error) {
+			order = append(order, 2)
+			return s, nil
+		},
+	}
+	s := New(WithTransforms(tr1, tr2))
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	mock := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world"},
+		},
+	}
+
+	_, err := s.Turn(context.Background(), mem, mock)
+	require.NoError(t, err)
+	assert.Equal(t, []int{1, 2}, order)
+}
+
+func TestStep_Turn_Transform_ErrorAborts(t *testing.T) {
+	wantErr := errors.New("transform failed")
+	tr := &mockTransform{
+		fn: func(ctx context.Context, s state.State) (state.State, error) {
+			return s, wantErr
+		},
+	}
+	s := New(WithTransforms(tr))
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	mock := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world"},
+		},
+	}
+
+	_, err := s.Turn(context.Background(), mem, mock)
+	require.ErrorIs(t, err, wantErr)
+	assert.Contains(t, err.Error(), "transform failed")
+
+	// State should not be mutated.
+	assert.Len(t, mem.Turns(), 1)
+}
+
+func TestStep_Turn_Transform_Identity(t *testing.T) {
+	s := New()
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	mock := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world"},
+		},
+	}
+
+	result, err := s.Turn(context.Background(), mem, mock)
+	require.NoError(t, err)
+	assert.Same(t, mem, result)
+
+	turns := mem.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, state.RoleAssistant, turns[1].Role)
 }
 
 func TestStep_Turn_Handler(t *testing.T) {
