@@ -5,4 +5,5 @@ use (
 	./x/conduit/http
 	./x/conduit/tui
 	./x/conduit/telegram
+	./x/conduit/slack
 )
