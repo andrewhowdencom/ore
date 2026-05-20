@@ -111,6 +111,17 @@ conduits:
       ui: false
 ```
 
+Handler entries follow the same pattern. Handlers are instantiated
+inside the per-stream `stepFactory` closure and wired into `loop.Step`
+via `loop.WithHandlers`:
+
+```yaml
+handlers:
+  - module: github.com/andrewhowdencom/ore/tool
+    options:
+      verbose: true
+```
+
 ### Conduit Options Reference
 
 | Conduit | Option Key | Type | Description |
@@ -137,7 +148,7 @@ express in the blueprint schema.
 | HTTP conduit | ✅ | ✅ |
 | `httpc.WithUI()` — built-in web chat UI | ✅ | ✅ |
 | Conduit options (`addr`, `ui`) | ✅ | ✅ |
-| Tool registry (`add` / `multiply`) | ✅ | ❌ |
+| Tool registry (`add` / `multiply`) | ✅ | ⚠️ (via handler modules) |
 | Rich package documentation / usage guide | ✅ | ❌ (generic template) |
 
 ### `examples/tui-chat/`
@@ -148,7 +159,7 @@ express in the blueprint schema.
 | `--thread` flag for resuming sessions | ✅ | ❌ |
 | Conduit options (`thread_id`) | ✅ | ✅ |
 | JSON / memory thread store via `STORE_DIR` | ✅ | ✅ |
-| Tool registry | ✅ | ❌ |
+| Tool registry | ✅ | ⚠️ (via handler modules) |
 | Rich package documentation / usage guide | ✅ | ❌ (generic template) |
 
 ### `examples/single-turn-cli/` and `examples/calculator/`
@@ -172,10 +183,12 @@ conduit module in the `conduits` array.
   through `session.NewManager`. There is no way to request `cognitive.ReAct`
   or a custom cognitive loop.
 - **Tool definitions**: There is no blueprint section for declaring tools,
-  function implementations, or JSON schemas.
-- **Artifact rendering**: The template uses generic conduit rendering. Custom
-  artifact handling (e.g. printing `Usage` tokens, formatting `Reasoning`
-  blocks) must be hand-coded.
+  function implementations, or JSON schemas in YAML. Handler modules can
+  implement tool registries in Go, but the tool schemas and function
+  implementations themselves must still be written in Go code.
+- **Custom artifact handlers**: ✅ Supported via the `handlers` list. Handler
+  modules implementing `loop.Handler` are instantiated per-stream and
+  wired into `loop.Step` automatically.
 
 ## Future Work
 
@@ -186,17 +199,17 @@ need to grow the following dimensions:
    conduit (direct `loop.Step` usage), such as CLI or batch jobs.
 2. **Provider selection**: A `provider` stanza (e.g. `provider: {type: openai,
    model: gpt-4o, base_url: ...}`) to choose and configure provider adapters.
-3. **Tool declarations**: A `tools` list where each entry provides a name,
-   description, JSON schema, and a reference to a Go function implementation.
-   This likely requires a companion plugin or code-generation mechanism,
-   since tool *implementations* cannot be expressed in YAML alone.
+3. **Tool declarations** (with YAML-level function implementations): A `tools`
+   list where each entry provides a name, description, JSON schema, and a
+   reference to a Go function implementation. This likely requires a
+   companion plugin or code-generation mechanism, since tool *implementations*
+   cannot be expressed in YAML alone. Handler modules can bridge this gap
+   by implementing the tool registry in Go.
 4. **Conduit options translation** ✅ — Translate the YAML `options` map into
    Go functional options in the generated template (e.g. `http: {ui: true}`
    → `httpc.WithUI()`).
 5. **Cognitive pattern selection**: A `cognitive` stanza to choose between
    `TurnProcessor`, `ReAct`, or future patterns.
-6. **Custom artifact handlers**: A hook or template override for rendering
-   artifact types that the built-in conduits do not handle natively.
 
 These extensions would move forge from a simple scaffold toward a declarative
 DSL for agent composition, while still keeping the framework's core
