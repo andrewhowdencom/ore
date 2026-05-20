@@ -75,6 +75,8 @@ func NewManager(store thread.Store, prov provider.Provider, newStep func() (*loo
 }
 
 // Create creates a new thread and an active stream backed by it.
+// Returns an error if the underlying thread store cannot create a thread
+// or if the step factory fails.
 func (m *Manager) Create() (*Stream, error) {
 	thr, err := m.store.Create()
 	if err != nil {
@@ -104,6 +106,7 @@ func (m *Manager) Create() (*Stream, error) {
 
 // Attach gets or creates an active stream for an existing thread.
 // If the thread does not exist in the store, an error is returned.
+// May also return an error if the step factory fails.
 func (m *Manager) Attach(threadID string) (*Stream, error) {
 	m.mu.RLock()
 	stream, ok := m.sessions[threadID]

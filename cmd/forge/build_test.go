@@ -149,6 +149,52 @@ func TestBuildExternalHandlerModule(t *testing.T) {
 	assert.Equal(t, []string{"go", "build", "-o", outputPath, "."}, calls[3])
 }
 
+func TestBuildDuplicateExternalModules(t *testing.T) {
+	orig := execCommand
+	defer func() { execCommand = orig }()
+
+	var calls [][]string
+	execCommand = func(name string, arg ...string) *exec.Cmd {
+		calls = append(calls, append([]string{name}, arg...))
+		if runtime.GOOS == "windows" {
+			return exec.Command("cmd", "/c", "exit", "0")
+		}
+		return exec.Command("true")
+	}
+
+	blueprint := &Blueprint{
+		Dist: Dist{Name: "dup-ext-agent", OutputPath: "dup-ext-agent"},
+		Conduits: []ConduitConfig{
+			{Module: "example.com/my/conduit"},
+			{Module: "example.com/my/conduit"},
+		},
+		Handlers: []HandlerConfig{
+			{Module: "example.com/my/conduit"},
+			{Module: "example.com/my/handler"},
+		},
+	}
+
+	oreModulePath, err := FindOreModuleRoot(".")
+	require.NoError(t, err)
+
+	outputDir := t.TempDir()
+	outputPath := filepath.Join(outputDir, "dup-ext-agent")
+
+	err = Build(blueprint, oreModulePath, outputPath)
+	require.NoError(t, err)
+
+	// Each unique external module should be fetched exactly once.
+	var getCalls [][]string
+	for _, c := range calls {
+		if len(c) >= 2 && c[0] == "go" && c[1] == "get" {
+			getCalls = append(getCalls, c)
+		}
+	}
+	require.Len(t, getCalls, 2)
+	assert.Equal(t, []string{"go", "get", "example.com/my/conduit"}, getCalls[0])
+	assert.Equal(t, []string{"go", "get", "example.com/my/handler"}, getCalls[1])
+}
+
 func TestBuildExternalModuleFailure(t *testing.T) {
 	orig := execCommand
 	defer func() { execCommand = orig }()

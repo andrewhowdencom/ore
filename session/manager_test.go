@@ -125,6 +125,28 @@ func TestManager_Attach(t *testing.T) {
 	require.Len(t, active, 1)
 }
 
+func TestManager_StepFactoryError(t *testing.T) {
+	store := thread.NewMemoryStore()
+	failingFactory := func() (*loop.Step, error) {
+		return nil, fmt.Errorf("factory failure")
+	}
+	mgr := NewManager(store, &mockProvider{}, failingFactory, simpleProcessor())
+
+	// Create should propagate the step factory error.
+	_, err := mgr.Create()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "create step")
+	assert.Contains(t, err.Error(), "factory failure")
+
+	// Attach should also propagate the step factory error.
+	thr, err := store.Create()
+	require.NoError(t, err)
+	_, err = mgr.Attach(thr.ID)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "create step")
+	assert.Contains(t, err.Error(), "factory failure")
+}
+
 func TestManager_Attach_ExistingSession(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())

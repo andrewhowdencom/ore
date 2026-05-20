@@ -49,8 +49,8 @@ type replaceDirective struct {
 	LocalPath  string
 }
 
-// GenerateMainGo produces a compilable main.go for the conduits specified
-// in blueprint.
+// GenerateMainGo produces a compilable main.go for the conduits and
+// handlers specified in the blueprint.
 func GenerateMainGo(blueprint *Blueprint) ([]byte, error) {
 	tmpl, err := template.New("main").Parse(mainGoTmpl)
 	if err != nil {
@@ -98,9 +98,9 @@ func Generate(blueprint *Blueprint, oreModulePath string, targetDir string) erro
 }
 
 // GenerateGoMod produces a go.mod that depends on the local ore module via
-// a replace directive. For conduits that are submodules of ore (i.e. their
-// module path starts with github.com/andrewhowdencom/ore/), an additional
-// replace directive points from the conduit module path to its local path
+// a replace directive. For conduits and handlers that are submodules of ore
+// (i.e. their module path starts with github.com/andrewhowdencom/ore/), an
+// additional replace directive points from the module path to its local path
 // derived from oreModulePath.
 func GenerateGoMod(blueprint *Blueprint, oreModulePath string) ([]byte, error) {
 	tmpl, err := template.New("gomod").Parse(goModTmpl)
