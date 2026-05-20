@@ -11,3 +11,12 @@ conduits:
     module: github.com/andrewhowdencom/ore/x/conduit/http
     options:
       addr: ":8080"  # TCP listen address
+# Uncomment to inject a system prompt and guardrails into the inference context:
+# transforms:
+#   - module: github.com/andrewhowdencom/ore/x/systemprompt
+#     options:
+#       content: "You are a helpful assistant."
+#   - module: github.com/andrewhowdencom/ore/x/guardrails
+#     options:
+#       rules:
+#         - "Always format code in markdown blocks."
