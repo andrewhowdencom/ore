@@ -1,116 +1,58 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"log/slog"
 	"os"
-	"os/signal"
 
-	"github.com/andrewhowdencom/ore/agent"
-	"github.com/andrewhowdencom/ore/cognitive"
+	"github.com/andrewhowdencom/ore/app"
+{{- if .Handlers }}
+	"github.com/andrewhowdencom/ore/loop"
+{{- end }}
+	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/x/conduit"
 {{- range .Conduits }}
 	{{.ImportAlias}} "{{.ModulePath}}"
 {{- end }}
 {{- range .Handlers }}
 	{{.ImportAlias}} "{{.ModulePath}}"
 {{- end }}
-	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/provider/openai"
-	"github.com/andrewhowdencom/ore/session"
-	"github.com/andrewhowdencom/ore/thread"
 )
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	slog.SetDefault(logger)
-
-	if err := run(); err != nil {
-		slog.Error("fatal error", "err", err)
-		os.Exit(1)
-	}
-}
-
-func run() error {
-	apiKey := os.Getenv("ORE_API_KEY")
-	if apiKey == "" {
-		return fmt.Errorf("ORE_API_KEY not set")
-	}
-
-	modelName := os.Getenv("ORE_MODEL")
-	if modelName == "" {
-		modelName = "gpt-4o"
-	}
-
-	baseURL := os.Getenv("ORE_BASE_URL")
-
-	var store thread.Store
-	if storeDir := os.Getenv("STORE_DIR"); storeDir != "" {
-		var err error
-		store, err = thread.NewJSONStore(storeDir)
-		if err != nil {
-			return fmt.Errorf("create JSON store: %w", err)
-		}
-	} else {
-		store = thread.NewMemoryStore()
-	}
-
-	var opts []openai.Option
-	if baseURL != "" {
-		opts = append(opts, openai.WithBaseURL(baseURL))
-	}
-	prov := openai.New(apiKey, modelName, opts...)
-
-	stepFactory := func() (*loop.Step, error) {
-{{- range .Handlers }}
-{{- if .HasOptions }}
-		{{.ImportAlias}}OptsMap := {{.OptionsLiteral}}
-		{{.ImportAlias}}Opts, err := {{.ImportAlias}}.OptionsFromMap({{.ImportAlias}}OptsMap)
-		if err != nil {
-			return nil, fmt.Errorf("create handler options: %w", err)
-		}
-		h{{.Index}}, err := {{.ImportAlias}}.New({{.ImportAlias}}Opts...)
-{{- else }}
-		h{{.Index}}, err := {{.ImportAlias}}.New()
-{{- end }}
-		if err != nil {
-			return nil, fmt.Errorf("create handler: %w", err)
-		}
-{{- end }}
-{{- if .Handlers }}
-		return loop.New(
-{{- range .Handlers }}
-			loop.WithHandlers(h{{.Index}}),
-{{- end }}
-		), nil
-{{- else }}
-		return loop.New(), nil
-{{- end }}
-	}
-
-	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())
-
-	a := agent.New(mgr)
-
+	if err := app.Run(
+		app.WithName("{{.Name}}"),
 {{- range .Conduits }}
 {{- if .HasOptions }}
-	{{.ImportAlias}}OptsMap := {{.OptionsLiteral}}
-	{{.ImportAlias}}Opts, err := {{.ImportAlias}}.OptionsFromMap({{.ImportAlias}}OptsMap)
-	if err != nil {
-		return err
-	}
-	c{{.Index}}, err := {{.ImportAlias}}.New(mgr, {{.ImportAlias}}Opts...)
+		app.WithConduit("{{.Name}}", func(mgr *session.Manager, opts map[string]any) (conduit.Conduit, error) {
+			{{.ImportAlias}}Opts, err := {{.ImportAlias}}.OptionsFromMap(opts)
+			if err != nil {
+				return nil, err
+			}
+			return {{.ImportAlias}}.New(mgr, {{.ImportAlias}}Opts...)
+		}, {{.OptionsLiteral}}),
 {{- else }}
-	c{{.Index}}, err := {{.ImportAlias}}.New(mgr)
+		app.WithConduit("{{.Name}}", func(mgr *session.Manager, opts map[string]any) (conduit.Conduit, error) {
+			return {{.ImportAlias}}.New(mgr)
+		}, nil),
 {{- end }}
-	if err != nil {
-		return err
+{{- end }}
+{{- range .Handlers }}
+{{- if .HasOptions }}
+		app.WithHandler("{{.Name}}", func(opts map[string]any) (loop.Handler, error) {
+			{{.ImportAlias}}Opts, err := {{.ImportAlias}}.OptionsFromMap(opts)
+			if err != nil {
+				return nil, err
+			}
+			return {{.ImportAlias}}.New({{.ImportAlias}}Opts...)
+		}, {{.OptionsLiteral}}),
+{{- else }}
+		app.WithHandler("{{.Name}}", func(opts map[string]any) (loop.Handler, error) {
+			return {{.ImportAlias}}.New()
+		}, nil),
+{{- end }}
+{{- end }}
+	); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
-	a.Add(c{{.Index}})
-{{- end }}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-
-	return a.Run(ctx)
 }

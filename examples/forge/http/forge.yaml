@@ -7,6 +7,7 @@ dist:
   name: http-chat
   output_path: ./http-chat
 conduits:
-  - module: github.com/andrewhowdencom/ore/x/conduit/http
+  - name: http
+    module: github.com/andrewhowdencom/ore/x/conduit/http
     options:
       addr: ":8080"  # TCP listen address

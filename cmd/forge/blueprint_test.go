@@ -27,7 +27,7 @@ conduits:
 			want: &Blueprint{
 				Dist: Dist{Name: "my-http-agent", OutputPath: "./my-http-agent"},
 				Conduits: []ConduitConfig{
-					{Module: "github.com/andrewhowdencom/ore/x/conduit/http"},
+					{Name: "http", Module: "github.com/andrewhowdencom/ore/x/conduit/http"},
 				},
 			},
 		},
@@ -43,7 +43,7 @@ conduits:
 			want: &Blueprint{
 				Dist: Dist{Name: "my-tui-agent", OutputPath: "./my-tui-agent"},
 				Conduits: []ConduitConfig{
-					{Module: "github.com/andrewhowdencom/ore/x/conduit/tui"},
+					{Name: "tui", Module: "github.com/andrewhowdencom/ore/x/conduit/tui"},
 				},
 			},
 		},
@@ -101,8 +101,8 @@ conduits:
 			want: &Blueprint{
 				Dist: Dist{Name: "dup-agent", OutputPath: "./out"},
 				Conduits: []ConduitConfig{
-					{Module: "github.com/andrewhowdencom/ore/x/conduit/http"},
-					{Module: "github.com/andrewhowdencom/ore/x/conduit/http"},
+					{Name: "http", Module: "github.com/andrewhowdencom/ore/x/conduit/http"},
+					{Name: "http1", Module: "github.com/andrewhowdencom/ore/x/conduit/http"},
 				},
 			},
 		},
@@ -119,8 +119,8 @@ handlers:
 `,
 			want: &Blueprint{
 				Dist:     Dist{Name: "handler-agent", OutputPath: "./out"},
-				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
-				Handlers: []HandlerConfig{{Module: "github.com/andrewhowdencom/ore/tool"}},
+				Conduits: []ConduitConfig{{Name: "http", Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Handlers: []HandlerConfig{{Name: "tool", Module: "github.com/andrewhowdencom/ore/tool"}},
 			},
 		},
 		{
@@ -138,9 +138,9 @@ handlers:
 `,
 			want: &Blueprint{
 				Dist:     Dist{Name: "handler-opts-agent", OutputPath: "./out"},
-				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Conduits: []ConduitConfig{{Name: "http", Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
 				Handlers: []HandlerConfig{
-					{Module: "github.com/andrewhowdencom/ore/tool", Options: map[string]any{"verbose": true}},
+					{Name: "tool", Module: "github.com/andrewhowdencom/ore/tool", Options: map[string]any{"verbose": true}},
 				},
 			},
 		},
@@ -156,7 +156,7 @@ handlers: []
 `,
 			want: &Blueprint{
 				Dist:     Dist{Name: "no-handler-agent", OutputPath: "./out"},
-				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Conduits: []ConduitConfig{{Name: "http", Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
 				Handlers: []HandlerConfig{},
 			},
 		},
@@ -172,6 +172,74 @@ handlers:
   - module: ""
 `,
 			wantErr: "handlers[0].module is required",
+		},
+		{
+			name: "explicit names",
+			input: `
+dist:
+  name: explicit-agent
+  output_path: ./out
+conduits:
+  - name: public-api
+    module: github.com/andrewhowdencom/ore/x/conduit/http
+  - name: internal-admin
+    module: github.com/andrewhowdencom/ore/x/conduit/http
+`,
+			want: &Blueprint{
+				Dist: Dist{Name: "explicit-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{
+					{Name: "public-api", Module: "github.com/andrewhowdencom/ore/x/conduit/http"},
+					{Name: "internal-admin", Module: "github.com/andrewhowdencom/ore/x/conduit/http"},
+				},
+			},
+		},
+		{
+			name: "duplicate explicit names",
+			input: `
+dist:
+  name: dup-name-agent
+  output_path: ./out
+conduits:
+  - name: api
+    module: github.com/andrewhowdencom/ore/x/conduit/http
+  - name: api
+    module: github.com/andrewhowdencom/ore/x/conduit/tui
+`,
+			wantErr: "duplicate conduit/handler name: api",
+		},
+		{
+			name: "conduit and handler name collision",
+			input: `
+dist:
+  name: collision-agent
+  output_path: ./out
+conduits:
+  - name: shared
+    module: github.com/andrewhowdencom/ore/x/conduit/http
+handlers:
+  - name: shared
+    module: github.com/andrewhowdencom/ore/tool
+`,
+			wantErr: "duplicate conduit/handler name: shared",
+		},
+		{
+			name: "explicit name avoids derived collision",
+			input: `
+dist:
+  name: avoid-collision-agent
+  output_path: ./out
+conduits:
+  - module: github.com/andrewhowdencom/ore/x/conduit/http
+  - name: http
+    module: github.com/andrewhowdencom/ore/x/conduit/tui
+`,
+			want: &Blueprint{
+				Dist: Dist{Name: "avoid-collision-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{
+					{Name: "http1", Module: "github.com/andrewhowdencom/ore/x/conduit/http"},
+					{Name: "http", Module: "github.com/andrewhowdencom/ore/x/conduit/tui"},
+				},
+			},
 		},
 		{
 			name: "malformed YAML",
