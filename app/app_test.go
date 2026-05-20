@@ -94,7 +94,7 @@ func TestRunAgent_Success(t *testing.T) {
 		cancel()
 	}()
 
-	err := runAgent(cmd, v, cfg, "", "info", "test-key", "gpt-4o", "", "")
+	err := runAgent(cmd, v, cfg)
 	require.NoError(t, err)
 	assert.True(t, mc.startCalled)
 }
@@ -107,7 +107,7 @@ func TestRunAgent_MissingAPIKey(t *testing.T) {
 	cmd := &cobra.Command{Use: "test"}
 	cfg := &appConfig{}
 
-	err := runAgent(cmd, v, cfg, "", "info", "", "gpt-4o", "", "")
+	err := runAgent(cmd, v, cfg)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "api-key is required")
 }
@@ -163,7 +163,7 @@ func TestRunAgent_HandlerFactoryNotInvoked(t *testing.T) {
 	}()
 
 	// runAgent succeeds because handler factory is never called (no stream created)
-	err := runAgent(cmd, v, cfg, "", "info", "test-key", "gpt-4o", "", "")
+	err := runAgent(cmd, v, cfg)
 	require.NoError(t, err)
 }
 
@@ -194,7 +194,7 @@ func TestRunAgent_ConduitError(t *testing.T) {
 		},
 	}
 
-	err := runAgent(cmd, v, cfg, "", "info", "test-key", "gpt-4o", "", "")
+	err := runAgent(cmd, v, cfg)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "create conduit bad")
 }
