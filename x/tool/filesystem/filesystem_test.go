@@ -2,6 +2,7 @@ package filesystem
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -59,6 +60,80 @@ func TestReadFile_EmptyFile(t *testing.T) {
 	result, err := ReadFile(context.Background(), map[string]any{"path": p})
 	require.NoError(t, err)
 	assert.Equal(t, "", result)
+}
+
+func TestWriteFile_NewFile(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "new.txt")
+
+	result, err := WriteFile(context.Background(), map[string]any{
+		"path":    p,
+		"content": "hello world",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, fmt.Sprintf("wrote %d bytes to %q", len("hello world"), p), result)
+
+	data, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "hello world", string(data))
+}
+
+func TestWriteFile_NestedPath(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "subdir", "nested.txt")
+
+	result, err := WriteFile(context.Background(), map[string]any{
+		"path":    p,
+		"content": "nested content",
+	})
+	require.NoError(t, err)
+	assert.Contains(t, result.(string), "nested.txt")
+
+	data, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "nested content", string(data))
+}
+
+func TestWriteFile_AlreadyExists(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "exists.txt")
+	require.NoError(t, os.WriteFile(p, []byte("existing"), 0o644))
+
+	_, err := WriteFile(context.Background(), map[string]any{
+		"path":    p,
+		"content": "new content",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists")
+}
+
+func TestWriteFile_DirectoryExists(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "subdir")
+	require.NoError(t, os.Mkdir(p, 0o755))
+
+	_, err := WriteFile(context.Background(), map[string]any{
+		"path":    p,
+		"content": "should fail",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists")
+}
+
+func TestWriteFile_EmptyContent(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "empty.txt")
+
+	result, err := WriteFile(context.Background(), map[string]any{
+		"path":    p,
+		"content": "",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, fmt.Sprintf("wrote 0 bytes to %q", p), result)
+
+	info, err := os.Stat(p)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), info.Size())
 }
 
 func TestToInt_Float64(t *testing.T) {

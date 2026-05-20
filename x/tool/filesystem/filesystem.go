@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/andrewhowdencom/ore/provider"
@@ -11,7 +12,10 @@ import (
 )
 
 // Compile-time type checks.
-var _ tool.ToolFunc = ReadFile
+var (
+	_ tool.ToolFunc = ReadFile
+	_ tool.ToolFunc = WriteFile
+)
 
 // ReadFile reads a file and returns its contents with line-number prefixes.
 // Parameters:
@@ -92,6 +96,55 @@ var ReadFileTool = provider.Tool{
 			},
 		},
 		"required": []string{"path"},
+	},
+}
+
+// WriteFile creates a new file with the given content.
+// It fails if the path already exists (file or directory), forcing the
+// agent to use edit_file for modifications.
+// Parameters:
+//   - path    (string, required): relative or absolute file path.
+//   - content (string, required): file contents to write.
+func WriteFile(ctx context.Context, args map[string]any) (any, error) {
+	path := toString(args["path"])
+	if path == "" {
+		return nil, fmt.Errorf("path is required")
+	}
+
+	content := toString(args["content"])
+
+	if _, err := os.Stat(path); err == nil {
+		return nil, fmt.Errorf("path %q already exists", path)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create parent directories: %w", err)
+	}
+
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return nil, fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return fmt.Sprintf("wrote %d bytes to %q", len(content), path), nil
+}
+
+// WriteFileTool is the provider.Tool descriptor for WriteFile.
+var WriteFileTool = provider.Tool{
+	Name:        "write_file",
+	Description: "Create a new file with the specified content. Fails if the path already exists, forcing the use of edit_file for modifications.",
+	Schema: map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"path": map[string]any{
+				"type":        "string",
+				"description": "The relative or absolute path to the file to create.",
+			},
+			"content": map[string]any{
+				"type":        "string",
+				"description": "The content to write into the file.",
+			},
+		},
+		"required": []string{"path", "content"},
 	},
 }
 
