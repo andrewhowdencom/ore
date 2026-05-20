@@ -3,6 +3,13 @@
 // (both delta and complete) to subscribers via an embedded FanOut, and runs
 // registered artifact handlers on the complete response.
 //
+// Why use transforms?
+//
+// Transforms inject virtual content (system prompts, guardrails, dynamic
+// context) into the provider's view at inference time without mutating the
+// persistent conversation history. This keeps the buffer append-only while
+// still shaping every model call.
+//
 // Options include:
 //
 //   - WithTransforms — modify the state view presented to the provider
