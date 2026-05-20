@@ -42,7 +42,7 @@ func TestIsAddressedToBot_ChannelNoMention(t *testing.T) {
 func TestHandleMessageEvent_BotEcho(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -66,7 +66,7 @@ func TestHandleMessageEvent_BotEcho(t *testing.T) {
 func TestHandleMessageEvent_ChannelNotAddressed(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -89,7 +89,7 @@ func TestHandleMessageEvent_ChannelNotAddressed(t *testing.T) {
 func TestHandleMessageEvent_DM(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -131,7 +131,7 @@ func TestHandleMessageEvent_DM(t *testing.T) {
 func TestHandleMessageEvent_ChannelMention(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -163,7 +163,7 @@ func TestHandleMessageEvent_ChannelMention(t *testing.T) {
 func TestHandleMessageEvent_SessionBusy(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &blockingProvider{}
-	mgr := session.NewManager(store, prov, func() *loop.Step { return loop.New() }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)

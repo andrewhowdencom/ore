@@ -81,8 +81,8 @@ func run() error {
 	prov := openai.New(apiKey, modelName, opts...)
 
 	// Step factory for the manager.
-	stepFactory := func() *loop.Step {
-		return loop.New()
+	stepFactory := func() (*loop.Step, error) {
+		return loop.New(), nil
 	}
 
 	// Create session manager with the ReAct cognitive pattern.
