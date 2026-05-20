@@ -236,6 +236,32 @@ func TestStep_Turn_Transform_Identity(t *testing.T) {
 	assert.Equal(t, state.RoleAssistant, turns[1].Role)
 }
 
+func TestStep_Submit_DoesNotRunTransforms(t *testing.T) {
+	var transformCalled bool
+	tr := &mockTransform{
+		fn: func(ctx context.Context, s state.State) (state.State, error) {
+			transformCalled = true
+			return s, nil
+		},
+	}
+	s := New(WithTransforms(tr))
+	mem := &state.Buffer{}
+
+	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
+	require.NoError(t, err)
+	assert.False(t, transformCalled, "transforms must not run during Submit")
+
+	mem.Append(state.RoleUser, artifact.Text{Content: "turn"})
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world"},
+		},
+	}
+	_, err = s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+	assert.True(t, transformCalled, "transforms must run during Turn")
+}
+
 func TestStep_Turn_Handler(t *testing.T) {
 	h := &mockHandler{}
 	s := New(WithHandlers(h))
