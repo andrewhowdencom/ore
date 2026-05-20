@@ -282,7 +282,7 @@ transforms:
 `,
 			want: &Blueprint{
 				Dist:       Dist{Name: "transform-agent", OutputPath: "./out"},
-				Conduits:   []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Conduits:   []ConduitConfig{{Name: "http", Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
 				Transforms: []TransformConfig{{Module: "github.com/andrewhowdencom/ore/x/systemprompt"}},
 			},
 		},
@@ -301,7 +301,7 @@ transforms:
 `,
 			want: &Blueprint{
 				Dist:     Dist{Name: "transform-opts-agent", OutputPath: "./out"},
-				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Conduits: []ConduitConfig{{Name: "http", Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
 				Transforms: []TransformConfig{
 					{Module: "github.com/andrewhowdencom/ore/x/systemprompt", Options: map[string]any{"content": "You are a helpful assistant."}},
 				},
@@ -319,7 +319,7 @@ transforms: []
 `,
 			want: &Blueprint{
 				Dist:       Dist{Name: "no-transform-agent", OutputPath: "./out"},
-				Conduits:   []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Conduits:   []ConduitConfig{{Name: "http", Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
 				Transforms: []TransformConfig{},
 			},
 		},

@@ -274,8 +274,9 @@ func TestGenerateMainGo_Transforms(t *testing.T) {
 			},
 			check: func(t *testing.T, content string) {
 				assert.Contains(t, content, `systemprompt "github.com/andrewhowdencom/ore/x/systemprompt"`)
-				assert.Contains(t, content, `tr0, err := systemprompt.New()`)
-				assert.Contains(t, content, `stepOpts = append(stepOpts, loop.WithTransforms(tr0))`)
+				assert.Contains(t, content, `app.WithTransform("systemprompt",`)
+				assert.Contains(t, content, `tr, err := systemprompt.New()`)
+				assert.Contains(t, content, `return tr.AsTransform(), nil`)
 			},
 		},
 		{
@@ -288,9 +289,10 @@ func TestGenerateMainGo_Transforms(t *testing.T) {
 				},
 			},
 			check: func(t *testing.T, content string) {
-				assert.Contains(t, content, `systempromptOptsMap := map[string]any{"content": "You are a helpful assistant."}`)
-				assert.Contains(t, content, `systempromptOpts, err := systemprompt.OptionsFromMap(systempromptOptsMap)`)
-				assert.Contains(t, content, `tr0, err := systemprompt.New(systempromptOpts...)`)
+				assert.Contains(t, content, `systempromptOpts, err := systemprompt.OptionsFromMap(opts)`)
+				assert.Contains(t, content, `tr, err := systemprompt.New(systempromptOpts...)`)
+				assert.Contains(t, content, `return tr.AsTransform(), nil`)
+				assert.Contains(t, content, `}, map[string]any{"content": "You are a helpful assistant."}),`)
 			},
 		},
 		{
@@ -304,10 +306,11 @@ func TestGenerateMainGo_Transforms(t *testing.T) {
 			check: func(t *testing.T, content string) {
 				assert.Contains(t, content, `systemprompt "github.com/andrewhowdencom/ore/x/systemprompt"`)
 				assert.Contains(t, content, `tool "github.com/andrewhowdencom/ore/tool"`)
-				assert.Contains(t, content, `tr0, err := systemprompt.New()`)
-				assert.Contains(t, content, `h0, err := tool.New()`)
-				assert.Contains(t, content, `stepOpts = append(stepOpts, loop.WithTransforms(tr0))`)
-				assert.Contains(t, content, `stepOpts = append(stepOpts, loop.WithHandlers(h0))`)
+				assert.Contains(t, content, `app.WithTransform("systemprompt",`)
+				assert.Contains(t, content, `app.WithHandler("",`) // test does not set handler name
+				assert.Contains(t, content, `tr, err := systemprompt.New()`)
+				assert.Contains(t, content, `return tr.AsTransform(), nil`)
+				assert.Contains(t, content, `return tool.New()`)
 			},
 		},
 		{
@@ -321,8 +324,10 @@ func TestGenerateMainGo_Transforms(t *testing.T) {
 			check: func(t *testing.T, content string) {
 				assert.Contains(t, content, `systemprompt "example.com/my/systemprompt"`)
 				assert.Contains(t, content, `systemprompt1 "github.com/andrewhowdencom/ore/x/systemprompt"`)
-				assert.Contains(t, content, `tr0, err := systemprompt1.New()`)
-				assert.Contains(t, content, `h0, err := systemprompt.New()`)
+				assert.Contains(t, content, `app.WithTransform("systemprompt1",`)
+				assert.Contains(t, content, `tr, err := systemprompt1.New()`)
+				assert.Contains(t, content, `return tr.AsTransform(), nil`)
+				assert.Contains(t, content, `return systemprompt.New()`)
 			},
 		},
 	}

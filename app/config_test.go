@@ -29,7 +29,7 @@ func TestLoadConfig_Defaults(t *testing.T) {
 		},
 	}
 
-	err := loadConfig(cmd, v, "./config.yaml", conduits, nil)
+	err := loadConfig(cmd, v, "./config.yaml", conduits, nil, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, "info", v.GetString("log_level"))
@@ -66,7 +66,7 @@ conduits:
 		},
 	}
 
-	err = loadConfig(cmd, v, configPath, conduits, nil)
+	err = loadConfig(cmd, v, configPath, conduits, nil, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, "debug", v.GetString("log_level"))
@@ -84,7 +84,7 @@ func TestLoadConfig_MissingDefaultConfig(t *testing.T) {
 
 	v := viper.New()
 
-	err := loadConfig(cmd, v, "./nonexistent-config.yaml", nil, nil)
+	err := loadConfig(cmd, v, "./nonexistent-config.yaml", nil, nil, nil)
 	require.NoError(t, err)
 }
 
@@ -101,7 +101,7 @@ func TestLoadConfig_MissingExplicitConfig(t *testing.T) {
 
 	v := viper.New()
 
-	err := loadConfig(cmd, v, "/nonexistent/path/config.yaml", nil, nil)
+	err := loadConfig(cmd, v, "/nonexistent/path/config.yaml", nil, nil, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "config file not found")
 }
@@ -120,7 +120,7 @@ func TestLoadConfig_EnvVarOverride(t *testing.T) {
 
 	v := viper.New()
 
-	err := loadConfig(cmd, v, "", nil, nil)
+	err := loadConfig(cmd, v, "", nil, nil, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, "env-key", v.GetString("api_key"))
@@ -147,7 +147,7 @@ func TestLoadConfig_ConduitEnvVarOverride(t *testing.T) {
 		},
 	}
 
-	err := loadConfig(cmd, v, "", conduits, nil)
+	err := loadConfig(cmd, v, "", conduits, nil, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, ":9091", v.GetString("conduits.http.addr"))
@@ -176,7 +176,7 @@ func TestLoadConfig_FlagOverride(t *testing.T) {
 		},
 	}
 
-	err := loadConfig(cmd, v, "", conduits, nil)
+	err := loadConfig(cmd, v, "", conduits, nil, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, ":9090", v.GetString("conduits.http.addr"))
@@ -215,7 +215,7 @@ func TestLoadConfig_HandlerEnvVarOverride(t *testing.T) {
 		},
 	}
 
-	err := loadConfig(cmd, v, "", nil, handlers)
+	err := loadConfig(cmd, v, "", nil, handlers, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, "fast", v.GetString("handlers.dummy.mode"))
@@ -243,7 +243,7 @@ func TestLoadConfig_HandlerFlagOverride(t *testing.T) {
 		},
 	}
 
-	err := loadConfig(cmd, v, "", nil, handlers)
+	err := loadConfig(cmd, v, "", nil, handlers, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, "fast", v.GetString("handlers.dummy.mode"))
@@ -267,7 +267,7 @@ func TestLoadConfig_UnreadableConfigFile(t *testing.T) {
 
 	v := viper.New()
 
-	err = loadConfig(cmd, v, configPath, nil, nil)
+	err = loadConfig(cmd, v, configPath, nil, nil, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "read config file")
 }
