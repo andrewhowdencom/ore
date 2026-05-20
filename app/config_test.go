@@ -21,12 +21,6 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	cmd.Flags().String("store-dir", "", "")
 
 	v := viper.New()
-	v.BindPFlag("config", cmd.Flags().Lookup("config"))
-	v.BindPFlag("log_level", cmd.Flags().Lookup("log-level"))
-	v.BindPFlag("api_key", cmd.Flags().Lookup("api-key"))
-	v.BindPFlag("model", cmd.Flags().Lookup("model"))
-	v.BindPFlag("base_url", cmd.Flags().Lookup("base-url"))
-	v.BindPFlag("store_dir", cmd.Flags().Lookup("store-dir"))
 
 	conduits := []ConduitRegistration{
 		{
@@ -35,7 +29,7 @@ func TestLoadConfig_Defaults(t *testing.T) {
 		},
 	}
 
-	err := loadConfig(cmd, v, conduits, nil)
+	err := loadConfig(cmd, v, "./config.yaml", conduits, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, "info", v.GetString("log_level"))
@@ -64,12 +58,6 @@ conduits:
 	cmd.Flags().String("store-dir", "", "")
 
 	v := viper.New()
-	v.BindPFlag("config", cmd.Flags().Lookup("config"))
-	v.BindPFlag("log_level", cmd.Flags().Lookup("log-level"))
-	v.BindPFlag("api_key", cmd.Flags().Lookup("api-key"))
-	v.BindPFlag("model", cmd.Flags().Lookup("model"))
-	v.BindPFlag("base_url", cmd.Flags().Lookup("base-url"))
-	v.BindPFlag("store_dir", cmd.Flags().Lookup("store-dir"))
 
 	conduits := []ConduitRegistration{
 		{
@@ -78,7 +66,7 @@ conduits:
 		},
 	}
 
-	err = loadConfig(cmd, v, conduits, nil)
+	err = loadConfig(cmd, v, configPath, conduits, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, "debug", v.GetString("log_level"))
@@ -95,14 +83,8 @@ func TestLoadConfig_MissingDefaultConfig(t *testing.T) {
 	cmd.Flags().String("store-dir", "", "")
 
 	v := viper.New()
-	v.BindPFlag("config", cmd.Flags().Lookup("config"))
-	v.BindPFlag("log_level", cmd.Flags().Lookup("log-level"))
-	v.BindPFlag("api_key", cmd.Flags().Lookup("api-key"))
-	v.BindPFlag("model", cmd.Flags().Lookup("model"))
-	v.BindPFlag("base_url", cmd.Flags().Lookup("base-url"))
-	v.BindPFlag("store_dir", cmd.Flags().Lookup("store-dir"))
 
-	err := loadConfig(cmd, v, nil, nil)
+	err := loadConfig(cmd, v, "./nonexistent-config.yaml", nil, nil)
 	require.NoError(t, err)
 }
 
@@ -118,14 +100,8 @@ func TestLoadConfig_MissingExplicitConfig(t *testing.T) {
 	require.NoError(t, cmd.Flags().Set("config", "/nonexistent/path/config.yaml"))
 
 	v := viper.New()
-	v.BindPFlag("config", cmd.Flags().Lookup("config"))
-	v.BindPFlag("log_level", cmd.Flags().Lookup("log-level"))
-	v.BindPFlag("api_key", cmd.Flags().Lookup("api-key"))
-	v.BindPFlag("model", cmd.Flags().Lookup("model"))
-	v.BindPFlag("base_url", cmd.Flags().Lookup("base-url"))
-	v.BindPFlag("store_dir", cmd.Flags().Lookup("store-dir"))
 
-	err := loadConfig(cmd, v, nil, nil)
+	err := loadConfig(cmd, v, "/nonexistent/path/config.yaml", nil, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "config file not found")
 }
@@ -143,14 +119,8 @@ func TestLoadConfig_EnvVarOverride(t *testing.T) {
 	cmd.Flags().String("store-dir", "", "")
 
 	v := viper.New()
-	v.BindPFlag("config", cmd.Flags().Lookup("config"))
-	v.BindPFlag("log_level", cmd.Flags().Lookup("log-level"))
-	v.BindPFlag("api_key", cmd.Flags().Lookup("api-key"))
-	v.BindPFlag("model", cmd.Flags().Lookup("model"))
-	v.BindPFlag("base_url", cmd.Flags().Lookup("base-url"))
-	v.BindPFlag("store_dir", cmd.Flags().Lookup("store-dir"))
 
-	err := loadConfig(cmd, v, nil, nil)
+	err := loadConfig(cmd, v, "", nil, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, "env-key", v.GetString("api_key"))
@@ -169,12 +139,6 @@ func TestLoadConfig_ConduitEnvVarOverride(t *testing.T) {
 	cmd.Flags().String("store-dir", "", "")
 
 	v := viper.New()
-	v.BindPFlag("config", cmd.Flags().Lookup("config"))
-	v.BindPFlag("log_level", cmd.Flags().Lookup("log-level"))
-	v.BindPFlag("api_key", cmd.Flags().Lookup("api-key"))
-	v.BindPFlag("model", cmd.Flags().Lookup("model"))
-	v.BindPFlag("base_url", cmd.Flags().Lookup("base-url"))
-	v.BindPFlag("store_dir", cmd.Flags().Lookup("store-dir"))
 
 	conduits := []ConduitRegistration{
 		{
@@ -183,7 +147,7 @@ func TestLoadConfig_ConduitEnvVarOverride(t *testing.T) {
 		},
 	}
 
-	err := loadConfig(cmd, v, conduits, nil)
+	err := loadConfig(cmd, v, "", conduits, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, ":9091", v.GetString("conduits.http.addr"))
@@ -201,14 +165,9 @@ func TestLoadConfig_FlagOverride(t *testing.T) {
 	// Register the conduit flag as runWithArgs would
 	cmd.Flags().String("http-addr", ":8080", "")
 	require.NoError(t, cmd.Flags().Set("http-addr", ":9090"))
+	// cmd.Flags().Set marks the flag as Changed=true automatically
 
 	v := viper.New()
-	v.BindPFlag("config", cmd.Flags().Lookup("config"))
-	v.BindPFlag("log_level", cmd.Flags().Lookup("log-level"))
-	v.BindPFlag("api_key", cmd.Flags().Lookup("api-key"))
-	v.BindPFlag("model", cmd.Flags().Lookup("model"))
-	v.BindPFlag("base_url", cmd.Flags().Lookup("base-url"))
-	v.BindPFlag("store_dir", cmd.Flags().Lookup("store-dir"))
 
 	conduits := []ConduitRegistration{
 		{
@@ -217,7 +176,7 @@ func TestLoadConfig_FlagOverride(t *testing.T) {
 		},
 	}
 
-	err := loadConfig(cmd, v, conduits, nil)
+	err := loadConfig(cmd, v, "", conduits, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, ":9090", v.GetString("conduits.http.addr"))
