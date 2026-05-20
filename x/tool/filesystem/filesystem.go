@@ -16,6 +16,7 @@ var (
 	_ tool.ToolFunc = ReadFile
 	_ tool.ToolFunc = WriteFile
 	_ tool.ToolFunc = EditFile
+	_ tool.ToolFunc = ListDirectory
 )
 
 // ReadFile reads a file and returns its contents with line-number prefixes.
@@ -207,6 +208,56 @@ var EditFileTool = provider.Tool{
 			},
 		},
 		"required": []string{"path", "old_string", "new_string"},
+	},
+}
+
+// ListDirectory returns a shallow listing of non-hidden entries in a directory.
+// Parameters:
+//   - path (string, required): relative or absolute directory path.
+func ListDirectory(ctx context.Context, args map[string]any) (any, error) {
+	path := toString(args["path"])
+	if path == "" {
+		return nil, fmt.Errorf("path is required")
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat path: %w", err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("path %q is not a directory", path)
+	}
+
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	result := make([]string, 0)
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		result = append(result, name)
+	}
+
+	return result, nil
+}
+
+// ListDirectoryTool is the provider.Tool descriptor for ListDirectory.
+var ListDirectoryTool = provider.Tool{
+	Name:        "list_directory",
+	Description: "List the immediate non-hidden entries in a directory. Returns entry names. Hidden entries (names starting with '.') are excluded.",
+	Schema: map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"path": map[string]any{
+				"type":        "string",
+				"description": "The relative or absolute path to the directory to list.",
+			},
+		},
+		"required": []string{"path"},
 	},
 }
 
