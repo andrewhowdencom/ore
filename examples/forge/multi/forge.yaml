@@ -3,4 +3,6 @@ dist:
   output_path: ./multi-agent
 conduits:
   - module: github.com/andrewhowdencom/ore/x/conduit/http
+    options:
+      addr: ":8080"
   - module: github.com/andrewhowdencom/ore/x/conduit/tui
