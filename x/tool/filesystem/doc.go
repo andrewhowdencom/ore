@@ -9,12 +9,14 @@
 // Usage:
 //
 //	registry := tool.NewRegistry()
-//	registry.Register(filesystem.ReadFileTool.Name, filesystem.ReadFileTool.Description, filesystem.ReadFileTool.Schema, filesystem.ReadFile)
-//	registry.Register(filesystem.WriteFileTool.Name, filesystem.WriteFileTool.Description, filesystem.WriteFileTool.Schema, filesystem.WriteFile)
-//	registry.Register(filesystem.EditFileTool.Name, filesystem.EditFileTool.Description, filesystem.EditFileTool.Schema, filesystem.EditFile)
-//	registry.Register(filesystem.ListDirectoryTool.Name, filesystem.ListDirectoryTool.Description, filesystem.ListDirectoryTool.Schema, filesystem.ListDirectory)
-//	registry.Register(filesystem.SearchFilesTool.Name, filesystem.SearchFilesTool.Description, filesystem.SearchFilesTool.Schema, filesystem.SearchFiles)
+//	registry.Register(ReadFileTool.Name, ReadFileTool.Description, ReadFileTool.Schema, ReadFile)
+//	registry.Register(WriteFileTool.Name, WriteFileTool.Description, WriteFileTool.Schema, WriteFile)
+//	registry.Register(EditFileTool.Name, EditFileTool.Description, EditFileTool.Schema, EditFile)
+//	registry.Register(ListDirectoryTool.Name, ListDirectoryTool.Description, ListDirectoryTool.Schema, ListDirectory)
+//	registry.Register(SearchFilesTool.Name, SearchFilesTool.Description, SearchFilesTool.Schema, SearchFiles)
 //
 //	// Registry.Tools() is the single source of truth for the provider.
 //	tools := registry.Tools()
+//
+// See also: x/tool/filesystem/filesystem.go for the tool implementations.
 package filesystem
