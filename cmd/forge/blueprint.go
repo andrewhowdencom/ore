@@ -17,6 +17,9 @@ import (
 //	conduits:
 //	  - module: github.com/andrewhowdencom/ore/x/conduit/http
 //
+// Optional fields:
+//   - handlers: artifact handler modules to wire into each stream's loop.Step
+//
 // Required fields:
 //   - dist.name: binary name used in go.mod and as the default output file name
 //   - dist.output_path: destination path for the compiled binary (relative paths
@@ -25,6 +28,7 @@ import (
 type Blueprint struct {
 	Dist     Dist            `yaml:"dist"`
 	Conduits []ConduitConfig `yaml:"conduits"`
+	Handlers []HandlerConfig `yaml:"handlers,omitempty"`
 }
 
 // Dist describes the distribution (compiled binary) to produce.
@@ -35,6 +39,14 @@ type Dist struct {
 
 // ConduitConfig describes a single conduit to include in the generated agent.
 type ConduitConfig struct {
+	Module  string         `yaml:"module"`
+	Options map[string]any `yaml:"options,omitempty"`
+}
+
+// HandlerConfig describes a single artifact handler to include in the
+// generated agent. Handlers are instantiated per-stream and wired into
+// loop.Step via loop.WithHandlers.
+type HandlerConfig struct {
 	Module  string         `yaml:"module"`
 	Options map[string]any `yaml:"options,omitempty"`
 }
@@ -59,6 +71,11 @@ func ParseBlueprint(r io.Reader) (*Blueprint, error) {
 	for i, c := range b.Conduits {
 		if c.Module == "" {
 			return nil, fmt.Errorf("blueprint conduits[%d].module is required", i)
+		}
+	}
+	for i, h := range b.Handlers {
+		if h.Module == "" {
+			return nil, fmt.Errorf("blueprint handlers[%d].module is required", i)
 		}
 	}
 
