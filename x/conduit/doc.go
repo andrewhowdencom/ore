@@ -66,6 +66,16 @@
 //      On ctx.Done(), the conduit MUST release resources (close channels,
 //      shutdown servers, close subscriptions) and return promptly.
 //
+//   6. OptionsFromMap bridge — func OptionsFromMap(m map[string]any) ([]Option, error)
+//
+//      Every conduit package MUST export OptionsFromMap so that the forge
+//      code generator and the runtime app package can translate YAML/JSON
+//      configuration maps into the package's functional options. The function
+//      MUST use github.com/mitchellh/mapstructure (or equivalent) with
+//      `yaml` struct tags to decode the map into a typed Config value,
+//      then convert that Config into []Option via a package-local FromConfig
+//      helper. Handler packages follow the same contract.
+//
 //      See AGENTS.md for the agent-level guidance that conduits must not import
 //      cognitive packages or invoke providers directly.
 //
