@@ -224,3 +224,145 @@ func TestParseLogLevel(t *testing.T) {
 		})
 	}
 }
+
+func TestParseLogLevel_CaseSensitivity(t *testing.T) {
+	tests := []struct {
+		input string
+	}{
+		{"DEBUG"},
+		{"Info"},
+		{"WARN"},
+		{"ERROR"},
+		{"Invalid"},
+		{""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			_, err := parseLogLevel(tt.input)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid log level")
+		})
+	}
+}
+
+func TestRunAgent_ProviderFactoryError(t *testing.T) {
+	v := viper.New()
+	v.Set("log_level", "info")
+	v.Set("api_key", "test-key")
+
+	cmd := &cobra.Command{Use: "test"}
+	cfg := &appConfig{
+		providerFactory: func(apiKey, model, baseURL string) (provider.Provider, error) {
+			return nil, assert.AnError
+		},
+	}
+
+	err := runAgent(cmd, v, cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "create provider")
+}
+
+func TestRunAgent_StoreFactoryError(t *testing.T) {
+	v := viper.New()
+	v.Set("log_level", "info")
+	v.Set("api_key", "test-key")
+	v.Set("store_dir", "/tmp/store")
+
+	cmd := &cobra.Command{Use: "test"}
+	cfg := &appConfig{
+		providerFactory: func(apiKey, model, baseURL string) (provider.Provider, error) {
+			return &mockProvider{}, nil
+		},
+		storeFactory: func(dir string) (thread.Store, error) {
+			return nil, assert.AnError
+		},
+	}
+
+	err := runAgent(cmd, v, cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "create store")
+}
+
+func TestRunAgent_ContextCancellation(t *testing.T) {
+	v := viper.New()
+	v.Set("log_level", "info")
+	v.Set("api_key", "test-key")
+
+	cmd := &cobra.Command{Use: "test"}
+
+	mc := &mockConduit{}
+	cfg := &appConfig{
+		conduits: []ConduitRegistration{
+			{
+				Name: "http",
+				Factory: func(mgr *session.Manager, opts map[string]any) (conduit.Conduit, error) {
+					return mc, nil
+				},
+			},
+		},
+		providerFactory: func(apiKey, model, baseURL string) (provider.Provider, error) {
+			return &mockProvider{}, nil
+		},
+		storeFactory: func(dir string) (thread.Store, error) {
+			return &mockStore{}, nil
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cfg.contextFactory = func() (context.Context, func()) {
+		return ctx, cancel
+	}
+
+	// Cancel immediately before conduit start
+	cancel()
+
+	err := runAgent(cmd, v, cfg)
+	require.NoError(t, err)
+}
+
+func TestConduitFns_Error(t *testing.T) {
+	cfg := &appConfig{
+		conduits: []ConduitRegistration{
+			{
+				Name: "bad",
+				Factory: func(mgr *session.Manager, opts map[string]any) (conduit.Conduit, error) {
+					return nil, assert.AnError
+				},
+			},
+		},
+	}
+
+	_, err := cfg.conduitFns(nil, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "create conduit bad")
+}
+
+func TestRunWithArgs_InvalidLogLevel(t *testing.T) {
+	cfg := &appConfig{
+		providerFactory: func(apiKey, model, baseURL string) (provider.Provider, error) {
+			return &mockProvider{}, nil
+		},
+		storeFactory: func(dir string) (thread.Store, error) {
+			return &mockStore{}, nil
+		},
+	}
+
+	err := runWithArgs([]string{"--api-key", "test-key", "--log-level", "invalid"}, cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid log level")
+}
+
+func TestRunWithArgs_MissingConfigFile(t *testing.T) {
+	cfg := &appConfig{
+		providerFactory: func(apiKey, model, baseURL string) (provider.Provider, error) {
+			return &mockProvider{}, nil
+		},
+		storeFactory: func(dir string) (thread.Store, error) {
+			return &mockStore{}, nil
+		},
+	}
+
+	err := runWithArgs([]string{"--api-key", "test-key", "--config", "/nonexistent/file.yaml"}, cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "config file not found")
+}

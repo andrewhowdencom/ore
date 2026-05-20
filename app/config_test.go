@@ -194,3 +194,80 @@ func TestGetOpts(t *testing.T) {
 	opts = getOpts(v, "conduits", "tui")
 	assert.Nil(t, opts)
 }
+
+func TestLoadConfig_HandlerEnvVarOverride(t *testing.T) {
+	t.Setenv("ORE_HANDLER_DUMMY_MODE", "fast")
+
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("config", "", "")
+	cmd.Flags().String("log-level", "info", "")
+	cmd.Flags().String("api-key", "", "")
+	cmd.Flags().String("model", "gpt-4o", "")
+	cmd.Flags().String("base-url", "", "")
+	cmd.Flags().String("store-dir", "", "")
+
+	v := viper.New()
+
+	handlers := []HandlerRegistration{
+		{
+			Name:     "dummy",
+			Defaults: map[string]any{"mode": "auto"},
+		},
+	}
+
+	err := loadConfig(cmd, v, "", nil, handlers)
+	require.NoError(t, err)
+
+	assert.Equal(t, "fast", v.GetString("handlers.dummy.mode"))
+}
+
+func TestLoadConfig_HandlerFlagOverride(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("config", "", "")
+	cmd.Flags().String("log-level", "info", "")
+	cmd.Flags().String("api-key", "", "")
+	cmd.Flags().String("model", "gpt-4o", "")
+	cmd.Flags().String("base-url", "", "")
+	cmd.Flags().String("store-dir", "", "")
+
+	// Register the handler flag as runWithArgs would
+	cmd.Flags().String("dummy-mode", "auto", "")
+	require.NoError(t, cmd.Flags().Set("dummy-mode", "fast"))
+
+	v := viper.New()
+
+	handlers := []HandlerRegistration{
+		{
+			Name:     "dummy",
+			Defaults: map[string]any{"mode": "auto"},
+		},
+	}
+
+	err := loadConfig(cmd, v, "", nil, handlers)
+	require.NoError(t, err)
+
+	assert.Equal(t, "fast", v.GetString("handlers.dummy.mode"))
+}
+
+func TestLoadConfig_UnreadableConfigFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "unreadable.yaml")
+	err := os.WriteFile(configPath, []byte("log_level: debug\n"), 0000)
+	require.NoError(t, err)
+
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("config", "", "")
+	cmd.Flags().String("log-level", "info", "")
+	cmd.Flags().String("api-key", "", "")
+	cmd.Flags().String("model", "gpt-4o", "")
+	cmd.Flags().String("base-url", "", "")
+	cmd.Flags().String("store-dir", "", "")
+
+	require.NoError(t, cmd.Flags().Set("config", configPath))
+
+	v := viper.New()
+
+	err = loadConfig(cmd, v, configPath, nil, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read config file")
+}
