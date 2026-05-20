@@ -92,12 +92,14 @@ var ReadFileTool = provider.Tool{
 				"description": "The relative or absolute path to the file to read.",
 			},
 			"offset": map[string]any{
-				"type":        "number",
+				"type":        "integer",
 				"description": "The 1-based line number to start reading from. Defaults to 1.",
+				"default":     1,
 			},
 			"limit": map[string]any{
-				"type":        "number",
+				"type":        "integer",
 				"description": "The maximum number of lines to return. 0 means no limit.",
+				"default":     0,
 			},
 		},
 		"required": []string{"path"},
@@ -265,6 +267,10 @@ var ListDirectoryTool = provider.Tool{
 }
 
 // SearchResult represents a single regex match found by SearchFiles.
+// It is serialized to JSON with fields:
+//   - path: the file path where the match was found,
+//   - line_number: the 1-based line index of the match,
+//   - content: the matching line text.
 type SearchResult struct {
 	Path       string `json:"path"`
 	LineNumber int    `json:"line_number"`
