@@ -157,6 +157,9 @@ func MarshalOutputEvent(event loop.OutputEvent) ([]byte, error) {
 			Context:      eventContextToJSON(e.Ctx),
 		})
 	default:
+		if m, ok := event.(json.Marshaler); ok {
+			return m.MarshalJSON()
+		}
 		return nil, fmt.Errorf("unsupported event kind: %s", event.Kind())
 	}
 }

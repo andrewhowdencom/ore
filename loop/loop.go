@@ -112,8 +112,8 @@ func New(opts ...Option) *Step {
 	return s
 }
 
-// emit sends an event to the FanOut and blocks until it has been delivered.
-func (s *Step) emit(ctx context.Context, event OutputEvent) {
+// Emit sends an event to the FanOut and blocks until it has been delivered.
+func (s *Step) Emit(ctx context.Context, event OutputEvent) {
 	env := outputEventEnvelope{event: event, done: make(chan struct{})}
 	select {
 	case s.events <- env:
@@ -217,20 +217,20 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 				if text, ok := currentBlock.(artifact.Text); ok {
 					text.Content += d.Content
 					currentBlock = text
-					s.emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
+					s.Emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
 					if ctx.Err() != nil {
 						return
 					}
 				} else {
 					if currentBlock != nil {
-						s.emit(ctx, ArtifactEvent{Artifact: currentBlock, Ctx: s.eventContext})
+						s.Emit(ctx, ArtifactEvent{Artifact: currentBlock, Ctx: s.eventContext})
 						if ctx.Err() != nil {
 							return
 						}
 						accumulatedArtifacts = append(accumulatedArtifacts, currentBlock)
 					}
 					currentBlock = artifact.Text(d)
-					s.emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
+					s.Emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
 					if ctx.Err() != nil {
 						return
 					}
@@ -239,34 +239,34 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 				if reasoning, ok := currentBlock.(artifact.Reasoning); ok {
 					reasoning.Content += d.Content
 					currentBlock = reasoning
-					s.emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
+					s.Emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
 					if ctx.Err() != nil {
 						return
 					}
 				} else {
 					if currentBlock != nil {
-						s.emit(ctx, ArtifactEvent{Artifact: currentBlock, Ctx: s.eventContext})
+						s.Emit(ctx, ArtifactEvent{Artifact: currentBlock, Ctx: s.eventContext})
 						if ctx.Err() != nil {
 							return
 						}
 						accumulatedArtifacts = append(accumulatedArtifacts, currentBlock)
 					}
 					currentBlock = artifact.Reasoning(d)
-					s.emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
+					s.Emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
 					if ctx.Err() != nil {
 						return
 					}
 				}
 			default:
 				if currentBlock != nil {
-					s.emit(ctx, ArtifactEvent{Artifact: currentBlock, Ctx: s.eventContext})
+					s.Emit(ctx, ArtifactEvent{Artifact: currentBlock, Ctx: s.eventContext})
 					if ctx.Err() != nil {
 						return
 					}
 					accumulatedArtifacts = append(accumulatedArtifacts, currentBlock)
 					currentBlock = nil
 				}
-				s.emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
+				s.Emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
 				if ctx.Err() != nil {
 					return
 				}
@@ -276,7 +276,7 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 			}
 		}
 		if currentBlock != nil {
-			s.emit(ctx, ArtifactEvent{Artifact: currentBlock, Ctx: s.eventContext})
+			s.Emit(ctx, ArtifactEvent{Artifact: currentBlock, Ctx: s.eventContext})
 			if ctx.Err() != nil {
 				return
 			}
@@ -293,7 +293,7 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 	wg.Wait()
 
 	if err != nil {
-		s.emit(ctx, ErrorEvent{Err: err, Ctx: s.eventContext})
+		s.Emit(ctx, ErrorEvent{Err: err, Ctx: s.eventContext})
 		
 		return st, fmt.Errorf("turn failed: %w", err)
 	}
@@ -342,7 +342,7 @@ func (s *Step) finalizeTurn(ctx context.Context, st state.State, role state.Role
 		}
 	}
 
-	s.emit(ctx, TurnCompleteEvent{Turn: last, Ctx: s.eventContext})
+	s.Emit(ctx, TurnCompleteEvent{Turn: last, Ctx: s.eventContext})
 	
 
 	return st, nil

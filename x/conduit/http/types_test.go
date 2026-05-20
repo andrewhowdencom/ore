@@ -460,3 +460,26 @@ func TestMarshalOutputEvent_OmitEmptyContext(t *testing.T) {
 	assert.NotContains(t, string(data), "context")
 	assert.NotContains(t, string(data), "provenance")
 }
+
+// customMarshalerEvent is a test-only OutputEvent that implements
+// json.Marshaler, verifying the MarshalOutputEvent fallback path.
+type customMarshalerEvent struct {
+	Value string
+	Ctx   loop.EventContext
+}
+
+func (c *customMarshalerEvent) Kind() string              { return "custom_marshaler" }
+func (c *customMarshalerEvent) Context() loop.EventContext { return c.Ctx }
+func (c *customMarshalerEvent) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]interface{}{
+		"kind":  c.Kind(),
+		"value": c.Value,
+	})
+}
+
+func TestMarshalOutputEvent_CustomMarshaler(t *testing.T) {
+	event := &customMarshalerEvent{Value: "hello"}
+	data, err := MarshalOutputEvent(event)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"custom_marshaler","value":"hello"}`, string(data))
+}

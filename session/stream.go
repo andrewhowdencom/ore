@@ -128,6 +128,28 @@ func (s *Stream) Subscribe(kinds ...string) <-chan loop.OutputEvent {
 	return s.step.Subscribe(kinds...)
 }
 
+// Emit injects a custom output event into the stream's FanOut, allowing
+// handlers, interceptors, and application logic to emit meta-events that
+// are delivered to all subscribers alongside standard artifact and
+// turn-complete events.
+//
+// The stream must not be closed. Unlike Process(), Emit() does not check
+// whether the stream is busy: handlers running during an active turn may
+// need to emit events (e.g., session-switch signals from slash commands).
+//
+// Errors:
+//   - "session %s is closed" if the stream has been closed
+func (s *Stream) Emit(ctx context.Context, event loop.OutputEvent) error {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return fmt.Errorf("session %s is closed", s.id)
+	}
+	s.mu.Unlock()
+	s.step.Emit(ctx, event)
+	return nil
+}
+
 // ID returns the stream's unique identifier (same as the thread ID).
 func (s *Stream) ID() string { return s.id }
 
