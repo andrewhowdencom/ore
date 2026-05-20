@@ -10,6 +10,17 @@ import (
 	"github.com/andrewhowdencom/ore/state"
 )
 
+// Transform modifies the state view presented to the provider during
+// inference. Implementations must not mutate the underlying persistent
+// buffer; they may return a derived state.State wrapper instead.
+//
+// Multiple transforms compose in registration order. Each transform
+// receives the state returned by the previous one. An error from any
+// transform aborts the turn before the provider is invoked.
+type Transform interface {
+	Transform(ctx context.Context, st state.State) (state.State, error)
+}
+
 // EventContext carries metadata for an event, analogous to context.Context.
 // It travels with an event through the event stream so subscribers can
 // access routing metadata (provenance, trace IDs, etc.) uniformly.
@@ -88,6 +99,7 @@ type outputEventEnvelope struct {
 type Step struct {
 	events        chan outputEventEnvelope
 	fanOut        *FanOut
+	transforms    []Transform
 	handlers      []Handler
 	invokeOpts    []provider.InvokeOption
 	eventContext  EventContext
@@ -151,6 +163,16 @@ func (s *Step) Close() error {
 
 // Option configures a Step.
 type Option func(*Step)
+
+// WithTransforms configures inference assembly transforms that run
+// before each provider call in Turn(). Transforms receive the state
+// after any user/system/tool submissions and before the provider
+// serializes it. They must not mutate the underlying buffer.
+func WithTransforms(transforms ...Transform) Option {
+	return func(s *Step) {
+		s.transforms = transforms
+	}
+}
 
 // WithHandlers configures artifact handlers to run after each turn.
 func WithHandlers(handlers ...Handler) Option {
