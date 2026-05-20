@@ -8,6 +8,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRegistry_RegisterAndHandler(t *testing.T) {
@@ -35,6 +36,22 @@ func TestRegistry_Register_Overwrite(t *testing.T) {
 	result, err := lt.fn(nil, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, "second", result)
+}
+
+func TestRegistry_Register_Overwrite_Tools(t *testing.T) {
+	r := NewRegistry()
+	r.Register("test", "first desc", map[string]any{"type": "string"}, func(ctx context.Context, args map[string]any) (any, error) {
+		return "first", nil
+	})
+	r.Register("test", "second desc", map[string]any{"type": "number"}, func(ctx context.Context, args map[string]any) (any, error) {
+		return "second", nil
+	})
+
+	tools := r.Tools()
+	require.Len(t, tools, 1)
+	assert.Equal(t, "test", tools[0].Name)
+	assert.Equal(t, "second desc", tools[0].Description)
+	assert.Equal(t, map[string]any{"type": "number"}, tools[0].Schema)
 }
 
 func TestRegistry_ConcurrentRegistration(t *testing.T) {

@@ -222,3 +222,63 @@ func TestHandler_NamespacedUnknownNamespace(t *testing.T) {
 	assert.True(t, tr.IsError)
 	assert.Contains(t, tr.Content, "namespace")
 }
+
+type errorRemoteSource struct{}
+
+func (e *errorRemoteSource) Name() string { return "remote" }
+func (e *errorRemoteSource) Tools() []provider.Tool {
+	return []provider.Tool{{Name: "fail", Description: "Always fails"}}
+}
+func (e *errorRemoteSource) Call(ctx context.Context, name string, args map[string]any) (any, error) {
+	return nil, errors.New("remote tool failed")
+}
+
+func TestHandler_NamespacedRemoteError(t *testing.T) {
+	r := NewRegistry(WithMCPServer(&errorRemoteSource{}))
+	h := r.Handler()
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	err := h.Handle(context.Background(), artifact.ToolCall{
+		ID:        "call_1",
+		Name:      "remote/fail",
+		Arguments: `{}`,
+	}, mem)
+	require.NoError(t, err)
+
+	turns := mem.Turns()
+	require.Len(t, turns, 2)
+	tr, ok := turns[1].Artifacts[0].(artifact.ToolResult)
+	require.True(t, ok)
+	assert.Equal(t, "call_1", tr.ToolCallID)
+	assert.True(t, tr.IsError)
+	assert.Contains(t, tr.Content, "tool execution error")
+	assert.Contains(t, tr.Content, "remote tool failed")
+}
+
+func TestSplitNamespace(t *testing.T) {
+	tests := []struct {
+		name            string
+		input           string
+		wantNamespace   string
+		wantToolName    string
+		wantOk          bool
+	}{
+		{"standard", "filesystem/read_file", "filesystem", "read_file", true},
+		{"nested path", "a/b/c", "a", "b/c", true},
+		{"no slash", "tool", "", "", false},
+		{"empty string", "", "", "", false},
+		{"leading slash", "/tool", "", "tool", true},
+		{"trailing slash", "ns/", "ns", "", true},
+		{"multiple slashes", "ns/sub/tool", "ns", "sub/tool", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ns, toolName, ok := splitNamespace(tt.input)
+			assert.Equal(t, tt.wantOk, ok)
+			assert.Equal(t, tt.wantNamespace, ns)
+			assert.Equal(t, tt.wantToolName, toolName)
+		})
+	}
+}

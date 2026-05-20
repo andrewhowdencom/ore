@@ -17,10 +17,17 @@ import (
 // Compile-time interface check.
 var _ tool.RemoteSource = (*Client)(nil)
 
+// caller is the subset of the mcp-go client used by Client.
+// It is unexported to keep the public API clean while enabling mock-based
+// testing of Call().
+type caller interface {
+	CallTool(ctx context.Context, request mcptypes.CallToolRequest) (*mcptypes.CallToolResult, error)
+}
+
 // Client implements tool.RemoteSource for an MCP server.
 type Client struct {
 	name   string
-	client *mcpclient.Client
+	caller caller
 	tools  []provider.Tool
 }
 
@@ -90,7 +97,7 @@ func NewClient(opts ...Option) (*Client, error) {
 
 	return &Client{
 		name:   cfg.name,
-		client: c,
+		caller: c,
 		tools:  tools,
 	}, nil
 }
@@ -111,7 +118,7 @@ func (c *Client) Call(ctx context.Context, name string, args map[string]any) (an
 	req.Params.Name = name
 	req.Params.Arguments = args
 
-	result, err := c.client.CallTool(ctx, req)
+	result, err := c.caller.CallTool(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("MCP tool call %q: %w", name, err)
 	}
