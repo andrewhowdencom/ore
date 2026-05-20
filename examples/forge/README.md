@@ -98,19 +98,31 @@ conduits:
   - module: github.com/andrewhowdencom/ore/x/conduit/tui
 ```
 
-Each conduit entry can optionally include an `options` map for future
-conduit-specific configuration:
+Each conduit entry can optionally include an `options` map for
+conduit-specific configuration. Options are translated into Go functional
+option calls in the generated `main.go` via the conduit's `OptionsFromMap`
+bridge:
 
 ```yaml
 conduits:
   - module: github.com/andrewhowdencom/ore/x/conduit/http
     options:
-      model: gpt-4o
+      addr: ":8080"
+      ui: false
 ```
 
-> **Note**: The `options` field is parsed and stored but not yet translated
-> into Go constructor options in the generated template. Conduits are
-> instantiated as `alias.New(mgr)` with no arguments.
+### Conduit Options Reference
+
+| Conduit | Option Key | Type | Description |
+|---|---|---|---|
+| HTTP | `addr` | string | TCP listen address (default: `:7654`) |
+| HTTP | `ui` | bool | Enable the built-in web chat UI (default: `true`) |
+| TUI | `thread_id` | string | Resume an existing thread instead of creating a new session |
+| Slack | `bot_token` | string | Slack bot token (`xoxb-...`) |
+| Slack | `app_token` | string | Slack app-level token (`xapp-...`) |
+| Slack | `events_api` | bool | Use HTTP Events API instead of Socket Mode (default: `false`) |
+| Telegram | `bot_token` | string | Telegram bot token |
+| Telegram | `get_updates_timeout` | int | Long-polling timeout in seconds (default: `30`) |
 
 ## Comparison with Hand-Compiled Examples
 
@@ -124,6 +136,7 @@ express in the blueprint schema.
 |---|---|---|
 | HTTP conduit | ✅ | ✅ |
 | `httpc.WithUI()` — built-in web chat UI | ✅ | ✅ |
+| Conduit options (`addr`, `ui`) | ✅ | ✅ |
 | Tool registry (`add` / `multiply`) | ✅ | ❌ |
 | Rich package documentation / usage guide | ✅ | ❌ (generic template) |
 
@@ -133,6 +146,7 @@ express in the blueprint schema.
 |---|---|---|
 | TUI conduit | ✅ | ✅ |
 | `--thread` flag for resuming sessions | ✅ | ❌ |
+| Conduit options (`thread_id`) | ✅ | ✅ |
 | JSON / memory thread store via `STORE_DIR` | ✅ | ✅ |
 | Tool registry | ✅ | ❌ |
 | Rich package documentation / usage guide | ✅ | ❌ (generic template) |
@@ -176,7 +190,7 @@ need to grow the following dimensions:
    description, JSON schema, and a reference to a Go function implementation.
    This likely requires a companion plugin or code-generation mechanism,
    since tool *implementations* cannot be expressed in YAML alone.
-4. **Conduit options translation**: Translate the YAML `options` map into
+4. **Conduit options translation** ✅ — Translate the YAML `options` map into
    Go functional options in the generated template (e.g. `http: {ui: true}`
    → `httpc.WithUI()`).
 5. **Cognitive pattern selection**: A `cognitive` stanza to choose between
