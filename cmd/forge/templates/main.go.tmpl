@@ -67,7 +67,16 @@ func run() error {
 	a := agent.New(mgr)
 
 {{- range .Conduits }}
+{{- if .HasOptions }}
+	{{.ImportAlias}}OptsMap := {{.OptionsLiteral}}
+	{{.ImportAlias}}Opts, err := {{.ImportAlias}}.OptionsFromMap({{.ImportAlias}}OptsMap)
+	if err != nil {
+		return err
+	}
+	c{{.Index}}, err := {{.ImportAlias}}.New(mgr, {{.ImportAlias}}Opts...)
+{{- else }}
 	c{{.Index}}, err := {{.ImportAlias}}.New(mgr)
+{{- end }}
 	if err != nil {
 		return err
 	}

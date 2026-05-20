@@ -8,6 +8,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"text/template"
 )
@@ -20,9 +21,11 @@ var goModTmpl string
 
 // ConduitTemplateData holds per-conduit information for main.go.tmpl.
 type ConduitTemplateData struct {
-	Index       int
-	ImportAlias string
-	ModulePath  string
+	Index          int
+	ImportAlias    string
+	ModulePath     string
+	HasOptions     bool
+	OptionsLiteral string
 }
 
 // MainGoTemplateData holds the top-level data for main.go.tmpl.
@@ -127,6 +130,46 @@ func GenerateGoMod(blueprint *Blueprint, oreModulePath string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// formatGoMapStringAny formats a map[string]any into a Go composite literal string.
+func formatGoMapStringAny(m map[string]any) string {
+	if len(m) == 0 {
+		return "map[string]any{}"
+	}
+	var pairs []string
+	for k, v := range m {
+		pairs = append(pairs, fmt.Sprintf("%q: %s", k, goValue(v)))
+	}
+	sort.Strings(pairs)
+	return fmt.Sprintf("map[string]any{%s}", strings.Join(pairs, ", "))
+}
+
+// goValue recursively formats a value into a valid Go literal string.
+func goValue(v any) string {
+	switch val := v.(type) {
+	case string:
+		return fmt.Sprintf("%q", val)
+	case nil:
+		return "nil"
+	case bool, int, int64, float64:
+		return fmt.Sprintf("%v", val)
+	case []any:
+		var parts []string
+		for _, item := range val {
+			parts = append(parts, goValue(item))
+		}
+		return fmt.Sprintf("[]any{%s}", strings.Join(parts, ", "))
+	case map[string]any:
+		var parts []string
+		for k, v := range val {
+			parts = append(parts, fmt.Sprintf("%q: %s", k, goValue(v)))
+		}
+		sort.Strings(parts)
+		return fmt.Sprintf("map[string]any{%s}", strings.Join(parts, ", "))
+	default:
+		return fmt.Sprintf("%v", val)
+	}
+}
+
 // buildTemplateData converts a Blueprint into the template data structure
 // used by main.go.tmpl.
 func buildTemplateData(blueprint *Blueprint) (*MainGoTemplateData, error) {
@@ -135,11 +178,16 @@ func buildTemplateData(blueprint *Blueprint) (*MainGoTemplateData, error) {
 
 	for i, c := range blueprint.Conduits {
 		alias := deriveImportAlias(c.Module, usedAliases)
-		data.Conduits = append(data.Conduits, ConduitTemplateData{
+		ctd := ConduitTemplateData{
 			Index:       i,
 			ImportAlias: alias,
 			ModulePath:  c.Module,
-		})
+		}
+		if len(c.Options) > 0 {
+			ctd.HasOptions = true
+			ctd.OptionsLiteral = formatGoMapStringAny(c.Options)
+		}
+		data.Conduits = append(data.Conduits, ctd)
 		usedAliases[alias] = struct{}{}
 	}
 
