@@ -50,6 +50,7 @@ building agents, not a specific agent implementation).
 | `provider` | Provider interface and InvokeOption for LLM adapter contracts | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/provider) |
 | `loop` | Single-turn execution primitive: Step with Turn(), handlers, and BeforeTurn hooks | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/loop) |
 | `x/tool` | Provider-agnostic tool registry and artifact handler for executing LLM tool calls | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/x/tool) |
+| `x/tool/calculator` | Reusable calculator tool implementations (Add, Multiply) | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/x/tool/calculator) |
 | `cognitive` | Cognitive patterns (ReAct) for multi-turn looping | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/cognitive) |
 | `thread` | Persistent thread Store with UUID-based sessions and JSON persistence | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/thread) |
 | `session` | Stream and Manager primitives for per-session inference orchestration | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/session) |

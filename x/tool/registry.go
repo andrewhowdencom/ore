@@ -8,7 +8,9 @@ type Registry struct {
 	tools map[string]ToolFunc
 }
 
-// NewRegistry creates an empty tool registry.
+// NewRegistry creates an empty tool registry ready for tool registration.
+// Register tools by name, then call Handler() to obtain a loop.Handler that
+// executes them against incoming artifact.ToolCall values.
 func NewRegistry() *Registry {
 	return &Registry{
 		tools: make(map[string]ToolFunc),
