@@ -33,6 +33,18 @@ func TestBuild(t *testing.T) {
 				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/tui"}},
 			},
 		},
+		{
+			name: "http with options",
+			blueprint: &Blueprint{
+				Dist: Dist{Name: "http-opts-agent", OutputPath: "http-opts-agent"},
+				Conduits: []ConduitConfig{
+					{
+						Module:  "github.com/andrewhowdencom/ore/x/conduit/http",
+						Options: map[string]any{"addr": ":0", "ui": false},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
