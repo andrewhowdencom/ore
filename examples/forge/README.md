@@ -68,7 +68,13 @@ runtime:
 - `ORE_API_KEY` — required
 - `ORE_MODEL` — defaults to `gpt-4o`
 - `ORE_BASE_URL` — optional, for custom OpenAI-compatible endpoints
-- `STORE_DIR` — optional, enables persistent JSON thread store
+- `ORE_STORE_DIR` — optional, enables persistent JSON thread store
+
+Conduit-specific options can also be overridden via environment variables
+using the `ORE_CONDUIT_<NAME>_<KEY>` convention. For example, the HTTP
+conduit's listen address can be set with `ORE_CONDUIT_HTTP_ADDR=:9090`.
+Handler options follow the same pattern: `ORE_HANDLER_<NAME>_<KEY>`.
+Dots and hyphens in names are normalised to underscores.
 
 Multi-conduit agents expose all capabilities of their constituent conduits.
 For example, an HTTP+TUI agent listens on HTTP and also presents a TUI,
@@ -168,7 +174,7 @@ express in the blueprint schema.
 | TUI conduit | ✅ | ✅ |
 | `--thread` flag for resuming sessions | ✅ | ❌ |
 | Conduit options (`thread_id`) | ✅ | ✅ |
-| JSON / memory thread store via `STORE_DIR` | ✅ | ✅ |
+| JSON / memory thread store via `ORE_STORE_DIR` | ✅ | ✅ |
 | Tool registry | ✅ | ⚠️ (via handler modules) |
 | Rich package documentation / usage guide | ✅ | ❌ (generic template) |
 
