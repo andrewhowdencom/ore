@@ -57,7 +57,6 @@ import (
 
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/provider/openai"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/thread"
@@ -107,17 +106,15 @@ func run() error {
 	// Create a tool registry with calculator functions.
 	// These are optional — remove them for a simple chat server.
 	registry := tool.NewRegistry()
-	registry.Register(calculator.AddTool.Name, calculator.Add)
-	registry.Register(calculator.MultiplyTool.Name, calculator.Multiply)
-
-	tools := []provider.Tool{calculator.AddTool, calculator.MultiplyTool}
+	registry.Register(calculator.AddTool.Name, calculator.AddTool.Description, calculator.AddTool.Schema, calculator.Add)
+	registry.Register(calculator.MultiplyTool.Name, calculator.MultiplyTool.Description, calculator.MultiplyTool.Schema, calculator.Multiply)
 
 	// Step factory: each session gets its own Step with tool handler
 	// and provider tool options bound.
 	stepFactory := func() (*loop.Step, error) {
 		return loop.New(
 			loop.WithHandlers(registry.Handler()),
-			loop.WithInvokeOptions(openai.WithTools(tools)),
+			loop.WithInvokeOptions(openai.WithTools(registry.Tools())),
 		), nil
 	}
 

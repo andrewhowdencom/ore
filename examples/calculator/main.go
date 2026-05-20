@@ -14,7 +14,6 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/provider/openai"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/tool"
@@ -75,11 +74,8 @@ func run() error {
 
 	// Create tool registry with calculator functions.
 	registry := tool.NewRegistry()
-	registry.Register(calculator.AddTool.Name, calculator.Add)
-	registry.Register(calculator.MultiplyTool.Name, calculator.Multiply)
-
-	// Define tools for the provider.
-	tools := []provider.Tool{calculator.AddTool, calculator.MultiplyTool}
+	registry.Register(calculator.AddTool.Name, calculator.AddTool.Description, calculator.AddTool.Schema, calculator.Add)
+	registry.Register(calculator.MultiplyTool.Name, calculator.MultiplyTool.Description, calculator.MultiplyTool.Schema, calculator.Multiply)
 
 	// Build provider.
 	var opts []openai.Option
@@ -95,7 +91,7 @@ func run() error {
 	// Create step with tool handler and pre-bound tool options.
 	step := loop.New(
 		loop.WithHandlers(registry.Handler()),
-		loop.WithInvokeOptions(openai.WithTools(tools)),
+		loop.WithInvokeOptions(openai.WithTools(registry.Tools())),
 	)
 
 	// Run the cognitive pattern.
