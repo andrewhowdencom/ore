@@ -57,8 +57,8 @@ go run ../../../cmd/forge build --config forge.yaml
 
 > **Build succeeded** — the binary is written to `./workshop`. Workshop is a
 > domain-specific example: it uses `transforms` to inject a coding-specific
-> system prompt and guardrails, making it the first Forge example with a
-> tailored assistant identity.
+> system prompt and guardrails as virtual turns, making it currently the first
+> domain-specific assistant example built through Forge blueprints.
 
 ### Multi-Conduit Agent (HTTP + TUI)
 
