@@ -1,0 +1,46 @@
+# Forge blueprint for a terminal-based coding assistant.
+#
+# Workshop is currently the first domain-specific Forge example: it uses
+# transforms to inject a coding-specific system prompt and behavioral
+# guardrails as virtual turns, making the assistant identity distinct from
+# the generic "helpful assistant" in the TUI and HTTP examples.
+#
+# Run with:
+#   cd examples/forge/workshop
+#   go run ../../../cmd/forge build --config forge.yaml
+# The output binary is written relative to the current working directory.
+#
+# Known limitations / remaining gaps:
+#   - Handler wiring is structurally supported by Forge, but no handler module
+#     in the repo currently exports the New/OptionsFromMap contract required
+#     by the generated template. The handlers array below is intentionally
+#     empty as a placeholder for future tool integration.
+#   - Provider selection is hardcoded to OpenAI in the app package.
+#   - Cognitive pattern selection is hardcoded to a simple turn processor.
+#   - Tool registry population still requires Go code; there is no YAML-native
+#     way to declare tools, schemas, or function implementations.
+dist:
+  name: workshop
+  output_path: ./workshop
+conduits:
+  - name: tui
+    module: github.com/andrewhowdencom/ore/x/conduit/tui
+    options:
+      thread_id: ""  # set to resume an existing thread; omit to create new
+transforms:
+  - name: persona
+    module: github.com/andrewhowdencom/ore/x/systemprompt
+    options:
+      content: "You are a terminal-based coding assistant. You help users write, review, refactor, and debug code across any language or framework. Prefer concise explanations and actionable suggestions."
+  - name: guardrails
+    module: github.com/andrewhowdencom/ore/x/guardrails
+    options:
+      rules:
+        - "Always format code in markdown blocks with the correct language tag."
+        - "Prefer concise explanations; show code rather than prose where possible."
+        - "When suggesting changes, explain the rationale briefly."
+# Placeholder: Forge supports handler module wiring, but no handler module in
+# the repository currently exports the New/OptionsFromMap contract required by
+# the generated template. Once a compatible tool-handler wrapper exists, add
+# entries here (e.g. x/tool/forgehandler or similar) to enable tool calling.
+handlers: []
