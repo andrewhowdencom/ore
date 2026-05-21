@@ -47,6 +47,19 @@ go run ../../../cmd/forge build --config forge.yaml
 
 > **Build succeeded** — the binary is written to `./tui-chat`.
 
+### Workshop Agent (Coding Assistant)
+
+```bash
+cd examples/forge/workshop
+go run ../../../cmd/forge build --config forge.yaml
+./workshop
+```
+
+> **Build succeeded** — the binary is written to `./workshop`. Workshop is a
+> domain-specific example: it uses `transforms` to inject a coding-specific
+> system prompt and guardrails as virtual turns, making it currently the first
+> domain-specific assistant example built through Forge blueprints.
+
 ### Multi-Conduit Agent (HTTP + TUI)
 
 ```bash
@@ -138,6 +151,24 @@ handlers:
       verbose: true
 ```
 
+Transform entries follow the same pattern. Transforms are instantiated
+per-stream and wired into `loop.Step` via `loop.WithTransforms`. They
+modify the state view presented to the provider during inference without
+mutating the persistent buffer:
+
+```yaml
+transforms:
+  - name: persona
+    module: github.com/andrewhowdencom/ore/x/systemprompt
+    options:
+      content: "You are a terminal-based coding assistant."
+  - name: guardrails
+    module: github.com/andrewhowdencom/ore/x/guardrails
+    options:
+      rules:
+        - "Always format code in markdown blocks."
+```
+
 ### Conduit Options Reference
 
 | Conduit | Option Key | Type | Description |
@@ -177,6 +208,22 @@ express in the blueprint schema.
 | JSON / memory thread store via `ORE_STORE_DIR` | ✅ | ✅ |
 | Tool registry | ✅ | ⚠️ (via handler modules) |
 | Rich package documentation / usage guide | ✅ | ❌ (generic template) |
+
+### `examples/forge/workshop/`
+
+Workshop is a Forge-only example — there is no hand-compiled equivalent.
+It is the first domain-specific assistant built entirely through blueprints.
+
+| Feature | Status | Notes |
+|---|---|---|
+| TUI conduit | ✅ | Standard terminal chat interface |
+| Conduit options (`thread_id`) | ✅ | Configured in blueprint; overridable at runtime |
+| Transforms (`systemprompt`, `guardrails`) | ✅ | Coding-specific identity and behavioral rules |
+| Domain-specific assistant persona | ✅ | Injected via `x/systemprompt` transform |
+| Handler wiring (structural) | ⚠️ | `handlers: []` placeholder; no compatible module yet |
+| Tool registry with actual tools | ❌ | No YAML-native tool declarations or pre-registered module |
+| Provider selection | ❌ | Hardcoded OpenAI in the `app` package |
+| Cognitive pattern selection | ❌ | Hardcoded simple turn processor in the `app` package |
 
 ### `examples/single-turn-cli/` and `examples/calculator/`
 
