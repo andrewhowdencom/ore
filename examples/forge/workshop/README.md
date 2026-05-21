@@ -6,7 +6,7 @@ across any language or framework.
 
 Unlike the generic TUI and HTTP examples, Workshop leverages Forge's
 transform system to inject a coding-specific assistant identity and
-behavioral guardrails directly through the blueprint. It is designed as
+behavioral guardrails through transforms defined in the blueprint. It is designed as
 a concrete, non-trivial use case to stress-test Forge's declarative
 expressiveness and to validate each new Forge extension by making
 workshop measurably more capable.
@@ -15,9 +15,9 @@ workshop measurably more capable.
 
 - **TUI conduit** — single-session terminal chat interface.
 - **System prompt transform** (`x/systemprompt`) — injects a coding-specific
-  persona ("You are a terminal-based coding assistant...") into every
-  inference turn via `VirtualTurnState`, without mutating the persistent
-  conversation buffer.
+  persona as a virtual `RoleSystem` turn ("You are a terminal-based coding
+  assistant...") into every inference turn via `VirtualTurnState`, without
+  mutating the persistent conversation buffer.
 - **Guardrails transform** (`x/guardrails`) — injects behavioral rules
   (markdown formatting, conciseness, rationale for changes) as virtual
   `RoleUser` turns.

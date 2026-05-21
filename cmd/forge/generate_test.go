@@ -326,6 +326,55 @@ func TestGenerateMainGo_Transforms(t *testing.T) {
 				assert.Contains(t, content, `return systemprompt.New()`)
 			},
 		},
+		{
+			name: "explicit transform name",
+			blueprint: &Blueprint{
+				Dist:     Dist{Name: "named-transform-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Transforms: []TransformConfig{
+					{Name: "persona", Module: "github.com/andrewhowdencom/ore/x/systemprompt"},
+				},
+			},
+			check: func(t *testing.T, content string) {
+				assert.Contains(t, content, `app.WithTransform("persona",`)
+				assert.Contains(t, content, `return systemprompt.New()`)
+			},
+		},
+		{
+			name: "multiple transforms with options",
+			blueprint: &Blueprint{
+				Dist:     Dist{Name: "multi-transform-agent", OutputPath: "./out"},
+				Conduits: []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Transforms: []TransformConfig{
+					{Name: "persona", Module: "github.com/andrewhowdencom/ore/x/systemprompt", Options: map[string]any{"content": "You are a coding assistant."}},
+					{Name: "guardrails", Module: "github.com/andrewhowdencom/ore/x/guardrails", Options: map[string]any{"rules": []any{"format in markdown"}}},
+				},
+			},
+			check: func(t *testing.T, content string) {
+				assert.Contains(t, content, `app.WithTransform("persona",`)
+				assert.Contains(t, content, `app.WithTransform("guardrails",`)
+				assert.Contains(t, content, `systempromptOpts, err := systemprompt.OptionsFromMap(opts)`)
+				assert.Contains(t, content, `guardrailsOpts, err := guardrails.OptionsFromMap(opts)`)
+				assert.Contains(t, content, `return systemprompt.New(systempromptOpts...)`)
+				assert.Contains(t, content, `return guardrails.New(guardrailsOpts...)`)
+				assert.Contains(t, content, `map[string]any{"content": "You are a coding assistant."}`)
+				assert.Contains(t, content, `map[string]any{"rules": []any{"format in markdown"}}`)
+			},
+		},
+		{
+			name: "empty handlers with transforms",
+			blueprint: &Blueprint{
+				Dist:       Dist{Name: "empty-handler-agent", OutputPath: "./out"},
+				Conduits:   []ConduitConfig{{Module: "github.com/andrewhowdencom/ore/x/conduit/http"}},
+				Handlers:   []HandlerConfig{},
+				Transforms: []TransformConfig{{Name: "persona", Module: "github.com/andrewhowdencom/ore/x/systemprompt"}},
+			},
+			check: func(t *testing.T, content string) {
+				assert.Contains(t, content, `app.WithTransform("persona",`)
+				assert.NotContains(t, content, `app.WithHandler`)
+				assert.Contains(t, content, `"github.com/andrewhowdencom/ore/loop"`)
+			},
+		},
 	}
 
 	for _, tt := range tests {

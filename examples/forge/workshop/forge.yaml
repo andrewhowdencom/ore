@@ -1,9 +1,9 @@
 # Forge blueprint for a terminal-based coding assistant.
 #
-# Workshop is the first domain-specific Forge example: it uses transforms to
-# inject a coding-specific system prompt and behavioral guardrails, making the
-# assistant identity distinct from the generic "helpful assistant" in the TUI
-# and HTTP examples.
+# Workshop is currently the first domain-specific Forge example: it uses
+# transforms to inject a coding-specific system prompt and behavioral
+# guardrails as virtual turns, making the assistant identity distinct from
+# the generic "helpful assistant" in the TUI and HTTP examples.
 #
 # Run with:
 #   cd examples/forge/workshop
