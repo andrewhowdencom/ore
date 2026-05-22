@@ -3,6 +3,8 @@ package skills
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -67,13 +69,9 @@ func (c *Catalog) List(ctx context.Context) ([]SkillMeta, error) {
 	}
 
 	// Deterministic sort by name.
-	for i := 0; i < len(result)-1; i++ {
-		for j := i + 1; j < len(result); j++ {
-			if strings.Compare(result[i].Name, result[j].Name) > 0 {
-				result[i], result[j] = result[j], result[i]
-			}
-		}
-	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
 
 	return result, nil
 }
@@ -136,11 +134,12 @@ func (c *Catalog) refresh(ctx context.Context) error {
 	for _, d := range c.discoverers {
 		metaList, err := d.Discover(ctx)
 		if err != nil {
-			// Log and skip; one bad discoverer should not break the catalog.
+			slog.Warn("discoverer failed during catalog refresh, skipping", "error", err)
 			continue
 		}
 		for _, meta := range metaList {
 			if _, exists := newCache[meta.Name]; exists {
+				slog.Warn("duplicate skill name detected during catalog refresh, skipping", "name", meta.Name)
 				continue // first-wins
 			}
 			newCache[meta.Name] = discovererEntry{
