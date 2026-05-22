@@ -2,14 +2,21 @@ go 1.26.2
 
 use (
 	.
+	./examples
+	./x/conduit
 	./x/conduit/http
 	./x/conduit/slack
 	./x/conduit/telegram
 	./x/conduit/tui
 	./x/provider/openai
+	./x/tool
 	./x/tool/bash
 	./x/tool/calculator
 	./x/tool/filesystem
 	./x/tool/mcp
 	./x/tool/skills
 )
+
+replace github.com/andrewhowdencom/ore v0.0.0 => .
+
+replace github.com/andrewhowdencom/ore v0.0.0-00010101000000-000000000000 => .
