@@ -5,9 +5,9 @@ go 1.26.2
 require (
 	github.com/andrewhowdencom/ore/x/conduit/http v0.0.0-00010101000000-000000000000
 	github.com/andrewhowdencom/ore/x/conduit/tui v0.0.0-00010101000000-000000000000
+	github.com/andrewhowdencom/ore/x/provider/openai v0.0.0-00010101000000-000000000000
 	github.com/andrewhowdencom/ore/x/tool/calculator v0.0.0-00010101000000-000000000000
 	github.com/andrewhowdencom/ore/x/tool/filesystem v0.0.0-00010101000000-000000000000
-	github.com/openai/openai-go v1.12.0
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -42,6 +42,7 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/reflow v0.3.0 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
+	github.com/openai/openai-go v1.12.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
@@ -61,11 +62,8 @@ require (
 )
 
 replace github.com/andrewhowdencom/ore/x/conduit/http => ./x/conduit/http
-
 replace github.com/andrewhowdencom/ore/x/conduit/tui => ./x/conduit/tui
-
 replace github.com/andrewhowdencom/ore/x/tool/calculator => ./x/tool/calculator
-
+replace github.com/andrewhowdencom/ore/x/provider/openai => ./x/provider/openai
 replace github.com/andrewhowdencom/ore/x/tool/bash => ./x/tool/bash
-
 replace github.com/andrewhowdencom/ore/x/tool/filesystem => ./x/tool/filesystem

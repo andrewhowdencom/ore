@@ -20,7 +20,7 @@
 //
 // Tool calling composes two mechanisms:
 //
-//   1. Provider adapter (e.g., provider/openai/) — accepts tool configuration
+//   1. Provider adapter (e.g., x/provider/openai/) — accepts tool configuration
 //      per-invocation via openai.WithTools(), serializes them in requests,
 //      deserializes ToolCall from responses, and serializes RoleTool turns
 //      with ToolResult back to the provider.
@@ -37,7 +37,8 @@
 //	    return a + b, nil
 //	})
 //
-//	prov := openai.New(apiKey, model)
+//	prov, err := openai.New(openai.WithAPIKey(apiKey), openai.WithModel(model))
+//	if err != nil { ... }
 //
 //	// Registry.Tools() is now the single source of truth.
 //	step := loop.New(
