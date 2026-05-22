@@ -11,4 +11,5 @@ use (
 	./x/tool/calculator
 	./x/tool/filesystem
 	./x/tool/mcp
+	./x/tool/skills
 )
