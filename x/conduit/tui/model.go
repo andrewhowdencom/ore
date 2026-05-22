@@ -35,14 +35,26 @@ type statusMsg struct {
 // a turn.
 type clearPendingMsg struct{}
 
-// renderedBlock tracks a finalized piece of turn content with its kind and
-// optional pre-rendered ANSI cache.
+// renderedBlock tracks a finalized piece of turn content with its kind,
+// original source, optional compact representation, and optional
+// pre-rendered ANSI cache.
+// compact holds the one-line summary used when the UI is in compact mode
+// (Ctrl+O collapsed). It is computed during turn processing to avoid
+// repeated JSON parsing on every viewport refresh.
 type renderedBlock struct {
-	kind     string // "text" or "reasoning"
+	kind     string // "text", "reasoning", "tool_call", or "tool_result"
 	source   string // original content
+	compact  string // compact single-line representation
 	rendered string // pre-rendered ANSI output (only for text blocks)
 }
 
+// The TUI aims to keep the conversation view concise. Tool calls and their
+// results can be verbose, so we render them in a one-line "compact" form by
+// default. Users can press Ctrl+O to temporarily expand the latest assistant
+// turn's tool interactions, inspecting full arguments or error messages.
+// The state is scoped to the most recent turn to avoid cluttering older
+// history.
+//
 // model implements tea.Model. All state mutation happens in Update,
 // which runs on Bubble Tea's single goroutine, so no locks are needed.
 type model struct {
@@ -53,6 +65,12 @@ type model struct {
 
 	// pending indicates an assistant response is in flight.
 	pending bool
+
+	// expandLatestTools controls whether the latest assistant turn's
+	// tool calls and results are shown expanded or compact.
+	// The flag is toggled by Ctrl+O and automatically cleared after
+	// the next assistant turn is received, restoring the default compact view.
+	expandLatestTools bool
 
 	// Transient status line (e.g., "thinking...").
 	status string
@@ -166,13 +184,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				blocks = append(blocks, block)
 			case artifact.ToolCall:
 				source := fmt.Sprintf("Calling: %s(%s)", a.Name, a.Arguments)
-				blocks = append(blocks, renderedBlock{kind: "tool_call", source: source})
+				compact := compactToolCall(a, m.viewport.Width)
+				blocks = append(blocks, renderedBlock{kind: "tool_call", source: source, compact: compact})
 			case artifact.ToolResult:
 				source := a.Content
 				if a.IsError {
 					source = "Error: " + source
 				}
-				blocks = append(blocks, renderedBlock{kind: "tool_result", source: source})
+				compact := compactToolResult(a, m.viewport.Width)
+				blocks = append(blocks, renderedBlock{kind: "tool_result", source: source, compact: compact})
 			}
 		}
 		rt := renderedTurn{
@@ -182,6 +202,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.turns = append(m.turns, rt)
 		if msg.turn.Role == state.RoleAssistant {
 			m.pending = false
+			m.expandLatestTools = false
 		}
 		m.viewport.SetContent(m.buildContent())
 		m.viewport.GotoBottom()
@@ -226,6 +247,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.textarea, cmd = m.textarea.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
 			m.recalcLayout()
 			return m, cmd
+		case tea.KeyCtrlO:
+			m.expandLatestTools = !m.expandLatestTools
+			m.viewport.SetContent(m.buildContent())
+			m.viewport.GotoBottom()
+			return m, nil
 		default:
 			var cmd tea.Cmd
 			m.textarea, cmd = m.textarea.Update(msg)

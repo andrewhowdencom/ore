@@ -1,9 +1,12 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/cellbuf"
@@ -20,6 +23,12 @@ var (
 	toolCallStyle = lipgloss.NewStyle().Faint(true).Italic(true)
 	// toolErrorStyle styles tool error output in red.
 	toolErrorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
+	// compactToolCallStyle styles compact tool call lines in amber.
+	compactToolCallStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#D19A66"))
+	// compactToolResultStyle styles compact tool result lines in muted green.
+	compactToolResultStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#7EC699"))
+	// compactToolErrorStyle styles compact tool error lines in red.
+	compactToolErrorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
 )
 
 // renderBlock renders a labeled content block with the label on its own line
@@ -46,8 +55,18 @@ func (m *model) buildContent() string {
 
 	width := m.viewport.Width
 
+	// Find the last assistant turn index.
+	lastAssistantIdx := -1
+	for i, turn := range m.turns {
+		if turn.role == state.RoleAssistant {
+			lastAssistantIdx = i
+		}
+	}
+
 	// Render conversation history.
-	for _, turn := range m.turns {
+	for turnIdx, turn := range m.turns {
+		isLatestAssistant := turnIdx == lastAssistantIdx
+		isAfterLatestAssistant := turnIdx > lastAssistantIdx
 		switch turn.role {
 		case state.RoleUser:
 			for i, block := range turn.blocks {
@@ -76,7 +95,16 @@ func (m *model) buildContent() string {
 						b.WriteString(renderBlock("Thinking: ", thinkingStyle, block.source, width))
 					}
 				case "tool_call":
-					b.WriteString(renderBlock("Assistant: ", toolCallStyle, block.source, width))
+					isExpanded := isLatestAssistant && m.expandLatestTools
+					content := block.compact
+					if content == "" || isExpanded {
+						content = block.source
+					}
+					if block.compact != "" && !isExpanded {
+						b.WriteString(compactToolCallStyle.Render("→ " + content))
+					} else {
+						b.WriteString(renderBlock("Assistant: ", toolCallStyle, content, width))
+					}
 				}
 				if i < len(turn.blocks)-1 {
 					b.WriteString("\n\n")
@@ -88,11 +116,24 @@ func (m *model) buildContent() string {
 				case "text":
 					b.WriteString(renderBlock("Tool: ", lipgloss.NewStyle(), block.source, width))
 				case "tool_result":
-					style := lipgloss.NewStyle()
-					if strings.HasPrefix(block.source, "Error: ") {
-						style = toolErrorStyle
+					isExpanded := isAfterLatestAssistant && m.expandLatestTools
+					content := block.compact
+					if content == "" || isExpanded {
+						content = block.source
 					}
-					b.WriteString(renderBlock("Tool: ", style, block.source, width))
+					if block.compact != "" && !isExpanded {
+						if strings.HasPrefix(block.source, "Error: ") {
+							b.WriteString(compactToolErrorStyle.Render("← " + content))
+						} else {
+							b.WriteString(compactToolResultStyle.Render("← " + content))
+						}
+					} else {
+						style := lipgloss.NewStyle()
+						if strings.HasPrefix(block.source, "Error: ") {
+							style = toolErrorStyle
+						}
+						b.WriteString(renderBlock("Tool: ", style, content, width))
+					}
 				}
 				if i < len(turn.blocks)-1 {
 					b.WriteString("\n\n")
@@ -115,6 +156,88 @@ func (m *model) buildContent() string {
 	}
 
 	return b.String()
+}
+
+// compactToolCall formats a tool call into a compact single-line string.
+// The compact format keeps the TUI readable within limited width by
+// collapsing verbose JSON arguments into key=value pairs.
+// It parses the JSON arguments and emits name · key="val" · key2=42.
+// Nested objects collapse to {…} and arrays to […]. If JSON parsing
+// fails, it falls back to a truncated raw representation.
+// maxWidth is normally the current viewport width; callers ensure it
+// reflects the available horizontal space.
+func compactToolCall(tc artifact.ToolCall, maxWidth int) string {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(tc.Arguments), &args); err != nil {
+		raw := tc.Name + "(" + tc.Arguments + ")"
+		return truncateString(raw, maxWidth)
+	}
+
+	keys := make([]string, 0, len(args))
+	for k := range args {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	parts := []string{tc.Name}
+	for _, key := range keys {
+		val := args[key]
+		switch v := val.(type) {
+		case string:
+			parts = append(parts, fmt.Sprintf("%s=%q", key, v))
+		case float64:
+			if v == float64(int64(v)) {
+				parts = append(parts, fmt.Sprintf("%s=%d", key, int64(v)))
+			} else {
+				parts = append(parts, fmt.Sprintf("%s=%v", key, v))
+			}
+		case bool:
+			parts = append(parts, fmt.Sprintf("%s=%v", key, v))
+		case map[string]interface{}:
+			parts = append(parts, fmt.Sprintf("%s={…}", key))
+		case []interface{}:
+			parts = append(parts, fmt.Sprintf("%s=[…]", key))
+		default:
+			parts = append(parts, fmt.Sprintf("%s=%v", key, v))
+		}
+	}
+
+	result := strings.Join(parts, " · ")
+	return truncateString(result, maxWidth)
+}
+
+// compactToolResult formats a tool result into a compact single-line string,
+// keeping the TUI concise by truncating at the first newline or maxWidth
+// characters. If the result is an error (IsError == true), the prefix
+// "Error: " is added before truncation so the compact line still signals
+// a failure. maxWidth is normally the current viewport width.
+func compactToolResult(tr artifact.ToolResult, maxWidth int) string {
+	content := tr.Content
+	if idx := strings.Index(content, "\n"); idx != -1 {
+		content = content[:idx]
+	}
+	prefix := ""
+	if tr.IsError {
+		prefix = "Error: "
+	}
+	return truncateString(prefix+content, maxWidth)
+}
+
+// truncateString truncates s to maxWidth runes, adding "…" if truncated.
+// Truncation is rune-aware, ensuring multi-byte Unicode characters are
+// not split mid-character.
+func truncateString(s string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return s
+	}
+	runes := []rune(s)
+	if len(runes) <= maxWidth {
+		return s
+	}
+	if maxWidth <= 1 {
+		return "…"
+	}
+	return string(runes[:maxWidth-1]) + "…"
 }
 
 // View renders the conversation history inside a scrollable viewport and
