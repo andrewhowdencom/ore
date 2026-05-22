@@ -55,7 +55,7 @@ building agents, not a specific agent implementation).
 | `thread` | Persistent thread Store with UUID-based sessions and JSON persistence | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/thread) |
 | `session` | Stream and Manager primitives for per-session inference orchestration | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/session) |
 | `x/conduit` | I/O conduit interface and capability discovery for frontends | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/x/conduit) |
-| `provider/openai` | OpenAI-compatible provider adapter with streaming and tool calling | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/provider/openai) |
+| `x/provider/openai` | OpenAI-compatible provider adapter with streaming and tool calling | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/x/provider/openai) |
 
 
 ## Getting Started
