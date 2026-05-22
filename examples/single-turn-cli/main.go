@@ -104,9 +104,8 @@ func run() error {
 	// reusable transforms, use the extension module pattern:
 	//
 	//   import "github.com/andrewhowdencom/ore/x/systemprompt"
-	//   s := loop.New(loop.WithTransforms(
-	//       systemprompt.New(systemprompt.WithContent("You are a helpful assistant.")),
-	//   ))
+	//   sp, _ := systemprompt.New(systemprompt.WithContent("You are a helpful assistant."))
+	//   s := loop.New(loop.WithTransforms(sp))
 	var stepOpts []loop.Option
 	if sysPrompt := os.Getenv("ORE_SYSTEM_PROMPT"); sysPrompt != "" {
 		stepOpts = append(stepOpts, loop.WithTransforms(&systemPromptTransform{content: sysPrompt}))

@@ -15,6 +15,21 @@ type Transform struct {
 	content string
 }
 
+// config holds the internal options for the Transform.
+type config struct {
+	content string
+}
+
+// Option configures the Transform.
+type Option func(*config)
+
+// WithContent sets the system prompt content.
+func WithContent(content string) Option {
+	return func(c *config) {
+		c.content = content
+	}
+}
+
 // New creates a system prompt transform with the given options.
 func New(opts ...Option) (loop.Transform, error) {
 	cfg := &config{}

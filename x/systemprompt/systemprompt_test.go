@@ -71,38 +71,4 @@ func TestTransform_DelegatesAppend(t *testing.T) {
 	assert.Equal(t, state.RoleAssistant, turns[2].Role)
 }
 
-func TestFromConfig(t *testing.T) {
-	opts := FromConfig(Config{Content: "Hello"})
-	require.Len(t, opts, 1)
 
-	tr, err := New(opts...)
-	require.NoError(t, err)
-	assert.Equal(t, "Hello", tr.(*Transform).content)
-}
-
-func TestFromConfig_Empty(t *testing.T) {
-	opts := FromConfig(Config{})
-	assert.Empty(t, opts)
-}
-
-func TestOptionsFromMap(t *testing.T) {
-	opts, err := OptionsFromMap(map[string]any{"content": "from map"})
-	require.NoError(t, err)
-	require.Len(t, opts, 1)
-
-	tr, err := New(opts...)
-	require.NoError(t, err)
-	assert.Equal(t, "from map", tr.(*Transform).content)
-}
-
-func TestOptionsFromMap_Empty(t *testing.T) {
-	opts, err := OptionsFromMap(map[string]any{})
-	require.NoError(t, err)
-	assert.Empty(t, opts)
-}
-
-func TestOptionsFromMap_InvalidContentType(t *testing.T) {
-	_, err := OptionsFromMap(map[string]any{"content": 123})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "content")
-}

@@ -58,7 +58,7 @@ func main() {
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `WithBotToken(token string)` | `string` | *(none)* | Telegram bot token from BotFather. Required at `Start()` time; zero options are accepted at construction time for forge compatibility. |
+| `WithBotToken(token string)` | `string` | *(none)* | Telegram bot token from BotFather. Required at `Start()` time; zero options are accepted at construction time so the conduit composes easily in hand-written main.go files. |
 | `WithHTTPClient(client *http.Client)` | `*http.Client` | `60s` timeout | Custom HTTP client for Bot API requests. |
 | `WithGetUpdatesTimeout(seconds int)` | `int` | `30` | Long-polling timeout in seconds passed to `getUpdates`. |
 
@@ -122,23 +122,6 @@ On `ctx.Done()`:
 2. The `RegisterSink` cleanup function is called via `defer`, removing the
    Telegram callback from the manager's sink list.
 3. `Start()` returns `nil` for clean shutdown.
-
-## Forge Blueprint
-
-Declare the conduit in a `forge.yaml` by its Go module path:
-
-```yaml
-dist:
-  name: telegram-agent
-  output_path: ./telegram-agent
-conduits:
-  - module: github.com/andrewhowdencom/ore/x/conduit/telegram
-```
-
-> **Note:** `cmd/forge` instantiates the conduit as `telegram.New(mgr)` with
-> no arguments. The constructor accepts zero options; the bot token must be
-> supplied at runtime (e.g., via the `TELEGRAM_BOT_TOKEN` environment variable).
-> `Start()` returns a fatal error if the token is missing.
 
 ## Error Handling
 
