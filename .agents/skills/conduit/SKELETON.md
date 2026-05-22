@@ -105,5 +105,5 @@ func (c *MyConduit) Start(ctx context.Context) error {
 }
 ```
 
-> **Note:** This skeleton omits forge and multi-conduit patterns. For those,
-> see the `conduit` skill and `examples/forge/README.md`.
+> **Note:** This skeleton shows a single-conduit agent. For multi-conduit
+> patterns, see the `conduit` skill.

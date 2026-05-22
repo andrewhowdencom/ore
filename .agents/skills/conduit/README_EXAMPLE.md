@@ -119,23 +119,6 @@ On `ctx.Done()`, the conduit:
 4. Returns `nil` for clean shutdown, or a non-nil error for fatal runtime errors
    (e.g., listener failure).
 
-## Forge Blueprint
-
-Declare the conduit in a `forge.yaml` by its Go module path:
-
-```yaml
-dist:
-  name: acme-agent
-  output_path: ./acme-agent
-conduits:
-  - module: github.com/andrewhowdencom/ore/x/conduit/acmewebhook
-```
-
-> **Note:** `cmd/forge` instantiates the conduit as `acmewebhook.New(mgr)` with
-> no arguments. All options must have sensible defaults so the forge-generated
-> binary starts without additional configuration. Runtime options (callback URL,
-> secret) can be supplied via environment variables.
-
 ## Error Handling
 
 ### Fatal errors (returned from `Start()`)
