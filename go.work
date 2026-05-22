@@ -2,11 +2,13 @@ go 1.26.2
 
 use (
 	.
+	./x/conduit
 	./x/conduit/http
 	./x/conduit/slack
 	./x/conduit/telegram
 	./x/conduit/tui
 	./x/provider/openai
+	./x/tool
 	./x/tool/bash
 	./x/tool/calculator
 	./x/tool/filesystem
