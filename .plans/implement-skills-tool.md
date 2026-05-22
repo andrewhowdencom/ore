@@ -2,7 +2,7 @@
 
 ## Objective
 
-Create a new `x/tool/skills/` package that implements progressive disclosure of agent skills following the agentskills.io standard. The package provides pluggable skill discovery (filesystem, embedded, well-known HTTP) and exposes three tool functions (`list_skills`, `read_skill`, `search_skills`) that an LLM can invoke to discover and load skill instructions on demand. Skills are knowledge artifacts—not executable functions—so the tool returns SKILL.md content that the LLM references in subsequent reasoning turns.
+Create a new `x/tool/skills/` package that implements progressive disclosure of agent skills following the agentskills.io standard. The package provides pluggable skill discovery (filesystem and embedded) and exposes three tool functions (`list_skills`, `read_skill`, `search_skills`) that an LLM can invoke to discover and load skill instructions on demand. Skills are knowledge artifacts—not executable functions—so the tool returns SKILL.md content that the LLM references in subsequent reasoning turns.
 
 ## Context
 
@@ -24,10 +24,9 @@ Key patterns observed in the codebase:
 
 The `x/tool/skills/` package is a leaf package (no internal ore dependencies beyond `provider/`, `artifact/`, `state/`, `x/tool/`). It consists of four layers:
 
-1. **Discovery Interface** (`Discoverer`) — abstracts where skills live. Three implementations:
+1. **Discovery Interface** (`Discoverer`) — abstracts where skills live. Two implementations:
    - `FSDiscoverer` — walks a directory tree, finds `SKILL.md` files, parses YAML frontmatter
    - `EmbeddedDiscoverer` — reads from an `embed.FS`
-   - `HTTPDiscoverer` — fetches from a `.well-known/agentskills` HTTP endpoint
 2. **Catalog** — aggregates results from multiple `Discoverer`s, caches metadata in a `name → entry` map, handles deduplication (first-wins), and provides `List`, `Read`, and `Search`
 3. **Toolkit** — binds a `Catalog` to three `tool.ToolFunc` implementations and exports `provider.Tool` descriptors
 4. **Tool Surface** — three callable functions the LLM can invoke:
@@ -43,14 +42,13 @@ Skills are not registered as individual tools in the provider. Instead, the sing
 2. Define a `Discoverer` interface with `Discover(ctx) ([]SkillMeta, error)` and `Read(ctx, name) (string, error)` methods
 3. Implement `FSDiscoverer` that scans a configurable directory tree for `SKILL.md` files, parses YAML frontmatter, and reads full content on demand
 4. Implement `EmbeddedDiscoverer` using `embed.FS`
-5. Implement `HTTPDiscoverer` that fetches skill lists and content over HTTP (initial protocol: `GET /skills` returns JSON index, `GET /skills/{name}` returns markdown)
-6. Implement `Catalog` that aggregates from multiple `Discoverer`s, caches metadata, handles deduplication (first-wins), and exposes `List`, `Read`, `Search`
-7. Implement `Toolkit` that binds a `Catalog` to `tool.ToolFunc` implementations for `list_skills`, `read_skill`, and `search_skills`
-8. Export `provider.Tool` descriptors for all three functions with JSON schemas
-9. Parse YAML frontmatter using `gopkg.in/yaml.v3`; validate required fields (`name`, `description`)
-10. Follow ore error wrapping conventions (`fmt.Errorf("...: %w", err)`)
-11. Write table-driven tests for all components; mock filesystem with `testing/fstest` or temp dirs; mock HTTP with `httptest.Server`
-12. Add `replace` directive in the main `go.mod`
+5. Implement `Catalog` that aggregates from multiple `Discoverer`s, caches metadata, handles deduplication (first-wins), and exposes `List`, `Read`, `Search`
+6. Implement `Toolkit` that binds a `Catalog` to `tool.ToolFunc` implementations for `list_skills`, `read_skill`, and `search_skills`
+7. Export `provider.Tool` descriptors for all three functions with JSON schemas
+8. Parse YAML frontmatter using `gopkg.in/yaml.v3`; validate required fields (`name`, `description`)
+9. Follow ore error wrapping conventions (`fmt.Errorf("...: %w", err)`)
+10. Write table-driven tests for all components; mock filesystem with `testing/fstest` or temp dirs
+11. Add `replace` directive in the main `go.mod`
 
 ## Task Breakdown
 
@@ -121,34 +119,9 @@ Skills are not registered as individual tools in the provider. Instead, the sing
   - If a `SKILL.md` is missing required fields, it is skipped with a logged warning (use `log/slog`) rather than failing the entire discovery.
   - Include test fixtures in `testdata/fs/skills/conduit/SKILL.md` and `testdata/embed/skills/go/SKILL.md` matching the format found in `.agents/skills/conduit/SKILL.md`.
 
-### Task 3: Implement Well-Known HTTP Discoverer
-- **Goal**: Build an `HTTPDiscoverer` that fetches skill metadata and content from a remote HTTP endpoint.
-- **Dependencies**: Task 1
-- **Files Affected**: None
-- **New Files**:
-  - `x/tool/skills/discoverer_http.go`
-  - `x/tool/skills/discoverer_http_test.go`
-- **Interfaces**:
-  ```go
-  type HTTPDiscoverer struct {
-      BaseURL string
-      Client  *http.Client // optional; defaults to http.DefaultClient
-  }
-  func NewHTTPDiscoverer(baseURL string) *HTTPDiscoverer
-  ```
-- **Validation**:
-  - `go test -race ./x/tool/skills/...` passes for HTTP discoverer tests
-  - Tests cover: happy path discovery, happy path read, 404 on read, invalid JSON index, network error
-- **Details**:
-  - `Discover` performs `GET {BaseURL}/skills` and expects JSON: `{"skills": [{"name": "...", "description": "...", "url": "..."}]}`.
-  - `Read` performs `GET {BaseURL}/skills/{name}` and returns the response body as a string.
-  - Use `context.Context` for request cancellation and timeouts.
-  - Wrap all errors with `fmt.Errorf`.
-  - This protocol is a **provisional default** (see Risks). Document in code comments that the well-known protocol may change.
-
-### Task 4: Implement Catalog Aggregation, Search, and Caching
+### Task 3: Implement Catalog Aggregation, Search, and Caching
 - **Goal**: Complete the `Catalog` implementation so it merges results from multiple discoverers, deduplicates by name (first-wins), caches metadata, and provides substring search.
-- **Dependencies**: Task 1, Task 2, Task 3
+- **Dependencies**: Task 1, Task 2
 - **Files Affected**:
   - `x/tool/skills/types.go`
 - **New Files**:
@@ -160,13 +133,13 @@ Skills are not registered as individual tools in the provider. Instead, the sing
 - **Details**:
   - `Catalog.refresh(ctx)` calls `Discover` on all registered discoverers, builds a `map[string]discovererEntry` (name → metadata + discoverer index), and caches it under a write lock.
   - `List` refreshes the cache if empty, then returns a deterministically sorted slice of all `SkillMeta`.
-  - `Read` refreshes the cache if the name is missing, looks up the discoverer index, and delegates to that discoverer’s `Read`. Returns `fmt.Errorf("skill %q not found", name)` if still missing.
+  - `Read` refreshes the cache if the name is missing, looks up the discoverer index, and delegates to that discoverer's `Read`. Returns `fmt.Errorf("skill %q not found", name)` if still missing.
   - `Search` calls `List`, then filters by case-insensitive substring match on `Name` and `Description`.
   - Use `sync.RWMutex` for cache safety. `refresh` should skip individual discoverer errors rather than failing entirely (log with `slog.Warn`), so one bad discoverer doesn't break the whole catalog.
 
-### Task 5: Implement Tool Functions, Toolkit, and Descriptors
+### Task 4: Implement Tool Functions, Toolkit, and Descriptors
 - **Goal**: Create the `Toolkit` type that binds a `Catalog` to three `tool.ToolFunc` implementations and exports `provider.Tool` descriptors.
-- **Dependencies**: Task 4
+- **Dependencies**: Task 3
 - **Files Affected**: None
 - **New Files**:
   - `x/tool/skills/tool.go`
@@ -205,9 +178,9 @@ Skills are not registered as individual tools in the provider. Instead, the sing
   - Include a private `toString` helper for safe `map[string]any` string extraction (same pattern as `x/tool/filesystem/` and `x/tool/bash/`).
   - `Toolkit.Register` is optional but convenient: it calls `registry.Register` for all three tools in one go.
 
-### Task 6: Finalize Documentation and Full-Repo Validation
+### Task 5: Finalize Documentation and Full-Repo Validation
 - **Goal**: Ensure package documentation is complete, error messages follow conventions, and the full repository test suite remains green.
-- **Dependencies**: Task 5
+- **Dependencies**: Task 4
 - **Files Affected**:
   - `x/tool/skills/doc.go` (refine)
 - **New Files**: None
@@ -225,19 +198,16 @@ Skills are not registered as individual tools in the provider. Instead, the sing
 ## Dependency Graph
 
 - Task 1 → Task 2
-- Task 1 → Task 3
-- Task 2 → Task 4
+- Task 2 → Task 3
 - Task 3 → Task 4
 - Task 4 → Task 5
-- Task 5 → Task 6
 
-Task 2 and Task 3 are parallelizable (both depend only on Task 1).
+All tasks are sequential; there is no parallelizable work after removing the HTTP discoverer.
 
 ## Risks & Mitigations
 
 | Risk | Impact | Likelihood | Mitigation |
 |---|---|---|---|
-| Well-known HTTP protocol is not standardized | Medium | High | Task 3 implements a provisional protocol (`GET /skills` for index, `GET /skills/{name}` for content) and documents it as experimental. Future iterations can adapt when the standard stabilizes. |
 | YAML frontmatter parsing is fragile (malformed SKILL.md files) | Low | Medium | Skip malformed files during discovery with a warning log rather than failing the entire catalog. Document this behavior in `doc.go`. |
 | Skill name collisions across discoverers | Low | Medium | Catalog uses first-wins deduplication. Document this in `doc.go` and log a warning when duplicates are detected. |
 | Large SKILL.md files bloat context window | Medium | Low | Out of scope for the tool—the agentskills.io standard recommends <500 lines. The application or provider layer handles context window limits. Document the standard recommendation in `doc.go`. |
@@ -252,6 +222,6 @@ Task 2 and Task 3 are parallelizable (both depend only on Task 1).
 - [ ] `go vet ./x/tool/skills/...` is clean
 - [ ] `doc.go` documents the package, progressive disclosure pattern, and composition instructions
 - [ ] All three tool functions have corresponding `provider.Tool` descriptors with JSON schemas
-- [ ] All three discoverer implementations have unit tests
+- [ ] Both discoverer implementations have unit tests
 - [ ] Catalog handles deduplication, caching, and search correctly
 - [ ] Error messages use `fmt.Errorf("...: %w", err)` wrapping throughout
