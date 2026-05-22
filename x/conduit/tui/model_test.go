@@ -846,3 +846,70 @@ func TestModel_Update_Turn_Assistant_ResetsExpandLatestTools(t *testing.T) {
 	mm := newM.(*model)
 	assert.False(t, mm.expandLatestTools)
 }
+
+func TestModel_Update_UserAfterTool_DoesNotResetExpand(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+
+	// Simulate an assistant turn with a tool call
+	m.turns = append(m.turns, renderedTurn{
+		role:   state.RoleAssistant,
+		blocks: []renderedBlock{{kind: "tool_call", source: "Calling: foo({})", compact: "foo"}},
+	})
+	// Simulate a tool result turn
+	m.turns = append(m.turns, renderedTurn{
+		role:   state.RoleTool,
+		blocks: []renderedBlock{{kind: "tool_result", source: "result", compact: "result"}},
+	})
+	m.expandLatestTools = true
+
+	// User turn should NOT reset expandLatestTools
+	turn := state.Turn{
+		Role: state.RoleUser,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "hello"},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+
+	assert.True(t, mm.expandLatestTools, "user turn should not reset expandLatestTools")
+
+	// Previous assistant turn's tool blocks remain expanded
+	output := mm.buildContent()
+	assert.Contains(t, output, "Calling: foo({})")
+}
+
+func TestModel_Update_KeyCtrlO_WhilePending(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.pending = true
+
+	// Toggle should not panic while a response is pending
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	mm := newM.(*model)
+	assert.True(t, mm.expandLatestTools)
+	assert.True(t, mm.pending)
+
+	// View should still show the pending placeholder
+	output := mm.View()
+	assert.Contains(t, output, "Assistant: ")
+	assert.Contains(t, output, "...")
+}
+
+func TestModel_Update_KeyCtrlO_RapidToggles(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	mm := newM.(*model)
+	assert.True(t, mm.expandLatestTools)
+
+	newM2, _ := mm.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	mm2 := newM2.(*model)
+	assert.False(t, mm2.expandLatestTools)
+
+	newM3, _ := mm2.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	mm3 := newM3.(*model)
+	assert.True(t, mm3.expandLatestTools)
+}
