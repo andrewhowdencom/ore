@@ -1,9 +1,12 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/cellbuf"
@@ -115,6 +118,79 @@ func (m *model) buildContent() string {
 	}
 
 	return b.String()
+}
+
+// compactToolCall formats a tool call into a compact single-line string.
+// It parses the JSON arguments and emits name · key="val" · key2=42.
+// Nested objects collapse to {…} and arrays to […]. If JSON parsing
+// fails, it falls back to a truncated raw representation.
+func compactToolCall(tc artifact.ToolCall, maxWidth int) string {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(tc.Arguments), &args); err != nil {
+		raw := tc.Name + "(" + tc.Arguments + ")"
+		return truncateString(raw, maxWidth)
+	}
+
+	keys := make([]string, 0, len(args))
+	for k := range args {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	parts := []string{tc.Name}
+	for _, key := range keys {
+		val := args[key]
+		switch v := val.(type) {
+		case string:
+			parts = append(parts, fmt.Sprintf("%s=%q", key, v))
+		case float64:
+			if v == float64(int64(v)) {
+				parts = append(parts, fmt.Sprintf("%s=%d", key, int64(v)))
+			} else {
+				parts = append(parts, fmt.Sprintf("%s=%v", key, v))
+			}
+		case bool:
+			parts = append(parts, fmt.Sprintf("%s=%v", key, v))
+		case map[string]interface{}:
+			parts = append(parts, fmt.Sprintf("%s={…}", key))
+		case []interface{}:
+			parts = append(parts, fmt.Sprintf("%s=[…]", key))
+		default:
+			parts = append(parts, fmt.Sprintf("%s=%v", key, v))
+		}
+	}
+
+	result := strings.Join(parts, " · ")
+	return truncateString(result, maxWidth)
+}
+
+// compactToolResult formats a tool result into a compact single-line string,
+// truncating at the first newline or maxWidth characters.
+func compactToolResult(tr artifact.ToolResult, maxWidth int) string {
+	content := tr.Content
+	if idx := strings.Index(content, "\n"); idx != -1 {
+		content = content[:idx]
+	}
+	prefix := ""
+	if tr.IsError {
+		prefix = "Error: "
+	}
+	return truncateString(prefix+content, maxWidth)
+}
+
+// truncateString truncates s to maxWidth runes, adding "…" if truncated.
+func truncateString(s string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return s
+	}
+	runes := []rune(s)
+	if len(runes) <= maxWidth {
+		return s
+	}
+	if maxWidth <= 1 {
+		return "…"
+	}
+	return string(runes[:maxWidth-1]) + "…"
 }
 
 // View renders the conversation history inside a scrollable viewport and

@@ -306,3 +306,77 @@ func TestRenderer_SelectsNoTTY(t *testing.T) {
 	)
 	assert.Equal(t, darkStyle, r.styleBytes, "non-terminal should default to dark style")
 }
+
+func TestCompactToolCall_FlatJSON(t *testing.T) {
+	tc := artifact.ToolCall{Name: "search_files", Arguments: `{"path": ".", "query": "hello"}`}
+	output := compactToolCall(tc, 80)
+	assert.Equal(t, `search_files · path="." · query="hello"`, output)
+}
+
+func TestCompactToolCall_NestedObject(t *testing.T) {
+	tc := artifact.ToolCall{Name: "foo", Arguments: `{"nested": {"a": 1}}`}
+	output := compactToolCall(tc, 80)
+	assert.Equal(t, `foo · nested={…}`, output)
+}
+
+func TestCompactToolCall_Array(t *testing.T) {
+	tc := artifact.ToolCall{Name: "foo", Arguments: `{"items": [1, 2, 3]}`}
+	output := compactToolCall(tc, 80)
+	assert.Equal(t, `foo · items=[…]`, output)
+}
+
+func TestCompactToolCall_InvalidJSON(t *testing.T) {
+	tc := artifact.ToolCall{Name: "foo", Arguments: "not json"}
+	output := compactToolCall(tc, 80)
+	assert.Equal(t, "foo(not json)", output)
+}
+
+func TestCompactToolCall_Truncation(t *testing.T) {
+	tc := artifact.ToolCall{Name: "foo", Arguments: `{"key": "very long value that exceeds the width"}`}
+	output := compactToolCall(tc, 20)
+	assert.True(t, strings.HasSuffix(output, "…"), "truncated output should end with ellipsis")
+	assert.LessOrEqual(t, lipgloss.Width(output), 20, "output display width should not exceed maxWidth")
+}
+
+func TestCompactToolCall_Boolean(t *testing.T) {
+	tc := artifact.ToolCall{Name: "foo", Arguments: `{"flag": true}`}
+	output := compactToolCall(tc, 80)
+	assert.Equal(t, `foo · flag=true`, output)
+}
+
+func TestCompactToolCall_Integer(t *testing.T) {
+	tc := artifact.ToolCall{Name: "foo", Arguments: `{"count": 42}`}
+	output := compactToolCall(tc, 80)
+	assert.Equal(t, `foo · count=42`, output)
+}
+
+func TestCompactToolResult_Normal(t *testing.T) {
+	tr := artifact.ToolResult{Content: "result data"}
+	output := compactToolResult(tr, 80)
+	assert.Equal(t, "result data", output)
+}
+
+func TestCompactToolResult_Multiline(t *testing.T) {
+	tr := artifact.ToolResult{Content: "line1\nline2"}
+	output := compactToolResult(tr, 80)
+	assert.Equal(t, "line1", output)
+}
+
+func TestCompactToolResult_Error(t *testing.T) {
+	tr := artifact.ToolResult{Content: "failed", IsError: true}
+	output := compactToolResult(tr, 80)
+	assert.Equal(t, "Error: failed", output)
+}
+
+func TestCompactToolResult_Truncation(t *testing.T) {
+	tr := artifact.ToolResult{Content: strings.Repeat("a", 100)}
+	output := compactToolResult(tr, 10)
+	assert.Equal(t, "aaaaaaaaa…", output)
+}
+
+func TestTruncateString(t *testing.T) {
+	assert.Equal(t, "hello", truncateString("hello", 10))
+	assert.Equal(t, "hell…", truncateString("hello world", 5))
+	assert.Equal(t, "hello", truncateString("hello", 0))
+	assert.Equal(t, "…", truncateString("hello", 1))
+}
