@@ -49,8 +49,18 @@ func (m *model) buildContent() string {
 
 	width := m.viewport.Width
 
+	// Find the last assistant turn index.
+	lastAssistantIdx := -1
+	for i, turn := range m.turns {
+		if turn.role == state.RoleAssistant {
+			lastAssistantIdx = i
+		}
+	}
+
 	// Render conversation history.
-	for _, turn := range m.turns {
+	for turnIdx, turn := range m.turns {
+		isLatestAssistant := turnIdx == lastAssistantIdx
+		isAfterLatestAssistant := turnIdx > lastAssistantIdx
 		switch turn.role {
 		case state.RoleUser:
 			for i, block := range turn.blocks {
@@ -79,7 +89,11 @@ func (m *model) buildContent() string {
 						b.WriteString(renderBlock("Thinking: ", thinkingStyle, block.source, width))
 					}
 				case "tool_call":
-					b.WriteString(renderBlock("Assistant: ", toolCallStyle, block.source, width))
+					content := block.compact
+					if content == "" || (isLatestAssistant && m.expandLatestTools) {
+						content = block.source
+					}
+					b.WriteString(renderBlock("Assistant: ", toolCallStyle, content, width))
 				}
 				if i < len(turn.blocks)-1 {
 					b.WriteString("\n\n")
@@ -95,7 +109,11 @@ func (m *model) buildContent() string {
 					if strings.HasPrefix(block.source, "Error: ") {
 						style = toolErrorStyle
 					}
-					b.WriteString(renderBlock("Tool: ", style, block.source, width))
+					content := block.compact
+					if content == "" || (isAfterLatestAssistant && m.expandLatestTools) {
+						content = block.source
+					}
+					b.WriteString(renderBlock("Tool: ", style, content, width))
 				}
 				if i < len(turn.blocks)-1 {
 					b.WriteString("\n\n")
