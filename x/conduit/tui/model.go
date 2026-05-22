@@ -54,6 +54,10 @@ type model struct {
 	// pending indicates an assistant response is in flight.
 	pending bool
 
+	// expandLatestTools controls whether the latest assistant turn's
+	// tool calls and results are shown expanded or compact.
+	expandLatestTools bool
+
 	// Transient status line (e.g., "thinking...").
 	status string
 
@@ -182,6 +186,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.turns = append(m.turns, rt)
 		if msg.turn.Role == state.RoleAssistant {
 			m.pending = false
+			m.expandLatestTools = false
 		}
 		m.viewport.SetContent(m.buildContent())
 		m.viewport.GotoBottom()
@@ -226,6 +231,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.textarea, cmd = m.textarea.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
 			m.recalcLayout()
 			return m, cmd
+		case tea.KeyCtrlO:
+			m.expandLatestTools = !m.expandLatestTools
+			m.viewport.SetContent(m.buildContent())
+			m.viewport.GotoBottom()
+			return m, nil
 		default:
 			var cmd tea.Cmd
 			m.textarea, cmd = m.textarea.Update(msg)
