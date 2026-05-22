@@ -6,9 +6,9 @@ use (
 	./x/conduit/slack
 	./x/conduit/telegram
 	./x/conduit/tui
+	./x/provider/openai
 	./x/tool/bash
 	./x/tool/calculator
 	./x/tool/filesystem
 	./x/tool/mcp
-	./x/provider/openai
 )
