@@ -50,7 +50,7 @@ func makeKindsSet(kinds []string) map[string]struct{} {
 type Manager struct {
 	store     thread.Store
 	provider  provider.Provider
-	newStep   func() (*loop.Step, error)
+	newStep   func(*thread.Thread) (*loop.Step, error)
 	processor TurnProcessor
 	sessions  map[string]*Stream
 	mu        sync.RWMutex
@@ -60,7 +60,7 @@ type Manager struct {
 }
 
 // NewManager creates a new Manager with the given dependencies.
-func NewManager(store thread.Store, prov provider.Provider, newStep func() (*loop.Step, error), processor TurnProcessor, opts ...ManagerOption) *Manager {
+func NewManager(store thread.Store, prov provider.Provider, newStep func(*thread.Thread) (*loop.Step, error), processor TurnProcessor, opts ...ManagerOption) *Manager {
 	m := &Manager{
 		store:     store,
 		provider:  prov,
@@ -82,7 +82,7 @@ func (m *Manager) Create() (*Stream, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create thread: %w", err)
 	}
-	step, err := m.newStep()
+	step, err := m.newStep(thr)
 	if err != nil {
 		return nil, fmt.Errorf("create step: %w", err)
 	}
@@ -120,7 +120,7 @@ func (m *Manager) Attach(threadID string) (*Stream, error) {
 		return nil, fmt.Errorf("thread %s not found", threadID)
 	}
 
-	step, err := m.newStep()
+	step, err := m.newStep(thr)
 	if err != nil {
 		return nil, fmt.Errorf("create step: %w", err)
 	}

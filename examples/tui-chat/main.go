@@ -87,7 +87,7 @@ func run() error {
 	}
 
 	// Step factory for the manager.
-	stepFactory := func() (*loop.Step, error) {
+	stepFactory := func(*thread.Thread) (*loop.Step, error) {
 		return loop.New(), nil
 	}
 

@@ -56,7 +56,7 @@ func TestIsDM(t *testing.T) {
 func TestResolveThread_Create(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -82,7 +82,7 @@ func TestResolveThread_Create(t *testing.T) {
 func TestResolveThread_Resume(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func() (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
