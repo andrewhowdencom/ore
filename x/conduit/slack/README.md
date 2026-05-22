@@ -81,8 +81,8 @@ Environment variables read at runtime (by `Start()`, not at construction time):
 | `SLACK_BOT_TOKEN` | *(none)* | Slack bot token (`xoxb-...`). |
 | `SLACK_APP_TOKEN` | *(none)* | Slack app-level token (`xapp-...`) for Socket Mode. |
 
-> **Note**: `cmd/forge` calls `slack.New(mgr)` with no arguments. Tokens must
-> be supplied via environment variables for forge-generated binaries.
+> **Note**: The constructor accepts zero options; tokens must be supplied at
+> runtime (e.g., via environment variables).
 
 ## Runtime Semantics
 
@@ -126,23 +126,6 @@ On `ctx.Done()`:
 2. All active streams tracked in `activeStreams` are closed.
 3. The manager sink is unregistered.
 4. The Socket Mode client goroutines exit naturally.
-
-## Forge Blueprint
-
-Declare the conduit in a `forge.yaml` by its Go module path:
-
-```yaml
-dist:
-  name: slack-agent
-  output_path: ./slack-agent
-conduits:
-  - module: github.com/andrewhowdencom/ore/x/conduit/slack
-```
-
-> **Note**: `cmd/forge` instantiates the conduit as `slack.New(mgr)` with no
-> arguments. All options must have sensible defaults so the forge-generated
-> binary starts without additional configuration. Runtime options (bot token,
-> app token) are supplied via environment variables.
 
 ## Error Handling
 
