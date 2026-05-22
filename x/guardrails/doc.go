@@ -7,16 +7,7 @@
 // RoleSystem) gives the guardrails the weight of user instructions,
 // distinct from the persona set by x/systemprompt.
 //
-// # Forge Blueprint Usage
-//
-//	transforms:
-//	  - module: github.com/andrewhowdencom/ore/x/guardrails
-//	    options:
-//	      rules:
-//	        - "Never execute rm -rf /"
-//	        - "Always format code in markdown blocks"
-//
-// # Hand-Compiled Usage
+// # Usage
 //
 //	import "github.com/andrewhowdencom/ore/x/guardrails"
 //

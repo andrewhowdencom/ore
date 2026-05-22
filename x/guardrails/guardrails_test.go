@@ -78,38 +78,4 @@ func TestRules(t *testing.T) {
 	assert.Equal(t, []string{"a", "b"}, tr.(*Transform).Rules())
 }
 
-func TestFromConfig(t *testing.T) {
-	opts := FromConfig(Config{Rules: []string{"a", "b"}})
-	require.Len(t, opts, 1)
 
-	tr, err := New(opts...)
-	require.NoError(t, err)
-	assert.Equal(t, []string{"a", "b"}, tr.(*Transform).Rules())
-}
-
-func TestFromConfig_Empty(t *testing.T) {
-	opts := FromConfig(Config{})
-	assert.Empty(t, opts)
-}
-
-func TestOptionsFromMap(t *testing.T) {
-	opts, err := OptionsFromMap(map[string]any{"rules": []any{"one", "two"}})
-	require.NoError(t, err)
-	require.Len(t, opts, 1)
-
-	tr, err := New(opts...)
-	require.NoError(t, err)
-	assert.Equal(t, []string{"one", "two"}, tr.(*Transform).Rules())
-}
-
-func TestOptionsFromMap_Empty(t *testing.T) {
-	opts, err := OptionsFromMap(map[string]any{})
-	require.NoError(t, err)
-	assert.Empty(t, opts)
-}
-
-func TestOptionsFromMap_InvalidRulesType(t *testing.T) {
-	_, err := OptionsFromMap(map[string]any{"rules": "not-a-list"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "rules")
-}
