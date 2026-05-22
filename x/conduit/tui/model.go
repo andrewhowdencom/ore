@@ -35,11 +35,13 @@ type statusMsg struct {
 // a turn.
 type clearPendingMsg struct{}
 
-// renderedBlock tracks a finalized piece of turn content with its kind and
-// optional pre-rendered ANSI cache.
+// renderedBlock tracks a finalized piece of turn content with its kind,
+// original source, optional compact representation, and optional
+// pre-rendered ANSI cache.
 type renderedBlock struct {
-	kind     string // "text" or "reasoning"
+	kind     string // "text", "reasoning", "tool_call", or "tool_result"
 	source   string // original content
+	compact  string // compact single-line representation
 	rendered string // pre-rendered ANSI output (only for text blocks)
 }
 
@@ -170,13 +172,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				blocks = append(blocks, block)
 			case artifact.ToolCall:
 				source := fmt.Sprintf("Calling: %s(%s)", a.Name, a.Arguments)
-				blocks = append(blocks, renderedBlock{kind: "tool_call", source: source})
+				compact := compactToolCall(a, m.viewport.Width)
+				blocks = append(blocks, renderedBlock{kind: "tool_call", source: source, compact: compact})
 			case artifact.ToolResult:
 				source := a.Content
 				if a.IsError {
 					source = "Error: " + source
 				}
-				blocks = append(blocks, renderedBlock{kind: "tool_result", source: source})
+				compact := compactToolResult(a, m.viewport.Width)
+				blocks = append(blocks, renderedBlock{kind: "tool_result", source: source, compact: compact})
 			}
 		}
 		rt := renderedTurn{
