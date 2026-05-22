@@ -1,7 +1,6 @@
 # ore
 
 > ore are the inputs to an agentic system.
-> forge is the agentic developer that builds with ore (and others, for that matter).
 
 ore is a Go-native framework for building agentic applications. It provides a
 minimal core inference primitive, provider-agnostic LLM adapters, composable I/O
@@ -57,16 +56,24 @@ building agents, not a specific agent implementation).
 | `session` | Stream and Manager primitives for per-session inference orchestration | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/session) |
 | `x/conduit` | I/O conduit interface and capability discovery for frontends | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/x/conduit) |
 | `provider/openai` | OpenAI-compatible provider adapter with streaming and tool calling | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/provider/openai) |
-| `cmd/forge` | Build-time agent generator from YAML blueprints | [README](cmd/forge/README.md) |
+
 
 ## Getting Started
 
-The fastest way to build an agent is with **Forge**. See
-[`cmd/forge/README.md`](cmd/forge/README.md) for CLI usage and
-[`examples/forge/README.md`](examples/forge/README.md) for a guided tutorial
-with HTTP, TUI, and multi-conduit blueprints.
+The fastest way to understand ore is to run one of the hand-written examples.
+Each is a complete, compilable Go program that wires the framework together
+without any YAML or code generation layer.
 
-Forge blueprints also support **inference assembly transforms** — inject
-system prompts, guardrails, and other virtual content at inference time
-without mutating conversation history. See the `transforms:` section in
-[`examples/forge/http/forge.yaml`](examples/forge/http/forge.yaml).
+- [`examples/http-chat/`](examples/http-chat/) — Stateful HTTP chat server with
+  NDJSON streaming, SSE events, and an optional web UI.
+- [`examples/tui-chat/`](examples/tui-chat/) — Interactive terminal chat with
+  Markdown rendering and persistent thread store.
+- [`examples/workshop/`](examples/workshop/) — Terminal coding assistant that
+  composes `x/systemprompt` and `x/guardrails` transforms for persona injection
+  and formatting rules.
+- [`examples/calculator/`](examples/calculator/) — Single-turn CLI demo with
+  tool calling (add, multiply) via the ReAct cognitive pattern.
+
+All examples read `ORE_API_KEY` from the environment. Set `ORE_MODEL` to choose
+a different model (default: `gpt-4o`). Set `STORE_DIR` for persistent JSON
+thread storage.
