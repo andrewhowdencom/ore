@@ -1,20 +1,23 @@
-// Package systemprompt provides a loop.Transform that injects a static
-// system prompt into the inference context without mutating the persistent
+// Package systemprompt provides a loop.Transform that injects a system
+// prompt into the inference context without mutating the persistent
 // conversation buffer.
 //
-// The transform prepends a single state.RoleSystem turn containing a
-// artifact.Text artifact with the configured content. It uses
-// state.NewVirtualTurnState for zero-copy injection, so the underlying
-// buffer is never modified.
+// The transform prepends a single state.RoleSystem turn containing an
+// artifact.Text artifact whose content is evaluated lazily on each
+// Transform call. This enables dynamic system prompts that can change
+// between turns — for example, by reading from thread metadata that a
+// tool call has updated mid-session.
 //
 // # Usage
 //
 //	import "github.com/andrewhowdencom/ore/x/systemprompt"
 //
-//	transform := systemprompt.New(systemprompt.WithContent("You are a helpful assistant."))
+//	transform := systemprompt.New(systemprompt.WithContentFunc(func() string {
+//		return "You are a helpful assistant."
+//	}))
 //	step := loop.New(loop.WithTransforms(transform))
 //
-// The content is static per-transform instance. Dynamic system prompts
-// are achieved by creating a new transform instance or using a future
-// dynamic transform module.
+// The content function is re-evaluated on every Transform call, so
+// applications can close over mutable state (e.g., thread.Metadata) to
+// switch personas or roles dynamically.
 package systemprompt
