@@ -66,4 +66,6 @@ replace github.com/andrewhowdencom/ore/x/conduit/tui => ./x/conduit/tui
 
 replace github.com/andrewhowdencom/ore/x/tool/calculator => ./x/tool/calculator
 
+replace github.com/andrewhowdencom/ore/x/tool/bash => ./x/tool/bash
+
 replace github.com/andrewhowdencom/ore/x/tool/filesystem => ./x/tool/filesystem
