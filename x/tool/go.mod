@@ -1,4 +1,4 @@
-module github.com/andrewhowdencom/ore/x/conduit
+module github.com/andrewhowdencom/ore/x/tool
 
 go 1.26.2
 
