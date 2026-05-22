@@ -2,7 +2,6 @@ module github.com/andrewhowdencom/ore/x/tool/mcp
 
 go 1.26.2
 
-replace github.com/andrewhowdencom/ore => ../../..
 
 require (
 	github.com/andrewhowdencom/ore v0.0.0-00010101000000-000000000000
@@ -12,6 +11,7 @@ require (
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/google/jsonschema-go v0.4.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
