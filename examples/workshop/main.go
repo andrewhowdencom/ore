@@ -35,6 +35,9 @@ import (
 	"github.com/andrewhowdencom/ore/x/conduit/tui"
 	"github.com/andrewhowdencom/ore/x/guardrails"
 	"github.com/andrewhowdencom/ore/x/systemprompt"
+	"github.com/andrewhowdencom/ore/x/tool"
+	"github.com/andrewhowdencom/ore/x/tool/bash"
+	"github.com/andrewhowdencom/ore/x/tool/filesystem"
 )
 
 func main() {
@@ -96,6 +99,8 @@ func run() error {
 		sp, err := systemprompt.New(systemprompt.WithContent(
 			"You are a terminal-based coding assistant. " +
 				"You help users write, review, refactor, and debug code across any language or framework. " +
+				"You have access to filesystem tools (read_file, write_file, edit_file, list_directory, search_files) and a bash tool for running shell commands. " +
+				"Use these tools proactively to explore the codebase, make changes, run tests, and verify your work. " +
 				"Prefer concise explanations and actionable suggestions.",
 		))
 		if err != nil {
@@ -106,12 +111,26 @@ func run() error {
 			"Always format code in markdown blocks with the correct language tag.",
 			"Prefer concise explanations; show code rather than prose where possible.",
 			"When suggesting changes, explain the rationale briefly.",
+			"Before writing or editing files, verify the target path and confirm the change is intended.",
 		))
 		if err != nil {
 			return nil, fmt.Errorf("create guardrails transform: %w", err)
 		}
 
-		return loop.New(loop.WithTransforms(sp, gr)), nil
+		// Create tool registry with filesystem and bash functions.
+		registry := tool.NewRegistry()
+		registry.Register(filesystem.ReadFileTool.Name, filesystem.ReadFileTool.Description, filesystem.ReadFileTool.Schema, filesystem.ReadFile)
+		registry.Register(filesystem.WriteFileTool.Name, filesystem.WriteFileTool.Description, filesystem.WriteFileTool.Schema, filesystem.WriteFile)
+		registry.Register(filesystem.EditFileTool.Name, filesystem.EditFileTool.Description, filesystem.EditFileTool.Schema, filesystem.EditFile)
+		registry.Register(filesystem.ListDirectoryTool.Name, filesystem.ListDirectoryTool.Description, filesystem.ListDirectoryTool.Schema, filesystem.ListDirectory)
+		registry.Register(filesystem.SearchFilesTool.Name, filesystem.SearchFilesTool.Description, filesystem.SearchFilesTool.Schema, filesystem.SearchFiles)
+		registry.Register(bash.BashTool.Name, bash.BashTool.Description, bash.BashTool.Schema, bash.Bash)
+
+		return loop.New(
+			loop.WithTransforms(sp, gr),
+			loop.WithHandlers(registry.Handler()),
+			loop.WithInvokeOptions(openai.WithTools(registry.Tools())),
+		), nil
 	}
 
 	// Create session manager with the ReAct cognitive pattern.
