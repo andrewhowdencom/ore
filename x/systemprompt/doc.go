@@ -12,7 +12,20 @@
 //
 //	import "github.com/andrewhowdencom/ore/x/systemprompt"
 //
+// Basic static system prompt:
+//
 //	transform := systemprompt.New(systemprompt.WithContentFunc(func() string {
+//		return "You are a helpful assistant."
+//	}))
+//	step := loop.New(loop.WithTransforms(transform))
+//
+// Dynamic system prompt that reads from thread metadata:
+//
+//	// Assuming `thr` is a *thread.Thread captured in outer scope.
+//	transform := systemprompt.New(systemprompt.WithContentFunc(func() string {
+//		if p, ok := thr.GetMetadata("persona"); ok {
+//			return "You are a " + p + "."
+//		}
 //		return "You are a helpful assistant."
 //	}))
 //	step := loop.New(loop.WithTransforms(transform))

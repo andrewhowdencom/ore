@@ -29,6 +29,15 @@
 //	stepFactory := func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }
 //	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())
 //
+// The factory receives *thread.Thread so it can bind per-session state.
+// For example, a factory can close over the thread to inject a dynamic
+// system prompt that reads from thread.GetMetadata("persona"):
+//
+//	stepFactory := func(thr *thread.Thread) (*loop.Step, error) {
+//		// Build transforms that use thr.Metadata, thr.ID, etc.
+//		return loop.New(), nil
+//	}
+//
 //	// Obtain a *Stream from the manager.
 //	stream, _ := mgr.Create()
 //
