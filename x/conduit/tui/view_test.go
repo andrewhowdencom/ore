@@ -471,3 +471,135 @@ func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
 	assert.Contains(t, output, toolErrorStyle.Render("Tool: "))
 	assert.Contains(t, output, "Error: failed")
 }
+
+func TestBuildContent_MultipleToolCalls(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+
+	m.turns = []renderedTurn{
+		{
+			role: state.RoleAssistant,
+			blocks: []renderedBlock{
+				{kind: "tool_call", source: "Calling: foo({})", compact: "foo"},
+				{kind: "tool_call", source: "Calling: bar({})", compact: "bar"},
+			},
+		},
+		{
+			role: state.RoleTool,
+			blocks: []renderedBlock{
+				{kind: "tool_result", source: "result1", compact: "result1"},
+				{kind: "tool_result", source: "result2", compact: "result2"},
+			},
+		},
+	}
+
+	// Compact mode
+	m.expandLatestTools = false
+	output := m.buildContent()
+	assert.Contains(t, output, "→ foo")
+	assert.Contains(t, output, "→ bar")
+	assert.Contains(t, output, "← result1")
+	assert.Contains(t, output, "← result2")
+
+	// Expanded mode
+	m.expandLatestTools = true
+	output = m.buildContent()
+	assert.Contains(t, output, "Calling: foo({})")
+	assert.Contains(t, output, "Calling: bar({})")
+	assert.Contains(t, output, "Tool: ")
+	assert.Contains(t, output, "result1")
+	assert.Contains(t, output, "result2")
+}
+
+func TestBuildContent_MixedBlocks(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+
+	// A single assistant turn can contain text, tool_call, and reasoning
+	// blocks interleaved. tool_result blocks belong in separate RoleTool turns.
+	m.turns = []renderedTurn{
+		{
+			role: state.RoleAssistant,
+			blocks: []renderedBlock{
+				{kind: "text", source: "intro", rendered: "intro"},
+				{kind: "tool_call", source: "Calling: foo({})", compact: "foo"},
+				{kind: "reasoning", source: "think", rendered: "think"},
+				{kind: "text", source: "outro", rendered: "outro"},
+			},
+		},
+		{
+			role: state.RoleTool,
+			blocks: []renderedBlock{
+				{kind: "tool_result", source: "result", compact: "result"},
+			},
+		},
+	}
+
+	output := m.buildContent()
+
+	// Verify order: text → tool_call → reasoning → text → tool_result
+	idxIntro := strings.Index(output, "intro")
+	idxFoo := strings.Index(output, "→ foo")
+	idxThink := strings.Index(output, "Thinking: ")
+	idxOutro := strings.Index(output, "outro")
+	idxResult := strings.Index(output, "← result")
+
+	require.GreaterOrEqual(t, idxIntro, 0, "intro should be found")
+	require.GreaterOrEqual(t, idxFoo, 0, "foo should be found")
+	require.GreaterOrEqual(t, idxThink, 0, "Thinking should be found")
+	require.GreaterOrEqual(t, idxOutro, 0, "outro should be found")
+	require.GreaterOrEqual(t, idxResult, 0, "result should be found")
+
+	assert.Greater(t, idxFoo, idxIntro, "tool_call should follow text")
+	assert.Greater(t, idxThink, idxFoo, "reasoning should follow tool_call")
+	assert.Greater(t, idxOutro, idxThink, "text should follow reasoning")
+	assert.Greater(t, idxResult, idxOutro, "tool_result should follow text")
+}
+
+func TestView_ZeroWidthViewport_NoPanic(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(0, 10)
+	m.turns = []renderedTurn{
+		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello world"}}},
+	}
+
+	// Should not panic with zero-width viewport
+	output := m.View()
+	assert.Contains(t, output, "hello world")
+}
+
+func TestBuildContent_ToggleNoToolBlocks(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+
+	m.turns = []renderedTurn{
+		{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "hello", rendered: "hello"}}},
+	}
+
+	// Toggle on — no tool blocks, view should be unchanged
+	m.expandLatestTools = true
+	output := m.buildContent()
+	assert.Contains(t, output, "Assistant: ")
+	assert.Contains(t, output, "hello")
+	assert.NotContains(t, output, "→")
+	assert.NotContains(t, output, "←")
+}
+
+func TestBuildContent_CompactToolCall_AmberStyling(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+
+	m.turns = []renderedTurn{
+		{
+			role: state.RoleAssistant,
+			blocks: []renderedBlock{
+				{kind: "tool_call", source: "Calling: foo({})", compact: "foo"},
+			},
+		},
+	}
+
+	m.expandLatestTools = false
+	output := m.buildContent()
+	expected := compactToolCallStyle.Render("→ foo")
+	assert.Contains(t, output, expected)
+}
