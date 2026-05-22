@@ -145,6 +145,41 @@ func TestManager_StepFactoryError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "create step")
 	assert.Contains(t, err.Error(), "factory failure")
+	assert.Empty(t, mgr.List(), "factory error should not leak a session")
+}
+
+func TestManager_Create_FactoryReceivesThread(t *testing.T) {
+	store := thread.NewMemoryStore()
+	var receivedThread *thread.Thread
+	factory := func(thr *thread.Thread) (*loop.Step, error) {
+		receivedThread = thr
+		return loop.New(), nil
+	}
+	mgr := NewManager(store, &mockProvider{}, factory, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+	require.NotNil(t, receivedThread)
+	assert.Equal(t, stream.ID(), receivedThread.ID)
+}
+
+func TestManager_Attach_FactoryReceivesThread(t *testing.T) {
+	store := thread.NewMemoryStore()
+	thr, err := store.Create()
+	require.NoError(t, err)
+
+	var receivedThread *thread.Thread
+	factory := func(thr *thread.Thread) (*loop.Step, error) {
+		receivedThread = thr
+		return loop.New(), nil
+	}
+	mgr := NewManager(store, &mockProvider{}, factory, simpleProcessor())
+
+	stream, err := mgr.Attach(thr.ID)
+	require.NoError(t, err)
+	require.NotNil(t, receivedThread)
+	assert.Equal(t, thr.ID, receivedThread.ID)
+	assert.Equal(t, stream.ID(), receivedThread.ID)
 }
 
 func TestManager_Attach_ExistingSession(t *testing.T) {
