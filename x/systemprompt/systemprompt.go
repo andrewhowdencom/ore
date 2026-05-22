@@ -8,25 +8,27 @@ import (
 	"github.com/andrewhowdencom/ore/state"
 )
 
-// Transform prepends a static system prompt to the inference context.
+// Transform prepends a system prompt to the inference context.
 // It implements loop.Transform, injecting a RoleSystem turn with a
 // text artifact without mutating the underlying persistent buffer.
 type Transform struct {
-	content string
+	contentFunc func() string
 }
 
 // config holds the internal options for the Transform.
 type config struct {
-	content string
+	contentFunc func() string
 }
 
 // Option configures the Transform.
 type Option func(*config)
 
-// WithContent sets the system prompt content.
-func WithContent(content string) Option {
+// WithContentFunc sets a function that returns the system prompt content.
+// The function is evaluated on every Transform call, enabling dynamic
+// system prompts that can change between turns (e.g., from thread metadata).
+func WithContentFunc(fn func() string) Option {
 	return func(c *config) {
-		c.content = content
+		c.contentFunc = fn
 	}
 }
 
@@ -36,7 +38,10 @@ func New(opts ...Option) (loop.Transform, error) {
 	for _, opt := range opts {
 		opt(cfg)
 	}
-	return &Transform{content: cfg.content}, nil
+	if cfg.contentFunc == nil {
+		cfg.contentFunc = func() string { return "" }
+	}
+	return &Transform{contentFunc: cfg.contentFunc}, nil
 }
 
 // Transform implements loop.Transform. It returns a state view with a
@@ -45,7 +50,7 @@ func (t *Transform) Transform(ctx context.Context, st state.State) (state.State,
 	virtual := []state.Turn{
 		{
 			Role:      state.RoleSystem,
-			Artifacts: []artifact.Artifact{artifact.Text{Content: t.content}},
+			Artifacts: []artifact.Artifact{artifact.Text{Content: t.contentFunc()}},
 		},
 	}
 	return state.NewVirtualTurnState(st, virtual), nil

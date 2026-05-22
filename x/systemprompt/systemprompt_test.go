@@ -11,7 +11,7 @@ import (
 )
 
 func TestTransform_PrependSystemPrompt(t *testing.T) {
-	tr, err := New(WithContent("You are a helpful assistant."))
+	tr, err := New(WithContentFunc(func() string { return "You are a helpful assistant." }))
 	require.NoError(t, err)
 	base := &state.Buffer{}
 	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -47,8 +47,26 @@ func TestTransform_EmptyContent(t *testing.T) {
 	assert.Empty(t, text.Content)
 }
 
+func TestTransform_NilContentFunc(t *testing.T) {
+	tr, err := New(WithContentFunc(nil))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, state.RoleSystem, turns[0].Role)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Empty(t, text.Content)
+}
+
 func TestTransform_DelegatesAppend(t *testing.T) {
-	tr, err := New(WithContent("system"))
+	tr, err := New(WithContentFunc(func() string { return "system" }))
 	require.NoError(t, err)
 	base := &state.Buffer{}
 	base.Append(state.RoleUser, artifact.Text{Content: "user"})
@@ -69,6 +87,32 @@ func TestTransform_DelegatesAppend(t *testing.T) {
 	assert.Equal(t, state.RoleSystem, turns[0].Role)
 	assert.Equal(t, state.RoleUser, turns[1].Role)
 	assert.Equal(t, state.RoleAssistant, turns[2].Role)
+}
+
+func TestTransform_DynamicContent(t *testing.T) {
+	var content string
+	tr, err := New(WithContentFunc(func() string { return content }))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	content = "first prompt"
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "first prompt", text.Content)
+
+	content = "second prompt"
+	result, err = tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+	turns = result.Turns()
+	require.Len(t, turns, 2)
+	text, ok = turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "second prompt", text.Content)
 }
 
 
