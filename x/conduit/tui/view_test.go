@@ -350,6 +350,18 @@ func TestCompactToolCall_Integer(t *testing.T) {
 	assert.Equal(t, `foo · count=42`, output)
 }
 
+func TestCompactToolCall_EmptyArguments(t *testing.T) {
+	tc := artifact.ToolCall{Name: "foo", Arguments: ""}
+	output := compactToolCall(tc, 80)
+	assert.Equal(t, "foo()", output)
+}
+
+func TestCompactToolCall_EmptyObject(t *testing.T) {
+	tc := artifact.ToolCall{Name: "foo", Arguments: "{}"}
+	output := compactToolCall(tc, 80)
+	assert.Equal(t, "foo", output)
+}
+
 func TestCompactToolResult_Normal(t *testing.T) {
 	tr := artifact.ToolResult{Content: "result data"}
 	output := compactToolResult(tr, 80)
