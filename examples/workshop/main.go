@@ -35,6 +35,8 @@ import (
 	"github.com/andrewhowdencom/ore/x/conduit/tui"
 	"github.com/andrewhowdencom/ore/x/guardrails"
 	"github.com/andrewhowdencom/ore/x/systemprompt"
+	"github.com/andrewhowdencom/ore/x/tool"
+	"github.com/andrewhowdencom/ore/x/tool/filesystem"
 )
 
 func main() {
@@ -105,7 +107,19 @@ func run() error {
 			return nil, fmt.Errorf("create guardrails transform: %w", err)
 		}
 
-		return loop.New(loop.WithTransforms(sp, gr)), nil
+		// Create tool registry with filesystem functions.
+		registry := tool.NewRegistry()
+		registry.Register(filesystem.ReadFileTool.Name, filesystem.ReadFileTool.Description, filesystem.ReadFileTool.Schema, filesystem.ReadFile)
+		registry.Register(filesystem.WriteFileTool.Name, filesystem.WriteFileTool.Description, filesystem.WriteFileTool.Schema, filesystem.WriteFile)
+		registry.Register(filesystem.EditFileTool.Name, filesystem.EditFileTool.Description, filesystem.EditFileTool.Schema, filesystem.EditFile)
+		registry.Register(filesystem.ListDirectoryTool.Name, filesystem.ListDirectoryTool.Description, filesystem.ListDirectoryTool.Schema, filesystem.ListDirectory)
+		registry.Register(filesystem.SearchFilesTool.Name, filesystem.SearchFilesTool.Description, filesystem.SearchFilesTool.Schema, filesystem.SearchFiles)
+
+		return loop.New(
+			loop.WithTransforms(sp, gr),
+			loop.WithHandlers(registry.Handler()),
+			loop.WithInvokeOptions(openai.WithTools(registry.Tools())),
+		), nil
 	}
 
 	// Create session manager with the ReAct cognitive pattern.
