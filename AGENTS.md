@@ -21,11 +21,11 @@ artifact/      ← leaf package, no internal dependencies
 state/         ← depends on artifact/
 provider/      ← depends on state/, artifact/
 core/          ← depends on artifact/, state/, provider/
-provider/...    ← concrete adapters branch off provider/, never import core/
+x/provider/... ← concrete adapters branch off provider/, never import core/
 ```
 
 - **Core packages** (`artifact/`, `state/`, `provider/`, `core/`) live at the root level so external applications can import them. Do not place framework contracts under `internal/`.
-- **Concrete provider adapters** live under `provider/<name>/` (e.g., `provider/openai/`). They implement `provider.Provider` but never import `core/`.
+- **Concrete provider adapters** live under `x/provider/<name>/` (e.g., `x/provider/openai/`). They implement `provider.Provider` but never import `core/`.
 - **Example/reference applications** live under `examples/<name>/` (e.g., `examples/single-turn-cli/`). These validate the framework and demonstrate composition patterns.
 - **Maintained applications** with longer lifespans live under `cmd/<name>/` following the Standard Go Project Layout.
 
