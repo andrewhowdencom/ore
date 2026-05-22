@@ -1,6 +1,0 @@
-# Minimal HTTP conduit blueprint used by smoke tests.
-dist:
-  name: http-smoke-agent
-  output_path: ./http-smoke-agent
-conduits:
-  - module: github.com/andrewhowdencom/ore/x/conduit/http

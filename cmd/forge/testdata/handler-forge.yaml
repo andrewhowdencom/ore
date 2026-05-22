@@ -1,8 +1,0 @@
-# Blueprint with HTTP conduit and tool handler.
-dist:
-  name: handler-smoke-agent
-  output_path: ./handler-smoke-agent
-conduits:
-  - module: github.com/andrewhowdencom/ore/x/conduit/http
-handlers:
-  - module: github.com/andrewhowdencom/ore/tool
