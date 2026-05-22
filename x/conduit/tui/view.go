@@ -23,6 +23,12 @@ var (
 	toolCallStyle = lipgloss.NewStyle().Faint(true).Italic(true)
 	// toolErrorStyle styles tool error output in red.
 	toolErrorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
+	// compactToolCallStyle styles compact tool call lines in amber.
+	compactToolCallStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#D19A66"))
+	// compactToolResultStyle styles compact tool result lines in muted green.
+	compactToolResultStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#7EC699"))
+	// compactToolErrorStyle styles compact tool error lines in red.
+	compactToolErrorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
 )
 
 // renderBlock renders a labeled content block with the label on its own line
@@ -93,7 +99,12 @@ func (m *model) buildContent() string {
 					if content == "" || (isLatestAssistant && m.expandLatestTools) {
 						content = block.source
 					}
-					b.WriteString(renderBlock("Assistant: ", toolCallStyle, content, width))
+					isCompact := content == block.compact && block.compact != ""
+					if isCompact {
+						b.WriteString(compactToolCallStyle.Render("→ " + content))
+					} else {
+						b.WriteString(renderBlock("Assistant: ", toolCallStyle, content, width))
+					}
 				}
 				if i < len(turn.blocks)-1 {
 					b.WriteString("\n\n")
@@ -113,7 +124,16 @@ func (m *model) buildContent() string {
 					if content == "" || (isAfterLatestAssistant && m.expandLatestTools) {
 						content = block.source
 					}
-					b.WriteString(renderBlock("Tool: ", style, content, width))
+					isCompact := content == block.compact && block.compact != ""
+					if isCompact {
+						if strings.HasPrefix(block.source, "Error: ") {
+							b.WriteString(compactToolErrorStyle.Render("← " + content))
+						} else {
+							b.WriteString(compactToolResultStyle.Render("← " + content))
+						}
+					} else {
+						b.WriteString(renderBlock("Tool: ", style, content, width))
+					}
 				}
 				if i < len(turn.blocks)-1 {
 					b.WriteString("\n\n")
