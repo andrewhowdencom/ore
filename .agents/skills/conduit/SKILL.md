@@ -6,8 +6,8 @@ description: |
   blocking Start(ctx) lifecycle. Dumb pipe that translates external system events
   (HTTP, TUI, chat bot, webhook) into ore session events via session.Manager,
   subscribes to broadcast FanOut output streams, and routes text/reasoning/image
-  artifacts back to external systems. Compatible with forge YAML blueprints and
-  the broadcast multi-conduit model. Does NOT handle cognitive orchestration,
+  artifacts back to external systems. Compatible with the broadcast
+  multi-conduit model. Does NOT handle cognitive orchestration,
   provider invocation, or turn-loop management.
 ---
 
@@ -46,8 +46,6 @@ Follow these steps in order. Do not skip or reorder.
 
 1. **Create package `x/conduit/<name>/`** with its own `go.mod`. Use
    `replace github.com/andrewhowdencom/ore => ../../..` to link the core module.
-   The package must be declarable in a `forge.yaml` by its module path
-   (e.g., `github.com/andrewhowdencom/ore/x/conduit/<name>`).
 2. **Implement `conduit.Conduit`** — a type with exactly one method:
    `Start(ctx context.Context) error`.
 3. **Accept `*session.Manager`** via the constructor using the functional options
@@ -55,10 +53,8 @@ Follow these steps in order. Do not skip or reorder.
    ```go
    func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error)
    ```
-   Validate `mgr != nil`; return an error if nil.
-   Note: `cmd/forge` calls `alias.New(mgr)` with no arguments, so the conduit
-   MUST work with zero options. Functional options can override defaults but
-   must not be required.
+   Validate `mgr != nil`; return an error if nil. Functional options can
+   override defaults but must not be required.
 4. **In `Start()`**: create or attach a session:
    - `stream, err := mgr.Create()` for a new session
    - `stream, err := mgr.Attach(threadID)` to resume an existing thread
@@ -112,7 +108,7 @@ Follow these steps in order. Do not skip or reorder.
 12. **Write `README.md`** in the package root (`x/conduit/<name>/README.md`)
     documenting how to compose the conduit. Follow the structure in
     `./README_EXAMPLE.md`. Include: Overview, Capabilities, Composition,
-    Configuration, Runtime Semantics, Forge Blueprint, and Error Handling.
+    Configuration, Runtime Semantics, and Error Handling.
 
 > See `./SKELETON.md` for a compilable skeleton, `x/conduit/doc.go` for
 > the standard contract, and `./README_EXAMPLE.md` for the composition guide
@@ -128,7 +124,6 @@ After implementing a conduit, verify:
 - [ ] Subscribes to output events before blocking
 - [ ] Maps all external inputs to `UserMessageEvent` or `InterruptEvent`
 - [ ] Passes `go test -race ./...`
-- [ ] Is declarable in a `forge.yaml` by module path
 - [ ] Handles provenance echo suppression
 - [ ] `README.md` is present with all required sections (see `./README_EXAMPLE.md`)
 
@@ -148,8 +143,9 @@ If any of the following are true, **STOP** and reassess:
   address) into `EventContext.Provenance` → STOP. Capture the delivery mechanism
   in the subscriber closure. `Provenance` is for source metadata only.
 - ⚠️ **IF** the conduit requires mandatory constructor options (not just
-  functional options with defaults) → STOP. `cmd/forge` calls `alias.New(mgr)`
-  with no arguments; mandatory options will break forge compatibility.
+  functional options with defaults) → STOP. Conduits should use functional
+  options with sensible defaults so they compose easily in hand-written main.go
+  files.
 
 ## Gotchas
 
@@ -175,10 +171,6 @@ If any of the following are true, **STOP** and reassess:
    patterns: NDJSON streaming over a request/response connection, and SSE over a
    persistent ambient connection. The TUI subscribes to `"turn_complete"` for
    batched rendering. Choose the pattern that matches your transport.
-7. **Forge calls `alias.New(mgr)` with no arguments.** Conduits that require
-   mandatory constructor options are currently incompatible with
-   forge-generated binaries. Use functional options with sensible defaults.
-
 ## References
 
 - `AGENTS.md` — ore architectural boundaries and the Conduit/Library vs.
@@ -190,7 +182,6 @@ If any of the following are true, **STOP** and reassess:
   embedded web UI, RESTful session endpoints).
 - `x/conduit/tui/` — TUI conduit reference (Bubble Tea, turn_complete
   subscription, channel-based Process loop).
-- `examples/forge/README.md` — forge blueprints for multi-conduit agents.
 - `go/` skill — Go conventions (functional options, table-driven tests,
   error wrapping with `fmt.Errorf`, `log/slog`).
 - `.plans/standardize-conduit-patterns.md` — repo-internal plan that

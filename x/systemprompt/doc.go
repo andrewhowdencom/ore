@@ -7,14 +7,7 @@
 // state.NewVirtualTurnState for zero-copy injection, so the underlying
 // buffer is never modified.
 //
-// # Forge Blueprint Usage
-//
-//	transforms:
-//	  - module: github.com/andrewhowdencom/ore/x/systemprompt
-//	    options:
-//	      content: "You are a helpful assistant."
-//
-// # Hand-Compiled Usage
+// # Usage
 //
 //	import "github.com/andrewhowdencom/ore/x/systemprompt"
 //

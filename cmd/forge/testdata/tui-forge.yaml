@@ -1,6 +1,0 @@
-# Minimal TUI conduit blueprint used by smoke tests.
-dist:
-  name: tui-smoke-agent
-  output_path: ./tui-smoke-agent
-conduits:
-  - module: github.com/andrewhowdencom/ore/x/conduit/tui

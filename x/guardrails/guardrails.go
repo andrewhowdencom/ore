@@ -19,6 +19,21 @@ type Transform struct {
 	rules []string
 }
 
+// config holds the internal options for the Transform.
+type config struct {
+	rules []string
+}
+
+// Option configures the Transform.
+type Option func(*config)
+
+// WithRules sets the guardrail rules.
+func WithRules(rules ...string) Option {
+	return func(c *config) {
+		c.rules = rules
+	}
+}
+
 // New creates a guardrails transform with the given options.
 func New(opts ...Option) (loop.Transform, error) {
 	cfg := &config{}

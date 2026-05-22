@@ -32,8 +32,7 @@
 // Standard Conduit Contract
 //
 // All conduit packages MUST satisfy the following contract so that framework
-// consumers and generators (e.g., forge) have a single, predictable pattern
-// to follow:
+// consumers and generators have a single, predictable pattern to follow:
 //
 //   1. Constructor — New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error)
 //
@@ -65,19 +64,6 @@
 //
 //      On ctx.Done(), the conduit MUST release resources (close channels,
 //      shutdown servers, close subscriptions) and return promptly.
-//
-//   6. OptionsFromMap bridge — func OptionsFromMap(m map[string]any) ([]Option, error)
-//
-//      Every conduit package MUST export OptionsFromMap so that the forge
-//      code generator and the runtime app package can translate YAML/JSON
-//      configuration maps into the package's functional options. The function
-//      MUST use github.com/mitchellh/mapstructure (or equivalent) with
-//      `yaml` struct tags to decode the map into a typed Config value,
-//      then convert that Config into []Option via a package-local FromConfig
-//      helper. Handler packages follow the same contract.
-//
-//      See AGENTS.md for the agent-level guidance that conduits must not import
-//      cognitive packages or invoke providers directly.
 //
 // This package lives under x/ because the conduit abstraction and capability
 // vocabulary are still evolving as new frontend types are explored.
