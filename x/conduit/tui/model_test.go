@@ -815,3 +815,34 @@ func TestUnknownArtifact_Ignored(t *testing.T) {
 	require.Len(t, mm.turns, 1)
 	assert.Empty(t, mm.turns[0].blocks, "unknown artifact should produce no blocks")
 }
+
+func TestModel_Update_KeyCtrlO_TogglesExpandLatestTools(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+
+	assert.False(t, m.expandLatestTools)
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	mm := newM.(*model)
+	assert.True(t, mm.expandLatestTools)
+
+	newM2, _ := mm.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	mm2 := newM2.(*model)
+	assert.False(t, mm2.expandLatestTools)
+}
+
+func TestModel_Update_Turn_Assistant_ResetsExpandLatestTools(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+	m.expandLatestTools = true
+
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "hello"},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+	assert.False(t, mm.expandLatestTools)
+}

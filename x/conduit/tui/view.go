@@ -95,12 +95,12 @@ func (m *model) buildContent() string {
 						b.WriteString(renderBlock("Thinking: ", thinkingStyle, block.source, width))
 					}
 				case "tool_call":
+					isExpanded := isLatestAssistant && m.expandLatestTools
 					content := block.compact
-					if content == "" || (isLatestAssistant && m.expandLatestTools) {
+					if content == "" || isExpanded {
 						content = block.source
 					}
-					isCompact := content == block.compact && block.compact != ""
-					if isCompact {
+					if block.compact != "" && !isExpanded {
 						b.WriteString(compactToolCallStyle.Render("→ " + content))
 					} else {
 						b.WriteString(renderBlock("Assistant: ", toolCallStyle, content, width))
@@ -116,22 +116,22 @@ func (m *model) buildContent() string {
 				case "text":
 					b.WriteString(renderBlock("Tool: ", lipgloss.NewStyle(), block.source, width))
 				case "tool_result":
-					style := lipgloss.NewStyle()
-					if strings.HasPrefix(block.source, "Error: ") {
-						style = toolErrorStyle
-					}
+					isExpanded := isAfterLatestAssistant && m.expandLatestTools
 					content := block.compact
-					if content == "" || (isAfterLatestAssistant && m.expandLatestTools) {
+					if content == "" || isExpanded {
 						content = block.source
 					}
-					isCompact := content == block.compact && block.compact != ""
-					if isCompact {
+					if block.compact != "" && !isExpanded {
 						if strings.HasPrefix(block.source, "Error: ") {
 							b.WriteString(compactToolErrorStyle.Render("← " + content))
 						} else {
 							b.WriteString(compactToolResultStyle.Render("← " + content))
 						}
 					} else {
+						style := lipgloss.NewStyle()
+						if strings.HasPrefix(block.source, "Error: ") {
+							style = toolErrorStyle
+						}
 						b.WriteString(renderBlock("Tool: ", style, content, width))
 					}
 				}

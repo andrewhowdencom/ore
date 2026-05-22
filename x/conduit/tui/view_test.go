@@ -380,3 +380,82 @@ func TestTruncateString(t *testing.T) {
 	assert.Equal(t, "hello", truncateString("hello", 0))
 	assert.Equal(t, "…", truncateString("hello", 1))
 }
+
+func TestBuildContent_ExpandLatestTools_Toggle(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+
+	m.turns = []renderedTurn{
+		{
+			role: state.RoleAssistant,
+			blocks: []renderedBlock{
+				{
+					kind:    "tool_call",
+					source:  "Calling: search_files({\"path\": \".\", \"query\": \"hello\"})",
+					compact: "search_files · path=\".\" · query=\"hello\"",
+				},
+			},
+		},
+		{
+			role: state.RoleTool,
+			blocks: []renderedBlock{
+				{
+					kind:    "tool_result",
+					source:  "result data",
+					compact: "result data",
+				},
+			},
+		},
+	}
+
+	// Compact mode (default): single-line with arrow indicator.
+	m.expandLatestTools = false
+	compactOutput := m.buildContent()
+	assert.Contains(t, compactOutput, "→ search_files")
+	assert.NotContains(t, compactOutput, "Calling: search_files")
+	assert.Contains(t, compactOutput, "← result data")
+
+	// Expanded mode: two-line label+content layout.
+	m.expandLatestTools = true
+	expandedOutput := m.buildContent()
+	assert.Contains(t, expandedOutput, "Calling: search_files")
+	assert.NotContains(t, expandedOutput, "→ search_files")
+	assert.Contains(t, expandedOutput, "Tool: ")
+	assert.Contains(t, expandedOutput, "result data")
+}
+
+func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(80, 20)
+
+	m.turns = []renderedTurn{
+		{
+			role: state.RoleAssistant,
+			blocks: []renderedBlock{
+				{kind: "tool_call", source: "Calling: foo({})", compact: "foo"},
+			},
+		},
+		{
+			role: state.RoleTool,
+			blocks: []renderedBlock{
+				{
+					kind:    "tool_result",
+					source:  "Error: failed",
+					compact: "Error: failed",
+				},
+			},
+		},
+	}
+
+	// Compact mode: red styling for errors via compactToolErrorStyle.
+	m.expandLatestTools = false
+	output := m.buildContent()
+	expectedCompact := compactToolErrorStyle.Render("← Error: failed")
+	assert.Contains(t, output, expectedCompact)
+
+	// Expanded mode: red label styling for errors via toolErrorStyle.
+	m.expandLatestTools = true
+	output = m.buildContent()
+	assert.Contains(t, output, toolErrorStyle.Render("Tool: "))
+	assert.Contains(t, output, "Error: failed")
+}
