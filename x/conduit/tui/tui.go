@@ -5,8 +5,12 @@
 // The TUI creates or attaches to a session on Start, subscribes to the
 // session's output stream, and sends user events back through it.
 // Available options include WithThreadID to resume an existing thread.
-// ctrl+o toggles expansion of the latest assistant turn's tool calls and
-// results; tool blocks render compact by default.
+//
+// Keyboard shortcuts:
+//   Ctrl+O — toggle expansion of latest assistant turn's tool blocks
+//            (compact by default; resets after each new turn)
+//   Ctrl+C — quit
+//   Alt+Enter — insert newline in the input box
 package tui
 
 import (

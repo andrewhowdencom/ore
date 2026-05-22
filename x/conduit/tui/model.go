@@ -38,6 +38,9 @@ type clearPendingMsg struct{}
 // renderedBlock tracks a finalized piece of turn content with its kind,
 // original source, optional compact representation, and optional
 // pre-rendered ANSI cache.
+// compact holds the one-line summary used when the UI is in compact mode
+// (Ctrl+O collapsed). It is computed during turn processing to avoid
+// repeated JSON parsing on every viewport refresh.
 type renderedBlock struct {
 	kind     string // "text", "reasoning", "tool_call", or "tool_result"
 	source   string // original content
@@ -45,6 +48,13 @@ type renderedBlock struct {
 	rendered string // pre-rendered ANSI output (only for text blocks)
 }
 
+// The TUI aims to keep the conversation view concise. Tool calls and their
+// results can be verbose, so we render them in a one-line "compact" form by
+// default. Users can press Ctrl+O to temporarily expand the latest assistant
+// turn's tool interactions, inspecting full arguments or error messages.
+// The state is scoped to the most recent turn to avoid cluttering older
+// history.
+//
 // model implements tea.Model. All state mutation happens in Update,
 // which runs on Bubble Tea's single goroutine, so no locks are needed.
 type model struct {
@@ -58,6 +68,8 @@ type model struct {
 
 	// expandLatestTools controls whether the latest assistant turn's
 	// tool calls and results are shown expanded or compact.
+	// The flag is toggled by Ctrl+O and automatically cleared after
+	// the next assistant turn is received, restoring the default compact view.
 	expandLatestTools bool
 
 	// Transient status line (e.g., "thinking...").
