@@ -47,6 +47,24 @@ func TestTransform_EmptyContent(t *testing.T) {
 	assert.Empty(t, text.Content)
 }
 
+func TestTransform_NilContentFunc(t *testing.T) {
+	tr, err := New(WithContentFunc(nil))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, state.RoleSystem, turns[0].Role)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Empty(t, text.Content)
+}
+
 func TestTransform_DelegatesAppend(t *testing.T) {
 	tr, err := New(WithContentFunc(func() string { return "system" }))
 	require.NoError(t, err)
