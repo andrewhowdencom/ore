@@ -117,7 +117,7 @@ func run() error {
 
 	// Step factory: each session gets its own Step with tool handler
 	// and provider tool options bound.
-	stepFactory := func() (*loop.Step, error) {
+	stepFactory := func(*thread.Thread) (*loop.Step, error) {
 		return loop.New(
 			loop.WithHandlers(registry.Handler()),
 			loop.WithInvokeOptions(openai.WithTools(registry.Tools())),
