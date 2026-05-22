@@ -9,4 +9,5 @@ use (
 	./x/tool/calculator
 	./x/tool/filesystem
 	./x/tool/mcp
+	./x/provider/openai
 )
