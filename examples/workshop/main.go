@@ -29,7 +29,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/provider/openai"
+	"github.com/andrewhowdencom/ore/x/provider/openai"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/thread"
 	"github.com/andrewhowdencom/ore/x/conduit/tui"
@@ -83,7 +83,13 @@ func run() error {
 	if baseURL != "" {
 		opts = append(opts, openai.WithBaseURL(baseURL))
 	}
-	prov := openai.New(apiKey, modelName, opts...)
+	prov, err := openai.New(append([]openai.Option{
+		openai.WithAPIKey(apiKey),
+		openai.WithModel(modelName),
+	}, opts...)...)
+	if err != nil {
+		return fmt.Errorf("create openai provider: %w", err)
+	}
 
 	// Step factory: inject system prompt and guardrails as transforms.
 	stepFactory := func() (*loop.Step, error) {

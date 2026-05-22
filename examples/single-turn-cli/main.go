@@ -15,7 +15,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/provider/openai"
+	"github.com/andrewhowdencom/ore/x/provider/openai"
 	"github.com/andrewhowdencom/ore/state"
 )
 
@@ -84,7 +84,13 @@ func run() error {
 	if baseURL != "" {
 		opts = append(opts, openai.WithBaseURL(baseURL))
 	}
-	p := openai.New(apiKey, model, opts...)
+	p, err := openai.New(append([]openai.Option{
+		openai.WithAPIKey(apiKey),
+		openai.WithModel(model),
+	}, opts...)...)
+	if err != nil {
+		return fmt.Errorf("create openai provider: %w", err)
+	}
 
 	// Tool calling example (uncomment this block and comment out the provider
 	// and step setup immediately above and below it):
@@ -93,7 +99,7 @@ func run() error {
 	//   registry.Register("calculator", "A simple calculator", map[string]any{"type": "object"}, func(ctx context.Context, args map[string]any) (any, error) {
 	//       return "42", nil
 	//   })
-	//   p := openai.New(apiKey, model, opts...)
+	//   p, err := openai.New(append([]openai.Option{openai.WithAPIKey(apiKey), openai.WithModel(model)}, opts...)...)
 	//   s := loop.New(loop.WithHandlers(registry.Handler()), loop.WithInvokeOptions(openai.WithTools(registry.Tools())))
 	//
 	// Note: to use tools, loop until the assistant responds with text rather
@@ -113,7 +119,7 @@ func run() error {
 	s := loop.New(stepOpts...)
 
 	// Execute a single loop turn.
-	_, err := s.Turn(ctx, mem, p)
+	_, err = s.Turn(ctx, mem, p)
 	if err != nil {
 		return fmt.Errorf("turn failed: %w", err)
 	}
