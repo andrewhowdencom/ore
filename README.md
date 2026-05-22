@@ -68,11 +68,11 @@ without any YAML or code generation layer.
   NDJSON streaming, SSE events, and an optional web UI.
 - [`examples/tui-chat/`](examples/tui-chat/) — Interactive terminal chat with
   Markdown rendering and persistent thread store.
-- [`examples/workshop/`](examples/workshop/) — Terminal coding assistant that
-  composes `x/systemprompt` and `x/guardrails` transforms for persona injection
-  and formatting rules.
 - [`examples/calculator/`](examples/calculator/) — Single-turn CLI demo with
   tool calling (add, multiply) via the ReAct cognitive pattern.
+
+For a more fully fledged coding agent built on `ore`, see
+[`andrewhowdencom/workshop`](https://github.com/andrewhowdencom/workshop).
 
 All examples read `ORE_API_KEY` from the environment. Set `ORE_MODEL` to choose
 a different model (default: `gpt-4o`). Set `STORE_DIR` for persistent JSON
