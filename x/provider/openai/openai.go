@@ -76,6 +76,20 @@ type config struct {
 // Option configures a Provider via the functional options pattern.
 type Option func(*config)
 
+// WithAPIKey sets the API key for the OpenAI-compatible provider.
+func WithAPIKey(key string) Option {
+	return func(c *config) {
+		c.apiKey = key
+	}
+}
+
+// WithModel sets the model identifier for the OpenAI-compatible provider.
+func WithModel(model string) Option {
+	return func(c *config) {
+		c.model = model
+	}
+}
+
 // WithBaseURL sets a custom API base URL (e.g., for local proxies).
 func WithBaseURL(url string) Option {
 	return func(c *config) {
@@ -92,13 +106,17 @@ func WithHTTPClient(client option.HTTPClient) Option {
 }
 
 // New creates an OpenAI-compatible provider.
-func New(apiKey, model string, opts ...Option) *Provider {
-	cfg := &config{
-		apiKey: apiKey,
-		model:  model,
-	}
+func New(opts ...Option) (*Provider, error) {
+	cfg := &config{}
 	for _, opt := range opts {
 		opt(cfg)
+	}
+
+	if cfg.apiKey == "" {
+		return nil, fmt.Errorf("missing required option: apiKey")
+	}
+	if cfg.model == "" {
+		return nil, fmt.Errorf("missing required option: model")
 	}
 
 	sdkOpts := []option.RequestOption{option.WithAPIKey(cfg.apiKey)}
@@ -112,7 +130,7 @@ func New(apiKey, model string, opts ...Option) *Provider {
 	return &Provider{
 		client: openai.NewClient(sdkOpts...),
 		model:  cfg.model,
-	}
+	}, nil
 }
 
 // Compile-time interface check.

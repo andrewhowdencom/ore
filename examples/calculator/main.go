@@ -14,7 +14,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/provider/openai"
+	"github.com/andrewhowdencom/ore/x/provider/openai"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/tool"
 	"github.com/andrewhowdencom/ore/x/tool/calculator"
@@ -82,7 +82,13 @@ func run() error {
 	if baseURL != "" {
 		opts = append(opts, openai.WithBaseURL(baseURL))
 	}
-	prov := openai.New(apiKey, model, opts...)
+	prov, err := openai.New(append([]openai.Option{
+		openai.WithAPIKey(apiKey),
+		openai.WithModel(model),
+	}, opts...)...)
+	if err != nil {
+		return fmt.Errorf("create openai provider: %w", err)
+	}
 
 	// Build state with the user message.
 	mem := &state.Buffer{}
