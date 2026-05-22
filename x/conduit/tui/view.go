@@ -16,6 +16,10 @@ var (
 	statusStyle = lipgloss.NewStyle().Faint(true).Italic(true)
 	// thinkingStyle styles reasoning/thinking content faint and italic.
 	thinkingStyle = lipgloss.NewStyle().Faint(true).Italic(true)
+	// toolCallStyle styles tool call notifications faint and italic.
+	toolCallStyle = lipgloss.NewStyle().Faint(true).Italic(true)
+	// toolErrorStyle styles tool error output in red.
+	toolErrorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
 )
 
 // renderBlock renders a labeled content block with the label on its own line
@@ -71,6 +75,8 @@ func (m *model) buildContent() string {
 					} else {
 						b.WriteString(renderBlock("Thinking: ", thinkingStyle, block.source, width))
 					}
+				case "tool_call":
+					b.WriteString(renderBlock("Assistant: ", toolCallStyle, block.source, width))
 				}
 				if i < len(turn.blocks)-1 {
 					b.WriteString("\n\n")
@@ -78,8 +84,15 @@ func (m *model) buildContent() string {
 			}
 		case state.RoleTool:
 			for i, block := range turn.blocks {
-				if block.kind == "text" {
+				switch block.kind {
+				case "text":
 					b.WriteString(renderBlock("Tool: ", lipgloss.NewStyle(), block.source, width))
+				case "tool_result":
+					style := lipgloss.NewStyle()
+					if strings.HasPrefix(block.source, "Error: ") {
+						style = toolErrorStyle
+					}
+					b.WriteString(renderBlock("Tool: ", style, block.source, width))
 				}
 				if i < len(turn.blocks)-1 {
 					b.WriteString("\n\n")

@@ -5,6 +5,7 @@
 package tui
 
 import (
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -163,6 +164,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 				blocks = append(blocks, block)
+			case artifact.ToolCall:
+				source := fmt.Sprintf("Calling: %s(%s)", a.Name, a.Arguments)
+				blocks = append(blocks, renderedBlock{kind: "tool_call", source: source})
+			case artifact.ToolResult:
+				source := a.Content
+				if a.IsError {
+					source = "Error: " + source
+				}
+				blocks = append(blocks, renderedBlock{kind: "tool_result", source: source})
 			}
 		}
 		rt := renderedTurn{
