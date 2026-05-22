@@ -159,9 +159,13 @@ func (m *model) buildContent() string {
 }
 
 // compactToolCall formats a tool call into a compact single-line string.
+// The compact format keeps the TUI readable within limited width by
+// collapsing verbose JSON arguments into key=value pairs.
 // It parses the JSON arguments and emits name · key="val" · key2=42.
 // Nested objects collapse to {…} and arrays to […]. If JSON parsing
 // fails, it falls back to a truncated raw representation.
+// maxWidth is normally the current viewport width; callers ensure it
+// reflects the available horizontal space.
 func compactToolCall(tc artifact.ToolCall, maxWidth int) string {
 	var args map[string]interface{}
 	if err := json.Unmarshal([]byte(tc.Arguments), &args); err != nil {
@@ -203,7 +207,10 @@ func compactToolCall(tc artifact.ToolCall, maxWidth int) string {
 }
 
 // compactToolResult formats a tool result into a compact single-line string,
-// truncating at the first newline or maxWidth characters.
+// keeping the TUI concise by truncating at the first newline or maxWidth
+// characters. If the result is an error (IsError == true), the prefix
+// "Error: " is added before truncation so the compact line still signals
+// a failure. maxWidth is normally the current viewport width.
 func compactToolResult(tr artifact.ToolResult, maxWidth int) string {
 	content := tr.Content
 	if idx := strings.Index(content, "\n"); idx != -1 {
@@ -217,6 +224,8 @@ func compactToolResult(tr artifact.ToolResult, maxWidth int) string {
 }
 
 // truncateString truncates s to maxWidth runes, adding "…" if truncated.
+// Truncation is rune-aware, ensuring multi-byte Unicode characters are
+// not split mid-character.
 func truncateString(s string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return s
