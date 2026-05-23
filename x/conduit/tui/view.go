@@ -8,7 +8,8 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/cellbuf"
 )
 
@@ -53,7 +54,7 @@ func renderBlock(label string, labelStyle lipgloss.Style, content string, width 
 func (m *model) buildContent() string {
 	var b strings.Builder
 
-	width := m.viewport.Width
+	width := m.viewport.Width()
 
 	// Find the last assistant turn index.
 	lastAssistantIdx := -1
@@ -242,7 +243,7 @@ func truncateString(s string, maxWidth int) string {
 
 // View renders the conversation history inside a scrollable viewport and
 // anchors the input prompt at the bottom of the terminal.
-func (m *model) View() string {
+func (m *model) View() tea.View {
 	m.viewport.SetContent(m.buildContent())
 
 	// Render a thin horizontal line to visually separate the conversation
@@ -254,7 +255,11 @@ func (m *model) View() string {
 
 	view := m.viewport.View()
 	if view != "" {
-		return view + "\n" + separator + "\n" + m.textarea.View()
+		v := tea.NewView(view + "\n" + separator + "\n" + m.textarea.View())
+	v.AltScreen = true
+	return v
 	}
-	return m.textarea.View()
+	v := tea.NewView(m.textarea.View())
+	v.AltScreen = true
+	return v
 }
