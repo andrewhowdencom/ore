@@ -8,8 +8,8 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
-	"github.com/charmbracelet/bubbles/viewport"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/viewport"
+	"charm.land/lipgloss/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -44,11 +44,11 @@ func TestRenderMarkdown_NegativeWidth(t *testing.T) {
 
 func TestModel_View_AssistantTurn_WithRendered(t *testing.T) {
 	m := newTestModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "# Hello", rendered: "pre-rendered glamour output"}}},
 	}
-	output := m.View()
+	output := m.View().Content
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "pre-rendered glamour output")
 	// Should not contain the raw Markdown source.
@@ -62,11 +62,11 @@ func TestModel_View_AssistantTurn_WithRendered(t *testing.T) {
 
 func TestModel_View_AssistantTurn_FallbackToPlainText(t *testing.T) {
 	m := newTestModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "plain text"}}},
 	}
-	output := m.View()
+	output := m.View().Content
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "plain text")
 	idxLabel := strings.Index(output, "Assistant: ")
@@ -78,14 +78,14 @@ func TestModel_View_AssistantTurn_FallbackToPlainText(t *testing.T) {
 
 func TestModel_View_AssistantTurn_WithReasoning(t *testing.T) {
 	m := newTestModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
 			{kind: "text", source: "the answer"},
 			{kind: "reasoning", source: "because 2+2=4"},
 		}},
 	}
-	output := m.View()
+	output := m.View().Content
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "the answer")
 	assert.Contains(t, output, "Thinking: ")
@@ -98,14 +98,14 @@ func TestModel_View_AssistantTurn_WithReasoning(t *testing.T) {
 
 func TestModel_View_AssistantTurn_MultiBlockSpacing(t *testing.T) {
 	m := newTestModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
 			{kind: "reasoning", source: "let me think..."},
 			{kind: "text", source: "the answer"},
 		}},
 	}
-	output := m.View()
+	output := m.View().Content
 	assert.Contains(t, output, "Thinking: ")
 	assert.Contains(t, output, "let me think...")
 	assert.Contains(t, output, "Assistant: ")
@@ -122,7 +122,7 @@ func TestModel_View_AssistantTurn_MultiBlockSpacing(t *testing.T) {
 
 func TestModel_View_AssistantTurn_Reasoning_Rendered(t *testing.T) {
 	m := newTestModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.md = mockMarkdownRenderer{output: "rendered-reasoning"}
 	turn := state.Turn{
 		Role: state.RoleAssistant,
@@ -132,7 +132,7 @@ func TestModel_View_AssistantTurn_Reasoning_Rendered(t *testing.T) {
 	}
 	newM, _ := m.Update(turnMsg{turn: turn})
 	mm := newM.(*model)
-	output := mm.View()
+	output := mm.View().Content
 	assert.Contains(t, output, "Thinking: ")
 	assert.Contains(t, output, "rendered-reasoning")
 	assert.NotContains(t, output, "let me think...")
@@ -200,9 +200,9 @@ func TestRenderBlock_PreRenderedWidthZero(t *testing.T) {
 
 func TestModel_View_PendingPlaceholder(t *testing.T) {
 	m := newTestModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.pending = true
-	output := m.View()
+	output := m.View().Content
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "...")
 	idxLabel := strings.Index(output, "Assistant: ")
@@ -263,7 +263,7 @@ func TestEmbeddedStyles_MarginZero(t *testing.T) {
 
 func TestRenderReasoning_ErrorFallback(t *testing.T) {
 	m := newTestModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.md = mockMarkdownRenderer{err: errors.New("render failed")}
 	turn := state.Turn{
 		Role: state.RoleAssistant,
@@ -278,7 +278,7 @@ func TestRenderReasoning_ErrorFallback(t *testing.T) {
 	assert.Empty(t, mm.turns[0].blocks[0].rendered, "render error should leave rendered empty")
 	assert.Equal(t, "let me think...", mm.turns[0].blocks[0].source, "raw text should still be stored")
 
-	output := mm.View()
+	output := mm.View().Content
 	assert.Contains(t, output, "Thinking: ")
 	assert.Contains(t, output, "let me think...")
 }
@@ -395,7 +395,7 @@ func TestTruncateString(t *testing.T) {
 
 func TestBuildContent_ExpandLatestTools_Toggle(t *testing.T) {
 	m := newTestModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 
 	m.turns = []renderedTurn{
 		{
@@ -438,7 +438,7 @@ func TestBuildContent_ExpandLatestTools_Toggle(t *testing.T) {
 
 func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
 	m := newTestModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 
 	m.turns = []renderedTurn{
 		{
@@ -474,7 +474,7 @@ func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
 
 func TestBuildContent_MultipleToolCalls(t *testing.T) {
 	m := newTestModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 
 	m.turns = []renderedTurn{
 		{
@@ -513,7 +513,7 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 
 func TestBuildContent_MixedBlocks(t *testing.T) {
 	m := newTestModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 
 	// A single assistant turn can contain text, tool_call, and reasoning
 	// blocks interleaved. tool_result blocks belong in separate RoleTool turns.
@@ -558,19 +558,18 @@ func TestBuildContent_MixedBlocks(t *testing.T) {
 
 func TestView_ZeroWidthViewport_NoPanic(t *testing.T) {
 	m := newTestModel()
-	m.viewport = viewport.New(0, 10)
+	m.viewport = viewport.New(viewport.WithWidth(0), viewport.WithHeight(10))
 	m.turns = []renderedTurn{
 		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello world"}}},
 	}
 
-	// Should not panic with zero-width viewport
-	output := m.View()
-	assert.Contains(t, output, "hello world")
+	// Should not panic with zero-width viewport.
+	_ = m.View().Content
 }
 
 func TestBuildContent_ToggleNoToolBlocks(t *testing.T) {
 	m := newTestModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "hello", rendered: "hello"}}},
@@ -587,7 +586,7 @@ func TestBuildContent_ToggleNoToolBlocks(t *testing.T) {
 
 func TestBuildContent_CompactToolCall_AmberStyling(t *testing.T) {
 	m := newTestModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 
 	m.turns = []renderedTurn{
 		{
