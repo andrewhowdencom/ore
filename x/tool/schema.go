@@ -13,8 +13,8 @@ import (
 //   - nil or empty schema is valid (no parameters).
 //   - The schema must be JSON-serializable.
 //   - If the schema has any keys, the root type must be "object".
-//   - Top-level keys must be standard JSON Schema keywords; parameter
-//     definitions must be nested under "properties".
+//   - All top-level keys must be known JSON Schema keywords; any other key
+//     is treated as a misplaced parameter definition and results in an error.
 func ValidateSchema(schema map[string]any) error {
 	if len(schema) == 0 {
 		return nil
