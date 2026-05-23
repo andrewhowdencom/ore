@@ -13,7 +13,7 @@ import (
 
 func TestHandler_Add(t *testing.T) {
 	registry := tool.NewRegistry()
-	registry.Register(AddTool.Name, AddTool.Description, AddTool.Schema, Add)
+	require.NoError(t, registry.Register(AddTool.Name, AddTool.Description, AddTool.Schema, Add))
 	handler := registry.Handler()
 
 	mem := &state.Buffer{}
@@ -40,7 +40,7 @@ func TestHandler_Add(t *testing.T) {
 
 func TestHandler_Multiply(t *testing.T) {
 	registry := tool.NewRegistry()
-	registry.Register(MultiplyTool.Name, MultiplyTool.Description, MultiplyTool.Schema, Multiply)
+	require.NoError(t, registry.Register(MultiplyTool.Name, MultiplyTool.Description, MultiplyTool.Schema, Multiply))
 	handler := registry.Handler()
 
 	mem := &state.Buffer{}
@@ -67,7 +67,7 @@ func TestHandler_Multiply(t *testing.T) {
 
 func TestHandler_UnknownTool(t *testing.T) {
 	registry := tool.NewRegistry()
-	registry.Register(AddTool.Name, AddTool.Description, AddTool.Schema, Add)
+	require.NoError(t, registry.Register(AddTool.Name, AddTool.Description, AddTool.Schema, Add))
 	handler := registry.Handler()
 
 	mem := &state.Buffer{}

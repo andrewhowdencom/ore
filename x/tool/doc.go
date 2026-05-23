@@ -31,11 +31,13 @@
 // The application wires them together:
 //
 //	registry := tool.NewRegistry()
-//	registry.Register("add", "Add two numbers", schema, func(ctx context.Context, args map[string]any) (any, error) {
+//	if err := registry.Register("add", "Add two numbers", schema, func(ctx context.Context, args map[string]any) (any, error) {
 //	    a, _ := args["a"].(float64)
 //	    b, _ := args["b"].(float64)
 //	    return a + b, nil
-//	})
+//	}); err != nil {
+//	    ...
+//	}
 //
 //	prov, err := openai.New(openai.WithAPIKey(apiKey), openai.WithModel(model))
 //	if err != nil { ... }

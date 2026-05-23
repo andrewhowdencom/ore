@@ -23,7 +23,9 @@
 //	tk := skills.NewToolkit(
 //	    skills.NewFSDiscoverer(".agents/skills"),
 //	)
-//	tk.Register(registry)
+//	if err := tk.Register(registry); err != nil {
+//	    ...
+//	}
 //
 // The application is responsible for telling the LLM about the skills tool
 // (e.g., via system prompt) so the LLM knows to call list_skills. The skills
