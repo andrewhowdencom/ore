@@ -9,11 +9,21 @@
 // Usage:
 //
 //	registry := tool.NewRegistry()
-//	registry.Register(ReadFileTool.Name, ReadFileTool.Description, ReadFileTool.Schema, ReadFile)
-//	registry.Register(WriteFileTool.Name, WriteFileTool.Description, WriteFileTool.Schema, WriteFile)
-//	registry.Register(EditFileTool.Name, EditFileTool.Description, EditFileTool.Schema, EditFile)
-//	registry.Register(ListDirectoryTool.Name, ListDirectoryTool.Description, ListDirectoryTool.Schema, ListDirectory)
-//	registry.Register(SearchFilesTool.Name, SearchFilesTool.Description, SearchFilesTool.Schema, SearchFiles)
+//	if err := registry.Register(ReadFileTool.Name, ReadFileTool.Description, ReadFileTool.Schema, ReadFile); err != nil {
+//	    ...
+//	}
+//	if err := registry.Register(WriteFileTool.Name, WriteFileTool.Description, WriteFileTool.Schema, WriteFile); err != nil {
+//	    ...
+//	}
+//	if err := registry.Register(EditFileTool.Name, EditFileTool.Description, EditFileTool.Schema, EditFile); err != nil {
+//	    ...
+//	}
+//	if err := registry.Register(ListDirectoryTool.Name, ListDirectoryTool.Description, ListDirectoryTool.Schema, ListDirectory); err != nil {
+//	    ...
+//	}
+//	if err := registry.Register(SearchFilesTool.Name, SearchFilesTool.Description, SearchFilesTool.Schema, SearchFiles); err != nil {
+//	    ...
+//	}
 //
 //	// Registry.Tools() is the single source of truth for the provider.
 //	tools := registry.Tools()

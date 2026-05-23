@@ -12,7 +12,9 @@
 // Usage:
 //
 //	registry := tool.NewRegistry()
-//	registry.Register(bash.BashTool.Name, bash.BashTool.Description, bash.BashTool.Schema, bash.Bash)
+//	if err := registry.Register(bash.BashTool.Name, bash.BashTool.Description, bash.BashTool.Schema, bash.Bash); err != nil {
+//	    ...
+//	}
 //
 //	// Registry.Tools() is the single source of truth for the provider.
 //	tools := registry.Tools()

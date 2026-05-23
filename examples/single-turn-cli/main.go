@@ -96,9 +96,11 @@ func run() error {
 	// and step setup immediately above and below it):
 	//
 	//   registry := tool.NewRegistry()
-	//   registry.Register("calculator", "A simple calculator", map[string]any{"type": "object"}, func(ctx context.Context, args map[string]any) (any, error) {
+	//   if err := registry.Register("calculator", "A simple calculator", map[string]any{"type": "object"}, func(ctx context.Context, args map[string]any) (any, error) {
 	//       return "42", nil
-	//   })
+	//   }); err != nil {
+	//       ...
+	//   }
 	//   p, err := openai.New(append([]openai.Option{openai.WithAPIKey(apiKey), openai.WithModel(model)}, opts...)...)
 	//   s := loop.New(loop.WithHandlers(registry.Handler()), loop.WithInvokeOptions(openai.WithTools(registry.Tools())))
 	//

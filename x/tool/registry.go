@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/andrewhowdencom/ore/provider"
@@ -64,7 +65,11 @@ func NewRegistry(opts ...Option) *Registry {
 // Register adds a tool to the registry. If a tool with the same name already
 // exists, it is overwritten. The description and schema are captured so the
 // registry can produce a unified []provider.Tool list for provider adapters.
-func (r *Registry) Register(name, description string, schema map[string]any, fn ToolFunc) {
+func (r *Registry) Register(name, description string, schema map[string]any, fn ToolFunc) error {
+	if err := ValidateSchema(schema); err != nil {
+		return fmt.Errorf("register tool %q: %w", name, err)
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.localTools == nil {
@@ -76,6 +81,7 @@ func (r *Registry) Register(name, description string, schema map[string]any, fn 
 		schema:      schema,
 		fn:          fn,
 	}
+	return nil
 }
 
 // Tools returns a merged list of all registered tools, including local tools
