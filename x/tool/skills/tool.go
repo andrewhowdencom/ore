@@ -52,25 +52,32 @@ func (t *Toolkit) SearchSkills(ctx context.Context, args map[string]any) (any, e
 }
 
 // Register adds all three skills tools to the registry.
-func (t *Toolkit) Register(registry *tool.Registry) {
-	registry.Register(
+func (t *Toolkit) Register(registry *tool.Registry) error {
+	if err := registry.Register(
 		ListSkillsTool.Name,
 		ListSkillsTool.Description,
 		ListSkillsTool.Schema,
 		t.ListSkills,
-	)
-	registry.Register(
+	); err != nil {
+		return fmt.Errorf("register list_skills: %w", err)
+	}
+	if err := registry.Register(
 		ReadSkillTool.Name,
 		ReadSkillTool.Description,
 		ReadSkillTool.Schema,
 		t.ReadSkill,
-	)
-	registry.Register(
+	); err != nil {
+		return fmt.Errorf("register read_skill: %w", err)
+	}
+	if err := registry.Register(
 		SearchSkillsTool.Name,
 		SearchSkillsTool.Description,
 		SearchSkillsTool.Schema,
 		t.SearchSkills,
-	)
+	); err != nil {
+		return fmt.Errorf("register search_skills: %w", err)
+	}
+	return nil
 }
 
 // ListSkillsTool is the provider.Tool descriptor for list_skills.

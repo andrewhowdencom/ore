@@ -48,11 +48,11 @@ func TestHandler_UnknownTool(t *testing.T) {
 
 func TestHandler_ExecutesRegisteredTool(t *testing.T) {
 	r := NewRegistry()
-	r.Register("add", "Add two numbers", map[string]any{"type": "object"}, func(ctx context.Context, args map[string]any) (any, error) {
+	require.NoError(t, r.Register("add", "Add two numbers", map[string]any{"type": "object"}, func(ctx context.Context, args map[string]any) (any, error) {
 		a, _ := args["a"].(float64)
 		b, _ := args["b"].(float64)
 		return a + b, nil
-	})
+	}))
 	h := r.Handler()
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -77,9 +77,9 @@ func TestHandler_ExecutesRegisteredTool(t *testing.T) {
 
 func TestHandler_InvalidArguments(t *testing.T) {
 	r := NewRegistry()
-	r.Register("add", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
+	require.NoError(t, r.Register("add", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
 		return nil, nil
-	})
+	}))
 	h := r.Handler()
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -101,9 +101,9 @@ func TestHandler_InvalidArguments(t *testing.T) {
 
 func TestHandler_ToolExecutionError(t *testing.T) {
 	r := NewRegistry()
-	r.Register("fail", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
+	require.NoError(t, r.Register("fail", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
 		return nil, errors.New("boom")
-	})
+	}))
 	h := r.Handler()
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -125,10 +125,10 @@ func TestHandler_ToolExecutionError(t *testing.T) {
 
 func TestHandler_SerializationError(t *testing.T) {
 	r := NewRegistry()
-	r.Register("bad", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
+	require.NoError(t, r.Register("bad", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
 		// Return a channel, which cannot be JSON-serialized.
 		return make(chan int), nil
-	})
+	}))
 	h := r.Handler()
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -150,9 +150,9 @@ func TestHandler_SerializationError(t *testing.T) {
 
 func TestHandler_EmptyArguments(t *testing.T) {
 	r := NewRegistry()
-	r.Register("noop", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
+	require.NoError(t, r.Register("noop", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
 		return "done", nil
-	})
+	}))
 	h := r.Handler()
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})

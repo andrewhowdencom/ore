@@ -8,8 +8,12 @@
 // Usage:
 //
 //	registry := tool.NewRegistry()
-//	registry.Register(AddTool.Name, AddTool.Description, AddTool.Schema, Add)
-//	registry.Register(MultiplyTool.Name, MultiplyTool.Description, MultiplyTool.Schema, Multiply)
+//	if err := registry.Register(AddTool.Name, AddTool.Description, AddTool.Schema, Add); err != nil {
+//	    ...
+//	}
+//	if err := registry.Register(MultiplyTool.Name, MultiplyTool.Description, MultiplyTool.Schema, Multiply); err != nil {
+//	    ...
+//	}
 //
 //	// Registry.Tools() is the single source of truth for the provider.
 //	tools := registry.Tools()

@@ -74,11 +74,21 @@ func run() error {
 
 	// Create tool registry with filesystem functions.
 	registry := tool.NewRegistry()
-	registry.Register(filesystem.ReadFileTool.Name, filesystem.ReadFileTool.Description, filesystem.ReadFileTool.Schema, filesystem.ReadFile)
-	registry.Register(filesystem.WriteFileTool.Name, filesystem.WriteFileTool.Description, filesystem.WriteFileTool.Schema, filesystem.WriteFile)
-	registry.Register(filesystem.EditFileTool.Name, filesystem.EditFileTool.Description, filesystem.EditFileTool.Schema, filesystem.EditFile)
-	registry.Register(filesystem.ListDirectoryTool.Name, filesystem.ListDirectoryTool.Description, filesystem.ListDirectoryTool.Schema, filesystem.ListDirectory)
-	registry.Register(filesystem.SearchFilesTool.Name, filesystem.SearchFilesTool.Description, filesystem.SearchFilesTool.Schema, filesystem.SearchFiles)
+	if err := registry.Register(filesystem.ReadFileTool.Name, filesystem.ReadFileTool.Description, filesystem.ReadFileTool.Schema, filesystem.ReadFile); err != nil {
+		return fmt.Errorf("register read_file tool: %w", err)
+	}
+	if err := registry.Register(filesystem.WriteFileTool.Name, filesystem.WriteFileTool.Description, filesystem.WriteFileTool.Schema, filesystem.WriteFile); err != nil {
+		return fmt.Errorf("register write_file tool: %w", err)
+	}
+	if err := registry.Register(filesystem.EditFileTool.Name, filesystem.EditFileTool.Description, filesystem.EditFileTool.Schema, filesystem.EditFile); err != nil {
+		return fmt.Errorf("register edit_file tool: %w", err)
+	}
+	if err := registry.Register(filesystem.ListDirectoryTool.Name, filesystem.ListDirectoryTool.Description, filesystem.ListDirectoryTool.Schema, filesystem.ListDirectory); err != nil {
+		return fmt.Errorf("register list_directory tool: %w", err)
+	}
+	if err := registry.Register(filesystem.SearchFilesTool.Name, filesystem.SearchFilesTool.Description, filesystem.SearchFilesTool.Schema, filesystem.SearchFiles); err != nil {
+		return fmt.Errorf("register search_files tool: %w", err)
+	}
 
 	// Build provider.
 	var opts []openai.Option
