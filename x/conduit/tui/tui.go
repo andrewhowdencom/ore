@@ -10,7 +10,7 @@
 //   Ctrl+O — toggle expansion of latest assistant turn's tool blocks
 //            (compact by default; resets after each new turn)
 //   Ctrl+C — quit
-//   Alt+Enter — insert newline in the input box
+//   Shift+Enter — insert newline in the input box
 package tui
 
 import (
@@ -98,7 +98,7 @@ func (t *TUI) Start(ctx context.Context) error {
 	ta := textarea.New()
 	ta.ShowLineNumbers = false
 	ta.Prompt = "> "
-	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("alt+enter"))
+	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("shift+enter"))
 	ta.Focus()
 
 	m := model{

@@ -217,7 +217,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport, cmd = m.viewport.Update(msg)
 			return m, cmd
 		case tea.KeyEnter:
-			if !msg.Key().Mod.Contains(tea.ModAlt) {
+			if !msg.Key().Mod.Contains(tea.ModShift) {
 				if m.textarea.Value() != "" {
 					content := m.textarea.Value()
 					m.textarea.Reset()
@@ -231,7 +231,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-			// Alt+Enter: pass to textarea for newline insertion.
+			// Shift+Enter: pass to textarea for newline insertion.
 			var cmd tea.Cmd
 			m.textarea, cmd = m.textarea.Update(msg)
 			m.recalcLayout()

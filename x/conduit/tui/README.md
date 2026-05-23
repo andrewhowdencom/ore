@@ -21,7 +21,7 @@ err = t.Start(ctx)
 |-----|--------|
 | `Ctrl+O` | Toggle expansion of the latest assistant turn's tool blocks (compact by default; resets after each new turn) |
 | `Ctrl+C` | Quit |
-| `Alt+Enter` | Insert newline in the input box |
+| `Shift+Enter` | Insert newline in the input box |
 
 ## Design
 
