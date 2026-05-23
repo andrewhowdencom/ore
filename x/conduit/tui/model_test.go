@@ -23,7 +23,7 @@ func newTestModel() model {
 	ta := textarea.New()
 	ta.ShowLineNumbers = false
 	ta.Prompt = "> "
-	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("alt+enter"))
+	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("shift+enter"))
 	ta.Focus()
 	return model{
 		textarea: ta,
@@ -546,12 +546,12 @@ func TestModel_Update_WindowSize_RerenderError_KeepsOldCache(t *testing.T) {
 		"old cache should be kept on re-render error")
 }
 
-func TestModel_Update_AltEnter_InsertsNewline(t *testing.T) {
+func TestModel_Update_ShiftEnter_InsertsNewline(t *testing.T) {
 	m := newTestModel()
 	m.textarea.SetValue("hello")
 	m.recalcLayout()
 
-	newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt})
+	newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift})
 	mm := newM.(*model)
 
 	assert.Contains(t, mm.textarea.Value(), "\n")
@@ -611,21 +611,21 @@ func TestModel_Update_Turn_Assistant_EmptyText(t *testing.T) {
 
 // --- Critical coverage gap tests (added per testing agent review) ---
 
-func TestModel_Update_AltEnter_DoesNotEmitEvent(t *testing.T) {
+func TestModel_Update_ShiftEnter_DoesNotEmitEvent(t *testing.T) {
 	eventsCh := make(chan session.Event, 10)
 	m := newTestModel()
 	m.eventsCh = eventsCh
 	m.textarea.SetValue("hello")
 	m.recalcLayout()
 
-	newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt})
+	newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift})
 	mm := newM.(*model)
 
 	assert.Contains(t, mm.textarea.Value(), "\n")
 
 	select {
 	case <-eventsCh:
-		t.Fatal("Alt+Enter should not emit a UserMessageEvent")
+		t.Fatal("Shift+Enter should not emit a UserMessageEvent")
 	default:
 	}
 }
@@ -670,19 +670,19 @@ func TestModel_View_SeparatorAdaptsToResize(t *testing.T) {
 	assert.Contains(t, output, strings.Repeat("─", 50))
 }
 
-func TestModel_Update_AltEnter_EmptyTextarea(t *testing.T) {
+func TestModel_Update_ShiftEnter_EmptyTextarea(t *testing.T) {
 	eventsCh := make(chan session.Event, 10)
 	m := newTestModel()
 	m.eventsCh = eventsCh
 
-	newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt})
+	newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift})
 	mm := newM.(*model)
 
 	assert.Equal(t, "\n", mm.textarea.Value())
 
 	select {
 	case <-eventsCh:
-		t.Fatal("Alt+Enter on empty textarea should not emit event")
+		t.Fatal("Shift+Enter on empty textarea should not emit event")
 	default:
 	}
 }
