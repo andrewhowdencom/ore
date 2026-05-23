@@ -64,6 +64,34 @@ func TestRegistry_Register_InvalidSchema(t *testing.T) {
 	assert.Nil(t, r.localTools["bad"])
 }
 
+func TestRegistry_Register_UnknownTopLevelKey(t *testing.T) {
+	r := NewRegistry()
+	err := r.Register("bad", "Bad schema", map[string]any{
+		"type": "object",
+		"foo":  map[string]any{},
+	}, func(ctx context.Context, args map[string]any) (any, error) {
+		return nil, nil
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `schema contains unknown top-level key "foo"`)
+	assert.Nil(t, r.localTools["bad"])
+}
+
+func TestRegistry_Register_NestedNonSerializable(t *testing.T) {
+	r := NewRegistry()
+	err := r.Register("bad", "Bad schema", map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"bad": map[string]any{"type": make(chan int)},
+		},
+	}, func(ctx context.Context, args map[string]any) (any, error) {
+		return nil, nil
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "schema is not JSON-serializable")
+	assert.Nil(t, r.localTools["bad"])
+}
+
 func TestRegistry_ConcurrentRegistration(t *testing.T) {
 	r := NewRegistry()
 	var wg sync.WaitGroup
