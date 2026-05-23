@@ -21,10 +21,10 @@ import (
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 )
 
 // TUI is a terminal user interface conduit. It hides all Bubble Tea internals
@@ -98,18 +98,16 @@ func (t *TUI) Start(ctx context.Context) error {
 	ta := textarea.New()
 	ta.ShowLineNumbers = false
 	ta.Prompt = "> "
-	// Note: bubbletea v1.3.10 does not support Shift modifier detection.
-	// Alt+Enter is used as the practical alternative for newline insertion.
 	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("alt+enter"))
 	ta.Focus()
 
 	m := model{
 		eventsCh: surfEventsCh,
-		viewport: viewport.New(0, 0),
+		viewport: viewport.New(),
 		textarea: ta,
 		md:       newGlamourMarkdownRenderer(),
 	}
-	p := tea.NewProgram(&m, tea.WithAltScreen())
+	p := tea.NewProgram(&m)
 	t.eventsCh = surfEventsCh
 	t.program = p
 
