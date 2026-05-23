@@ -56,6 +56,19 @@ func TestValidateSchema(t *testing.T) {
 			wantErr: `schema root type must be "object"`,
 		},
 		{
+			name:    "root type is not a string",
+			schema:  map[string]any{"type": 42},
+			wantErr: `schema root type must be "object"`,
+		},
+		{
+			name: "unknown dollar-prefixed key",
+			schema: map[string]any{
+				"type":     "object",
+				"$unknown": "value",
+			},
+			wantErr: `schema contains unknown top-level key "$unknown"`,
+		},
+		{
 			name: "misplaced property definition missing root type",
 			schema: map[string]any{
 				"name": map[string]any{"type": "string"},
