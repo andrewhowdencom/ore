@@ -12,9 +12,9 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 )
 
 // turnMsg is a Bubble Tea message that carries a complete turn into
@@ -141,9 +141,9 @@ func (m *model) recalcLayout() {
 	desiredHeight = max(desiredHeight, 1)
 
 	m.textarea.SetHeight(desiredHeight)
-	m.viewport.Height = m.height - m.textarea.Height() - 1 // -1 for separator
-	if m.viewport.Height < 1 {
-		m.viewport.Height = 1
+	m.viewport.SetHeight(m.height - m.textarea.Height() - 1) // -1 for separator
+	if m.viewport.Height() < 1 {
+		m.viewport.SetHeight(1)
 	}
 }
 
@@ -164,7 +164,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case artifact.Text:
 				block := renderedBlock{kind: "text", source: a.Content}
 				if msg.turn.Role == state.RoleAssistant {
-					rendered, err := m.renderMarkdown(a.Content, m.viewport.Width)
+					rendered, err := m.renderMarkdown(a.Content, m.viewport.Width())
 					if err == nil {
 						block.rendered = rendered
 					}
@@ -176,7 +176,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case artifact.Reasoning:
 				block := renderedBlock{kind: "reasoning", source: a.Content}
 				if msg.turn.Role == state.RoleAssistant {
-					rendered, err := m.renderMarkdown(a.Content, m.viewport.Width)
+					rendered, err := m.renderMarkdown(a.Content, m.viewport.Width())
 					if err == nil {
 						block.rendered = rendered
 					}
@@ -184,14 +184,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				blocks = append(blocks, block)
 			case artifact.ToolCall:
 				source := fmt.Sprintf("Calling: %s(%s)", a.Name, a.Arguments)
-				compact := compactToolCall(a, m.viewport.Width)
+				compact := compactToolCall(a, m.viewport.Width())
 				blocks = append(blocks, renderedBlock{kind: "tool_call", source: source, compact: compact})
 			case artifact.ToolResult:
 				source := a.Content
 				if a.IsError {
 					source = "Error: " + source
 				}
-				compact := compactToolResult(a, m.viewport.Width)
+				compact := compactToolResult(a, m.viewport.Width())
 				blocks = append(blocks, renderedBlock{kind: "tool_result", source: source, compact: compact})
 			}
 		}
@@ -210,14 +210,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = msg.status
 	case clearPendingMsg:
 		m.pending = false
-	case tea.KeyMsg:
-		switch msg.Type {
+	case tea.KeyPressMsg:
+		switch msg.Key().Code {
 		case tea.KeyPgUp, tea.KeyPgDown:
 			var cmd tea.Cmd
 			m.viewport, cmd = m.viewport.Update(msg)
 			return m, cmd
 		case tea.KeyEnter:
-			if !msg.Alt {
+			if !msg.Key().Mod.Contains(tea.ModShift) {
 				if m.textarea.Value() != "" {
 					content := m.textarea.Value()
 					m.textarea.Reset()
@@ -231,37 +231,47 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-			// Alt+Enter: pass to textarea for newline insertion.
-			var cmd tea.Cmd
-			m.textarea, cmd = m.textarea.Update(msg)
-			m.recalcLayout()
-			return m, cmd
-		case tea.KeyCtrlC:
-			select {
-			case m.eventsCh <- session.InterruptEvent{}:
-			default:
-			}
-			return m, tea.Quit
-		case tea.KeySpace:
-			var cmd tea.Cmd
-			m.textarea, cmd = m.textarea.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
-			m.recalcLayout()
-			return m, cmd
-		case tea.KeyCtrlO:
-			m.expandLatestTools = !m.expandLatestTools
-			m.viewport.SetContent(m.buildContent())
-			m.viewport.GotoBottom()
-			return m, nil
-		default:
+			// Shift+Enter: pass to textarea for newline insertion.
 			var cmd tea.Cmd
 			m.textarea, cmd = m.textarea.Update(msg)
 			m.recalcLayout()
 			return m, cmd
 		}
+
+		// Ctrl+C
+		if msg.Key().Code == 'c' && msg.Key().Mod.Contains(tea.ModCtrl) {
+			select {
+			case m.eventsCh <- session.InterruptEvent{}:
+			default:
+			}
+			return m, tea.Quit
+		}
+
+		// Space
+		if msg.Key().Code == tea.KeySpace {
+			var cmd tea.Cmd
+			m.textarea, cmd = m.textarea.Update(msg)
+			m.recalcLayout()
+			return m, cmd
+		}
+
+		// Ctrl+O
+		if msg.Key().Code == 'o' && msg.Key().Mod.Contains(tea.ModCtrl) {
+			m.expandLatestTools = !m.expandLatestTools
+			m.viewport.SetContent(m.buildContent())
+			m.viewport.GotoBottom()
+			return m, nil
+		}
+
+		// Default: pass to textarea
+		var cmd tea.Cmd
+		m.textarea, cmd = m.textarea.Update(msg)
+		m.recalcLayout()
+		return m, cmd
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.viewport.Width = msg.Width
+		m.viewport.SetWidth(msg.Width)
 		m.textarea.SetWidth(msg.Width)
 		m.recalcLayout()
 		// Re-render assistant turn text blocks with the new terminal width
@@ -270,7 +280,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if turn.role == state.RoleAssistant {
 				for j, block := range turn.blocks {
 					if block.kind == "text" && block.source != "" {
-						rendered, err := m.renderMarkdown(block.source, m.viewport.Width)
+						rendered, err := m.renderMarkdown(block.source, m.viewport.Width())
 						if err == nil {
 							m.turns[i].blocks[j].rendered = rendered
 						}
