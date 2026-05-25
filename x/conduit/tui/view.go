@@ -52,9 +52,11 @@ func renderBlock(label string, labelStyle lipgloss.Style, content string, width 
 // buildContent constructs the full conversation string for the viewport,
 // including all turns, the pending placeholder, and the status line.
 //
-// This helper was extracted from View() so that Update() can refresh the
-// viewport content before calling GotoBottom(), fixing a timing bug where
-// auto-scroll operated on stale content height and hid newly-rendered output.
+// The result is memoized: when contentDirty is false and cachedContent is
+// non-empty, the cached string is returned immediately without recomputing.
+// Callers that mutate visual state (turns, status, pending, expandLatestDetails)
+// must set contentDirty = true before the next buildContent call so the
+// cache is rebuilt. In practice Update() does this via syncViewport().
 func (m *model) buildContent() string {
 	if !m.contentDirty && m.cachedContent != "" {
 		return m.cachedContent
