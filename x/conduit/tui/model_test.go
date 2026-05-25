@@ -823,25 +823,25 @@ func TestUnknownArtifact_Ignored(t *testing.T) {
 	assert.Empty(t, mm.turns[0].blocks, "unknown artifact should produce no blocks")
 }
 
-func TestModel_Update_KeyCtrlO_TogglesExpandLatestTools(t *testing.T) {
+func TestModel_Update_KeyCtrlO_TogglesExpandLatestDetails(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 
-	assert.False(t, m.expandLatestTools)
+	assert.False(t, m.expandLatestDetails)
 
 	newM, _ := m.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	mm := newM.(*model)
-	assert.True(t, mm.expandLatestTools)
+	assert.True(t, mm.expandLatestDetails)
 
 	newM2, _ := mm.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	mm2 := newM2.(*model)
-	assert.False(t, mm2.expandLatestTools)
+	assert.False(t, mm2.expandLatestDetails)
 }
 
-func TestModel_Update_Turn_Assistant_ResetsExpandLatestTools(t *testing.T) {
+func TestModel_Update_Turn_Assistant_ResetsExpandLatestDetails(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-	m.expandLatestTools = true
+	m.expandLatestDetails = true
 
 	turn := state.Turn{
 		Role: state.RoleAssistant,
@@ -851,7 +851,7 @@ func TestModel_Update_Turn_Assistant_ResetsExpandLatestTools(t *testing.T) {
 	}
 	newM, _ := m.Update(turnMsg{turn: turn})
 	mm := newM.(*model)
-	assert.False(t, mm.expandLatestTools)
+	assert.False(t, mm.expandLatestDetails)
 }
 
 func TestModel_Update_UserAfterTool_DoesNotResetExpand(t *testing.T) {
@@ -868,9 +868,9 @@ func TestModel_Update_UserAfterTool_DoesNotResetExpand(t *testing.T) {
 		role:   state.RoleTool,
 		blocks: []renderedBlock{{kind: "tool_result", source: "result", compact: "result"}},
 	})
-	m.expandLatestTools = true
+	m.expandLatestDetails = true
 
-	// User turn should NOT reset expandLatestTools
+	// User turn should NOT reset expandLatestDetails
 	turn := state.Turn{
 		Role: state.RoleUser,
 		Artifacts: []artifact.Artifact{
@@ -880,7 +880,7 @@ func TestModel_Update_UserAfterTool_DoesNotResetExpand(t *testing.T) {
 	newM, _ := m.Update(turnMsg{turn: turn})
 	mm := newM.(*model)
 
-	assert.True(t, mm.expandLatestTools, "user turn should not reset expandLatestTools")
+	assert.True(t, mm.expandLatestDetails, "user turn should not reset expandLatestDetails")
 
 	// Previous assistant turn's tool blocks remain expanded
 	output := mm.buildContent()
@@ -895,7 +895,7 @@ func TestModel_Update_KeyCtrlO_WhilePending(t *testing.T) {
 	// Toggle should not panic while a response is pending
 	newM, _ := m.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	mm := newM.(*model)
-	assert.True(t, mm.expandLatestTools)
+	assert.True(t, mm.expandLatestDetails)
 	assert.True(t, mm.pending)
 
 	// View should still show the pending placeholder
@@ -910,13 +910,13 @@ func TestModel_Update_KeyCtrlO_RapidToggles(t *testing.T) {
 
 	newM, _ := m.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	mm := newM.(*model)
-	assert.True(t, mm.expandLatestTools)
+	assert.True(t, mm.expandLatestDetails)
 
 	newM2, _ := mm.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	mm2 := newM2.(*model)
-	assert.False(t, mm2.expandLatestTools)
+	assert.False(t, mm2.expandLatestDetails)
 
 	newM3, _ := mm2.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	mm3 := newM3.(*model)
-	assert.True(t, mm3.expandLatestTools)
+	assert.True(t, mm3.expandLatestDetails)
 }
