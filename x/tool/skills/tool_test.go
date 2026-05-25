@@ -95,3 +95,18 @@ func TestToolkit_SearchSkills_EmptyQuery(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "query is required")
 }
+
+func TestToolkit_SystemPromptFragment(t *testing.T) {
+	t.Parallel()
+	tk := NewToolkit(&mockDiscoverer{
+		meta: []SkillMeta{
+			{Name: "alpha", Description: "first skill"},
+			{Name: "beta", Description: "second skill"},
+		},
+	})
+	fn := tk.SystemPromptFragment()
+	fragment := fn(context.Background())
+
+	expected := "You have access to the following specialized skills. Use read_skill(name=<skill>) to load detailed instructions when needed:\n\n- alpha: first skill\n- beta: second skill"
+	assert.Equal(t, expected, fragment)
+}
