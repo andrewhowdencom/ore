@@ -17,6 +17,20 @@ type InvokeOption interface {
 	IsInvokeOption()
 }
 
+// ToolsOption is a per-invocation option that configures available tools.
+type ToolsOption struct {
+	Tools []Tool
+}
+
+// IsInvokeOption marks ToolsOption as a provider.InvokeOption.
+func (ToolsOption) IsInvokeOption() {}
+
+// WithTools returns an InvokeOption that configures the set of available tools
+// for a single provider invocation.
+func WithTools(tools []Tool) InvokeOption {
+	return ToolsOption{Tools: tools}
+}
+
 // Provider is the interface implemented by LLM provider adapters.
 type Provider interface {
 	// Invoke serializes the given state, calls the LLM API, and emits
