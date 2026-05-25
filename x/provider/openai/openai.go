@@ -6,8 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
-	"strings"
+
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/provider"
@@ -271,13 +270,6 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 
 	stream := p.client.Chat.Completions.NewStreaming(ctx, params)
 
-	type toolCallAccum struct {
-		id   string
-		name strings.Builder
-		args strings.Builder
-	}
-	toolCalls := make(map[int64]*toolCallAccum)
-
 	for stream.Next() {
 		chunk := stream.Current()
 		if len(chunk.Choices) == 0 {
@@ -305,24 +297,10 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		}
 
 		for _, tc := range delta.ToolCalls {
-			acc, ok := toolCalls[tc.Index]
-			if !ok {
-				acc = &toolCallAccum{}
-				toolCalls[tc.Index] = acc
-			}
-			if tc.ID != "" {
-				acc.id = tc.ID
-			}
-			if tc.Function.Name != "" {
-				acc.name.WriteString(tc.Function.Name)
-			}
-			if tc.Function.Arguments != "" {
-				acc.args.WriteString(tc.Function.Arguments)
-			}
-
 			select {
 			case ch <- artifact.ToolCallDelta{
-				ID:        acc.id,
+				Index:     int(tc.Index),
+				ID:        tc.ID,
 				Name:      tc.Function.Name,
 				Arguments: tc.Function.Arguments,
 			}:
@@ -334,26 +312,6 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 
 	if err := stream.Err(); err != nil {
 		return fmt.Errorf("streaming chat completion: %w", err)
-	}
-
-	if len(toolCalls) > 0 {
-		indices := make([]int64, 0, len(toolCalls))
-		for idx := range toolCalls {
-			indices = append(indices, idx)
-		}
-		sort.Slice(indices, func(i, j int) bool { return indices[i] < indices[j] })
-		for _, idx := range indices {
-			acc := toolCalls[idx]
-			select {
-			case ch <- artifact.ToolCall{
-				ID:        acc.id,
-				Name:      acc.name.String(),
-				Arguments: acc.args.String(),
-			}:
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-		}
 	}
 
 	return nil

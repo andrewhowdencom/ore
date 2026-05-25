@@ -3,10 +3,11 @@
 //
 // The provider contract is intentionally minimal: a single Invoke() method
 // that streams artifacts on the supplied channel in the exact order they are
-// received from the underlying LLM API. Adapters may accumulate only when the
-// native response cannot be expressed as a single canonical ore artifact (for
-// example, fragmented tool-call payloads). All other artifacts — TextDelta,
-// ReasoningDelta, etc. — must be emitted immediately.
+// received from the underlying LLM API. Adapters must emit canonical ore
+// artifact types (including delta types such as TextDelta, ToolCallDelta, and
+// ReasoningDelta) immediately; the core loop accumulates them into complete
+// artifacts. Adapters should not perform their own accumulation except when
+// the native format genuinely cannot be expressed as an ore artifact type.
 //
 // See the Provider interface in provider.go for the full contract and the
 // artifact package for the list of canonical types.

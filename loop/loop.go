@@ -191,12 +191,13 @@ func WithInvokeOptions(opts ...provider.InvokeOption) Option {
 
 // Turn performs one inference turn with the given provider.
 // The provider emits artifacts to a channel; all artifacts are forwarded to
-// the Step's FanOut subscribers immediately as they arrive. Artifacts are
-// accumulated into ordered blocks within the current turn: same-kind adjacent
-// deltas merge into one block, and a kind switch starts a new block. The
-// accumulated turn is appended to state once the provider returns. After the
-// turn completes, all registered handlers are invoked on each artifact from
-// the assistant turn. The operation is fully synchronous and blocking.
+// the Step's FanOut subscribers immediately as they arrive. Deltas implementing
+// Accumulable are merged into blocks keyed by AccumulatorKey, so non-adjacent
+// deltas of the same kind are combined into a single block. Accumulated blocks
+// are flushed on non-delta boundaries and at stream end. The accumulated turn
+// is appended to state once the provider returns. After the turn completes,
+// all registered handlers are invoked on each artifact from the assistant turn.
+// The operation is fully synchronous and blocking.
 func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, opts ...provider.InvokeOption) (state.State, error) {
 	defer s.clearEventContext()
 	var err error
@@ -215,78 +216,43 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		var currentBlock artifact.Artifact
+		accumulators := make(map[string]artifact.Artifact)
+		var keys []string
 
 		for art := range provCh {
-			switch d := art.(type) {
-			case artifact.TextDelta:
-				if text, ok := currentBlock.(artifact.Text); ok {
-					text.Content += d.Content
-					currentBlock = text
-					s.Emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
-					if ctx.Err() != nil {
-						return
-					}
-				} else {
-					if currentBlock != nil {
-						s.Emit(ctx, ArtifactEvent{Artifact: currentBlock, Ctx: s.eventContext})
-						if ctx.Err() != nil {
-							return
-						}
-						accumulatedArtifacts = append(accumulatedArtifacts, currentBlock)
-					}
-					currentBlock = artifact.Text(d)
-					s.Emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
-					if ctx.Err() != nil {
-						return
-					}
+			if d, ok := art.(artifact.Accumulable); ok {
+				key := d.AccumulatorKey()
+				if _, exists := accumulators[key]; !exists {
+					keys = append(keys, key)
 				}
-			case artifact.ReasoningDelta:
-				if reasoning, ok := currentBlock.(artifact.Reasoning); ok {
-					reasoning.Content += d.Content
-					currentBlock = reasoning
-					s.Emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
-					if ctx.Err() != nil {
-						return
-					}
-				} else {
-					if currentBlock != nil {
-						s.Emit(ctx, ArtifactEvent{Artifact: currentBlock, Ctx: s.eventContext})
-						if ctx.Err() != nil {
-							return
-						}
-						accumulatedArtifacts = append(accumulatedArtifacts, currentBlock)
-					}
-					currentBlock = artifact.Reasoning(d)
-					s.Emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
-					if ctx.Err() != nil {
-						return
-					}
-				}
-			default:
-				if currentBlock != nil {
-					s.Emit(ctx, ArtifactEvent{Artifact: currentBlock, Ctx: s.eventContext})
-					if ctx.Err() != nil {
-						return
-					}
-					accumulatedArtifacts = append(accumulatedArtifacts, currentBlock)
-					currentBlock = nil
-				}
+				accumulators[key] = d.MergeInto(accumulators[key])
 				s.Emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
 				if ctx.Err() != nil {
 					return
 				}
-				if _, ok := art.(artifact.ToolCallDelta); !ok {
-					accumulatedArtifacts = append(accumulatedArtifacts, art)
+			} else {
+				// Flush all accumulated artifacts before handling non-delta.
+				for _, key := range keys {
+					acc := accumulators[key]
+					s.Emit(ctx, ArtifactEvent{Artifact: acc, Ctx: s.eventContext})
+					accumulatedArtifacts = append(accumulatedArtifacts, acc)
 				}
+				accumulators = make(map[string]artifact.Artifact)
+				keys = nil
+
+				s.Emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
+				if ctx.Err() != nil {
+					return
+				}
+				accumulatedArtifacts = append(accumulatedArtifacts, art)
 			}
 		}
-		if currentBlock != nil {
-			s.Emit(ctx, ArtifactEvent{Artifact: currentBlock, Ctx: s.eventContext})
-			if ctx.Err() != nil {
-				return
-			}
-			accumulatedArtifacts = append(accumulatedArtifacts, currentBlock)
+
+		// Flush remaining accumulated artifacts at stream end.
+		for _, key := range keys {
+			acc := accumulators[key]
+			s.Emit(ctx, ArtifactEvent{Artifact: acc, Ctx: s.eventContext})
+			accumulatedArtifacts = append(accumulatedArtifacts, acc)
 		}
 	}()
 
