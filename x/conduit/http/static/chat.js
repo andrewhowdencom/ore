@@ -211,7 +211,14 @@ function handleEvent(event) {
     }
 
     if (event.kind === 'turn_complete') {
-        if (event.turn && event.turn.role === 'assistant') {
+        return;
+    }
+
+    if (event.kind === 'process_complete') {
+        if (event.error) {
+            playError();
+            setStatus('Error: ' + (event.error || 'Unknown error'));
+        } else {
             playDone();
         }
         finalizeTurn();
