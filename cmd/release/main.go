@@ -58,11 +58,6 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  -dry-run        Print actions without executing them")
 }
 
-func runStatus(dryRun bool, args []string) error {
-	fmt.Println("status: not yet implemented")
-	return nil
-}
-
 func runAll(dryRun bool, args []string) error {
 	fmt.Println("all: not yet implemented")
 	return nil
