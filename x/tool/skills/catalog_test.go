@@ -180,3 +180,32 @@ func TestCatalog_RefreshSkipsFailingDiscoverer(t *testing.T) {
 	assert.Len(t, meta, 1)
 	assert.Equal(t, "good-skill", meta[0].Name)
 }
+
+func TestCatalog_SystemPromptFragment(t *testing.T) {
+	t.Parallel()
+	d := &mockDiscoverer{
+		meta: []SkillMeta{
+			{Name: "beta", Description: "second skill"},
+			{Name: "alpha", Description: "first skill"},
+		},
+	}
+	c := NewCatalog(d)
+	fragment := c.SystemPromptFragment(context.Background())
+
+	expected := "You have access to the following specialized skills. Use read_skill(name=<skill>) to load detailed instructions when needed:\n\n- alpha: first skill\n- beta: second skill"
+	assert.Equal(t, expected, fragment)
+}
+
+func TestCatalog_SystemPromptFragment_Empty(t *testing.T) {
+	t.Parallel()
+	c := NewCatalog()
+	fragment := c.SystemPromptFragment(context.Background())
+	assert.Empty(t, fragment)
+}
+
+func TestCatalog_SystemPromptFragment_Error(t *testing.T) {
+	t.Parallel()
+	c := NewCatalog(&failingDiscoverer{})
+	fragment := c.SystemPromptFragment(context.Background())
+	assert.Empty(t, fragment)
+}
