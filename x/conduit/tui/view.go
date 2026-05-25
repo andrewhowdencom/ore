@@ -20,6 +20,10 @@ var (
 	statusStyle = lipgloss.NewStyle().Faint(true).Italic(true)
 	// thinkingStyle styles reasoning/thinking content faint and italic.
 	thinkingStyle = lipgloss.NewStyle().Faint(true).Italic(true)
+	// reasoningExpandedStyle styles the full reasoning content body when
+	// expanded, making it visually subdued so it does not look like normal
+	// assistant text.
+	reasoningExpandedStyle = lipgloss.NewStyle().Faint(true)
 	// toolCallStyle styles tool call notifications faint and italic.
 	toolCallStyle = lipgloss.NewStyle().Faint(true).Italic(true)
 	// toolErrorStyle styles tool error output in red.
@@ -90,13 +94,18 @@ func (m *model) buildContent() string {
 				// Reasoning blocks are rendered through the same Markdown pipeline
 				// as text blocks; the rendered ANSI is cached in renderedBlock.rendered.
 				case "reasoning":
-					if block.rendered != "" {
-						b.WriteString(renderBlock("Thinking: ", thinkingStyle, block.rendered, 0))
+					isExpanded := isLatestAssistant && m.expandLatestDetails
+					if !isExpanded {
+						b.WriteString(thinkingStyle.Render("Thinking..."))
 					} else {
-						b.WriteString(renderBlock("Thinking: ", thinkingStyle, block.source, width))
+						if block.rendered != "" {
+							b.WriteString(renderBlock("Thinking: ", thinkingStyle, reasoningExpandedStyle.Render(block.rendered), 0))
+						} else {
+							b.WriteString(renderBlock("Thinking: ", thinkingStyle, reasoningExpandedStyle.Render(block.source), width))
+						}
 					}
 				case "tool_call":
-					isExpanded := isLatestAssistant && m.expandLatestTools
+					isExpanded := isLatestAssistant && m.expandLatestDetails
 					content := block.compact
 					if content == "" || isExpanded {
 						content = block.source
@@ -117,7 +126,7 @@ func (m *model) buildContent() string {
 				case "text":
 					b.WriteString(renderBlock("Tool: ", lipgloss.NewStyle(), block.source, width))
 				case "tool_result":
-					isExpanded := isAfterLatestAssistant && m.expandLatestTools
+					isExpanded := isAfterLatestAssistant && m.expandLatestDetails
 					content := block.compact
 					if content == "" || isExpanded {
 						content = block.source
