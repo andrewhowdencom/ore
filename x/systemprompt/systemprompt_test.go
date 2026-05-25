@@ -115,4 +115,107 @@ func TestTransform_DynamicContent(t *testing.T) {
 	assert.Equal(t, "second prompt", text.Content)
 }
 
+func TestTransform_MultipleContentFuncs(t *testing.T) {
+	tr, err := New(WithContentFuncs(
+		func() string { return "First fragment." },
+		func() string { return "Second fragment." },
+	))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, state.RoleSystem, turns[0].Role)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "First fragment.\n\nSecond fragment.", text.Content)
+}
+
+func TestTransform_MultipleWithContentFuncCalls(t *testing.T) {
+	tr, err := New(
+		WithContentFunc(func() string { return "First." }),
+		WithContentFunc(func() string { return "Second." }),
+	)
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "First.\n\nSecond.", text.Content)
+}
+
+func TestTransform_EmptyFragmentSkipped(t *testing.T) {
+	tr, err := New(WithContentFuncs(
+		func() string { return "" },
+		func() string { return "Middle." },
+		func() string { return "" },
+	))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "Middle.", text.Content)
+}
+
+func TestTransform_AllEmptyFragments(t *testing.T) {
+	tr, err := New(WithContentFuncs(
+		func() string { return "" },
+		func() string { return "" },
+	))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Empty(t, text.Content)
+}
+
+func TestTransform_NilFuncSkipped(t *testing.T) {
+	tr, err := New(WithContentFuncs(
+		func() string { return "Before." },
+		nil,
+		func() string { return "After." },
+	))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "Before.\n\nAfter.", text.Content)
+}
+
 
