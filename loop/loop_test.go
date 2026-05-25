@@ -494,19 +494,15 @@ func TestStep_Turn_AccumulatesInterleavedDeltas(t *testing.T) {
 
 	last := turns[1]
 	assert.Equal(t, state.RoleAssistant, last.Role)
-	require.Len(t, last.Artifacts, 3)
+	require.Len(t, last.Artifacts, 2)
 
 	text, ok := last.Artifacts[0].(artifact.Text)
 	require.True(t, ok)
-	assert.Equal(t, "Hello", text.Content)
+	assert.Equal(t, "Hello world", text.Content)
 
 	reasoning, ok := last.Artifacts[1].(artifact.Reasoning)
 	require.True(t, ok)
 	assert.Equal(t, "think", reasoning.Content)
-
-	text, ok = last.Artifacts[2].(artifact.Text)
-	require.True(t, ok)
-	assert.Equal(t, " world", text.Content)
 }
 
 func TestStep_Turn_AccumulatesAdjacentDeltas(t *testing.T) {
@@ -541,6 +537,44 @@ func TestStep_Turn_AccumulatesAdjacentDeltas(t *testing.T) {
 	reasoning, ok := last.Artifacts[1].(artifact.Reasoning)
 	require.True(t, ok)
 	assert.Equal(t, "think...done", reasoning.Content)
+}
+
+func TestStep_Turn_AccumulatesInterleavedToolCalls(t *testing.T) {
+	s := New()
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.ToolCallDelta{Index: 0, ID: "call_1", Name: "search", Arguments: "query"},
+			artifact.ToolCallDelta{Index: 1, ID: "call_2", Name: "calc", Arguments: "1+"},
+			artifact.ToolCallDelta{Index: 0, Arguments: "=test"},
+			artifact.ToolCallDelta{Index: 1, Arguments: "1"},
+		},
+	}
+
+	result, err := s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+	assert.Same(t, mem, result)
+
+	turns := mem.Turns()
+	require.Len(t, turns, 2)
+
+	last := turns[1]
+	assert.Equal(t, state.RoleAssistant, last.Role)
+	require.Len(t, last.Artifacts, 2)
+
+	tc0, ok := last.Artifacts[0].(artifact.ToolCall)
+	require.True(t, ok)
+	assert.Equal(t, "call_1", tc0.ID)
+	assert.Equal(t, "search", tc0.Name)
+	assert.Equal(t, "query=test", tc0.Arguments)
+
+	tc1, ok := last.Artifacts[1].(artifact.ToolCall)
+	require.True(t, ok)
+	assert.Equal(t, "call_2", tc1.ID)
+	assert.Equal(t, "calc", tc1.Name)
+	assert.Equal(t, "1+1", tc1.Arguments)
 }
 
 func TestStep_Turn_OutputEventsWithHandler(t *testing.T) {
