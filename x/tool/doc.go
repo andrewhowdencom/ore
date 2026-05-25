@@ -1,6 +1,10 @@
 // Package tool provides the loop.Handler bridge, concrete tool implementations,
 // and tool discovery mechanisms for ore.
 //
+// Note: this is the x/tool extension package; it is typically imported as
+// xtool (e.g. xtool "github.com/andrewhowdencom/ore/x/tool") to differentiate
+// from the core tool package that defines the contracts.
+//
 // The core tool execution contracts (Registry interface, ToolFunc, RemoteSource,
 // and ValidateSchema) live in the root tool/ package. This extension package
 // bridges those contracts to the loop framework via Handler, and provides

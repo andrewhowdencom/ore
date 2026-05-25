@@ -100,6 +100,8 @@ func run() error {
 	//       xtool "github.com/andrewhowdencom/ore/x/tool"
 	//   )
 	//
+	//   // xtool is an alias for the extension package that provides the
+	//   // NewHandler bridge; the core tool package supplies the Registry.
 	//   registry := tool.NewRegistry()
 	//   if err := registry.Register("calculator", "A simple calculator", map[string]any{"type": "object"}, func(ctx context.Context, args map[string]any) (any, error) {
 	//       return "42", nil
