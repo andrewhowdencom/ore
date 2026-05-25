@@ -22,16 +22,40 @@ var (
 	_ tool.ToolFunc = SearchFiles
 )
 
+// resolvePath resolves a path through a sandbox when available. If sb is nil
+// or does not implement FileSandbox, the path is returned as-is (allowing
+// absolute paths). If sb implements FileSandbox, the path is resolved
+// relative to the sandbox root and absolute paths are rejected.
+func resolvePath(sb tool.Sandbox, path string) (string, error) {
+	if sb == nil {
+		return path, nil
+	}
+	fsb, ok := sb.(tool.FileSandbox)
+	if !ok {
+		return path, nil
+	}
+	if filepath.IsAbs(path) {
+		return "", fmt.Errorf("absolute paths not allowed in sandbox %q", sb.Name())
+	}
+	return fsb.ResolvePath(path)
+}
+
 // ReadFile reads a file and returns its contents with line-number prefixes.
 // Parameters:
 //   - path (string, required): relative or absolute file path.
 //   - offset (number, optional, default 1): 1-based starting line.
 //   - limit  (number, optional, default 0): maximum lines to return (0 = no limit).
-func ReadFile(ctx context.Context, args map[string]any) (any, error) {
+func ReadFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error) {
 	path := toString(args["path"])
 	if path == "" {
 		return nil, fmt.Errorf("path is required")
 	}
+
+	resolved, err := resolvePath(sb, path)
+	if err != nil {
+		return nil, err
+	}
+	path = resolved
 
 	offset := toInt(args["offset"], 1)
 	if offset < 1 {
@@ -112,11 +136,17 @@ var ReadFileTool = provider.Tool{
 // Parameters:
 //   - path    (string, required): relative or absolute file path.
 //   - content (string, required): file contents to write.
-func WriteFile(ctx context.Context, args map[string]any) (any, error) {
+func WriteFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error) {
 	path := toString(args["path"])
 	if path == "" {
 		return nil, fmt.Errorf("path is required")
 	}
+
+	resolved, err := resolvePath(sb, path)
+	if err != nil {
+		return nil, err
+	}
+	path = resolved
 
 	content := toString(args["content"])
 
@@ -161,11 +191,17 @@ var WriteFileTool = provider.Tool{
 //   - path       (string, required): relative or absolute file path.
 //   - old_string (string, required): exact text to search for.
 //   - new_string (string, required): replacement text.
-func EditFile(ctx context.Context, args map[string]any) (any, error) {
+func EditFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error) {
 	path := toString(args["path"])
 	if path == "" {
 		return nil, fmt.Errorf("path is required")
 	}
+
+	resolved, err := resolvePath(sb, path)
+	if err != nil {
+		return nil, err
+	}
+	path = resolved
 
 	oldStr := toString(args["old_string"])
 	if oldStr == "" {
@@ -219,11 +255,17 @@ var EditFileTool = provider.Tool{
 // ListDirectory returns a shallow listing of non-hidden entries in a directory.
 // Parameters:
 //   - path (string, required): relative or absolute directory path.
-func ListDirectory(ctx context.Context, args map[string]any) (any, error) {
+func ListDirectory(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error) {
 	path := toString(args["path"])
 	if path == "" {
 		return nil, fmt.Errorf("path is required")
 	}
+
+	resolved, err := resolvePath(sb, path)
+	if err != nil {
+		return nil, err
+	}
+	path = resolved
 
 	info, err := os.Stat(path)
 	if err != nil {
@@ -281,11 +323,18 @@ type SearchResult struct {
 // Parameters:
 //   - path  (string, required): file or directory path to search.
 //   - query (string, required): regex pattern to match.
-func SearchFiles(ctx context.Context, args map[string]any) (any, error) {
+func SearchFiles(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error) {
 	path := toString(args["path"])
 	if path == "" {
 		return nil, fmt.Errorf("path is required")
 	}
+
+	resolved, err := resolvePath(sb, path)
+	if err != nil {
+		return nil, err
+	}
+	path = resolved
+
 	query := toString(args["query"])
 	if query == "" {
 		return nil, fmt.Errorf("query is required")

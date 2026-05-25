@@ -50,7 +50,7 @@ func TestHandler_UnknownTool(t *testing.T) {
 
 func TestHandler_ExecutesRegisteredTool(t *testing.T) {
 	r := toolpkg.NewRegistry()
-	require.NoError(t, r.Register("add", "Add two numbers", map[string]any{"type": "object"}, func(ctx context.Context, args map[string]any) (any, error) {
+	require.NoError(t, r.Register("add", "Add two numbers", map[string]any{"type": "object"}, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
 		a, _ := args["a"].(float64)
 		b, _ := args["b"].(float64)
 		return a + b, nil
@@ -79,7 +79,7 @@ func TestHandler_ExecutesRegisteredTool(t *testing.T) {
 
 func TestHandler_InvalidArguments(t *testing.T) {
 	r := toolpkg.NewRegistry()
-	require.NoError(t, r.Register("add", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
+	require.NoError(t, r.Register("add", "", nil, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
 		return nil, nil
 	}))
 	h := NewHandler(r)
@@ -103,7 +103,7 @@ func TestHandler_InvalidArguments(t *testing.T) {
 
 func TestHandler_ToolExecutionError(t *testing.T) {
 	r := toolpkg.NewRegistry()
-	require.NoError(t, r.Register("fail", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
+	require.NoError(t, r.Register("fail", "", nil, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
 		return nil, errors.New("boom")
 	}))
 	h := NewHandler(r)
@@ -127,7 +127,7 @@ func TestHandler_ToolExecutionError(t *testing.T) {
 
 func TestHandler_SerializationError(t *testing.T) {
 	r := toolpkg.NewRegistry()
-	require.NoError(t, r.Register("bad", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
+	require.NoError(t, r.Register("bad", "", nil, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
 		// Return a channel, which cannot be JSON-serialized.
 		return make(chan int), nil
 	}))
@@ -152,7 +152,7 @@ func TestHandler_SerializationError(t *testing.T) {
 
 func TestHandler_EmptyArguments(t *testing.T) {
 	r := toolpkg.NewRegistry()
-	require.NoError(t, r.Register("noop", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
+	require.NoError(t, r.Register("noop", "", nil, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
 		return "done", nil
 	}))
 	h := NewHandler(r)
@@ -175,7 +175,7 @@ func TestHandler_EmptyArguments(t *testing.T) {
 
 func TestHandler_ArrayReturnValue(t *testing.T) {
 	r := toolpkg.NewRegistry()
-	require.NoError(t, r.Register("list", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
+	require.NoError(t, r.Register("list", "", nil, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
 		return []int{1, 2, 3}, nil
 	}))
 	h := NewHandler(r)
@@ -353,4 +353,134 @@ func (m *mockRemoteSource) Tools() []provider.Tool {
 }
 func (m *mockRemoteSource) Call(ctx context.Context, name string, args map[string]any) (any, error) {
 	return "remote-result", nil
+}
+
+type mockSandbox struct {
+	name string
+}
+
+func (m *mockSandbox) Name() string { return m.name }
+
+func TestHandler_ResolvesSandboxFromArgs(t *testing.T) {
+	r := toolpkg.NewRegistry().(toolpkg.SandboxRegistry)
+	var calledWith toolpkg.Sandbox
+	require.NoError(t, r.Register("check", "", nil, func(ctx context.Context, sb toolpkg.Sandbox, args map[string]any) (any, error) {
+		calledWith = sb
+		return "ok", nil
+	}))
+
+	sb := &mockSandbox{name: "worktree"}
+	r.RegisterSandbox("worktree", sb)
+
+	h := NewHandler(r)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	err := h.Handle(context.Background(), artifact.ToolCall{
+		ID:        "call_1",
+		Name:      "check",
+		Arguments: `{"sandbox": "worktree"}`,
+	}, mem)
+	require.NoError(t, err)
+
+	assert.Equal(t, sb, calledWith)
+}
+
+func TestHandler_UsesDefaultSandbox(t *testing.T) {
+	r := toolpkg.NewRegistry().(toolpkg.SandboxRegistry)
+	var calledWith toolpkg.Sandbox
+	require.NoError(t, r.Register("check", "", nil, func(ctx context.Context, sb toolpkg.Sandbox, args map[string]any) (any, error) {
+		calledWith = sb
+		return "ok", nil
+	}))
+
+	defaultSb := &mockSandbox{name: "default"}
+	r.SetDefaultSandbox(defaultSb)
+
+	h := NewHandler(r)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	err := h.Handle(context.Background(), artifact.ToolCall{
+		ID:        "call_1",
+		Name:      "check",
+		Arguments: `{}`,
+	}, mem)
+	require.NoError(t, err)
+
+	assert.Equal(t, defaultSb, calledWith)
+}
+
+func TestHandler_StripsSandboxArg(t *testing.T) {
+	r := toolpkg.NewRegistry().(toolpkg.SandboxRegistry)
+	var receivedArgs map[string]any
+	require.NoError(t, r.Register("echo", "", nil, func(ctx context.Context, sb toolpkg.Sandbox, args map[string]any) (any, error) {
+		receivedArgs = args
+		return "ok", nil
+	}))
+
+	sb := &mockSandbox{name: "worktree"}
+	r.RegisterSandbox("worktree", sb)
+
+	h := NewHandler(r)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	err := h.Handle(context.Background(), artifact.ToolCall{
+		ID:        "call_1",
+		Name:      "echo",
+		Arguments: `{"sandbox": "worktree", "msg": "hello"}`,
+	}, mem)
+	require.NoError(t, err)
+
+	_, hasSandbox := receivedArgs["sandbox"]
+	assert.False(t, hasSandbox)
+	assert.Equal(t, "hello", receivedArgs["msg"])
+}
+
+func TestHandler_MissingSandboxName(t *testing.T) {
+	r := toolpkg.NewRegistry().(toolpkg.SandboxRegistry)
+	var calledWith toolpkg.Sandbox
+	require.NoError(t, r.Register("check", "", nil, func(ctx context.Context, sb toolpkg.Sandbox, args map[string]any) (any, error) {
+		calledWith = sb
+		return "ok", nil
+	}))
+
+	sb := &mockSandbox{name: "worktree"}
+	r.RegisterSandbox("worktree", sb)
+
+	h := NewHandler(r)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	err := h.Handle(context.Background(), artifact.ToolCall{
+		ID:        "call_1",
+		Name:      "check",
+		Arguments: `{"sandbox": "nonexistent"}`,
+	}, mem)
+	require.NoError(t, err)
+
+	assert.Nil(t, calledWith)
+}
+
+func TestHandler_PassesNilWhenNoSandboxRegistry(t *testing.T) {
+	var calledWith toolpkg.Sandbox
+	r := toolpkg.NewRegistry()
+	require.NoError(t, r.Register("check", "", nil, func(ctx context.Context, sb toolpkg.Sandbox, args map[string]any) (any, error) {
+		calledWith = sb
+		return "ok", nil
+	}))
+
+	h := NewHandler(r)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	err := h.Handle(context.Background(), artifact.ToolCall{
+		ID:        "call_1",
+		Name:      "check",
+		Arguments: `{}`,
+	}, mem)
+	require.NoError(t, err)
+
+	assert.Nil(t, calledWith)
 }

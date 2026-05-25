@@ -38,7 +38,7 @@
 //	)
 //
 //	registry := tool.NewRegistry()
-//	if err := registry.Register("add", "Add two numbers", schema, func(ctx context.Context, args map[string]any) (any, error) {
+//	if err := registry.Register("add", "Add two numbers", schema, func(ctx context.Context, _ tool.Sandbox, args map[string]any) (any, error) {
 //	    a, _ := args["a"].(float64)
 //	    b, _ := args["b"].(float64)
 //	    return a + b, nil

@@ -20,7 +20,11 @@ var _ tool.ToolFunc = Bash
 //   - command (string, required): the shell command to execute.
 //   - working_directory (string, optional): the directory to execute the command in.
 //   - timeout_seconds (number, optional, default 30): maximum execution time in seconds.
-func Bash(ctx context.Context, args map[string]any) (any, error) {
+func Bash(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error) {
+	if sb == nil {
+		return nil, fmt.Errorf("sandbox required for bash tool")
+	}
+
 	command := toString(args["command"])
 	if command == "" {
 		return nil, fmt.Errorf("command is required")
@@ -31,6 +35,39 @@ func Bash(ctx context.Context, args map[string]any) (any, error) {
 	timeout := toInt(args["timeout_seconds"], 30)
 	if timeout <= 0 {
 		timeout = 30
+	}
+
+	// Delegate to ExecSandbox if available.
+	if execSb, ok := sb.(tool.ExecSandbox); ok {
+		dir := workingDir
+		if dir == "" {
+			if fsb, ok := sb.(tool.FileSandbox); ok {
+				dir = fsb.WorkingDirectory()
+			}
+		}
+		stdout, stderr, exitCode, err := execSb.Run(ctx, command, dir, secondsToDuration(timeout))
+		if err != nil {
+			if exitCode != 0 {
+				return map[string]any{
+					"stdout":    stdout,
+					"stderr":    stderr,
+					"exit_code": exitCode,
+				}, fmt.Errorf("command exited with code %d", exitCode)
+			}
+			return nil, fmt.Errorf("command execution failed: %w", err)
+		}
+		return map[string]any{
+			"stdout":    stdout,
+			"stderr":    stderr,
+			"exit_code": 0,
+		}, nil
+	}
+
+	// Fallback: use FileSandbox.WorkingDirectory() as default cwd.
+	if fsb, ok := sb.(tool.FileSandbox); ok {
+		if workingDir == "" {
+			workingDir = fsb.WorkingDirectory()
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, secondsToDuration(timeout))
