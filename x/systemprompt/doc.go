@@ -8,6 +8,11 @@
 // between turns — for example, by reading from thread metadata that a
 // tool call has updated mid-session.
 //
+// Multiple content functions can be composed via WithContentFunc or
+// WithContentFuncs. Fragments are evaluated in registration order,
+// empty results are omitted, and non-empty results are concatenated
+// with "\n\n" separators into a single RoleSystem turn.
+//
 // # Usage
 //
 //	import "github.com/andrewhowdencom/ore/x/systemprompt"
@@ -17,6 +22,16 @@
 //	transform := systemprompt.New(systemprompt.WithContentFunc(func() string {
 //		return "You are a helpful assistant."
 //	}))
+//	step := loop.New(loop.WithTransforms(transform))
+//
+// Composable prompt fragments from multiple sources:
+//
+//	transform := systemprompt.New(
+//		systemprompt.WithContentFunc(func() string {
+//			return "You are a helpful assistant."
+//		}),
+//		systemprompt.WithContentFuncs(skills.Fragment, guardrails.Fragment),
+//	)
 //	step := loop.New(loop.WithTransforms(transform))
 //
 // Dynamic system prompt that reads from thread metadata:
@@ -30,7 +45,7 @@
 //	}))
 //	step := loop.New(loop.WithTransforms(transform))
 //
-// The content function is re-evaluated on every Transform call, so
+// Content functions are re-evaluated on every Transform call, so
 // applications can close over mutable state (e.g., thread.Metadata) to
 // switch personas or roles dynamically.
 package systemprompt

@@ -2,6 +2,7 @@ package systemprompt
 
 import (
 	"context"
+	"strings"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
@@ -12,23 +13,38 @@ import (
 // It implements loop.Transform, injecting a RoleSystem turn with a
 // text artifact without mutating the underlying persistent buffer.
 type Transform struct {
-	contentFunc func() string
+	contentFuncs []func() string
 }
 
 // config holds the internal options for the Transform.
 type config struct {
-	contentFunc func() string
+	contentFuncs []func() string
 }
 
 // Option configures the Transform.
 type Option func(*config)
 
-// WithContentFunc sets a function that returns the system prompt content.
-// The function is evaluated on every Transform call, enabling dynamic
-// system prompts that can change between turns (e.g., from thread metadata).
+// WithContentFunc adds a single function that returns a prompt fragment.
+// Multiple calls accumulate; fragments are evaluated in order and
+// concatenated with "\n\n" separators on each Transform call.
 func WithContentFunc(fn func() string) Option {
 	return func(c *config) {
-		c.contentFunc = fn
+		if fn != nil {
+			c.contentFuncs = append(c.contentFuncs, fn)
+		}
+	}
+}
+
+// WithContentFuncs adds multiple functions that return prompt fragments.
+// Fragments are evaluated in order and concatenated with "\n\n"
+// separators on each Transform call. Nil functions are skipped.
+func WithContentFuncs(fns ...func() string) Option {
+	return func(c *config) {
+		for _, fn := range fns {
+			if fn != nil {
+				c.contentFuncs = append(c.contentFuncs, fn)
+			}
+		}
 	}
 }
 
@@ -38,19 +54,28 @@ func New(opts ...Option) (loop.Transform, error) {
 	for _, opt := range opts {
 		opt(cfg)
 	}
-	if cfg.contentFunc == nil {
-		cfg.contentFunc = func() string { return "" }
-	}
-	return &Transform{contentFunc: cfg.contentFunc}, nil
+	return &Transform{contentFuncs: cfg.contentFuncs}, nil
 }
 
 // Transform implements loop.Transform. It returns a state view with a
 // RoleSystem turn prepended before the base state's turns.
+// Fragments are evaluated in registration order, empty results are omitted,
+// and non-empty results are joined with "\n\n".
 func (t *Transform) Transform(ctx context.Context, st state.State) (state.State, error) {
+	var parts []string
+	for _, fn := range t.contentFuncs {
+		if fn == nil {
+			continue
+		}
+		if s := fn(); s != "" {
+			parts = append(parts, s)
+		}
+	}
+
 	virtual := []state.Turn{
 		{
 			Role:      state.RoleSystem,
-			Artifacts: []artifact.Artifact{artifact.Text{Content: t.contentFunc()}},
+			Artifacts: []artifact.Artifact{artifact.Text{Content: strings.Join(parts, "\n\n")}},
 		},
 	}
 	return state.NewVirtualTurnState(st, virtual), nil
