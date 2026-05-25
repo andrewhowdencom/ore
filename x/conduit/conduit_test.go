@@ -16,7 +16,7 @@ func TestCapabilityConstants_NonEmpty(t *testing.T) {
 		CapRenderTurn,
 		CapRenderMarkdown,
 		CapRenderImage,
-		CapRenderAudio,
+		CapAudioNotification,
 		CapAcceptText,
 		CapAcceptImage,
 		CapAcceptVoice,
