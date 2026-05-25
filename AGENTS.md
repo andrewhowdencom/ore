@@ -49,6 +49,20 @@ The provider contract is intentionally minimal: a single `Invoke(ctx, State) ([]
 
 The `loop.Step` is a thin orchestrator. A `Turn()` method calls the provider, appends returned artifacts to state with `RoleAssistant`, and returns the mutated state. It does not handle retries, tool execution, or multi-turn looping — those are application-layer concerns.
 
+### Transform
+
+`loop.Transform` is an extension point that injects context into a turn without mutating the persistent buffer. Transforms receive the current `state.State`, return a modified copy, and the `loop.Step` executes the provider against the transformed state. This enables system prompts, guardrails, and other per-turn augmentations to live outside the core.
+
+Examples: `x/systemprompt` injects a system message; `x/guardrails` validates or blocks content before it reaches the provider.
+
+### Tool
+
+The `tool/` package defines the core tool execution framework. A `ToolFunc` receives a `Sandbox` interface that provides isolation capabilities. Tools opt into available sandbox features via type assertions:
+
+- `Sandbox` — base interface with `Name()`. A nil sandbox means no isolation; tools execute against the host filesystem and process space.
+- `FileSandbox` — extends `Sandbox` with `ResolvePath()` and `WorkingDirectory()` for filesystem constraints.
+- `ExecSandbox` — extends `Sandbox` with `Run()` for process isolation.
+
 ## Implementation Conventions
 
 ### Dependencies
@@ -78,6 +92,7 @@ Use the functional options pattern for constructors with optional parameters (e.
 
 - **Examples** (`examples/`) are reference implementations demonstrating how to compose the framework. They may be minimal, hardcoded, or environment-variable-driven.
 - **Commands** (`cmd/`) are maintained, first-class applications with longer lifespans and stronger operational requirements.
+- **Agent** (`agent/`) is a reusable multi-conduit orchestration container that wires multiple conduits to a shared `session.Manager`. It sits between core framework and application as a composable runtime scaffold.
 
 Do not conflate the two. If a binary is a validation tool or tutorial, it belongs in `examples/`. If it is a product or service, it belongs in `cmd/`.
 
