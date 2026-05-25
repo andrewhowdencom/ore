@@ -99,7 +99,22 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, s state.Sta
 		return nil
 	}
 
-	result, err := fn(ctx, args)
+	// Resolve sandbox for this tool call. The handler checks three sources
+	// in order: an explicit "sandbox" argument in the tool call, the
+	// registry's default sandbox, or nil if the registry does not support
+	// sandboxes. The "sandbox" key is removed from args so tools do not
+	// see it in their argument map.
+	var sb toolpkg.Sandbox
+	if sbReg, ok := h.registry.(toolpkg.SandboxRegistry); ok {
+		if name, ok := args["sandbox"].(string); ok {
+			sb, _ = sbReg.LookupSandbox(name)
+			delete(args, "sandbox")
+		} else {
+			sb = sbReg.DefaultSandbox()
+		}
+	}
+
+	result, err := fn(ctx, sb, args)
 	if err != nil {
 		s.Append(state.RoleTool, artifact.ToolResult{
 			ToolCallID: tc.ID,
