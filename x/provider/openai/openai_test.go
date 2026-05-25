@@ -684,33 +684,26 @@ func TestProviderInvoke_ToolCallDeltaAccumulation(t *testing.T) {
 	require.NoError(t, err)
 
 	artifacts := drainArtifacts(ch)
-	// ToolCallDelta x2, ToolCall — fragments accumulated into complete artifact.
-	require.Len(t, artifacts, 3)
+	// Only raw ToolCallDelta chunks; provider no longer accumulates or emits complete ToolCall artifacts.
+	require.Len(t, artifacts, 2)
 
 	// First chunk: full ID and Name, partial Arguments.
 	assert.Equal(t, "tool_call_delta", artifacts[0].Kind())
 	td0, ok := artifacts[0].(artifact.ToolCallDelta)
 	require.True(t, ok)
+	assert.Equal(t, 0, td0.Index)
 	assert.Equal(t, "call_1", td0.ID)
 	assert.Equal(t, "search", td0.Name)
 	assert.Equal(t, "first_", td0.Arguments)
 
-	// Second chunk: empty ID/Name (not present in this chunk), partial Arguments.
-	// ID is carried over from accumulated state in the provider.
+	// Second chunk: raw chunk data (empty ID/Name in this SSE chunk), partial Arguments.
 	assert.Equal(t, "tool_call_delta", artifacts[1].Kind())
 	td1, ok := artifacts[1].(artifact.ToolCallDelta)
 	require.True(t, ok)
-	assert.Equal(t, "call_1", td1.ID)
+	assert.Equal(t, 0, td1.Index)
+	assert.Empty(t, td1.ID)
 	assert.Empty(t, td1.Name)
 	assert.Equal(t, "second", td1.Arguments)
-
-	// Complete artifact after stream ends.
-	assert.Equal(t, "tool_call", artifacts[2].Kind())
-	tc, ok := artifacts[2].(artifact.ToolCall)
-	require.True(t, ok)
-	assert.Equal(t, "call_1", tc.ID)
-	assert.Equal(t, "search", tc.Name)
-	assert.Equal(t, "first_second", tc.Arguments)
 }
 
 func TestProviderInvoke_EmptyToolsOmitted(t *testing.T) {
