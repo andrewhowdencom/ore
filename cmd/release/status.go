@@ -26,6 +26,7 @@ func runStatus(dryRun bool, args []string) error {
 		count   int
 	}
 	var lines []line
+	cache := newCommitCache()
 
 	for _, m := range modules {
 		tag, err := latestTag(root, m.Dir)
@@ -42,7 +43,7 @@ func runStatus(dryRun bool, args []string) error {
 			}
 		}
 
-		commits, err := commitsSinceTag(root, tag)
+		commits, err := commitsSinceTag(root, tag, cache)
 		if err != nil {
 			return fmt.Errorf("commits since %q for %s: %w", tag, m.Path, err)
 		}

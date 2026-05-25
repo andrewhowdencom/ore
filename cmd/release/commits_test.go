@@ -20,7 +20,7 @@ func TestCommitsSinceTag(t *testing.T) {
 	// Commit 3
 	commitFile(t, dir, "fix.go", "fix: bugfix")
 
-	commits, err := commitsSinceTag(dir, "v0.1.0")
+	commits, err := commitsSinceTag(dir, "v0.1.0", newCommitCache())
 	if err != nil {
 		t.Fatalf("commitsSinceTag: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestCommitsSinceTag_Empty(t *testing.T) {
 	commitFile(t, dir, "main.go", "init")
 	exec.Command("git", "-C", dir, "tag", "v1.0.0").Run()
 
-	commits, err := commitsSinceTag(dir, "v1.0.0")
+	commits, err := commitsSinceTag(dir, "v1.0.0", newCommitCache())
 	if err != nil {
 		t.Fatalf("commitsSinceTag: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestCommitsSinceTag_NoTag(t *testing.T) {
 	commitFile(t, dir, "a.go", "first")
 	commitFile(t, dir, "b.go", "second")
 
-	commits, err := commitsSinceTag(dir, "")
+	commits, err := commitsSinceTag(dir, "", newCommitCache())
 	if err != nil {
 		t.Fatalf("commitsSinceTag: %v", err)
 	}

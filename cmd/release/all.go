@@ -60,10 +60,11 @@ func runAll(dryRun bool, args []string) error {
 		count   int
 	}
 	var targets []target
+	cache := newCommitCache()
 
 	for _, m := range modules {
 		tag := latestTagMap[m.Path]
-		commits, err := commitsSinceTag(root, tag)
+		commits, err := commitsSinceTag(root, tag, cache)
 		if err != nil {
 			return err
 		}

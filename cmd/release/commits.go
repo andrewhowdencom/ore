@@ -14,9 +14,48 @@ type Commit struct {
 	Files   []string
 }
 
+// commitCache caches commit metadata (messages and file lists) keyed by SHA.
+// It is used to avoid redundant git subprocess calls when the same commits are
+// examined across multiple modules.
+type commitCache struct {
+	messages map[string]string
+	fileMap  map[string][]string
+}
+
+func newCommitCache() *commitCache {
+	return &commitCache{
+		messages: make(map[string]string),
+		fileMap:  make(map[string][]string),
+	}
+}
+
+func (c *commitCache) message(root, sha string) (string, error) {
+	if msg, ok := c.messages[sha]; ok {
+		return msg, nil
+	}
+	msg, err := commitMessage(root, sha)
+	if err != nil {
+		return "", err
+	}
+	c.messages[sha] = msg
+	return msg, nil
+}
+
+func (c *commitCache) files(root, sha string) ([]string, error) {
+	if fs, ok := c.fileMap[sha]; ok {
+		return fs, nil
+	}
+	fs, err := commitFiles(root, sha)
+	if err != nil {
+		return nil, err
+	}
+	c.fileMap[sha] = fs
+	return fs, nil
+}
+
 // commitsSinceTag returns all commits after the given tag up to HEAD.
 // If tag is empty, all commits reachable from HEAD are returned.
-func commitsSinceTag(root, tag string) ([]Commit, error) {
+func commitsSinceTag(root, tag string, cache *commitCache) ([]Commit, error) {
 	var revRange string
 	if tag == "" {
 		revRange = "HEAD"
@@ -35,11 +74,11 @@ func commitsSinceTag(root, tag string) ([]Commit, error) {
 		if sha == "" {
 			continue
 		}
-		msg, err := commitMessage(root, sha)
+		msg, err := cache.message(root, sha)
 		if err != nil {
 			return nil, err
 		}
-		files, err := commitFiles(root, sha)
+		files, err := cache.files(root, sha)
 		if err != nil {
 			return nil, err
 		}
