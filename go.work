@@ -15,6 +15,7 @@ use (
 	./x/tool/calculator
 	./x/tool/filesystem
 	./x/tool/mcp
+	./x/tool/sandbox/unsafe
 	./x/tool/skills
 )
 
