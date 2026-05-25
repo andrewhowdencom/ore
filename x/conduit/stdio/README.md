@@ -2,6 +2,12 @@
 
 Single-shot, Unix-filter-style ore conduit for stdin/stdout/file I/O.
 
+## Installation
+
+```bash
+go get github.com/andrewhowdencom/ore/x/conduit/stdio@latest
+```
+
 ## Overview
 
 The stdio conduit reads a single user message from an `io.Reader`, submits it
@@ -93,7 +99,8 @@ The conduit subscribes to `text_delta`, `reasoning_delta`, `tool_call_delta`,
 
 - `text_delta` — written directly as plain text.
 - `reasoning_delta` — wrapped in a `` ```reasoning `` Markdown code block.
-- `tool_call_delta` — wrapped in a `` ```tool-call `` Markdown code block.
+- `tool_call_delta` — wrapped in a `` ```tool-call `` Markdown code block; if the
+  artifact includes a name, it is printed as `<name>: <arguments>`.
 
 ### Echo Suppression
 
@@ -112,6 +119,9 @@ design enables Unix-filter composition:
 echo "Hello" | my-ore-agent | cat
 ```
 
+If the provided context is cancelled before the turn completes, the conduit
+aborts processing and returns the cancellation error.
+
 ## Error Handling
 
 ### Fatal errors (returned from `Start()`)
@@ -120,10 +130,11 @@ These trigger application-level shutdown:
 
 - Failure to create or attach a session.
 - `io.ReadAll` failure on the input reader.
+- Empty input (zero-length read) returns `no input provided`.
 - `stream.Process()` returns an error (provider failure, handler error, etc.).
 
 ### Non-fatal behavior
 
-The subscriber goroutine logs write failures via the standard `fmt` package but
+The subscriber goroutine silently ignores write failures to the `io.Writer` and
 continues streaming. Output delivery errors are not fatal because the primary
 failure mode is already captured by `stream.Process()` errors.
