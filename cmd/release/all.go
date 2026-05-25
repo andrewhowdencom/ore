@@ -63,7 +63,7 @@ func runAll(dryRun bool, args []string) error {
 
 	for _, m := range modules {
 		tag := latestTagMap[m.Path]
-		commits, err := commitsSinceTag(root, tag)
+		commits, err := commitsSinceTag(root, tag, newCommitCache())
 		if err != nil {
 			return err
 		}

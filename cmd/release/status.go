@@ -42,7 +42,7 @@ func runStatus(dryRun bool, args []string) error {
 			}
 		}
 
-		commits, err := commitsSinceTag(root, tag)
+		commits, err := commitsSinceTag(root, tag, newCommitCache())
 		if err != nil {
 			return fmt.Errorf("commits since %q for %s: %w", tag, m.Path, err)
 		}
