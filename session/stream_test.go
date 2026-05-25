@@ -2,10 +2,13 @@ package session
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/provider"
+	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/thread"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -235,6 +238,56 @@ func TestStream_Emit_AllowedWhileBusy(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for Process to return")
+	}
+
+	_ = stream.Close()
+}
+
+func TestStream_Process_EmitsProcessCompleteEvent(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	ch := stream.Subscribe("process_complete")
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.NoError(t, err)
+
+	select {
+	case event := <-ch:
+		pce, ok := event.(loop.ProcessCompleteEvent)
+		require.True(t, ok)
+		assert.Nil(t, pce.Err)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for ProcessCompleteEvent")
+	}
+
+	_ = stream.Close()
+}
+
+func TestStream_Process_EmitsProcessCompleteEvent_WithError(t *testing.T) {
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, &mockProvider{}, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+		return st, errors.New("processor failed")
+	})
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	ch := stream.Subscribe("process_complete")
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.Error(t, err)
+
+	select {
+	case event := <-ch:
+		pce, ok := event.(loop.ProcessCompleteEvent)
+		require.True(t, ok)
+		assert.NotNil(t, pce.Err)
+		assert.Contains(t, pce.Err.Error(), "processor failed")
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for ProcessCompleteEvent")
 	}
 
 	_ = stream.Close()
