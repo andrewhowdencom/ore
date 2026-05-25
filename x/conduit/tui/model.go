@@ -66,11 +66,12 @@ type model struct {
 	// pending indicates an assistant response is in flight.
 	pending bool
 
-	// expandLatestTools controls whether the latest assistant turn's
-	// tool calls and results are shown expanded or compact.
+	// expandLatestDetails controls whether the latest assistant turn's
+	// details (tool calls, tool results, and reasoning) are shown expanded
+	// or compact.
 	// The flag is toggled by Ctrl+O and automatically cleared after
 	// the next assistant turn is received, restoring the default compact view.
-	expandLatestTools bool
+	expandLatestDetails bool
 
 	// Transient status line (e.g., "thinking...").
 	status string
@@ -174,7 +175,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// support formatting (code fences, bold, etc.) and cached for
 			// later View() calls, just like text artifacts.
 			case artifact.Reasoning:
-				block := renderedBlock{kind: "reasoning", source: a.Content}
+				block := renderedBlock{kind: "reasoning", source: a.Content, compact: "Thinking..."}
 				if msg.turn.Role == state.RoleAssistant {
 					rendered, err := m.renderMarkdown(a.Content, m.viewport.Width())
 					if err == nil {
@@ -202,7 +203,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.turns = append(m.turns, rt)
 		if msg.turn.Role == state.RoleAssistant {
 			m.pending = false
-			m.expandLatestTools = false
+			m.expandLatestDetails = false
 		}
 		m.viewport.SetContent(m.buildContent())
 		m.viewport.GotoBottom()
@@ -257,7 +258,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Ctrl+O
 		if msg.Key().Code == 'o' && msg.Key().Mod.Contains(tea.ModCtrl) {
-			m.expandLatestTools = !m.expandLatestTools
+			m.expandLatestDetails = !m.expandLatestDetails
 			m.viewport.SetContent(m.buildContent())
 			m.viewport.GotoBottom()
 			return m, nil
