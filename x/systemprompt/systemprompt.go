@@ -49,6 +49,8 @@ func WithContentFuncs(fns ...func() string) Option {
 }
 
 // New creates a system prompt transform with the given options.
+// It currently always returns a non-nil Transform and a nil error;
+// the error return is reserved for future validation.
 func New(opts ...Option) (loop.Transform, error) {
 	cfg := &config{}
 	for _, opt := range opts {
