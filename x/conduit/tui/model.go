@@ -35,6 +35,20 @@ type statusMsg struct {
 // a turn.
 type clearPendingMsg struct{}
 
+// audioMsg tells the UI model to emit a terminal bell. Using a message
+// keeps the side-effect on the Bubble Tea UI goroutine, preserving
+// thread safety. The bell cannot vary pitch, so done and error tones
+// are identical; a richer audio backend would need a distinct message.
+type audioMsg struct{}
+
+// errorMsg carries an error from the conduit to the UI model. The model
+// clears the pending state and updates the status line so the user sees
+// the failure immediately. Audio feedback is handled separately via
+// audioMsg sent by PlayError.
+type errorMsg struct {
+	err error
+}
+
 // renderedBlock tracks a finalized piece of turn content with its kind,
 // original source, optional compact representation, and optional
 // pre-rendered ANSI cache.
@@ -211,6 +225,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = msg.status
 	case clearPendingMsg:
 		m.pending = false
+	case audioMsg:
+		// Emit the terminal bell as an audible cue. The bell is the
+		// same for done and error because \a cannot vary pitch.
+		fmt.Print("\a")
+		return m, nil
+	case errorMsg:
+		// Surface the error to the user and reset UI state so the
+		// input area is usable again.
+		m.pending = false
+		m.status = "Error: " + msg.err.Error()
+		return m, nil
 	case tea.KeyPressMsg:
 		switch msg.Key().Code {
 		case tea.KeyPgUp, tea.KeyPgDown:

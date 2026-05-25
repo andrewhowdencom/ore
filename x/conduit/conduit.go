@@ -12,6 +12,15 @@ type Conduit interface {
 // Capability is a well-known conduit capability.
 type Capability string
 
+// AudioNotifier is implemented by conduits that provide audible feedback
+// for turn lifecycle events. PlayDone signals a successful assistant
+// turn; PlayError signals a turn failure. Implementations may use
+// distinct tones or the same sound, depending on platform constraints.
+type AudioNotifier interface {
+	PlayDone(ctx context.Context) error
+	PlayError(ctx context.Context) error
+}
+
 // Well-known conduit capabilities.
 const (
 	CapEventSource         Capability = "event-source"
@@ -20,7 +29,10 @@ const (
 	CapRenderTurn          Capability = "render-turn"
 	CapRenderMarkdown      Capability = "render-markdown"
 	CapRenderImage         Capability = "render-image"
-	CapRenderAudio         Capability = "render-audio"
+	// CapAudioNotification signals that the conduit can emit sound cues
+	// for turn completion and error events. Clients check this to know
+	// whether to wire AudioNotifier callbacks.
+	CapAudioNotification   Capability = "audio-notification"
 	CapAcceptText          Capability = "accept-text"
 	CapAcceptImage         Capability = "accept-image"
 	CapAcceptVoice         Capability = "accept-voice"
