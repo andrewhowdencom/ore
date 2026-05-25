@@ -1,32 +1,32 @@
 package tool
 
 import (
-	"context"
 	"fmt"
 	"sync"
 
 	"github.com/andrewhowdencom/ore/provider"
 )
 
-// RemoteSource represents an external source of tools (e.g., an MCP server).
-// The Registry consumes this interface without importing the concrete MCP
-// package, allowing clean extension without import cycles.
-type RemoteSource interface {
-	// Name returns the namespace prefix for tools from this source.
-	Name() string
-	// Tools returns the list of tools available from this source (un-namespaced).
+// Registry is the interface for tool registration and lookup.
+type Registry interface {
+	// Register adds a tool to the registry.
+	Register(name, description string, schema map[string]any, fn ToolFunc) error
+	// Tools returns a merged list of all registered tools.
 	Tools() []provider.Tool
-	// Call invokes a tool by name with the given arguments.
-	Call(ctx context.Context, name string, args map[string]any) (any, error)
+	// Lookup returns the tool function and true if the tool is registered locally.
+	Lookup(name string) (ToolFunc, bool)
+	// LookupRemoteSource finds a remote source by its namespace prefix.
+	LookupRemoteSource(namespace string) RemoteSource
 }
 
-// Option configures a Registry via the functional options pattern.
-type Option func(*Registry)
+// Option is a functional-options setter that configures a Registry instance
+// at creation time.
+type Option func(*registry)
 
 // WithMCPServer registers a remote tool source with the registry.
 // Remote tools are namespaced under the source's Name() prefix.
 func WithMCPServer(source RemoteSource) Option {
-	return func(r *Registry) {
+	return func(r *registry) {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		r.remoteSources = append(r.remoteSources, source)
@@ -40,20 +40,18 @@ type localTool struct {
 	fn          ToolFunc
 }
 
-// Registry maps tool names to their implementations and metadata.
-// It can compose remote tool sources discovered from MCP servers alongside
-// local Go functions.
-type Registry struct {
+// registry is the default in-memory implementation of Registry.
+type registry struct {
 	mu            sync.RWMutex
 	localTools    map[string]*localTool
 	remoteSources []RemoteSource
 }
 
 // NewRegistry creates an empty tool registry ready for tool registration.
-// Register tools by name, then call Handler() to obtain a loop.Handler that
-// executes them against incoming artifact.ToolCall values.
-func NewRegistry(opts ...Option) *Registry {
-	r := &Registry{
+// The returned registry is not safe for concurrent use; callers must
+// serialize accesses or provide their own synchronization.
+func NewRegistry(opts ...Option) Registry {
+	r := &registry{
 		localTools: make(map[string]*localTool),
 	}
 	for _, opt := range opts {
@@ -65,7 +63,7 @@ func NewRegistry(opts ...Option) *Registry {
 // Register adds a tool to the registry. If a tool with the same name already
 // exists, it is overwritten. The description and schema are captured so the
 // registry can produce a unified []provider.Tool list for provider adapters.
-func (r *Registry) Register(name, description string, schema map[string]any, fn ToolFunc) error {
+func (r *registry) Register(name, description string, schema map[string]any, fn ToolFunc) error {
 	if err := ValidateSchema(schema); err != nil {
 		return fmt.Errorf("register tool %q: %w", name, err)
 	}
@@ -88,7 +86,7 @@ func (r *Registry) Register(name, description string, schema map[string]any, fn 
 // and remote tools from all registered MCP servers. Local tools are returned
 // without a prefix. Remote tools are namespaced with their source prefix
 // (e.g., "filesystem/read_file").
-func (r *Registry) Tools() []provider.Tool {
+func (r *registry) Tools() []provider.Tool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -115,8 +113,8 @@ func (r *Registry) Tools() []provider.Tool {
 	return tools
 }
 
-// lookup returns the tool function and true if found.
-func (r *Registry) lookup(name string) (ToolFunc, bool) {
+// Lookup returns the tool function and true if found.
+func (r *registry) Lookup(name string) (ToolFunc, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	lt, ok := r.localTools[name]
@@ -126,8 +124,8 @@ func (r *Registry) lookup(name string) (ToolFunc, bool) {
 	return lt.fn, true
 }
 
-// lookupRemoteSource finds a remote source by its namespace prefix.
-func (r *Registry) lookupRemoteSource(namespace string) RemoteSource {
+// LookupRemoteSource finds a remote source by its namespace prefix.
+func (r *registry) LookupRemoteSource(namespace string) RemoteSource {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, rs := range r.remoteSources {
@@ -136,9 +134,4 @@ func (r *Registry) lookupRemoteSource(namespace string) RemoteSource {
 		}
 	}
 	return nil
-}
-
-// Handler returns a Handler backed by this registry.
-func (r *Registry) Handler() *Handler {
-	return &Handler{registry: r}
 }

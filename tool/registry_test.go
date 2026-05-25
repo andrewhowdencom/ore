@@ -11,20 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRegistry_RegisterAndHandler(t *testing.T) {
-	r := NewRegistry()
-	require.NoError(t, r.Register("test", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
-		return "ok", nil
-	}))
-
-	h := r.Handler()
-	assert.NotNil(t, h)
-	assert.NotNil(t, h.registry)
-	assert.Equal(t, r, h.registry)
-}
-
 func TestRegistry_Register_Overwrite(t *testing.T) {
-	r := NewRegistry()
+	r := &registry{localTools: make(map[string]*localTool)}
 	require.NoError(t, r.Register("test", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
 		return "first", nil
 	}))
@@ -55,7 +43,7 @@ func TestRegistry_Register_Overwrite_Tools(t *testing.T) {
 }
 
 func TestRegistry_Register_InvalidSchema(t *testing.T) {
-	r := NewRegistry()
+	r := &registry{localTools: make(map[string]*localTool)}
 	err := r.Register("bad", "Bad schema", map[string]any{"type": "string"}, func(ctx context.Context, args map[string]any) (any, error) {
 		return nil, nil
 	})
@@ -65,7 +53,7 @@ func TestRegistry_Register_InvalidSchema(t *testing.T) {
 }
 
 func TestRegistry_Register_UnknownTopLevelKey(t *testing.T) {
-	r := NewRegistry()
+	r := &registry{localTools: make(map[string]*localTool)}
 	err := r.Register("bad", "Bad schema", map[string]any{
 		"type": "object",
 		"foo":  map[string]any{},
@@ -78,7 +66,7 @@ func TestRegistry_Register_UnknownTopLevelKey(t *testing.T) {
 }
 
 func TestRegistry_Register_NestedNonSerializable(t *testing.T) {
-	r := NewRegistry()
+	r := &registry{localTools: make(map[string]*localTool)}
 	err := r.Register("bad", "Bad schema", map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -118,9 +106,10 @@ func TestRegistry_ConcurrentRegistration(t *testing.T) {
 	}
 
 	// Verify all tools were registered.
+	concrete := r.(*registry)
 	for i := 0; i < 100; i++ {
 		name := fmt.Sprintf("tool-%d", i)
-		lt, ok := r.localTools[name]
+		lt, ok := concrete.localTools[name]
 		assert.True(t, ok, "tool %s should be registered", name)
 		result, err := lt.fn(nil, nil)
 		assert.NoError(t, err)
@@ -139,6 +128,75 @@ func TestRegistry_Tools_LocalOnly(t *testing.T) {
 	assert.Equal(t, "add", tools[0].Name)
 	assert.Equal(t, "Add two numbers", tools[0].Description)
 	assert.Equal(t, map[string]any{"type": "object"}, tools[0].Schema)
+}
+
+func TestRegistry_ConcurrentToolsReads(t *testing.T) {
+	r := NewRegistry()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 100)
+
+	// Concurrent writers registering distinct tools.
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			name := fmt.Sprintf("tool-%d", n)
+			if err := r.Register(name, "", nil, func(ctx context.Context, args map[string]any) (any, error) {
+				return n, nil
+			}); err != nil {
+				errCh <- err
+			}
+		}(i)
+	}
+
+	// Concurrent readers calling Tools().
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			tools := r.Tools()
+			seen := make(map[string]bool)
+			for _, tool := range tools {
+				if seen[tool.Name] {
+					t.Errorf("duplicate tool name %q in Tools() result", tool.Name)
+					return
+				}
+				seen[tool.Name] = true
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		assert.NoError(t, err)
+	}
+}
+
+func TestRegistry_ConcurrentOverwrite(t *testing.T) {
+	r := NewRegistry()
+	var wg sync.WaitGroup
+
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			_ = r.Register("test", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
+				return n, nil
+			})
+		}(i)
+	}
+
+	wg.Wait()
+
+	// After all overwrites, the final entry should be one of the registered functions.
+	fn, ok := r.Lookup("test")
+	require.True(t, ok)
+	result, err := fn(nil, nil)
+	require.NoError(t, err)
+	n, ok := result.(int)
+	require.True(t, ok)
+	assert.True(t, n >= 0 && n < 100, "result %d should be in range [0,100)", n)
 }
 
 type mockRemoteSource struct {
