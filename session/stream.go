@@ -80,7 +80,12 @@ func (s *Stream) Process(ctx context.Context, event Event) error {
 		runErr = fmt.Errorf("unsupported event kind: %s", event.Kind())
 	}
 
-	// Emit ProcessCompleteEvent with the final error state before cleanup.
+	// Save thread state regardless of run outcome.
+	if saveErr := s.store.Save(s.thread); saveErr != nil && runErr == nil {
+		runErr = fmt.Errorf("save thread: %w", saveErr)
+	}
+
+	// Emit ProcessCompleteEvent with the final error state (including save errors).
 	s.step.Emit(ctx, loop.ProcessCompleteEvent{Err: runErr, Ctx: eventCtx})
 
 	// Cleanup.
@@ -89,11 +94,6 @@ func (s *Stream) Process(ctx context.Context, event Event) error {
 	s.cancel = nil
 	s.mu.Unlock()
 	cancel()
-
-	// Save thread state regardless of run outcome.
-	if saveErr := s.store.Save(s.thread); saveErr != nil && runErr == nil {
-		runErr = fmt.Errorf("save thread: %w", saveErr)
-	}
 
 	if runErr != nil {
 		return fmt.Errorf("process event: %w", runErr)
