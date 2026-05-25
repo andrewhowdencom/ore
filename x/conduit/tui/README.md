@@ -19,16 +19,16 @@ err = t.Start(ctx)
 
 | Key | Action |
 |-----|--------|
-| `Ctrl+O` | Toggle expansion of the latest assistant turn's tool blocks (compact by default; resets after each new turn) |
+| `Ctrl+O` | Toggle expansion of the latest assistant turn's details — tool calls and reasoning (compact by default; resets after each new turn) |
 | `Ctrl+C` | Quit |
 | `Shift+Enter` | Insert newline in the input box |
 
 ## Design
 
-Tool calls and results are rendered in a compact single-line form by
-default to keep the conversation readable within limited terminal space.
-Users can press `Ctrl+O` to temporarily expand the latest assistant
-turn's tool interactions, inspecting full arguments or error messages.
-Historical tool blocks always remain compact.
+Tool calls, tool results, and reasoning blocks are rendered in a compact
+single-line form by default to keep the conversation readable within limited
+terminal space. Users can press `Ctrl+O` to temporarily expand the latest
+assistant turn's details, inspecting full tool arguments, error messages, or
+reasoning content. Historical detail blocks always remain compact.
 
 For full API documentation, run `go doc ./x/conduit/tui`.
