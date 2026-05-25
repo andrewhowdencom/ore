@@ -19,30 +19,41 @@
 //
 // Basic static system prompt:
 //
-//	transform := systemprompt.New(systemprompt.WithContentFunc(func() string {
+//	transform, err := systemprompt.New(systemprompt.WithContentFunc(func() string {
 //		return "You are a helpful assistant."
 //	}))
+//	if err != nil {
+//		panic(err)
+//	}
 //	step := loop.New(loop.WithTransforms(transform))
 //
 // Composable prompt fragments from multiple sources:
 //
-//	transform := systemprompt.New(
+//	fragmentA := func() string { return "Follow the style guide." }
+//	fragmentB := func() string { return "Use markdown for code." }
+//	transform, err := systemprompt.New(
 //		systemprompt.WithContentFunc(func() string {
 //			return "You are a helpful assistant."
 //		}),
-//		systemprompt.WithContentFuncs(skills.Fragment, guardrails.Fragment),
+//		systemprompt.WithContentFuncs(fragmentA, fragmentB),
 //	)
+//	if err != nil {
+//		panic(err)
+//	}
 //	step := loop.New(loop.WithTransforms(transform))
 //
 // Dynamic system prompt that reads from thread metadata:
 //
 //	// Assuming `thr` is a *thread.Thread captured in outer scope.
-//	transform := systemprompt.New(systemprompt.WithContentFunc(func() string {
+//	transform, err := systemprompt.New(systemprompt.WithContentFunc(func() string {
 //		if p, ok := thr.GetMetadata("persona"); ok {
 //			return "You are a " + p + "."
 //		}
 //		return "You are a helpful assistant."
 //	}))
+//	if err != nil {
+//		panic(err)
+//	}
 //	step := loop.New(loop.WithTransforms(transform))
 //
 // Content functions are re-evaluated on every Transform call, so
