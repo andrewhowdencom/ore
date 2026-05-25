@@ -48,14 +48,12 @@ building agents, not a specific agent implementation).
 | `state` | Conversation history model: State interface with Turns() and Append() | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/state) |
 | `provider` | Provider interface and InvokeOption for LLM adapter contracts | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/provider) |
 | `loop` | Single-turn execution primitive: Step with Turn(), handlers, and inference assembly transforms | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/loop) |
-| `x/tool` | Provider-agnostic tool registry and artifact handler for executing LLM tool calls | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/x/tool) |
-| `x/tool/calculator` | Reusable calculator tool implementations (Add, Multiply) | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/x/tool/calculator) |
-| `x/tool/mcp` | MCP client implementing tool.RemoteSource for composing remote tools | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/x/tool/mcp) |
+| `tool` | Tool interface, registry, and sandbox contracts for LLM tool calling | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/tool) |
 | `cognitive` | Cognitive patterns (ReAct) for multi-turn looping | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/cognitive) |
-| `thread` | Persistent thread Store with UUID-based sessions and JSON persistence | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/thread) |
 | `session` | Stream and Manager primitives for per-session inference orchestration | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/session) |
-| `x/conduit` | I/O conduit interface and capability discovery for frontends | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/x/conduit) |
-| `x/provider/openai` | OpenAI-compatible provider adapter with streaming and tool calling | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/x/provider/openai) |
+| `agent` | Multi-conduit orchestration container and application scaffold | [pkg.go.dev](https://pkg.go.dev/github.com/andrewhowdencom/ore@latest/agent) |
+
+Extensions (provider adapters, conduits, and tool implementations) live under `x/`.
 
 
 ## Getting Started
@@ -70,6 +68,10 @@ without any YAML or code generation layer.
   Markdown rendering and persistent thread store.
 - [`examples/calculator/`](examples/calculator/) — Single-turn CLI demo with
   tool calling (add, multiply) via the ReAct cognitive pattern.
+- [`examples/filesystem/`](examples/filesystem/) — File system tool demo with
+  path resolution and working directory constraints.
+- [`examples/single-turn-cli/`](examples/single-turn-cli/) — Minimal single-turn
+  CLI example with direct provider invocation.
 
 For a more fully fledged coding agent built on `ore`, see
 [`andrewhowdencom/workshop`](https://github.com/andrewhowdencom/workshop).

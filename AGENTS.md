@@ -20,12 +20,12 @@ Follow a **cycle-free dependency graph**:
 artifact/      ← leaf package, no internal dependencies
 state/         ← depends on artifact/
 provider/      ← depends on state/, artifact/
-core/          ← depends on artifact/, state/, provider/
-x/provider/... ← concrete adapters branch off provider/, never import core/
+loop/          ← depends on artifact/, state/, provider/
+x/provider/... ← concrete adapters branch off provider/, never import loop/
 ```
 
-- **Core packages** (`artifact/`, `state/`, `provider/`, `core/`) live at the root level so external applications can import them. Do not place framework contracts under `internal/`.
-- **Concrete provider adapters** live under `x/provider/<name>/` (e.g., `x/provider/openai/`). They implement `provider.Provider` but never import `core/`.
+- **Core packages** (`artifact/`, `state/`, `provider/`, `loop/`) live at the root level so external applications can import them. Do not place framework contracts under `internal/`.
+- **Concrete provider adapters** live under `x/provider/<name>/` (e.g., `x/provider/openai/`). They implement `provider.Provider` but never import `loop/`.
 - **Example/reference applications** live under `examples/<name>/` (e.g., `examples/single-turn-cli/`). These validate the framework and demonstrate composition patterns.
 - **Maintained applications** with longer lifespans live under `cmd/<name>/` following the Standard Go Project Layout.
 
@@ -45,9 +45,23 @@ State is a **mutable** interface. `Append()` mutates in place. `Turns()` returns
 
 The provider contract is intentionally minimal: a single `Invoke(ctx, State) ([]Artifact, error)` method. Metadata (token usage, finish reason) can be attached as custom artifact types or inspected by type-asserting the concrete provider adapter in the application layer. Do not bloat the interface with provider-specific fields.
 
-### Core Loop
+### Loop
 
-The `core.Loop` is a thin orchestrator. A `Turn()` method calls the provider, appends returned artifacts to state with `RoleAssistant`, and returns the mutated state. It does not handle retries, tool execution, or multi-turn looping — those are application-layer concerns.
+The `loop.Step` is a thin orchestrator. A `Turn()` method calls the provider, appends returned artifacts to state with `RoleAssistant`, and returns the mutated state. It does not handle retries, tool execution, or multi-turn looping — those are application-layer concerns.
+
+### Transform
+
+`loop.Transform` is an extension point that injects context into a turn without mutating the persistent buffer. Transforms receive the current `state.State`, return a modified copy, and the `loop.Step` executes the provider against the transformed state. This enables system prompts, guardrails, and other per-turn augmentations to live outside the core.
+
+Examples: `x/systemprompt` injects a system message; `x/guardrails` validates or blocks content before it reaches the provider.
+
+### Tool
+
+The `tool/` package defines the core tool execution framework. A `ToolFunc` receives a `Sandbox` interface that provides isolation capabilities. Tools opt into available sandbox features via type assertions:
+
+- `Sandbox` — base interface with `Name()`. A nil sandbox means no isolation; tools execute against the host filesystem and process space.
+- `FileSandbox` — extends `Sandbox` with `ResolvePath()` and `WorkingDirectory()` for filesystem constraints.
+- `ExecSandbox` — extends `Sandbox` with `Run()` for process isolation.
 
 ## Implementation Conventions
 
@@ -57,7 +71,7 @@ Keep the dependency graph minimal. Provider adapters use `net/http` and `encodin
 
 ### Error Handling
 
-Wrap errors with context using `fmt.Errorf("...: %w", err)`. The core propagates provider errors unchanged.
+Wrap errors with context using `fmt.Errorf("...: %w", err)`. Provider errors are propagated unchanged.
 
 ### Logging
 
@@ -78,12 +92,13 @@ Use the functional options pattern for constructors with optional parameters (e.
 
 - **Examples** (`examples/`) are reference implementations demonstrating how to compose the framework. They may be minimal, hardcoded, or environment-variable-driven.
 - **Commands** (`cmd/`) are maintained, first-class applications with longer lifespans and stronger operational requirements.
+- **Agent** (`agent/`) is a reusable multi-conduit orchestration container that wires multiple conduits to a shared `session.Manager`. It sits between core framework and application as a composable runtime scaffold.
 
 Do not conflate the two. If a binary is a validation tool or tutorial, it belongs in `examples/`. If it is a product or service, it belongs in `cmd/`.
 
 ## Conduit/Library vs. Application Boundary
 
-Conduit and handler libraries (`conduit/tui/`, `conduit/http/`, and future I/O adapters) provide **infrastructure only**:
+Conduit and handler libraries (`x/conduit/tui/`, `x/conduit/http/`, and future I/O adapters) provide **infrastructure only**:
 
 - Transport adaptation (HTTP request/response, terminal rendering)
 - Event streaming (channels, NDJSON, SSE)
@@ -96,7 +111,7 @@ They **MUST NOT**:
 
 Cognitive patterns, provider invocation, and conversation orchestration are **application-level concerns**, composed in `examples/` or `cmd/` packages. The library exposes its `Session`, `Step`, and `State` via exported accessors so the application can call `Step.Submit()`, `Step.Turn()`, or run a full `cognitive.ReAct` loop as needed.
 
-This mirrors the TUI pattern: `conduit/tui/` is a dumb pipe; `examples/tui-chat/main.go` composes the ReAct loop. The HTTP conduit must follow the same separation.
+This mirrors the TUI pattern: `x/conduit/tui/` is a dumb pipe; `examples/tui-chat/main.go` composes the ReAct loop. The HTTP conduit must follow the same separation.
 
 ### TUI Rendering Expectations
 
