@@ -95,6 +95,11 @@ func run() error {
 	// Tool calling example (uncomment this block and comment out the provider
 	// and step setup immediately above and below it):
 	//
+	//   import (
+	//       "github.com/andrewhowdencom/ore/tool"
+	//       xtool "github.com/andrewhowdencom/ore/x/tool"
+	//   )
+	//
 	//   registry := tool.NewRegistry()
 	//   if err := registry.Register("calculator", "A simple calculator", map[string]any{"type": "object"}, func(ctx context.Context, args map[string]any) (any, error) {
 	//       return "42", nil
@@ -102,7 +107,7 @@ func run() error {
 	//       ...
 	//   }
 	//   p, err := openai.New(append([]openai.Option{openai.WithAPIKey(apiKey), openai.WithModel(model)}, opts...)...)
-	//   s := loop.New(loop.WithHandlers(registry.Handler()), loop.WithInvokeOptions(openai.WithTools(registry.Tools())))
+	//   s := loop.New(loop.WithHandlers(xtool.NewHandler(registry)), loop.WithInvokeOptions(openai.WithTools(registry.Tools())))
 	//
 	// Note: to use tools, loop until the assistant responds with text rather
 	// than a single turn. See examples/calculator for a complete example.
