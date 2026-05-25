@@ -16,7 +16,7 @@ func TestToolkit_ListSkills(t *testing.T) {
 			{Name: "beta", Description: "second"},
 		},
 	})
-	result, err := tk.ListSkills(context.Background(), nil)
+	result, err := tk.ListSkills(context.Background(), nil, nil)
 	require.NoError(t, err)
 	meta := result.([]SkillMeta)
 	assert.Len(t, meta, 2)
@@ -32,7 +32,7 @@ func TestToolkit_ReadSkill(t *testing.T) {
 		},
 		reads: map[string]string{"test": "full content"},
 	})
-	result, err := tk.ReadSkill(context.Background(), map[string]any{"name": "test"})
+	result, err := tk.ReadSkill(context.Background(), nil, map[string]any{"name": "test"})
 	require.NoError(t, err)
 	assert.Equal(t, "full content", result)
 }
@@ -40,7 +40,7 @@ func TestToolkit_ReadSkill(t *testing.T) {
 func TestToolkit_ReadSkill_MissingName(t *testing.T) {
 	t.Parallel()
 	tk := NewToolkit()
-	_, err := tk.ReadSkill(context.Background(), map[string]any{})
+	_, err := tk.ReadSkill(context.Background(), nil, map[string]any{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "name is required")
 }
@@ -48,7 +48,7 @@ func TestToolkit_ReadSkill_MissingName(t *testing.T) {
 func TestToolkit_ReadSkill_EmptyName(t *testing.T) {
 	t.Parallel()
 	tk := NewToolkit()
-	_, err := tk.ReadSkill(context.Background(), map[string]any{"name": ""})
+	_, err := tk.ReadSkill(context.Background(), nil, map[string]any{"name": ""})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "name is required")
 }
@@ -60,7 +60,7 @@ func TestToolkit_ReadSkill_Nonexistent(t *testing.T) {
 			{Name: "existing", Description: "only one"},
 		},
 	})
-	_, err := tk.ReadSkill(context.Background(), map[string]any{"name": "missing"})
+	_, err := tk.ReadSkill(context.Background(), nil, map[string]any{"name": "missing"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
@@ -73,7 +73,7 @@ func TestToolkit_SearchSkills(t *testing.T) {
 			{Name: "go", Description: "Go guidelines."},
 		},
 	})
-	result, err := tk.SearchSkills(context.Background(), map[string]any{"query": "go"})
+	result, err := tk.SearchSkills(context.Background(), nil, map[string]any{"query": "go"})
 	require.NoError(t, err)
 	meta := result.([]SkillMeta)
 	assert.Len(t, meta, 1)
@@ -83,7 +83,7 @@ func TestToolkit_SearchSkills(t *testing.T) {
 func TestToolkit_SearchSkills_MissingQuery(t *testing.T) {
 	t.Parallel()
 	tk := NewToolkit()
-	_, err := tk.SearchSkills(context.Background(), map[string]any{})
+	_, err := tk.SearchSkills(context.Background(), nil, map[string]any{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "query is required")
 }
@@ -91,7 +91,7 @@ func TestToolkit_SearchSkills_MissingQuery(t *testing.T) {
 func TestToolkit_SearchSkills_EmptyQuery(t *testing.T) {
 	t.Parallel()
 	tk := NewToolkit()
-	_, err := tk.SearchSkills(context.Background(), map[string]any{"query": ""})
+	_, err := tk.SearchSkills(context.Background(), nil, map[string]any{"query": ""})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "query is required")
 }
