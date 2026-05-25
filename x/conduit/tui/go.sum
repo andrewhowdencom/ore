@@ -12,10 +12,10 @@ github.com/alecthomas/chroma/v2 v2.20.0 h1:sfIHpxPyR07/Oylvmcai3X/exDlE8+FA820NT
 github.com/alecthomas/chroma/v2 v2.20.0/go.mod h1:e7tViK0xh/Nf4BYHl00ycY6rV7b8iXBksI9E359yNmA=
 github.com/alecthomas/repr v0.5.1 h1:E3G4t2QbHTSNpPKBgMTln5KLkZHLOcU7r37J4pXBuIg=
 github.com/alecthomas/repr v0.5.1/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
-github.com/andrewhowdencom/ore v0.0.1 h1:l7nAetP35ujP/brMjlD2CFAFkYa328tSdSImHRUYbrA=
-github.com/andrewhowdencom/ore v0.0.1/go.mod h1:V+qqNhQDzkI+KNHnF7PHukNLtKInTLVcF95s+iHv+MQ=
-github.com/andrewhowdencom/ore/x/conduit v0.0.0-20260525113924-a53964382dbb h1:k2iQ+pH4A9oDn7KIU2ixNs5e8Y+C/fYayZtpjNjNSms=
-github.com/andrewhowdencom/ore/x/conduit v0.0.0-20260525113924-a53964382dbb/go.mod h1:83aDeFABkaP1x98A9jxkqIr3zN4XsiprPnpAxHGpPFw=
+github.com/andrewhowdencom/ore v0.0.3 h1:DlvCSuKpxgMQa4TeIl/Vq/mxHV90Ui4GLKfZ6u2vFMA=
+github.com/andrewhowdencom/ore v0.0.3/go.mod h1:ZjBqmtdKSK3S+iv5QXUOWfoLw3tHND0RinPL8If7PDA=
+github.com/andrewhowdencom/ore/x/conduit v0.1.0 h1:TkogN9hOxVMFE4F4SDOMZOEL+PJ/Wi0vW0l5wx+dtGM=
+github.com/andrewhowdencom/ore/x/conduit v0.1.0/go.mod h1:83aDeFABkaP1x98A9jxkqIr3zN4XsiprPnpAxHGpPFw=
 github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
 github.com/atotto/clipboard v0.1.4/go.mod h1:ZY9tmq7sm5xIbd9bOK4onWV4S6X0u6GY7Vn0Yu86PYI=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=
