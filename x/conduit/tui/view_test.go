@@ -9,6 +9,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
 	"charm.land/bubbles/v2/viewport"
+	"charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -79,6 +80,7 @@ func TestModel_View_AssistantTurn_FallbackToPlainText(t *testing.T) {
 func TestModel_View_AssistantTurn_WithReasoning(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.expandLatestDetails = true
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
 			{kind: "text", source: "the answer"},
@@ -99,6 +101,7 @@ func TestModel_View_AssistantTurn_WithReasoning(t *testing.T) {
 func TestModel_View_AssistantTurn_MultiBlockSpacing(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.expandLatestDetails = true
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
 			{kind: "reasoning", source: "let me think..."},
@@ -132,10 +135,101 @@ func TestModel_View_AssistantTurn_Reasoning_Rendered(t *testing.T) {
 	}
 	newM, _ := m.Update(turnMsg{turn: turn})
 	mm := newM.(*model)
+	mm.expandLatestDetails = true
 	output := mm.View().Content
 	assert.Contains(t, output, "Thinking: ")
 	assert.Contains(t, output, "rendered-reasoning")
 	assert.NotContains(t, output, "let me think...")
+}
+
+func TestBuildContent_Reasoning_Compact(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.turns = []renderedTurn{
+		{role: state.RoleAssistant, blocks: []renderedBlock{
+			{kind: "text", source: "the answer", rendered: "the answer"},
+			{kind: "reasoning", source: "because 2+2=4"},
+		}},
+	}
+	output := m.buildContent()
+	assert.Contains(t, output, "Assistant: ")
+	assert.Contains(t, output, "the answer")
+	assert.Contains(t, output, "Thinking...")
+	assert.NotContains(t, output, "because 2+2=4")
+}
+
+func TestBuildContent_Reasoning_Expanded(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.turns = []renderedTurn{
+		{role: state.RoleAssistant, blocks: []renderedBlock{
+			{kind: "text", source: "the answer", rendered: "the answer"},
+			{kind: "reasoning", source: "because 2+2=4", rendered: "rendered-reasoning"},
+		}},
+	}
+	m.expandLatestDetails = true
+	output := m.buildContent()
+	assert.Contains(t, output, "Assistant: ")
+	assert.Contains(t, output, "the answer")
+	assert.Contains(t, output, "Thinking: ")
+	assert.Contains(t, output, "rendered-reasoning")
+	assert.NotContains(t, output, "Thinking...")
+}
+
+func TestBuildContent_Reasoning_OldTurn_AlwaysCompact(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.turns = []renderedTurn{
+		{role: state.RoleAssistant, blocks: []renderedBlock{
+			{kind: "text", source: "first answer", rendered: "first answer"},
+			{kind: "reasoning", source: "first reasoning", rendered: "first-reasoning"},
+		}},
+		{role: state.RoleAssistant, blocks: []renderedBlock{
+			{kind: "text", source: "latest answer", rendered: "latest answer"},
+			{kind: "reasoning", source: "latest reasoning", rendered: "latest-reasoning"},
+		}},
+	}
+	m.expandLatestDetails = true
+	output := m.buildContent()
+	// The latest reasoning should be expanded
+	assert.Contains(t, output, "latest-reasoning")
+	// The old reasoning should stay compact
+	assert.NotContains(t, output, "first-reasoning")
+}
+
+func TestModel_Update_KeyCtrlO_TogglesReasoningExpansion(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.md = mockMarkdownRenderer{output: "rendered-reasoning"}
+
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Reasoning{Content: "let me think..."},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+
+	// Default: collapsed
+	output := mm.buildContent()
+	assert.Contains(t, output, "Thinking...")
+	assert.NotContains(t, output, "rendered-reasoning")
+
+	// Toggle open
+	newM2, _ := mm.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
+	mm2 := newM2.(*model)
+	output2 := mm2.buildContent()
+	assert.Contains(t, output2, "Thinking: ")
+	assert.Contains(t, output2, "rendered-reasoning")
+	assert.NotContains(t, output2, "Thinking...")
+
+	// Toggle closed again
+	newM3, _ := mm2.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
+	mm3 := newM3.(*model)
+	output3 := mm3.buildContent()
+	assert.Contains(t, output3, "Thinking...")
+	assert.NotContains(t, output3, "rendered-reasoning")
 }
 
 func TestRenderMarkdown_MalformedInput(t *testing.T) {
@@ -278,6 +372,7 @@ func TestRenderReasoning_ErrorFallback(t *testing.T) {
 	assert.Empty(t, mm.turns[0].blocks[0].rendered, "render error should leave rendered empty")
 	assert.Equal(t, "let me think...", mm.turns[0].blocks[0].source, "raw text should still be stored")
 
+	mm.expandLatestDetails = true
 	output := mm.View().Content
 	assert.Contains(t, output, "Thinking: ")
 	assert.Contains(t, output, "let me think...")
@@ -421,14 +516,14 @@ func TestBuildContent_ExpandLatestTools_Toggle(t *testing.T) {
 	}
 
 	// Compact mode (default): single-line with arrow indicator.
-	m.expandLatestTools = false
+	m.expandLatestDetails = false
 	compactOutput := m.buildContent()
 	assert.Contains(t, compactOutput, "→ search_files")
 	assert.NotContains(t, compactOutput, "Calling: search_files")
 	assert.Contains(t, compactOutput, "← result data")
 
 	// Expanded mode: two-line label+content layout.
-	m.expandLatestTools = true
+	m.expandLatestDetails = true
 	expandedOutput := m.buildContent()
 	assert.Contains(t, expandedOutput, "Calling: search_files")
 	assert.NotContains(t, expandedOutput, "→ search_files")
@@ -460,13 +555,13 @@ func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
 	}
 
 	// Compact mode: red styling for errors via compactToolErrorStyle.
-	m.expandLatestTools = false
+	m.expandLatestDetails = false
 	output := m.buildContent()
 	expectedCompact := compactToolErrorStyle.Render("← Error: failed")
 	assert.Contains(t, output, expectedCompact)
 
 	// Expanded mode: red label styling for errors via toolErrorStyle.
-	m.expandLatestTools = true
+	m.expandLatestDetails = true
 	output = m.buildContent()
 	assert.Contains(t, output, toolErrorStyle.Render("Tool: "))
 	assert.Contains(t, output, "Error: failed")
@@ -494,7 +589,7 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 	}
 
 	// Compact mode
-	m.expandLatestTools = false
+	m.expandLatestDetails = false
 	output := m.buildContent()
 	assert.Contains(t, output, "→ foo")
 	assert.Contains(t, output, "→ bar")
@@ -502,7 +597,7 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 	assert.Contains(t, output, "← result2")
 
 	// Expanded mode
-	m.expandLatestTools = true
+	m.expandLatestDetails = true
 	output = m.buildContent()
 	assert.Contains(t, output, "Calling: foo({})")
 	assert.Contains(t, output, "Calling: bar({})")
@@ -514,6 +609,7 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 func TestBuildContent_MixedBlocks(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.expandLatestDetails = true
 
 	// A single assistant turn can contain text, tool_call, and reasoning
 	// blocks interleaved. tool_result blocks belong in separate RoleTool turns.
@@ -538,11 +634,13 @@ func TestBuildContent_MixedBlocks(t *testing.T) {
 	output := m.buildContent()
 
 	// Verify order: text → tool_call → reasoning → text → tool_result
+	// All blocks are expanded, so tool_call shows "Calling:" and tool_result
+	// shows "Tool:" instead of the compact arrows.
 	idxIntro := strings.Index(output, "intro")
-	idxFoo := strings.Index(output, "→ foo")
+	idxFoo := strings.Index(output, "Calling: foo({})")
 	idxThink := strings.Index(output, "Thinking: ")
 	idxOutro := strings.Index(output, "outro")
-	idxResult := strings.Index(output, "← result")
+	idxResult := strings.Index(output, "Tool: ")
 
 	require.GreaterOrEqual(t, idxIntro, 0, "intro should be found")
 	require.GreaterOrEqual(t, idxFoo, 0, "foo should be found")
@@ -576,7 +674,7 @@ func TestBuildContent_ToggleNoToolBlocks(t *testing.T) {
 	}
 
 	// Toggle on — no tool blocks, view should be unchanged
-	m.expandLatestTools = true
+	m.expandLatestDetails = true
 	output := m.buildContent()
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "hello")
@@ -597,7 +695,7 @@ func TestBuildContent_CompactToolCall_AmberStyling(t *testing.T) {
 		},
 	}
 
-	m.expandLatestTools = false
+	m.expandLatestDetails = false
 	output := m.buildContent()
 	expected := compactToolCallStyle.Render("→ foo")
 	assert.Contains(t, output, expected)
