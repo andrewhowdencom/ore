@@ -115,4 +115,193 @@ func TestTransform_DynamicContent(t *testing.T) {
 	assert.Equal(t, "second prompt", text.Content)
 }
 
+func TestTransform_MultipleContentFuncs(t *testing.T) {
+	tr, err := New(WithContentFuncs(
+		func() string { return "First fragment." },
+		func() string { return "Second fragment." },
+	))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, state.RoleSystem, turns[0].Role)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "First fragment.\n\nSecond fragment.", text.Content)
+}
+
+func TestTransform_MultipleWithContentFuncCalls(t *testing.T) {
+	tr, err := New(
+		WithContentFunc(func() string { return "First." }),
+		WithContentFunc(func() string { return "Second." }),
+	)
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "First.\n\nSecond.", text.Content)
+}
+
+func TestTransform_EmptyFragmentSkipped(t *testing.T) {
+	tr, err := New(WithContentFuncs(
+		func() string { return "" },
+		func() string { return "Middle." },
+		func() string { return "" },
+	))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "Middle.", text.Content)
+}
+
+func TestTransform_AllEmptyFragments(t *testing.T) {
+	tr, err := New(WithContentFuncs(
+		func() string { return "" },
+		func() string { return "" },
+	))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Empty(t, text.Content)
+}
+
+func TestTransform_NilFuncSkipped(t *testing.T) {
+	tr, err := New(WithContentFuncs(
+		func() string { return "Before." },
+		nil,
+		func() string { return "After." },
+	))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "Before.\n\nAfter.", text.Content)
+}
+
+func TestTransform_MixedOptionOrder(t *testing.T) {
+	tr, err := New(
+		WithContentFunc(func() string { return "A" }),
+		WithContentFuncs(
+			func() string { return "B" },
+			func() string { return "C" },
+		),
+		WithContentFunc(func() string { return "D" }),
+	)
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "A\n\nB\n\nC\n\nD", text.Content)
+}
+
+func TestTransform_ZeroArgWithContentFuncs(t *testing.T) {
+	tr, err := New(WithContentFuncs())
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Empty(t, text.Content)
+}
+
+func TestTransform_ExistingSystemTurn(t *testing.T) {
+	tr, err := New(WithContentFunc(func() string { return "Injected prompt." }))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleSystem, artifact.Text{Content: "Existing system turn."})
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 3)
+	assert.Equal(t, state.RoleSystem, turns[0].Role)
+	assert.Equal(t, state.RoleSystem, turns[1].Role)
+	assert.Equal(t, state.RoleUser, turns[2].Role)
+
+	text0, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "Injected prompt.", text0.Content)
+
+	text1, ok := turns[1].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "Existing system turn.", text1.Content)
+}
+
+func TestTransform_InternalNewlines(t *testing.T) {
+	tr, err := New(WithContentFuncs(
+		func() string { return "First line.\nSecond line." },
+		func() string { return "Third line." },
+	))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "First line.\nSecond line.\n\nThird line.", text.Content)
+}
+
 
