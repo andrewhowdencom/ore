@@ -51,6 +51,14 @@ func (t *Toolkit) SearchSkills(ctx context.Context, args map[string]any) (any, e
 	return t.catalog.Search(ctx, query)
 }
 
+// SystemPromptFragment returns a prompt fragment function suitable for
+// systemprompt.WithContextContentFunc. The returned function delegates to
+// the underlying Catalog.SystemPromptFragment, producing a formatted listing
+// of all discovered skills.
+func (t *Toolkit) SystemPromptFragment() func(context.Context) string {
+	return t.catalog.SystemPromptFragment
+}
+
 // Register adds all three skills tools to the registry.
 func (t *Toolkit) Register(registry tool.Registry) error {
 	if err := registry.Register(
