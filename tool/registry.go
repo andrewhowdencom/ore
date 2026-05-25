@@ -19,6 +19,24 @@ type Registry interface {
 	LookupRemoteSource(namespace string) RemoteSource
 }
 
+// SandboxRegistry extends Registry with sandbox management capabilities.
+// Handlers type-assert the registry to SandboxRegistry to resolve sandboxes
+// per tool call. If the registry does not implement this interface, all tool
+// calls receive a nil sandbox.
+type SandboxRegistry interface {
+	Registry
+	// RegisterSandbox adds a named sandbox to the registry. If a sandbox with
+	// the same name already exists, it is overwritten.
+	RegisterSandbox(name string, sb Sandbox)
+	// SetDefaultSandbox sets the default sandbox used when no explicit
+	// "sandbox" argument is present in a tool call.
+	SetDefaultSandbox(sb Sandbox)
+	// LookupSandbox returns the named sandbox and true if found.
+	LookupSandbox(name string) (Sandbox, bool)
+	// DefaultSandbox returns the default sandbox (may be nil).
+	DefaultSandbox() Sandbox
+}
+
 // Option is a functional-options setter that configures a Registry instance
 // at creation time.
 type Option func(*registry)
@@ -42,10 +60,15 @@ type localTool struct {
 
 // registry is the default in-memory implementation of Registry.
 type registry struct {
-	mu            sync.RWMutex
-	localTools    map[string]*localTool
-	remoteSources []RemoteSource
+	mu             sync.RWMutex
+	localTools     map[string]*localTool
+	remoteSources  []RemoteSource
+	sandboxes      map[string]Sandbox
+	defaultSandbox Sandbox
 }
+
+// Compile-time assertion that registry implements SandboxRegistry.
+var _ SandboxRegistry = (*registry)(nil)
 
 // NewRegistry creates an empty tool registry ready for tool registration.
 // The returned registry is not safe for concurrent use; callers must
@@ -64,6 +87,12 @@ func NewRegistry(opts ...Option) Registry {
 // exists, it is overwritten. The description and schema are captured so the
 // registry can produce a unified []provider.Tool list for provider adapters.
 func (r *registry) Register(name, description string, schema map[string]any, fn ToolFunc) error {
+	if name == "" {
+		return fmt.Errorf("tool name cannot be empty")
+	}
+	if fn == nil {
+		return fmt.Errorf("tool function cannot be nil")
+	}
 	if err := ValidateSchema(schema); err != nil {
 		return fmt.Errorf("register tool %q: %w", name, err)
 	}
@@ -134,4 +163,36 @@ func (r *registry) LookupRemoteSource(namespace string) RemoteSource {
 		}
 	}
 	return nil
+}
+
+// RegisterSandbox adds a named sandbox to the registry.
+func (r *registry) RegisterSandbox(name string, sb Sandbox) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.sandboxes == nil {
+		r.sandboxes = make(map[string]Sandbox)
+	}
+	r.sandboxes[name] = sb
+}
+
+// SetDefaultSandbox sets the default sandbox for tool calls.
+func (r *registry) SetDefaultSandbox(sb Sandbox) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.defaultSandbox = sb
+}
+
+// LookupSandbox returns the named sandbox and true if found.
+func (r *registry) LookupSandbox(name string) (Sandbox, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	sb, ok := r.sandboxes[name]
+	return sb, ok
+}
+
+// DefaultSandbox returns the default sandbox (may be nil).
+func (r *registry) DefaultSandbox() Sandbox {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.defaultSandbox
 }
