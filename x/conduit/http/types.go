@@ -133,8 +133,8 @@ func artifactToJSON(art artifact.Artifact) (*artifactJSON, bool) {
 }
 
 // MarshalOutputEvent serializes a loop.OutputEvent to JSON bytes.
-// It handles TurnCompleteEvent, ErrorEvent, and all loop.ArtifactEvent
-// wrapper types that contain an artifact.Artifact.
+// It handles TurnCompleteEvent, ErrorEvent, ProcessCompleteEvent,
+// and all loop.ArtifactEvent wrapper types that contain an artifact.Artifact.
 // Unknown artifact kinds are silently skipped (returns nil, nil).
 // Returns an error only for unsupported event kinds.
 func MarshalOutputEvent(event loop.OutputEvent) ([]byte, error) {
@@ -239,8 +239,9 @@ func artifactFromJSON(dto artifactJSON) (artifact.Artifact, error) {
 }
 
 // UnmarshalOutputEvent deserializes JSON bytes into a loop.OutputEvent.
-// It handles "turn_complete", "error", and all loop.ArtifactEvent types
-// carrying artifact kinds. Returns an error for unsupported kinds or malformed JSON.
+// It handles "turn_complete", "error", "process_complete", and all
+// loop.ArtifactEvent types carrying artifact kinds. Returns an error for
+// unsupported kinds or malformed JSON.
 func UnmarshalOutputEvent(data []byte) (loop.OutputEvent, error) {
 	var peek struct {
 		Kind string `json:"kind"`

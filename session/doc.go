@@ -22,6 +22,14 @@
 // metadata (e.g., provenance). Set it when constructing the event:
 //   UserMessageEvent{Content: "hello", Ctx: loop.EventContext{Provenance: "slack-123"}}
 //
+// Lifecycle events:
+//   ProcessCompleteEvent is emitted after Process() finishes the entire
+//   inference pipeline (including all tool-call loops). It carries the
+//   final error state and is the preferred signal for UI-level lifecycle
+//   actions (audio notifications, typing indicator dismissal). Conduits
+//   should subscribe to it in addition to TurnCompleteEvent, which fires
+//   on every intermediate turn for incremental rendering.
+//
 // Typical composition:
 //
 //	store := thread.NewMemoryStore()
