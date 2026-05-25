@@ -13,7 +13,6 @@ import (
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
-	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/thread"
 )
 
@@ -225,7 +224,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 
 	// Default event kinds when none specified.
 	if len(req.Kinds) == 0 {
-		req.Kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error"}
+		req.Kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "process_complete"}
 	}
 
 	// Subscribe to the session's FanOut before the goroutine starts.
@@ -274,8 +273,12 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 			// is not lost. With unbuffered s.events, done cannot fire until
 			// after the FanOut has delivered all events to subCh.
 		case err := <-done:
-			// Drain any remaining events that have already been delivered
-			// to the subscription buffer before returning.
+			// Drain all remaining events from the subscription buffer before
+			// returning. ProcessCompleteEvent is the terminal event; any
+			// post-process error is included in it. For backward
+			// compatibility with clients not subscribing to process_complete,
+			// write a separate ErrorEvent if one was not seen.
+			sawProcessComplete := false
 			for {
 				select {
 				case event := <-subCh:
@@ -283,15 +286,11 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 					if data != nil {
 						_ = nw.WriteEvent(data)
 					}
-					if tc, ok := event.(loop.TurnCompleteEvent); ok && tc.Turn.Role == state.RoleAssistant {
-						if err != nil {
-							data, _ := MarshalOutputEvent(loop.ErrorEvent{Err: err})
-							_ = nw.WriteEvent(data)
-						}
-						return
+					if _, ok := event.(loop.ProcessCompleteEvent); ok {
+						sawProcessComplete = true
 					}
 				default:
-					if err != nil {
+					if !sawProcessComplete && err != nil {
 						data, _ := MarshalOutputEvent(loop.ErrorEvent{Err: err})
 						_ = nw.WriteEvent(data)
 					}
@@ -317,7 +316,7 @@ func (h *Handler) sessionEvents(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 	// Default event kinds when none specified.
 	if len(kinds) == 0 {
-		kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error"}
+		kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "process_complete"}
 	}
 
 	// Subscribe to the session's FanOut.

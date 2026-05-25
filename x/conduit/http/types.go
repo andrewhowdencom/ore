@@ -53,6 +53,13 @@ type errorEventJSON struct {
 	Context *eventContextJSON `json:"context,omitempty"`
 }
 
+// processCompleteEventJSON is the JSON representation of a ProcessCompleteEvent.
+type processCompleteEventJSON struct {
+	Kind    string            `json:"kind"`
+	Error   string            `json:"error,omitempty"`
+	Context *eventContextJSON `json:"context,omitempty"`
+}
+
 // artifactEventJSON is the JSON representation of an ArtifactEvent.
 // It embeds artifactJSON so the artifact fields appear at the top level
 // alongside the context envelope. The Context field is omitted when empty.
@@ -148,6 +155,15 @@ func MarshalOutputEvent(event loop.OutputEvent) ([]byte, error) {
 			Message: e.Err.Error(),
 			Context: eventContextToJSON(e.Ctx),
 		})
+	case loop.ProcessCompleteEvent:
+		dto := processCompleteEventJSON{
+			Kind:    "process_complete",
+			Context: eventContextToJSON(e.Ctx),
+		}
+		if e.Err != nil {
+			dto.Error = e.Err.Error()
+		}
+		return json.Marshal(dto)
 	case loop.ArtifactEvent:
 		dto, ok := artifactToJSON(e.Artifact)
 		if !ok {
@@ -250,6 +266,16 @@ func UnmarshalOutputEvent(data []byte) (loop.OutputEvent, error) {
 			return nil, err
 		}
 		return loop.ErrorEvent{Err: fmt.Errorf("%s", dto.Message), Ctx: eventContextFromJSON(dto.Context)}, nil
+	case "process_complete":
+		var dto processCompleteEventJSON
+		if err := json.Unmarshal(data, &dto); err != nil {
+			return nil, err
+		}
+		var err error
+		if dto.Error != "" {
+			err = fmt.Errorf("%s", dto.Error)
+		}
+		return loop.ProcessCompleteEvent{Err: err, Ctx: eventContextFromJSON(dto.Context)}, nil
 	default:
 		// Treat as artifact.
 		var dto artifactEventJSON
