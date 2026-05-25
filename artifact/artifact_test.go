@@ -18,6 +18,10 @@ var _ Delta = TextDelta{}
 var _ Delta = ReasoningDelta{}
 var _ Delta = ToolCallDelta{}
 
+var _ Accumulable = TextDelta{}
+var _ Accumulable = ReasoningDelta{}
+var _ Accumulable = ToolCallDelta{}
+
 func TestDeltaArtifacts(t *testing.T) {
 	// Delta types should satisfy the Delta interface.
 	assert.Implements(t, (*Delta)(nil), TextDelta{})
@@ -57,6 +61,77 @@ func TestArtifactKinds(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, tt.a.Kind())
+		})
+	}
+}
+
+func TestAccumulableInterface(t *testing.T) {
+	assert.Implements(t, (*Accumulable)(nil), TextDelta{})
+	assert.Implements(t, (*Accumulable)(nil), ReasoningDelta{})
+	assert.Implements(t, (*Accumulable)(nil), ToolCallDelta{})
+}
+
+func TestAccumulable_MergeInto_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		delta    Accumulable
+		acc      Artifact
+		expected Artifact
+	}{
+		{
+			name:     "TextDelta seeds new Text when acc is nil",
+			delta:    TextDelta{Content: "hello"},
+			acc:      nil,
+			expected: Text{Content: "hello"},
+		},
+		{
+			name:     "TextDelta merges into existing Text",
+			delta:    TextDelta{Content: " world"},
+			acc:      Text{Content: "hello"},
+			expected: Text{Content: "hello world"},
+		},
+		{
+			name:     "ReasoningDelta seeds new Reasoning when acc is nil",
+			delta:    ReasoningDelta{Content: "think"},
+			acc:      nil,
+			expected: Reasoning{Content: "think"},
+		},
+		{
+			name:     "ReasoningDelta merges into existing Reasoning",
+			delta:    ReasoningDelta{Content: " deeply"},
+			acc:      Reasoning{Content: "think"},
+			expected: Reasoning{Content: "think deeply"},
+		},
+		{
+			name:     "ToolCallDelta seeds new ToolCall when acc is nil",
+			delta:    ToolCallDelta{Index: 0, ID: "call_1", Name: "search", Arguments: "q"},
+			acc:      nil,
+			expected: ToolCall{ID: "call_1", Name: "search", Arguments: "q"},
+		},
+		{
+			name:     "ToolCallDelta concatenates Name and Arguments",
+			delta:    ToolCallDelta{Index: 0, ID: "", Name: "calc", Arguments: "1+"},
+			acc:      ToolCall{ID: "call_1", Name: "search", Arguments: "q"},
+			expected: ToolCall{ID: "call_1", Name: "searchcalc", Arguments: "q1+"},
+		},
+		{
+			name:     "ToolCallDelta latest-wins overwrites ID",
+			delta:    ToolCallDelta{Index: 0, ID: "call_2", Name: "", Arguments: ""},
+			acc:      ToolCall{ID: "call_1", Name: "search", Arguments: "q"},
+			expected: ToolCall{ID: "call_2", Name: "search", Arguments: "q"},
+		},
+		{
+			name:     "ToolCallDelta empty ID preserves existing ID",
+			delta:    ToolCallDelta{Index: 0, ID: "", Name: "calc", Arguments: "1"},
+			acc:      ToolCall{ID: "call_1", Name: "search", Arguments: "q"},
+			expected: ToolCall{ID: "call_1", Name: "searchcalc", Arguments: "q1"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.delta.MergeInto(tt.acc)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
