@@ -104,6 +104,8 @@ func (r ReasoningDelta) Kind() string { return "reasoning_delta" }
 func (r ReasoningDelta) IsDelta() {}
 
 // ToolCallDelta represents a partial chunk of a tool invocation for streaming.
+// Index identifies which parallel tool call in the current turn this fragment
+// belongs to, enabling the generic accumulator to merge chunks independently.
 type ToolCallDelta struct {
 	Index     int
 	ID        string
