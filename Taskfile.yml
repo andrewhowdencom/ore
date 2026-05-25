@@ -31,3 +31,13 @@ tasks:
   validate:
     desc: Run lints, tests, and build before committing
     deps: [lint, test, build]
+
+  release:
+    desc: Release all modules with pending changes
+    cmds:
+      - go run ./cmd/release all
+
+  release-status:
+    desc: Show pending module releases
+    cmds:
+      - go run ./cmd/release status
