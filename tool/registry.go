@@ -19,7 +19,8 @@ type Registry interface {
 	LookupRemoteSource(namespace string) RemoteSource
 }
 
-// Option configures a registry via the functional options pattern.
+// Option is a functional-options setter that configures a Registry instance
+// at creation time.
 type Option func(*registry)
 
 // WithMCPServer registers a remote tool source with the registry.
@@ -47,6 +48,8 @@ type registry struct {
 }
 
 // NewRegistry creates an empty tool registry ready for tool registration.
+// The returned registry is not safe for concurrent use; callers must
+// serialize accesses or provide their own synchronization.
 func NewRegistry(opts ...Option) Registry {
 	r := &registry{
 		localTools: make(map[string]*localTool),
