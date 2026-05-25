@@ -6,7 +6,10 @@ import (
 	"io"
 	"os"
 
+	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
 )
 
@@ -68,7 +71,127 @@ func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
 	return s, nil
 }
 
-// Start reads input, processes one turn, and returns.
+// Start reads input, processes one turn, streams assistant artifacts as Markdown
+// blocks to the configured io.Writer, and returns. This is a deliberate
+// exception to the standard conduit blocking-contract; the conduit is designed
+// for single-shot Unix-filter usage rather than long-running ambient I/O.
 func (s *stdio) Start(ctx context.Context) error {
-	return nil
+	var stream *session.Stream
+	var err error
+	if s.threadID != "" {
+		stream, err = s.mgr.Attach(s.threadID)
+	} else {
+		stream, err = s.mgr.Create()
+	}
+	if err != nil {
+		return fmt.Errorf("start session: %w", err)
+	}
+
+	outputCh := stream.Subscribe("text_delta", "reasoning_delta", "tool_call_delta", "turn_complete", "error")
+
+	done := make(chan struct{})
+	stop := make(chan struct{})
+	var turnErr error
+
+	go func() {
+		defer close(done)
+		currentKind := ""
+		for {
+			select {
+			case event, ok := <-outputCh:
+				if !ok {
+					return
+				}
+				if event.Context().Provenance != "stdio" {
+					continue
+				}
+
+				switch e := event.(type) {
+				case loop.ArtifactEvent:
+					kind := e.Artifact.Kind()
+					if kind != currentKind {
+						if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
+							fmt.Fprint(s.out, "\n```\n")
+						}
+						if kind == "reasoning_delta" {
+							fmt.Fprint(s.out, "```reasoning\n")
+						} else if kind == "tool_call_delta" {
+							fmt.Fprint(s.out, "```tool-call\n")
+						}
+						currentKind = kind
+					}
+
+					switch art := e.Artifact.(type) {
+					case artifact.TextDelta:
+						fmt.Fprint(s.out, art.Content)
+					case artifact.ReasoningDelta:
+						fmt.Fprint(s.out, art.Content)
+					case artifact.ToolCallDelta:
+						if art.Name != "" {
+							fmt.Fprintf(s.out, "%s: ", art.Name)
+						}
+						fmt.Fprint(s.out, art.Arguments)
+					}
+
+				case loop.TurnCompleteEvent:
+					if e.Turn.Role != state.RoleAssistant {
+						continue
+					}
+					if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
+						fmt.Fprint(s.out, "\n```\n")
+					}
+					return
+
+				case loop.ErrorEvent:
+					if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
+						fmt.Fprint(s.out, "\n```\n")
+					}
+					turnErr = e.Err
+					fmt.Fprintf(s.out, "\nerror: %v\n", e.Err)
+					return
+				}
+			case <-stop:
+				if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
+					fmt.Fprint(s.out, "\n```\n")
+				}
+				return
+			}
+		}
+	}()
+
+	data, err := io.ReadAll(s.in)
+	if err != nil {
+		close(stop)
+		<-done
+		return fmt.Errorf("read input: %w", err)
+	}
+	if len(data) == 0 {
+		close(stop)
+		<-done
+		return fmt.Errorf("no input provided")
+	}
+
+	event := session.UserMessageEvent{
+		Content: string(data),
+		Ctx:     loop.EventContext{Provenance: "stdio"},
+	}
+	processErr := stream.Process(ctx, event)
+
+	// For newly created sessions, close the stream to release resources.
+	if s.threadID == "" {
+		_ = stream.Close()
+	}
+
+	close(stop)
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	if processErr != nil {
+		return fmt.Errorf("process event: %w", processErr)
+	}
+
+	return turnErr
 }
