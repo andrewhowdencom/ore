@@ -127,6 +127,13 @@ func TestModel_Update_KeySpace(t *testing.T) {
 	assert.Equal(t, " ", mm.textarea.Value())
 }
 
+func TestModel_Update_Paste(t *testing.T) {
+	m := newTestModel()
+	newM, _ := m.Update(tea.PasteMsg{Content: "pasted text"})
+	mm := newM.(*model)
+	assert.Equal(t, "pasted text", mm.textarea.Value())
+}
+
 func TestModel_Update_KeyBackspace(t *testing.T) {
 	m := newTestModel()
 	m.textarea.SetValue("hi")
