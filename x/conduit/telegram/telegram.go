@@ -102,7 +102,7 @@ func (c *telegramConduit) Start(ctx context.Context) error {
 	}
 
 	// Register sink for turn_complete events from all streams.
-	cleanup := c.mgr.RegisterSink([]string{"turn_complete"}, func(streamID string, event loop.OutputEvent) {
+	cleanup := c.mgr.RegisterSink([]string{"turn_complete", "process_complete"}, func(streamID string, event loop.OutputEvent) {
 		if event.Context().Provenance != "telegram" {
 			return
 		}

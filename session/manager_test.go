@@ -914,8 +914,8 @@ func TestManager_RegisterSink_WildcardKinds(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Should receive: user turn_complete, text_delta, text (accumulated), assistant turn_complete
-	require.Len(t, events, 4)
+	// Should receive: user turn_complete, text_delta, text (accumulated), assistant turn_complete, process_complete
+	require.Len(t, events, 5)
 	var kinds []string
 	for _, e := range events {
 		kinds = append(kinds, e.Kind())
@@ -923,6 +923,7 @@ func TestManager_RegisterSink_WildcardKinds(t *testing.T) {
 	assert.Contains(t, kinds, "turn_complete")
 	assert.Contains(t, kinds, "text_delta")
 	assert.Contains(t, kinds, "text")
+	assert.Contains(t, kinds, "process_complete")
 }
 
 func TestManager_RegisterSink_MultipleStreams(t *testing.T) {

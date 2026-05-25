@@ -34,6 +34,11 @@ type Stream struct {
 // pipeline. The stream must not be busy. Context cancellation aborts the
 // running TurnProcessor.
 //
+// After the TurnProcessor returns (including all tool-call loops),
+// Process emits a ProcessCompleteEvent carrying the final error state
+// before performing save cleanup. Subscribers can use this event for
+// lifecycle signalling (audio notifications, UI state finalization).
+//
 // Errors:
 //   - ErrSessionBusy if the stream is already processing a turn
 //   - "unsupported event kind" for unknown event types
@@ -54,8 +59,10 @@ func (s *Stream) Process(ctx context.Context, event Event) error {
 	s.mu.Unlock()
 
 	var runErr error
+	var eventCtx loop.EventContext
 	switch e := event.(type) {
 	case UserMessageEvent:
+		eventCtx = e.Context()
 		s.step.SetEventContext(e.Context())
 		defer s.step.SetEventContext(loop.EventContext{})
 		_, runErr = s.step.Submit(turnCtx, s.thread.State, state.RoleUser, artifact.Text{Content: e.Content})
@@ -65,6 +72,7 @@ func (s *Stream) Process(ctx context.Context, event Event) error {
 	case InterruptEvent:
 		// Interrupt is handled by cancelling the ongoing turn context.
 		// No inference is started for an interrupt event itself.
+		eventCtx = e.Context()
 		s.step.SetEventContext(e.Context())
 		defer s.step.SetEventContext(loop.EventContext{})
 		cancel()
@@ -72,17 +80,20 @@ func (s *Stream) Process(ctx context.Context, event Event) error {
 		runErr = fmt.Errorf("unsupported event kind: %s", event.Kind())
 	}
 
+	// Save thread state regardless of run outcome.
+	if saveErr := s.store.Save(s.thread); saveErr != nil && runErr == nil {
+		runErr = fmt.Errorf("save thread: %w", saveErr)
+	}
+
+	// Emit ProcessCompleteEvent with the final error state (including save errors).
+	s.step.Emit(ctx, loop.ProcessCompleteEvent{Err: runErr, Ctx: eventCtx})
+
 	// Cleanup.
 	s.mu.Lock()
 	s.busy = false
 	s.cancel = nil
 	s.mu.Unlock()
 	cancel()
-
-	// Save thread state regardless of run outcome.
-	if saveErr := s.store.Save(s.thread); saveErr != nil && runErr == nil {
-		runErr = fmt.Errorf("save thread: %w", saveErr)
-	}
 
 	if runErr != nil {
 		return fmt.Errorf("process event: %w", runErr)
