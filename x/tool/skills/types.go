@@ -125,8 +125,10 @@ func (c *Catalog) Search(ctx context.Context, query string) ([]SkillMeta, error)
 }
 
 // SystemPromptFragment returns a formatted prompt fragment listing all
-// discovered skills. If no skills are discovered or an error occurs,
-// it returns an empty string so the section is omitted from the prompt.
+// discovered skills. The resulting bullet list is deterministic because
+// Catalog.List returns skills sorted by name. If no skills are discovered
+// or an error occurs, it returns an empty string so the section is omitted
+// from the prompt.
 func (c *Catalog) SystemPromptFragment(ctx context.Context) string {
 	meta, err := c.List(ctx)
 	if err != nil || len(meta) == 0 {

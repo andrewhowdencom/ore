@@ -402,4 +402,28 @@ func TestTransform_ContextContentFuncReceivesContext(t *testing.T) {
 	assert.Equal(t, "test-value", text.Content)
 }
 
+func TestTransform_MultipleContextContentFuncs_OrderAndSkipping(t *testing.T) {
+	tr, err := New(
+		WithContentFunc(func() string { return "Regular." }),
+		WithContextContentFunc(func(ctx context.Context) string { return "Ctx A." }),
+		WithContextContentFunc(nil),
+		WithContextContentFunc(func(ctx context.Context) string { return "" }),
+		WithContextContentFunc(func(ctx context.Context) string { return "Ctx B." }),
+		WithContentFunc(func() string { return "Another regular." }),
+	)
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "Regular.\n\nAnother regular.\n\nCtx A.\n\nCtx B.", text.Content)
+}
+
 

@@ -209,3 +209,18 @@ func TestCatalog_SystemPromptFragment_Error(t *testing.T) {
 	fragment := c.SystemPromptFragment(context.Background())
 	assert.Empty(t, fragment)
 }
+
+func TestCatalog_SystemPromptFragment_PartialFailure(t *testing.T) {
+	t.Parallel()
+	good := &mockDiscoverer{
+		meta: []SkillMeta{
+			{Name: "good-skill", Description: "from good discoverer"},
+		},
+	}
+	bad := &failingDiscoverer{}
+	c := NewCatalog(good, bad)
+	fragment := c.SystemPromptFragment(context.Background())
+
+	assert.Contains(t, fragment, "good-skill")
+	assert.Contains(t, fragment, "from good discoverer")
+}
