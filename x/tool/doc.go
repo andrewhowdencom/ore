@@ -1,34 +1,41 @@
-// Package tool provides a provider-agnostic tool registry and artifact handler
-// for ore.
+// Package tool provides the loop.Handler bridge, concrete tool implementations,
+// and tool discovery mechanisms for ore.
 //
-// A Registry maps tool names to Go functions (ToolFunc) together with their
-// metadata (description and JSON schema). Each function receives parsed JSON
-// arguments as a map[string]any and returns any result value, which is
-// JSON-serialized before being sent back to the LLM.
+// Note: this is the x/tool extension package; it is typically imported as
+// xtool (e.g. xtool "github.com/andrewhowdencom/ore/x/tool") to differentiate
+// from the core tool package that defines the contracts.
 //
-// The Registry can also compose remote tools discovered from MCP servers via
-// the RemoteSource interface, making it a single source of truth for tool
-// metadata and execution. Remote tools are namespaced under their source
-// prefix (e.g., "filesystem/read_file").
+// The core tool execution contracts (Registry interface, ToolFunc, RemoteSource,
+// and ValidateSchema) live in the root tool/ package. This extension package
+// bridges those contracts to the loop framework via Handler, and provides
+// concrete tool implementations (bash, calculator, filesystem), MCP client
+// integration, and skills discovery.
 //
 // A Handler implements loop.Handler. It detects artifact.ToolCall artifacts,
 // looks up the tool by name in its registry (local or remote), executes the
 // corresponding function, and appends a state.RoleTool turn with a
-// artifact.ToolResult. Unknown tools are refused with an error result. This is
-// deliberately an extension, not core behavior — it validates that the
-// extension model works.
+// artifact.ToolResult. Unknown tools are refused with an error result.
 //
-// Tool calling composes two mechanisms:
+// Tool calling composes three mechanisms:
 //
-//   1. Provider adapter (e.g., x/provider/openai/) — accepts tool configuration
+//   1. Root tool/ package — provides the Registry interface, ToolFunc contract,
+//      RemoteSource abstraction, and schema validation. This is the core
+//      framework primitive.
+//
+//   2. Provider adapter (e.g., x/provider/openai/) — accepts tool configuration
 //      per-invocation via openai.WithTools(), serializes them in requests,
 //      deserializes ToolCall from responses, and serializes RoleTool turns
 //      with ToolResult back to the provider.
-//   2. Artifact Handler (this package) — a Registry maps names to Go functions
-//      and remote sources, and a Handler implements loop.Handler to execute
-//      them.
+//
+//   3. Artifact Handler (this package) — bridges the root tool/ Registry to the
+//      loop framework via NewHandler(), which implements loop.Handler.
 //
 // The application wires them together:
+//
+//	import (
+//	    "github.com/andrewhowdencom/ore/tool"
+//	    xtool "github.com/andrewhowdencom/ore/x/tool"
+//	)
 //
 //	registry := tool.NewRegistry()
 //	if err := registry.Register("add", "Add two numbers", schema, func(ctx context.Context, args map[string]any) (any, error) {
@@ -42,13 +49,13 @@
 //	prov, err := openai.New(openai.WithAPIKey(apiKey), openai.WithModel(model))
 //	if err != nil { ... }
 //
-//	// Registry.Tools() is now the single source of truth.
+//	// Registry.Tools() is the single source of truth.
 //	step := loop.New(
-//	    loop.WithHandlers(registry.Handler()),
+//	    loop.WithHandlers(xtool.NewHandler(registry)),
 //	    loop.WithInvokeOptions(openai.WithTools(registry.Tools())),
 //	)
 //
-// MCP servers can be composed into the same registry:
+// MCP servers can be composed into the same registry via the root tool package:
 //
 //	mcpClient, err := mcp.NewClient(mcp.WithName("filesystem"), mcp.WithStdio("python", "server.py"))
 //	if err != nil { ... }

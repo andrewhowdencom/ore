@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/x/tool"
+	"github.com/andrewhowdencom/ore/tool"
 )
 
 // Compile-time type checks.

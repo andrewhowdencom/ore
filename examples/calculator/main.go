@@ -16,7 +16,8 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
 	"github.com/andrewhowdencom/ore/state"
-	"github.com/andrewhowdencom/ore/x/tool"
+	"github.com/andrewhowdencom/ore/tool"
+	xtool "github.com/andrewhowdencom/ore/x/tool"
 	"github.com/andrewhowdencom/ore/x/tool/calculator"
 )
 
@@ -100,7 +101,7 @@ func run() error {
 
 	// Create step with tool handler and pre-bound tool options.
 	step := loop.New(
-		loop.WithHandlers(registry.Handler()),
+		loop.WithHandlers(xtool.NewHandler(registry)),
 		loop.WithInvokeOptions(openai.WithTools(registry.Tools())),
 	)
 

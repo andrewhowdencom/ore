@@ -32,9 +32,10 @@ type toolOption struct {
 func (toolOption) IsInvokeOption() {}
 
 // WithTools returns an InvokeOption that configures the set of available tools
-// for a single provider invocation.
+// for a single provider invocation. It delegates to the provider-agnostic
+// provider.WithTools for cross-adapter compatibility.
 func WithTools(tools []provider.Tool) provider.InvokeOption {
-	return toolOption{tools: tools}
+	return provider.WithTools(tools)
 }
 
 // temperatureOption is a per-invocation option that sets the sampling temperature.
@@ -242,6 +243,9 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	for _, opt := range opts {
 		if to, ok := opt.(toolOption); ok {
 			tools = to.tools
+		}
+		if to, ok := opt.(provider.ToolsOption); ok {
+			tools = to.Tools
 		}
 		if temp, ok := opt.(temperatureOption); ok {
 			temperature = temp.t
