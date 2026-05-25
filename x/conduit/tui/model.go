@@ -103,6 +103,13 @@ type model struct {
 	// md renders Markdown source into ANSI-styled terminal output. In
 	// production this is a glamourMarkdownRenderer; tests may inject a mock.
 	md markdownRenderer
+
+	// cachedContent holds the last computed viewport content string.
+	// It is invalidated by setting contentDirty = true.
+	cachedContent string
+
+	// contentDirty is true when cachedContent is stale and needs rebuilding.
+	contentDirty bool
 }
 
 // renderedTurn represents a single turn in the conversation history.
@@ -162,6 +169,13 @@ func (m *model) recalcLayout() {
 	}
 }
 
+// syncViewport rebuilds the cached content string if stale and pushes it to
+// the viewport. Call this from Update() after any mutation that affects
+// visual output.
+func (m *model) syncViewport() {
+	m.viewport.SetContent(m.buildContent())
+}
+
 // Init returns an initial command. No periodic ticks are needed because
 // turns arrive via program.Send from the orchestrator goroutine.
 func (m *model) Init() tea.Cmd {
@@ -219,12 +233,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pending = false
 			m.expandLatestDetails = false
 		}
-		m.viewport.SetContent(m.buildContent())
+		m.contentDirty = true
+		m.syncViewport()
 		m.viewport.GotoBottom()
 	case statusMsg:
 		m.status = msg.status
+		m.contentDirty = true
+		m.syncViewport()
 	case clearPendingMsg:
 		m.pending = false
+		m.contentDirty = true
+		m.syncViewport()
 	case audioMsg:
 		// Emit the terminal bell as an audible cue. The bell is the
 		// same for done and error because \a cannot vary pitch.
@@ -235,6 +254,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// input area is usable again.
 		m.pending = false
 		m.status = "Error: " + msg.err.Error()
+		m.contentDirty = true
+		m.syncViewport()
 		return m, nil
 	case tea.KeyPressMsg:
 		switch msg.Key().Code {
@@ -254,6 +275,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						slog.Warn("event channel full, dropping user message")
 					}
 					m.pending = true
+					m.contentDirty = true
+					m.syncViewport()
 				}
 				return m, nil
 			}
@@ -284,7 +307,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Ctrl+O
 		if msg.Key().Code == 'o' && msg.Key().Mod.Contains(tea.ModCtrl) {
 			m.expandLatestDetails = !m.expandLatestDetails
-			m.viewport.SetContent(m.buildContent())
+			m.contentDirty = true
+			m.syncViewport()
 			m.viewport.GotoBottom()
 			return m, nil
 		}
@@ -319,6 +343,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+		m.contentDirty = true
+		m.syncViewport()
 	}
 	return m, nil
 }
