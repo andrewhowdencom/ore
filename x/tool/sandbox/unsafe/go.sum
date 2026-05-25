@@ -1,5 +1,9 @@
 github.com/andrewhowdencom/ore v0.0.3 h1:DlvCSuKpxgMQa4TeIl/Vq/mxHV90Ui4GLKfZ6u2vFMA=
 github.com/andrewhowdencom/ore v0.0.3/go.mod h1:ZjBqmtdKSK3S+iv5QXUOWfoLw3tHND0RinPL8If7PDA=
+github.com/andrewhowdencom/ore/x/tool/bash v0.2.0 h1:fAn6NbQihrkqd7nG1FKH4qPdMDKmP3HyxqwOTFOYUY4=
+github.com/andrewhowdencom/ore/x/tool/bash v0.2.0/go.mod h1:92UbW1DWuGZBZNTa2ZwLMjMXhKw1YMY6QH5qfO59x9w=
+github.com/andrewhowdencom/ore/x/tool/filesystem v0.2.0 h1:4o4lZA1d2/wibQIrWc/oQXaQaOS2/+kVIG98/VtX+3o=
+github.com/andrewhowdencom/ore/x/tool/filesystem v0.2.0/go.mod h1:+JsV2qx0hJXPy4o3OXeo63GkFBQApj40tePeRfKycxA=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
