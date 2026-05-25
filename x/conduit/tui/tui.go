@@ -21,7 +21,6 @@ import (
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
-	"github.com/andrewhowdencom/ore/state"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
@@ -120,7 +119,7 @@ func (t *TUI) Start(ctx context.Context) error {
 	t.program = p
 
 	// Subscribe to the stream's output.
-	outputCh := stream.Subscribe("turn_complete", "error")
+	outputCh := stream.Subscribe("turn_complete", "error", "process_complete")
 
 	// Goroutine to stream output events into the Bubble Tea message loop.
 	go func() {
@@ -128,12 +127,15 @@ func (t *TUI) Start(ctx context.Context) error {
 			switch e := event.(type) {
 			case loop.TurnCompleteEvent:
 				t.program.Send(turnMsg{turn: e.Turn})
-				if e.Turn.Role == state.RoleAssistant {
-					_ = t.PlayDone(ctx)
-				}
 			case loop.ErrorEvent:
 				t.program.Send(errorMsg{err: e.Err})
 				_ = t.PlayError(ctx)
+			case loop.ProcessCompleteEvent:
+				if e.Err != nil {
+					_ = t.PlayError(ctx)
+				} else {
+					_ = t.PlayDone(ctx)
+				}
 			}
 		}
 	}()
