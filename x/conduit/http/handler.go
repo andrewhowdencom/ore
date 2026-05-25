@@ -54,6 +54,7 @@ var Descriptor = conduit.Descriptor{
 		conduit.CapShowStatus,
 		conduit.CapRenderTurn,
 		conduit.CapRenderMarkdown,
+		conduit.CapAudioNotification,
 	},
 }
 

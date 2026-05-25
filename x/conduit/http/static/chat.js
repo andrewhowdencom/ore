@@ -1,6 +1,44 @@
 let sessionId = null;
 let isTurnInProgress = false;
 let typingIndicatorDiv = null;
+let audioCtx = null;
+
+function ensureAudio() {
+    if (!audioCtx && (window.AudioContext || window.webkitAudioContext)) {
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {
+            // Silently fail if audio is not supported or blocked
+        }
+    }
+    return audioCtx;
+}
+
+function playTone(freq, duration, type = 'sine') {
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    try {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.value = freq;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+        osc.stop(ctx.currentTime + duration);
+    } catch (e) {
+        // Silently fail
+    }
+}
+
+function playDone() {
+    playTone(880, 0.15);
+}
+
+function playError() {
+    playTone(220, 0.3, 'sawtooth');
+}
 
 function setStatus(text) {
     document.getElementById('status').textContent = text || '';
@@ -158,11 +196,15 @@ function handleEvent(event) {
     }
 
     if (event.kind === 'turn_complete') {
+        if (event.turn && event.turn.role === 'assistant') {
+            playDone();
+        }
         finalizeTurn();
         return;
     }
 
     if (event.kind === 'error') {
+        playError();
         setStatus('Error: ' + (event.message || 'Unknown error'));
         finalizeTurn();
         return;
@@ -210,6 +252,7 @@ async function readNDJSONStream(reader, decoder) {
 }
 
 async function sendMessage(content) {
+    ensureAudio();
     if (!sessionId || isTurnInProgress) return;
 
     isTurnInProgress = true;
