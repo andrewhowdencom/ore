@@ -235,6 +235,7 @@ func TestModel_View_ContainsTurn(t *testing.T) {
 	m.turns = []renderedTurn{
 		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
 	}
+	m.syncViewport()
 	output := m.View().Content
 	assert.Contains(t, output, "You: ")
 	assert.Contains(t, output, "hello")
@@ -251,6 +252,7 @@ func TestModel_View_ContainsAssistantTurn(t *testing.T) {
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "world"}}},
 	}
+	m.syncViewport()
 	output := m.View().Content
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "world")
@@ -267,6 +269,7 @@ func TestModel_View_ContainsToolTurn(t *testing.T) {
 	m.turns = []renderedTurn{
 		{role: state.RoleTool, blocks: []renderedBlock{{kind: "text", source: "result"}}},
 	}
+	m.syncViewport()
 	output := m.View().Content
 	assert.Contains(t, output, "Tool: ")
 	assert.Contains(t, output, "result")
@@ -281,6 +284,7 @@ func TestModel_View_ContainsStatus(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.status = "thinking..."
+	m.syncViewport()
 	output := m.View().Content
 	assert.Contains(t, output, "thinking...")
 }
@@ -391,6 +395,7 @@ func TestModel_View_WrapsLongTurn(t *testing.T) {
 	m.turns = []renderedTurn{
 		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 10)}}},
 	}
+	m.syncViewport()
 	output := m.View().Content
 	lines := strings.Split(output, "\n")
 	// Find the label line
@@ -593,6 +598,7 @@ func TestModel_View_ContainsSeparator(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.width = 80
+	m.syncViewport()
 	output := m.View().Content
 	assert.Contains(t, output, strings.Repeat("─", 80))
 }
@@ -668,6 +674,7 @@ func TestModel_View_SeparatorAdaptsToResize(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.width = 80
 	m.status = "ready" // ensure viewport has content so separator is rendered
+	m.syncViewport()
 	output := m.View().Content
 	assert.Contains(t, output, strings.Repeat("─", 80))
 
