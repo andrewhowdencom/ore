@@ -44,8 +44,8 @@
 //	STORE_DIR=/tmp/ore-store go run ./examples/http-chat
 //
 // The server optionally registers calculator tools (add, multiply) to
-// demonstrate server-side ReAct loop execution. See package x/tool for details
-// on the registry.
+// demonstrate server-side ReAct loop execution. The core registry contract
+// lives in package tool; the handler bridge lives in package x/tool.
 package main
 
 import (
@@ -60,7 +60,8 @@ import (
 	"github.com/andrewhowdencom/ore/x/provider/openai"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/thread"
-	"github.com/andrewhowdencom/ore/x/tool"
+	"github.com/andrewhowdencom/ore/tool"
+	xtool "github.com/andrewhowdencom/ore/x/tool"
 	"github.com/andrewhowdencom/ore/x/tool/calculator"
 
 	httpc "github.com/andrewhowdencom/ore/x/conduit/http"
@@ -123,7 +124,7 @@ func run() error {
 	// and provider tool options bound.
 	stepFactory := func(*thread.Thread) (*loop.Step, error) {
 		return loop.New(
-			loop.WithHandlers(registry.Handler()),
+			loop.WithHandlers(xtool.NewHandler(registry)),
 			loop.WithInvokeOptions(openai.WithTools(registry.Tools())),
 		), nil
 	}
