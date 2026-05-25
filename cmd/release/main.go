@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-
-	_ "golang.org/x/mod/modfile"
 )
 
 func main() {
