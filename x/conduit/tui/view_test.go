@@ -148,6 +148,21 @@ func TestModel_View_AssistantTurn_Reasoning_Rendered(t *testing.T) {
 	assert.NotContains(t, output, "let me think...")
 }
 
+func TestBuildContent_CacheHit(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.turns = []renderedTurn{
+		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
+	}
+	first := m.buildContent()
+	require.False(t, m.contentDirty, "buildContent should clear dirty flag")
+	require.NotEmpty(t, m.cachedContent, "buildContent should populate cache")
+
+	second := m.buildContent()
+	assert.Equal(t, first, second, "second call should return cached content without recomputing")
+	assert.False(t, m.contentDirty, "dirty flag should remain false on cache hit")
+}
+
 func TestBuildContent_Reasoning_Compact(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
