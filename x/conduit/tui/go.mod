@@ -6,8 +6,8 @@ require (
 	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.6
 	charm.land/lipgloss/v2 v2.0.3
-	github.com/andrewhowdencom/ore v0.0.0-00010101000000-000000000000
-	github.com/andrewhowdencom/ore/x/conduit v0.0.0-20260522200942-1391eb953a7e
+	github.com/andrewhowdencom/ore v0.0.2
+	github.com/andrewhowdencom/ore/x/conduit v0.1.0
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/charmbracelet/x/cellbuf v0.0.15
 	github.com/muesli/termenv v0.16.0
@@ -33,7 +33,6 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
-	github.com/kr/text v0.2.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.23 // indirect
@@ -51,5 +50,3 @@ require (
 	golang.org/x/text v0.30.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-
