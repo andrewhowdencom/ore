@@ -39,10 +39,12 @@ type Provider interface {
 	// The adapter must emit each artifact as soon as the native API delivers a
 	// chunk, preserving that arrival order.
 	//
-	// Accumulation is allowed only when the native format cannot be
-	// represented directly as a canonical ore artifact (e.g. fragmented
-	// tool-call data). In such cases the adapter should assemble the
-	// complete artifact before sending it on the channel.
+	// Adapters must emit canonical ore artifact types as soon as the native
+	// API delivers a chunk, preserving that arrival order. Fragmented data
+	// (e.g. streaming text or tool-call chunks) is emitted as delta types
+	// (TextDelta, ToolCallDelta, etc.) and accumulated by the core loop.
+	// Adapters should not perform their own accumulation except when the
+	// native format genuinely cannot be expressed as an ore artifact type.
 	//
 	// The channel must not be closed by the adapter.
 	Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...InvokeOption) error

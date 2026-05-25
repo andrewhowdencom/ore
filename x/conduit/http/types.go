@@ -24,6 +24,7 @@ type artifactJSON struct {
 	PromptTokens     int    `json:"prompt_tokens,omitempty"`
 	CompletionTokens int    `json:"completion_tokens,omitempty"`
 	TotalTokens      int    `json:"total_tokens,omitempty"`
+	Index            int    `json:"index,omitempty"`
 	URL              string `json:"url,omitempty"`
 }
 
@@ -107,7 +108,7 @@ func artifactToJSON(art artifact.Artifact) (*artifactJSON, bool) {
 	case artifact.ToolCall:
 		return &artifactJSON{Kind: "tool_call", ID: a.ID, Name: a.Name, Arguments: a.Arguments}, true
 	case artifact.ToolCallDelta:
-		return &artifactJSON{Kind: "tool_call_delta", ID: a.ID, Name: a.Name, Arguments: a.Arguments}, true
+		return &artifactJSON{Kind: "tool_call_delta", ID: a.ID, Name: a.Name, Arguments: a.Arguments, Index: a.Index}, true
 	case artifact.ToolResult:
 		return &artifactJSON{Kind: "tool_result", ToolCallID: a.ToolCallID, Content: a.Content, IsError: a.IsError}, true
 	case artifact.Usage:
@@ -209,7 +210,7 @@ func artifactFromJSON(dto artifactJSON) (artifact.Artifact, error) {
 	case "tool_call":
 		return artifact.ToolCall{ID: dto.ID, Name: dto.Name, Arguments: dto.Arguments}, nil
 	case "tool_call_delta":
-		return artifact.ToolCallDelta{ID: dto.ID, Name: dto.Name, Arguments: dto.Arguments}, nil
+		return artifact.ToolCallDelta{ID: dto.ID, Name: dto.Name, Arguments: dto.Arguments, Index: dto.Index}, nil
 	case "tool_result":
 		return artifact.ToolResult{ToolCallID: dto.ToolCallID, Content: dto.Content, IsError: dto.IsError}, nil
 	case "usage":

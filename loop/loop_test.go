@@ -33,6 +33,26 @@ func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- arti
 // Compile-time interface check.
 var _ provider.Provider = (*mockProvider)(nil)
 
+// contextCancellingProvider is a test double that cancels context after
+// emitting one artifact, simulating an in-flight cancellation.
+type contextCancellingProvider struct {
+	cancel context.CancelFunc
+}
+
+func (p *contextCancellingProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+	select {
+	case ch <- artifact.TextDelta{Content: "partial"}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	p.cancel()
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+// Compile-time interface check.
+var _ provider.Provider = (*contextCancellingProvider)(nil)
+
 // mockHandler implements Handler for testing.
 type mockHandler struct {
 	called []artifact.Artifact
@@ -494,19 +514,15 @@ func TestStep_Turn_AccumulatesInterleavedDeltas(t *testing.T) {
 
 	last := turns[1]
 	assert.Equal(t, state.RoleAssistant, last.Role)
-	require.Len(t, last.Artifacts, 3)
+	require.Len(t, last.Artifacts, 2)
 
 	text, ok := last.Artifacts[0].(artifact.Text)
 	require.True(t, ok)
-	assert.Equal(t, "Hello", text.Content)
+	assert.Equal(t, "Hello world", text.Content)
 
 	reasoning, ok := last.Artifacts[1].(artifact.Reasoning)
 	require.True(t, ok)
 	assert.Equal(t, "think", reasoning.Content)
-
-	text, ok = last.Artifacts[2].(artifact.Text)
-	require.True(t, ok)
-	assert.Equal(t, " world", text.Content)
 }
 
 func TestStep_Turn_AccumulatesAdjacentDeltas(t *testing.T) {
@@ -541,6 +557,92 @@ func TestStep_Turn_AccumulatesAdjacentDeltas(t *testing.T) {
 	reasoning, ok := last.Artifacts[1].(artifact.Reasoning)
 	require.True(t, ok)
 	assert.Equal(t, "think...done", reasoning.Content)
+}
+
+func TestStep_Turn_AccumulatesInterleavedToolCalls(t *testing.T) {
+	s := New()
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.ToolCallDelta{Index: 0, ID: "call_1", Name: "search", Arguments: "query"},
+			artifact.ToolCallDelta{Index: 1, ID: "call_2", Name: "calc", Arguments: "1+"},
+			artifact.ToolCallDelta{Index: 0, Arguments: "=test"},
+			artifact.ToolCallDelta{Index: 1, Arguments: "1"},
+		},
+	}
+
+	result, err := s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+	assert.Same(t, mem, result)
+
+	turns := mem.Turns()
+	require.Len(t, turns, 2)
+
+	last := turns[1]
+	assert.Equal(t, state.RoleAssistant, last.Role)
+	require.Len(t, last.Artifacts, 2)
+
+	tc0, ok := last.Artifacts[0].(artifact.ToolCall)
+	require.True(t, ok)
+	assert.Equal(t, "call_1", tc0.ID)
+	assert.Equal(t, "search", tc0.Name)
+	assert.Equal(t, "query=test", tc0.Arguments)
+
+	tc1, ok := last.Artifacts[1].(artifact.ToolCall)
+	require.True(t, ok)
+	assert.Equal(t, "call_2", tc1.ID)
+	assert.Equal(t, "calc", tc1.Name)
+	assert.Equal(t, "1+1", tc1.Arguments)
+}
+
+func TestStep_Turn_MultiKeyAccumulationOrder(t *testing.T) {
+	s := New()
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+			artifact.ToolCallDelta{Index: 0, ID: "call_1", Name: "search", Arguments: "q"},
+			artifact.ReasoningDelta{Content: "think"},
+			artifact.TextDelta{Content: " world"},
+			artifact.ToolCallDelta{Index: 1, ID: "call_2", Name: "calc", Arguments: "1+"},
+			artifact.ToolCallDelta{Index: 0, Arguments: "uery"},
+			artifact.ToolCallDelta{Index: 1, Arguments: "1"},
+			artifact.ReasoningDelta{Content: " done"},
+		},
+	}
+
+	result, err := s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	last := turns[1]
+	assert.Equal(t, state.RoleAssistant, last.Role)
+	require.Len(t, last.Artifacts, 4)
+
+	// Keys in insertion order: text, tool_call:0, reasoning, tool_call:1
+	text, ok := last.Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "Hello world", text.Content)
+
+	tc0, ok := last.Artifacts[1].(artifact.ToolCall)
+	require.True(t, ok)
+	assert.Equal(t, "call_1", tc0.ID)
+	assert.Equal(t, "search", tc0.Name)
+	assert.Equal(t, "query", tc0.Arguments)
+
+	reasoning, ok := last.Artifacts[2].(artifact.Reasoning)
+	require.True(t, ok)
+	assert.Equal(t, "think done", reasoning.Content)
+
+	tc1, ok := last.Artifacts[3].(artifact.ToolCall)
+	require.True(t, ok)
+	assert.Equal(t, "call_2", tc1.ID)
+	assert.Equal(t, "calc", tc1.Name)
+	assert.Equal(t, "1+1", tc1.Arguments)
 }
 
 func TestStep_Turn_OutputEventsWithHandler(t *testing.T) {
@@ -738,6 +840,21 @@ func TestStep_Turn_ErrorEvent(t *testing.T) {
 	require.Len(t, events, 1)
 	assert.Equal(t, "error", events[0].Kind())
 	assert.Equal(t, wantErr, events[0].(ErrorEvent).Err)
+
+	// State should not be mutated.
+	assert.Len(t, mem.Turns(), 1)
+}
+
+func TestStep_Turn_ContextCancellationMidAccumulation(t *testing.T) {
+	s := New()
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	prov := &contextCancellingProvider{cancel: cancel}
+
+	_, err := s.Turn(ctx, mem, prov)
+	require.ErrorIs(t, err, context.Canceled)
 
 	// State should not be mutated.
 	assert.Len(t, mem.Turns(), 1)
