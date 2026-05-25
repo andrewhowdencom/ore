@@ -46,6 +46,9 @@ func WithAddr(addr string) Option {
 }
 
 // Descriptor enumerates the capabilities of the HTTP conduit.
+// CapAudioNotification is included because the embedded web UI
+// (chat.js) can play Web Audio API oscillator tones on assistant
+// turn completion and error events.
 var Descriptor = conduit.Descriptor{
 	Name:        "HTTP",
 	Description: "HTTP conduit with embedded web chat UI",
