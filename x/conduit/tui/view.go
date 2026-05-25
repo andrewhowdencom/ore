@@ -56,6 +56,10 @@ func renderBlock(label string, labelStyle lipgloss.Style, content string, width 
 // viewport content before calling GotoBottom(), fixing a timing bug where
 // auto-scroll operated on stale content height and hid newly-rendered output.
 func (m *model) buildContent() string {
+	if !m.contentDirty && m.cachedContent != "" {
+		return m.cachedContent
+	}
+
 	var b strings.Builder
 
 	width := m.viewport.Width()
@@ -165,7 +169,9 @@ func (m *model) buildContent() string {
 		b.WriteString("\n")
 	}
 
-	return b.String()
+	m.cachedContent = b.String()
+	m.contentDirty = false
+	return m.cachedContent
 }
 
 // compactToolCall formats a tool call into a compact single-line string.
@@ -253,8 +259,6 @@ func truncateString(s string, maxWidth int) string {
 // View renders the conversation history inside a scrollable viewport and
 // anchors the input prompt at the bottom of the terminal.
 func (m *model) View() tea.View {
-	m.viewport.SetContent(m.buildContent())
-
 	// Render a thin horizontal line to visually separate the conversation
 	// history (viewport) from the input area at the bottom of the terminal.
 	var separator string

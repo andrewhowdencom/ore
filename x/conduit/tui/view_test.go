@@ -49,6 +49,7 @@ func TestModel_View_AssistantTurn_WithRendered(t *testing.T) {
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "# Hello", rendered: "pre-rendered glamour output"}}},
 	}
+	m.syncViewport()
 	output := m.View().Content
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "pre-rendered glamour output")
@@ -67,6 +68,7 @@ func TestModel_View_AssistantTurn_FallbackToPlainText(t *testing.T) {
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "plain text"}}},
 	}
+	m.syncViewport()
 	output := m.View().Content
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "plain text")
@@ -87,6 +89,7 @@ func TestModel_View_AssistantTurn_WithReasoning(t *testing.T) {
 			{kind: "reasoning", source: "because 2+2=4"},
 		}},
 	}
+	m.syncViewport()
 	output := m.View().Content
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "the answer")
@@ -108,6 +111,7 @@ func TestModel_View_AssistantTurn_MultiBlockSpacing(t *testing.T) {
 			{kind: "text", source: "the answer"},
 		}},
 	}
+	m.syncViewport()
 	output := m.View().Content
 	assert.Contains(t, output, "Thinking: ")
 	assert.Contains(t, output, "let me think...")
@@ -136,6 +140,8 @@ func TestModel_View_AssistantTurn_Reasoning_Rendered(t *testing.T) {
 	newM, _ := m.Update(turnMsg{turn: turn})
 	mm := newM.(*model)
 	mm.expandLatestDetails = true
+	mm.contentDirty = true
+	mm.syncViewport()
 	output := mm.View().Content
 	assert.Contains(t, output, "Thinking: ")
 	assert.Contains(t, output, "rendered-reasoning")
@@ -296,6 +302,7 @@ func TestModel_View_PendingPlaceholder(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.pending = true
+	m.syncViewport()
 	output := m.View().Content
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "...")
@@ -373,6 +380,8 @@ func TestRenderReasoning_ErrorFallback(t *testing.T) {
 	assert.Equal(t, "let me think...", mm.turns[0].blocks[0].source, "raw text should still be stored")
 
 	mm.expandLatestDetails = true
+	mm.contentDirty = true
+	mm.syncViewport()
 	output := mm.View().Content
 	assert.Contains(t, output, "Thinking: ")
 	assert.Contains(t, output, "let me think...")
@@ -524,6 +533,7 @@ func TestBuildContent_ExpandLatestTools_Toggle(t *testing.T) {
 
 	// Expanded mode: two-line label+content layout.
 	m.expandLatestDetails = true
+	m.contentDirty = true
 	expandedOutput := m.buildContent()
 	assert.Contains(t, expandedOutput, "Calling: search_files")
 	assert.NotContains(t, expandedOutput, "→ search_files")
@@ -562,6 +572,7 @@ func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
 
 	// Expanded mode: red label styling for errors via toolErrorStyle.
 	m.expandLatestDetails = true
+	m.contentDirty = true
 	output = m.buildContent()
 	assert.Contains(t, output, toolErrorStyle.Render("Tool: "))
 	assert.Contains(t, output, "Error: failed")
@@ -598,6 +609,7 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 
 	// Expanded mode
 	m.expandLatestDetails = true
+	m.contentDirty = true
 	output = m.buildContent()
 	assert.Contains(t, output, "Calling: foo({})")
 	assert.Contains(t, output, "Calling: bar({})")
