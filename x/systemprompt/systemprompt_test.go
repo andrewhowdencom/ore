@@ -304,4 +304,126 @@ func TestTransform_InternalNewlines(t *testing.T) {
 	assert.Equal(t, "First line.\nSecond line.\n\nThird line.", text.Content)
 }
 
+func TestTransform_ContextContentFunc(t *testing.T) {
+	tr, err := New(WithContextContentFunc(func(ctx context.Context) string { return "Context-aware." }))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, state.RoleSystem, turns[0].Role)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "Context-aware.", text.Content)
+}
+
+func TestTransform_MixedRegularAndContextContentFuncs(t *testing.T) {
+	tr, err := New(
+		WithContentFunc(func() string { return "Regular." }),
+		WithContextContentFunc(func(ctx context.Context) string { return "Context." }),
+		WithContentFunc(func() string { return "Another regular." }),
+	)
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "Regular.\n\nAnother regular.\n\nContext.", text.Content)
+}
+
+func TestTransform_NilContextContentFunc(t *testing.T) {
+	tr, err := New(WithContextContentFunc(nil))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Empty(t, text.Content)
+}
+
+func TestTransform_EmptyContextContentFunc(t *testing.T) {
+	tr, err := New(WithContextContentFunc(func(ctx context.Context) string { return "" }))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Empty(t, text.Content)
+}
+
+func TestTransform_ContextContentFuncReceivesContext(t *testing.T) {
+	type ctxKey struct{}
+	tr, err := New(WithContextContentFunc(func(ctx context.Context) string {
+		val, ok := ctx.Value(ctxKey{}).(string)
+		if !ok {
+			return "no-value"
+		}
+		return val
+	}))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ctx := context.WithValue(context.Background(), ctxKey{}, "test-value")
+	result, err := tr.Transform(ctx, base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "test-value", text.Content)
+}
+
+func TestTransform_MultipleContextContentFuncs_OrderAndSkipping(t *testing.T) {
+	tr, err := New(
+		WithContentFunc(func() string { return "Regular." }),
+		WithContextContentFunc(func(ctx context.Context) string { return "Ctx A." }),
+		WithContextContentFunc(nil),
+		WithContextContentFunc(func(ctx context.Context) string { return "" }),
+		WithContextContentFunc(func(ctx context.Context) string { return "Ctx B." }),
+		WithContentFunc(func() string { return "Another regular." }),
+	)
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "Regular.\n\nAnother regular.\n\nCtx A.\n\nCtx B.", text.Content)
+}
+
 
