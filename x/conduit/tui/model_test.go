@@ -2,6 +2,8 @@ package tui
 
 import (
 	"errors"
+	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -919,4 +921,55 @@ func TestModel_Update_KeyCtrlO_RapidToggles(t *testing.T) {
 	newM3, _ := mm2.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	mm3 := newM3.(*model)
 	assert.True(t, mm3.expandLatestTools)
+}
+
+func TestModel_Update_AudioMsg(t *testing.T) {
+	m := newTestModel()
+	m.pending = true
+	m.status = "thinking..."
+
+	// Capture stdout to verify the terminal bell is printed.
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = w
+
+	newM, cmd := m.Update(audioMsg{})
+	mm := newM.(*model)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	out, err := io.ReadAll(r)
+	require.NoError(t, err)
+
+	// audioMsg is a pure side-effect; model state should be unchanged.
+	assert.True(t, mm.pending, "audioMsg should not alter pending")
+	assert.Equal(t, "thinking...", mm.status, "audioMsg should not alter status")
+	assert.Nil(t, cmd)
+	assert.Equal(t, "\a", string(out), "audioMsg should print BEL to stdout")
+}
+
+func TestModel_Update_ErrorMsg(t *testing.T) {
+	m := newTestModel()
+	m.pending = true
+
+	newM, cmd := m.Update(errorMsg{err: errors.New("boom")})
+	mm := newM.(*model)
+
+	assert.False(t, mm.pending, "errorMsg should clear pending")
+	assert.Equal(t, "Error: boom", mm.status)
+	assert.Nil(t, cmd)
+}
+
+func TestModel_Update_ErrorMsg_Empty(t *testing.T) {
+	m := newTestModel()
+	m.pending = true
+
+	newM, cmd := m.Update(errorMsg{err: errors.New("")})
+	mm := newM.(*model)
+
+	assert.False(t, mm.pending, "errorMsg should clear pending")
+	assert.Equal(t, "Error: ", mm.status)
+	assert.Nil(t, cmd)
 }

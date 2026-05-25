@@ -49,6 +49,9 @@ func WithThreadID(id string) Option {
 }
 
 // Descriptor enumerates the capabilities of the TUI conduit.
+// CapAudioNotification is included because the TUI satisfies the
+// AudioNotifier contract using the terminal bell (\a), the only
+// universally-available sound in terminal environments.
 var Descriptor = conduit.Descriptor{
 	Name:        "TUI",
 	Description: "Terminal user interface via Bubble Tea",
@@ -176,15 +179,21 @@ func (t *TUI) SetStatus(ctx context.Context, status string) error {
 	return nil
 }
 
-// PlayDone sends an audio notification into the Bubble Tea message loop
-// to signal a successful assistant turn completion.
+// PlayDone forwards an audio notification to the Bubble Tea model so the
+// terminal bell is emitted on the UI goroutine. This preserves the
+// single-threaded model and avoids race conditions with the event loop.
+// The TUI uses the same bell for both done and error because \a cannot
+// vary pitch; distinct tones require a richer audio backend.
 func (t *TUI) PlayDone(ctx context.Context) error {
 	t.program.Send(audioMsg{})
 	return nil
 }
 
-// PlayError sends an audio notification into the Bubble Tea message loop
-// to signal an error during turn processing.
+// PlayError forwards an audio notification to the Bubble Tea model so the
+// terminal bell is emitted on the UI goroutine. Because the terminal
+// bell (\a) cannot vary pitch, the TUI produces the same sound for
+// errors as for successful turns. A future richer backend could introduce
+// distinct error tones.
 func (t *TUI) PlayError(ctx context.Context) error {
 	t.program.Send(audioMsg{})
 	return nil
