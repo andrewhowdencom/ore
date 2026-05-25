@@ -897,3 +897,48 @@ func TestDescriptor(t *testing.T) {
 		conduit.CapAudioNotification,
 	}, Descriptor.Capabilities)
 }
+
+func TestHandler_SendMessage_ErrorFallback_NoProcessComplete(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, boomProcessor())
+	h := newTestHandler(t, mgr)
+
+	// Create a session.
+	createReq := httptest.NewRequest("POST", "/sessions", nil)
+	createRr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(createRr, createReq)
+	require.Equal(t, 201, createRr.Code)
+
+	var createResp map[string]string
+	require.NoError(t, json.Unmarshal(createRr.Body.Bytes(), &createResp))
+	sessionID := createResp["id"]
+
+	// Send a message WITHOUT subscribing to process_complete.
+	// This simulates an older client that only knows about turn_complete and error.
+	body := `{"content": "hi", "kinds": ["text_delta", "turn_complete", "error"]}`
+	req := httptest.NewRequest("POST", "/sessions/"+sessionID+"/messages", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	require.Equal(t, 200, rr.Code)
+
+	// Parse the NDJSON response and verify an error event was sent as fallback.
+	var foundError bool
+	for _, line := range strings.Split(rr.Body.String(), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var event struct {
+			Kind    string `json:"kind"`
+			Message string `json:"message"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(line), &event))
+		if event.Kind == "error" {
+			foundError = true
+			assert.Contains(t, event.Message, "boom")
+		}
+	}
+	assert.True(t, foundError, "expected an error event in the NDJSON stream when process_complete is not subscribed")
+}

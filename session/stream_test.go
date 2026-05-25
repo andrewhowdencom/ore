@@ -2,10 +2,13 @@ package session
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/provider"
+	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/thread"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -238,4 +241,162 @@ func TestStream_Emit_AllowedWhileBusy(t *testing.T) {
 	}
 
 	_ = stream.Close()
+}
+
+func TestStream_Process_EmitsProcessCompleteEvent(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	ch := stream.Subscribe("process_complete")
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.NoError(t, err)
+
+	select {
+	case event := <-ch:
+		pce, ok := event.(loop.ProcessCompleteEvent)
+		require.True(t, ok)
+		assert.Nil(t, pce.Err)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for ProcessCompleteEvent")
+	}
+
+	_ = stream.Close()
+}
+
+func TestStream_Process_EmitsProcessCompleteEvent_WithError(t *testing.T) {
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, &mockProvider{}, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+		return st, errors.New("processor failed")
+	})
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	ch := stream.Subscribe("process_complete")
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.Error(t, err)
+
+	select {
+	case event := <-ch:
+		pce, ok := event.(loop.ProcessCompleteEvent)
+		require.True(t, ok)
+		assert.NotNil(t, pce.Err)
+		assert.Contains(t, pce.Err.Error(), "processor failed")
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for ProcessCompleteEvent")
+	}
+
+	_ = stream.Close()
+}
+
+// saveErrStore is a thread.Store whose Save always returns an error.
+type saveErrStore struct {
+	inner thread.Store
+}
+
+func (s *saveErrStore) Create() (*thread.Thread, error)                    { return s.inner.Create() }
+func (s *saveErrStore) Get(id string) (*thread.Thread, bool)               { return s.inner.Get(id) }
+func (s *saveErrStore) GetBy(key, value string) (*thread.Thread, bool)    { return s.inner.GetBy(key, value) }
+func (s *saveErrStore) Save(*thread.Thread) error                         { return errors.New("save failed") }
+func (s *saveErrStore) Delete(id string) bool                             { return s.inner.Delete(id) }
+func (s *saveErrStore) List() ([]*thread.Thread, error)                   { return s.inner.List() }
+
+func TestStream_Process_EmitsProcessCompleteEvent_WithSaveError(t *testing.T) {
+	store := &saveErrStore{inner: thread.NewMemoryStore()}
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	ch := stream.Subscribe("process_complete")
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.Error(t, err)
+
+	select {
+	case event := <-ch:
+		pce, ok := event.(loop.ProcessCompleteEvent)
+		require.True(t, ok)
+		assert.NotNil(t, pce.Err)
+		assert.Contains(t, pce.Err.Error(), "save")
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for ProcessCompleteEvent")
+	}
+
+	_ = stream.Close()
+}
+
+func TestStream_Process_EmitsProcessCompleteEvent_PropagatesProvenance(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	ch := stream.Subscribe("process_complete")
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi", Ctx: loop.EventContext{Provenance: "test-provenance"}})
+	require.NoError(t, err)
+
+	select {
+	case event := <-ch:
+		pce, ok := event.(loop.ProcessCompleteEvent)
+		require.True(t, ok)
+		assert.Equal(t, "test-provenance", pce.Ctx.Provenance)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for ProcessCompleteEvent")
+	}
+
+	_ = stream.Close()
+}
+
+func TestStream_Process_EmitsSingleProcessCompleteEvent_ForMultiTurn(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+		st, err := step.Turn(ctx, st, prov)
+		if err != nil {
+			return st, err
+		}
+		return step.Turn(ctx, st, prov)
+	})
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	turnCh := stream.Subscribe("turn_complete")
+	procCh := stream.Subscribe("process_complete")
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.NoError(t, err)
+
+	// Should receive exactly one ProcessCompleteEvent
+	select {
+	case event := <-procCh:
+		pce, ok := event.(loop.ProcessCompleteEvent)
+		require.True(t, ok)
+		assert.Nil(t, pce.Err)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for ProcessCompleteEvent")
+	}
+
+	// Should NOT receive a second ProcessCompleteEvent
+	select {
+	case <-procCh:
+		t.Fatal("expected exactly one ProcessCompleteEvent, got a second")
+	case <-time.After(50 * time.Millisecond):
+		// Expected - no second event
+	}
+
+	// Close stream and drain turn_complete events
+	_ = stream.Close()
+	turnCount := 0
+	for range turnCh {
+		turnCount++
+	}
+	assert.GreaterOrEqual(t, turnCount, 3, "expected at least 3 turn_complete events (user + 2 assistant turns)")
 }
