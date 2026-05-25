@@ -6,7 +6,8 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
-	"github.com/andrewhowdencom/ore/x/tool"
+	"github.com/andrewhowdencom/ore/tool"
+	xtool "github.com/andrewhowdencom/ore/x/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -14,7 +15,7 @@ import (
 func TestHandler_Add(t *testing.T) {
 	registry := tool.NewRegistry()
 	require.NoError(t, registry.Register(AddTool.Name, AddTool.Description, AddTool.Schema, Add))
-	handler := registry.Handler()
+	handler := xtool.NewHandler(registry)
 
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "What is 2 + 3?"})
@@ -41,7 +42,7 @@ func TestHandler_Add(t *testing.T) {
 func TestHandler_Multiply(t *testing.T) {
 	registry := tool.NewRegistry()
 	require.NoError(t, registry.Register(MultiplyTool.Name, MultiplyTool.Description, MultiplyTool.Schema, Multiply))
-	handler := registry.Handler()
+	handler := xtool.NewHandler(registry)
 
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "What is 4 * 5?"})
@@ -68,7 +69,7 @@ func TestHandler_Multiply(t *testing.T) {
 func TestHandler_UnknownTool(t *testing.T) {
 	registry := tool.NewRegistry()
 	require.NoError(t, registry.Register(AddTool.Name, AddTool.Description, AddTool.Schema, Add))
-	handler := registry.Handler()
+	handler := xtool.NewHandler(registry)
 
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "What is 10 / 2?"})
