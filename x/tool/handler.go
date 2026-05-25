@@ -9,14 +9,19 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/state"
+	toolpkg "github.com/andrewhowdencom/ore/tool"
 )
 
 // Handler implements loop.Handler for executing tool calls.
 // It looks up the tool by name in its registry, parses JSON arguments, executes
 // the function, and appends a RoleTool turn with a ToolResult artifact.
-// Handlers are obtained from a Registry via the Registry.Handler() method.
 type Handler struct {
-	registry *Registry
+	registry toolpkg.Registry
+}
+
+// NewHandler creates a Handler backed by the given registry.
+func NewHandler(registry toolpkg.Registry) *Handler {
+	return &Handler{registry: registry}
 }
 
 // Compile-time interface check.
@@ -46,7 +51,7 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, s state.Sta
 
 	// Check for namespaced tool call (e.g., "filesystem/read_file")
 	if namespace, name, ok := splitNamespace(tc.Name); ok {
-		source := h.registry.lookupRemoteSource(namespace)
+		source := h.registry.LookupRemoteSource(namespace)
 		if source == nil {
 			s.Append(state.RoleTool, artifact.ToolResult{
 				ToolCallID: tc.ID,
@@ -84,7 +89,7 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, s state.Sta
 	}
 
 	// Local tool lookup
-	fn, ok := h.registry.lookup(tc.Name)
+	fn, ok := h.registry.Lookup(tc.Name)
 	if !ok {
 		s.Append(state.RoleTool, artifact.ToolResult{
 			ToolCallID: tc.ID,

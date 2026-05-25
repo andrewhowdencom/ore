@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/x/tool"
+	"github.com/andrewhowdencom/ore/tool"
 )
 
 // Toolkit binds a Catalog to three tool.ToolFunc implementations that an LLM
@@ -52,7 +52,7 @@ func (t *Toolkit) SearchSkills(ctx context.Context, args map[string]any) (any, e
 }
 
 // Register adds all three skills tools to the registry.
-func (t *Toolkit) Register(registry *tool.Registry) error {
+func (t *Toolkit) Register(registry tool.Registry) error {
 	if err := registry.Register(
 		ListSkillsTool.Name,
 		ListSkillsTool.Description,

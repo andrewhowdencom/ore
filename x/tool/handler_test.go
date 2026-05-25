@@ -8,13 +8,14 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
+	toolpkg "github.com/andrewhowdencom/ore/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestHandler_IgnoresNonToolCall(t *testing.T) {
-	r := NewRegistry()
-	h := r.Handler()
+	r := toolpkg.NewRegistry()
+	h := NewHandler(r)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -24,8 +25,8 @@ func TestHandler_IgnoresNonToolCall(t *testing.T) {
 }
 
 func TestHandler_UnknownTool(t *testing.T) {
-	r := NewRegistry()
-	h := r.Handler()
+	r := toolpkg.NewRegistry()
+	h := NewHandler(r)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -47,13 +48,13 @@ func TestHandler_UnknownTool(t *testing.T) {
 }
 
 func TestHandler_ExecutesRegisteredTool(t *testing.T) {
-	r := NewRegistry()
+	r := toolpkg.NewRegistry()
 	require.NoError(t, r.Register("add", "Add two numbers", map[string]any{"type": "object"}, func(ctx context.Context, args map[string]any) (any, error) {
 		a, _ := args["a"].(float64)
 		b, _ := args["b"].(float64)
 		return a + b, nil
 	}))
-	h := r.Handler()
+	h := NewHandler(r)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -76,11 +77,11 @@ func TestHandler_ExecutesRegisteredTool(t *testing.T) {
 }
 
 func TestHandler_InvalidArguments(t *testing.T) {
-	r := NewRegistry()
+	r := toolpkg.NewRegistry()
 	require.NoError(t, r.Register("add", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
 		return nil, nil
 	}))
-	h := r.Handler()
+	h := NewHandler(r)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -100,11 +101,11 @@ func TestHandler_InvalidArguments(t *testing.T) {
 }
 
 func TestHandler_ToolExecutionError(t *testing.T) {
-	r := NewRegistry()
+	r := toolpkg.NewRegistry()
 	require.NoError(t, r.Register("fail", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
 		return nil, errors.New("boom")
 	}))
-	h := r.Handler()
+	h := NewHandler(r)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -124,12 +125,12 @@ func TestHandler_ToolExecutionError(t *testing.T) {
 }
 
 func TestHandler_SerializationError(t *testing.T) {
-	r := NewRegistry()
+	r := toolpkg.NewRegistry()
 	require.NoError(t, r.Register("bad", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
 		// Return a channel, which cannot be JSON-serialized.
 		return make(chan int), nil
 	}))
-	h := r.Handler()
+	h := NewHandler(r)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -149,11 +150,11 @@ func TestHandler_SerializationError(t *testing.T) {
 }
 
 func TestHandler_EmptyArguments(t *testing.T) {
-	r := NewRegistry()
+	r := toolpkg.NewRegistry()
 	require.NoError(t, r.Register("noop", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
 		return "done", nil
 	}))
-	h := r.Handler()
+	h := NewHandler(r)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -179,8 +180,8 @@ func TestHandler_NamespacedTool(t *testing.T) {
 		},
 	}
 
-	r := NewRegistry(WithMCPServer(remote))
-	h := r.Handler()
+	r := toolpkg.NewRegistry(toolpkg.WithMCPServer(remote))
+	h := NewHandler(r)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -203,8 +204,8 @@ func TestHandler_NamespacedTool(t *testing.T) {
 }
 
 func TestHandler_NamespacedUnknownNamespace(t *testing.T) {
-	r := NewRegistry()
-	h := r.Handler()
+	r := toolpkg.NewRegistry()
+	h := NewHandler(r)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -234,8 +235,8 @@ func (e *errorRemoteSource) Call(ctx context.Context, name string, args map[stri
 }
 
 func TestHandler_NamespacedRemoteError(t *testing.T) {
-	r := NewRegistry(WithMCPServer(&errorRemoteSource{}))
-	h := r.Handler()
+	r := toolpkg.NewRegistry(toolpkg.WithMCPServer(&errorRemoteSource{}))
+	h := NewHandler(r)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -258,11 +259,11 @@ func TestHandler_NamespacedRemoteError(t *testing.T) {
 
 func TestSplitNamespace(t *testing.T) {
 	tests := []struct {
-		name            string
-		input           string
-		wantNamespace   string
-		wantToolName    string
-		wantOk          bool
+		name          string
+		input         string
+		wantNamespace string
+		wantToolName  string
+		wantOk        bool
 	}{
 		{"standard", "filesystem/read_file", "filesystem", "read_file", true},
 		{"nested path", "a/b/c", "a", "b/c", true},
@@ -281,4 +282,19 @@ func TestSplitNamespace(t *testing.T) {
 			assert.Equal(t, tt.wantToolName, toolName)
 		})
 	}
+}
+
+type mockRemoteSource struct {
+	name  string
+	tools []provider.Tool
+}
+
+func (m *mockRemoteSource) Name() string { return m.name }
+func (m *mockRemoteSource) Tools() []provider.Tool {
+	t := make([]provider.Tool, len(m.tools))
+	copy(t, m.tools)
+	return t
+}
+func (m *mockRemoteSource) Call(ctx context.Context, name string, args map[string]any) (any, error) {
+	return "remote-result", nil
 }
