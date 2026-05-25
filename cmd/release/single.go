@@ -62,7 +62,8 @@ func runRelease(path string, dryRun bool, args []string) error {
 	if err != nil {
 		return err
 	}
-	commits, err := commitsSinceTag(root, tag)
+	cache := newCommitCache()
+	commits, err := commitsSinceTag(root, tag, cache)
 	if err != nil {
 		return err
 	}
