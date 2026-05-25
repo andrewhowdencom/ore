@@ -3,7 +3,10 @@ package stdio
 import (
 	"bytes"
 	"context"
+	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
@@ -28,6 +31,13 @@ func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- arti
 		}
 	}
 	return m.err
+}
+
+type blockingProvider struct{}
+
+func (p *blockingProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 func simpleProcessor() session.TurnProcessor {
@@ -100,4 +110,145 @@ func TestDescriptor(t *testing.T) {
 	require.Equal(t, "stdio", Descriptor.Name)
 	require.NotEmpty(t, Descriptor.Description)
 	require.NotEmpty(t, Descriptor.Capabilities)
+}
+
+func TestStart_HappyPath(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello, "},
+			artifact.TextDelta{Content: "world!"},
+		},
+	}
+	mgr := newManager(prov)
+
+	out := &bytes.Buffer{}
+	in := bytes.NewBufferString("hi")
+	c, err := New(mgr, WithInput(in), WithOutput(out))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = c.Start(ctx)
+	require.NoError(t, err)
+	require.Contains(t, out.String(), "Hello, world!")
+}
+
+func TestStart_ReasoningBlocks(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Let me think..."},
+			artifact.ReasoningDelta{Content: "thinking..."},
+			artifact.TextDelta{Content: " Done!"},
+		},
+	}
+	mgr := newManager(prov)
+
+	out := &bytes.Buffer{}
+	in := bytes.NewBufferString("question")
+	c, err := New(mgr, WithInput(in), WithOutput(out))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = c.Start(ctx)
+	require.NoError(t, err)
+	require.Contains(t, out.String(), "Let me think...")
+	require.Contains(t, out.String(), "thinking...")
+	require.Contains(t, out.String(), "Done!")
+	require.Contains(t, out.String(), "```reasoning")
+	require.Contains(t, out.String(), "```")
+}
+
+func TestStart_ErrorEvent(t *testing.T) {
+	prov := &mockProvider{
+		err: errors.New("provider failure"),
+	}
+	mgr := newManager(prov)
+
+	out := &bytes.Buffer{}
+	in := bytes.NewBufferString("test")
+	c, err := New(mgr, WithInput(in), WithOutput(out))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = c.Start(ctx)
+	require.Error(t, err)
+	require.Contains(t, out.String(), "error:")
+	require.Contains(t, out.String(), "provider failure")
+}
+
+func TestStart_WithThreadID(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "attached"},
+		},
+	}
+	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+
+	thr, err := store.Create()
+	require.NoError(t, err)
+
+	out := &bytes.Buffer{}
+	in := bytes.NewBufferString("hello")
+	c, err := New(mgr, WithInput(in), WithOutput(out), WithThreadID(thr.ID))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = c.Start(ctx)
+	require.NoError(t, err)
+	require.Contains(t, out.String(), "attached")
+}
+
+func TestStart_ProvenanceFiltering(t *testing.T) {
+	store := thread.NewMemoryStore()
+	foreignProcessor := func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+		step.SetEventContext(loop.EventContext{Provenance: "other"})
+		return step.Turn(ctx, st, prov)
+	}
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "should be ignored"},
+		},
+	}
+	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, foreignProcessor)
+
+	out := &bytes.Buffer{}
+	in := bytes.NewBufferString("test")
+	c, err := New(mgr, WithInput(in), WithOutput(out))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = c.Start(ctx)
+	require.NoError(t, err)
+	require.NotContains(t, out.String(), "should be ignored")
+}
+
+func TestStart_ContextCancellation(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &blockingProvider{}
+	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+
+	out := &bytes.Buffer{}
+	in := bytes.NewBufferString("test")
+	c, err := New(mgr, WithInput(in), WithOutput(out))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	err = c.Start(ctx)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "context canceled"))
 }
