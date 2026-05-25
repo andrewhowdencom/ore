@@ -183,7 +183,7 @@ func (c *SlackConduit) Start(ctx context.Context) error {
 			slog.Error("deliver turn complete", "err", err, "stream", streamID)
 		}
 	}
-	unregister := c.mgr.RegisterSink([]string{"turn_complete"}, sink)
+	unregister := c.mgr.RegisterSink([]string{"turn_complete", "process_complete"}, sink)
 	defer unregister()
 
 	// Start Socket Mode.
