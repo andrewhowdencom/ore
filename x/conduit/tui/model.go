@@ -35,6 +35,15 @@ type statusMsg struct {
 // a turn.
 type clearPendingMsg struct{}
 
+// audioMsg is a Bubble Tea message that triggers a terminal bell sound.
+type audioMsg struct{}
+
+// errorMsg is a Bubble Tea message that carries an error into the model
+// to update the status and clear the pending state.
+type errorMsg struct {
+	err error
+}
+
 // renderedBlock tracks a finalized piece of turn content with its kind,
 // original source, optional compact representation, and optional
 // pre-rendered ANSI cache.
@@ -210,6 +219,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = msg.status
 	case clearPendingMsg:
 		m.pending = false
+	case audioMsg:
+		fmt.Print("\a")
+		return m, nil
+	case errorMsg:
+		m.pending = false
+		m.status = "Error: " + msg.err.Error()
+		return m, nil
 	case tea.KeyPressMsg:
 		switch msg.Key().Code {
 		case tea.KeyPgUp, tea.KeyPgDown:

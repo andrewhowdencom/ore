@@ -11,6 +11,7 @@ import (
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/thread"
+	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/stretchr/testify/require"
 )
 
@@ -72,4 +73,8 @@ func TestStart_AttachNotFound(t *testing.T) {
 	err = c.Start(ctx)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "nonexistent")
+}
+
+func TestTUI_ImplementsAudioNotifier(t *testing.T) {
+	var _ conduit.AudioNotifier = (*TUI)(nil)
 }

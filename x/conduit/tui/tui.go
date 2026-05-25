@@ -21,6 +21,7 @@ import (
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/state"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
@@ -56,8 +57,12 @@ var Descriptor = conduit.Descriptor{
 		conduit.CapShowStatus,
 		conduit.CapRenderTurn,
 		conduit.CapRenderMarkdown,
+		conduit.CapAudioNotification,
 	},
 }
+
+// Compile-time assertion that *TUI implements conduit.AudioNotifier.
+var _ conduit.AudioNotifier = (*TUI)(nil)
 
 // New creates a new TUI conduit that implements conduit.Conduit.
 // The returned value must be started with Start(ctx) to run the interface.
@@ -112,7 +117,7 @@ func (t *TUI) Start(ctx context.Context) error {
 	t.program = p
 
 	// Subscribe to the stream's output.
-	outputCh := stream.Subscribe("turn_complete")
+	outputCh := stream.Subscribe("turn_complete", "error")
 
 	// Goroutine to stream output events into the Bubble Tea message loop.
 	go func() {
@@ -120,9 +125,12 @@ func (t *TUI) Start(ctx context.Context) error {
 			switch e := event.(type) {
 			case loop.TurnCompleteEvent:
 				t.program.Send(turnMsg{turn: e.Turn})
+				if e.Turn.Role == state.RoleAssistant {
+					_ = t.PlayDone(ctx)
+				}
 			case loop.ErrorEvent:
-				// Errors are exposed via status updates rather than the
-				// message loop; the application goroutine handles them.
+				t.program.Send(errorMsg{err: e.Err})
+				_ = t.PlayError(ctx)
 			}
 		}
 	}()
@@ -165,5 +173,19 @@ func (t *TUI) Start(ctx context.Context) error {
 // actual state mutation happens in model.Update.
 func (t *TUI) SetStatus(ctx context.Context, status string) error {
 	t.program.Send(statusMsg{status: status})
+	return nil
+}
+
+// PlayDone sends an audio notification into the Bubble Tea message loop
+// to signal a successful assistant turn completion.
+func (t *TUI) PlayDone(ctx context.Context) error {
+	t.program.Send(audioMsg{})
+	return nil
+}
+
+// PlayError sends an audio notification into the Bubble Tea message loop
+// to signal an error during turn processing.
+func (t *TUI) PlayError(ctx context.Context) error {
+	t.program.Send(audioMsg{})
 	return nil
 }
