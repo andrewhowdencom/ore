@@ -27,6 +27,11 @@ Do NOT use this skill for:
 - Ore architectural philosophy or package boundary decisions at the
   repository level (see `AGENTS.md` instead)
 
+> **Scope Boundary:** This skill guides architectural quality *within*
+> the current plan's scope. If a planned change would violate a Boolean
+> Guard, report the deviation and halt per the execution agent's rules.
+> Do not silently refactor outside the plan to work around a guard.
+
 ## Core Principle: Centrality-Weighted Reasonability
 
 Simplicity is **risk management**, not a moral virtue. The simpler a piece of
@@ -92,21 +97,38 @@ more internal complexity provided it is self-contained.
 
 ## Assessing Centrality
 
-When modifying a package, evaluate its centrality before deciding how much
-complexity is acceptable:
+When modifying a package, look it up in the **Known Centrality Map** below.
+If it is not listed, assume peripheral and verify with the heuristics
+after the table.
 
-1. **Count internal importers**: Run `go list -deps ./<pkg> | grep
-   github.com/andrewhowdencom/ore` from the repo root, or visually inspect
-   the import graph. If ≥3 internal packages import this package, it is
-   central.
-2. **Check position on the core chain**: Packages `artifact/`, `state/`,
+### Known Centrality Map
+
+| Package | Zone | Rationale |
+|---|---|---|
+| `artifact/` | Central | Core chain leaf; every other package depends on it transitively |
+| `state/` | Central | Core chain; depended on by `provider/` and everything above |
+| `provider/` | Central | Core chain; depended on by `loop/` and everything above |
+| `loop/` | Central | Core chain; orchestrates all provider invocations |
+| `session/` | Central | Transitive via `loop/` and `state/`; changes here affect everything downstream |
+| `cognitive/` | Peripheral | Imported only by `examples/` and `cmd/` applications |
+| `tool/` | Peripheral | Imported only by `x/tool/handler/` and applications |
+| `x/provider/openai/` | Peripheral | Concrete adapter; one internal consumer (applications) |
+| `x/conduit/http/` | Peripheral | Concrete conduit; one internal consumer (applications) |
+| `x/tool/handler/` | Peripheral | Concrete handler; one internal consumer (applications) |
+
+### Additional Heuristics
+
+For packages not in the map, or when the map may be stale after a major
+refactor:
+
+1. **Check position on the core chain**: Packages `artifact/`, `state/`,
    `provider/`, and `core/`/`loop/` are central by definition regardless of
    importer count, because every other package depends on them
    transitively.
-3. **Check transitivity**: A package imported by only one other package
+2. **Check transitivity**: A package imported by only one other package
    may still be central if that importer is itself central. Trace the
    dependency chain upward.
-4. **Estimate change frequency**: Look at `git log --oneline -- <pkg>/` for
+3. **Estimate change frequency**: Look at `git log --oneline -- <pkg>/` for
    the last 20 commits. If the package appears frequently, it is high
    change-frequency and thus higher centrality.
 
@@ -144,8 +166,10 @@ Follow these steps in order. Do not skip or reorder.
    - Splitting a large function into smaller functions with narrow contracts.
    - Moving orchestration code out of central packages into application
      or cognitive layers.
-6. **Validate**: After your change, re-assess the package. If it is now
-   more complex and more central than before, reconsider.
+6. **Validate**: Run the per-task validation criteria from the plan
+   (tests, lint, build) and `task validate` if a Taskfile exists. Then
+   re-assess the package: if it is now more complex and more central
+   than before, reconsider the change.
 
 ## Success Criteria
 
