@@ -6,7 +6,7 @@ require (
 	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.6
 	charm.land/lipgloss/v2 v2.0.3
-	github.com/andrewhowdencom/ore v0.0.0
+	github.com/andrewhowdencom/ore v0.0.0-00010101000000-000000000000
 	github.com/andrewhowdencom/ore/x/conduit v0.0.0-20260522200942-1391eb953a7e
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/charmbracelet/x/cellbuf v0.0.15
@@ -52,6 +52,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/andrewhowdencom/ore => ../../../
 
-replace github.com/andrewhowdencom/ore/x/conduit => ../../conduit
