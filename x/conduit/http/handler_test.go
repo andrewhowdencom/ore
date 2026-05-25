@@ -894,5 +894,6 @@ func TestDescriptor(t *testing.T) {
 		conduit.CapShowStatus,
 		conduit.CapRenderTurn,
 		conduit.CapRenderMarkdown,
+		conduit.CapAudioNotification,
 	}, Descriptor.Capabilities)
 }
