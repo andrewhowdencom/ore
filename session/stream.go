@@ -34,6 +34,11 @@ type Stream struct {
 // pipeline. The stream must not be busy. Context cancellation aborts the
 // running TurnProcessor.
 //
+// After the TurnProcessor returns (including all tool-call loops),
+// Process emits a ProcessCompleteEvent carrying the final error state
+// before performing save cleanup. Subscribers can use this event for
+// lifecycle signalling (audio notifications, UI state finalization).
+//
 // Errors:
 //   - ErrSessionBusy if the stream is already processing a turn
 //   - "unsupported event kind" for unknown event types

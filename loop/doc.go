@@ -31,4 +31,14 @@
 // artifact.Delta marker interface
 // controls whether an artifact is persisted to state; it does NOT filter
 // event-stream visibility. All artifacts are forwarded to subscribers.
+//
+// Output event lifecycle:
+//   - TurnCompleteEvent fires after each individual assistant turn,
+//     carrying the turn content for incremental rendering.
+//   - ProcessCompleteEvent fires once per user-initiated interaction
+//     when the entire pipeline (including all tool-call loops) finishes.
+//     It carries the final error state and is the correct signal for
+//     lifecycle actions (audio notifications, typing indicator dismissal).
+//   - ErrorEvent fires when an individual turn fails inside the provider
+//     or a registered handler.
 package loop

@@ -72,6 +72,9 @@ func (e ErrorEvent) Context() EventContext { return e.Ctx }
 // ProcessCompleteEvent is emitted when the entire inference pipeline
 // (including all tool-call loops) has finished. It carries the final
 // error state so subscribers can distinguish success from failure.
+// Err contains the final error from the TurnProcessor, the thread
+// store save step, or context cancellation. A nil Err means the
+// pipeline completed without error.
 // Unlike TurnCompleteEvent, which fires on every intermediate turn,
 // this event signals the end of a complete user-initiated interaction.
 type ProcessCompleteEvent struct {
@@ -82,10 +85,10 @@ type ProcessCompleteEvent struct {
 	Ctx EventContext
 }
 
-// Kind returns the event kind identifier.
+// Kind returns the event kind identifier for ProcessCompleteEvent.
 func (e ProcessCompleteEvent) Kind() string { return "process_complete" }
 
-// Context returns the event context.
+// Context returns the routing metadata for ProcessCompleteEvent.
 func (e ProcessCompleteEvent) Context() EventContext { return e.Ctx }
 
 // ArtifactEvent wraps an artifact.Artifact with an EventContext so it
