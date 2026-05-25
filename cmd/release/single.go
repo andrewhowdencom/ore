@@ -83,11 +83,13 @@ func runRelease(path string, dryRun bool, args []string) error {
 
 	// Update deps and tidy.
 	allVersions[m.Path] = version
-	if err := updateModuleDeps(root, m, allVersions); err != nil {
-		return err
-	}
-	if err := runGoModTidy(root, m); err != nil {
-		return err
+	if !dryRun {
+		if err := updateModuleDeps(root, m, allVersions); err != nil {
+			return err
+		}
+		if err := runGoModTidy(root, m); err != nil {
+			return err
+		}
 	}
 
 	// Commit and tag.
