@@ -110,3 +110,11 @@ func TestToolkit_SystemPromptFragment(t *testing.T) {
 	expected := "You have access to the following specialized skills. Use read_skill(name=<skill>) to load detailed instructions when needed:\n\n- alpha: first skill\n- beta: second skill"
 	assert.Equal(t, expected, fragment)
 }
+
+func TestToolkit_SystemPromptFragment_ErrorFallback(t *testing.T) {
+	t.Parallel()
+	tk := NewToolkit(&failingDiscoverer{})
+	fn := tk.SystemPromptFragment()
+	fragment := fn(context.Background())
+	assert.Empty(t, fragment)
+}
