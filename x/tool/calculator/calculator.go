@@ -14,14 +14,14 @@ var _ tool.ToolFunc = Add
 var _ tool.ToolFunc = Multiply
 
 // Add adds two numbers parsed from JSON arguments.
-func Add(ctx context.Context, args map[string]any) (any, error) {
+func Add(ctx context.Context, _ tool.Sandbox, args map[string]any) (any, error) {
 	a := ToFloat64(args["a"])
 	b := ToFloat64(args["b"])
 	return a + b, nil
 }
 
 // Multiply multiplies two numbers parsed from JSON arguments.
-func Multiply(ctx context.Context, args map[string]any) (any, error) {
+func Multiply(ctx context.Context, _ tool.Sandbox, args map[string]any) (any, error) {
 	a := ToFloat64(args["a"])
 	b := ToFloat64(args["b"])
 	return a * b, nil
