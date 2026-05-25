@@ -24,14 +24,14 @@ func NewToolkit(discoverers ...Discoverer) *Toolkit {
 
 // ListSkills lists all discovered skills by metadata (name + description).
 // Parameters: none.
-func (t *Toolkit) ListSkills(ctx context.Context, args map[string]any) (any, error) {
+func (t *Toolkit) ListSkills(ctx context.Context, _ tool.Sandbox, args map[string]any) (any, error) {
 	return t.catalog.List(ctx)
 }
 
 // ReadSkill returns the full SKILL.md content for the named skill.
 // Parameters:
 //   - name (string, required): the skill name.
-func (t *Toolkit) ReadSkill(ctx context.Context, args map[string]any) (any, error) {
+func (t *Toolkit) ReadSkill(ctx context.Context, _ tool.Sandbox, args map[string]any) (any, error) {
 	name := toString(args["name"])
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
@@ -43,7 +43,7 @@ func (t *Toolkit) ReadSkill(ctx context.Context, args map[string]any) (any, erro
 // or description.
 // Parameters:
 //   - query (string, required): the search query.
-func (t *Toolkit) SearchSkills(ctx context.Context, args map[string]any) (any, error) {
+func (t *Toolkit) SearchSkills(ctx context.Context, _ tool.Sandbox, args map[string]any) (any, error) {
 	query := toString(args["query"])
 	if query == "" {
 		return nil, fmt.Errorf("query is required")

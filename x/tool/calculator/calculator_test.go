@@ -9,37 +9,37 @@ import (
 )
 
 func TestAdd(t *testing.T) {
-	result, err := Add(context.Background(), map[string]any{"a": 3.0, "b": 5.0})
+	result, err := Add(context.Background(), nil, map[string]any{"a": 3.0, "b": 5.0})
 	require.NoError(t, err)
 	assert.InDelta(t, 8.0, result, 0.0001)
 }
 
 func TestAdd_WithIntegers(t *testing.T) {
-	result, err := Add(context.Background(), map[string]any{"a": 3, "b": 5})
+	result, err := Add(context.Background(), nil, map[string]any{"a": 3, "b": 5})
 	require.NoError(t, err)
 	assert.InDelta(t, 8.0, result, 0.0001)
 }
 
 func TestAdd_WithStrings(t *testing.T) {
-	result, err := Add(context.Background(), map[string]any{"a": "3", "b": "5"})
+	result, err := Add(context.Background(), nil, map[string]any{"a": "3", "b": "5"})
 	require.NoError(t, err)
 	assert.InDelta(t, 8.0, result, 0.0001)
 }
 
 func TestMultiply(t *testing.T) {
-	result, err := Multiply(context.Background(), map[string]any{"a": 3.0, "b": 5.0})
+	result, err := Multiply(context.Background(), nil, map[string]any{"a": 3.0, "b": 5.0})
 	require.NoError(t, err)
 	assert.InDelta(t, 15.0, result, 0.0001)
 }
 
 func TestMultiply_WithIntegers(t *testing.T) {
-	result, err := Multiply(context.Background(), map[string]any{"a": 3, "b": 5})
+	result, err := Multiply(context.Background(), nil, map[string]any{"a": 3, "b": 5})
 	require.NoError(t, err)
 	assert.InDelta(t, 15.0, result, 0.0001)
 }
 
 func TestMultiply_WithStrings(t *testing.T) {
-	result, err := Multiply(context.Background(), map[string]any{"a": "3", "b": "5"})
+	result, err := Multiply(context.Background(), nil, map[string]any{"a": "3", "b": "5"})
 	require.NoError(t, err)
 	assert.InDelta(t, 15.0, result, 0.0001)
 }
@@ -65,13 +65,13 @@ func TestToFloat64_UnknownType(t *testing.T) {
 }
 
 func TestAdd_MissingArgs(t *testing.T) {
-	result, err := Add(context.Background(), map[string]any{})
+	result, err := Add(context.Background(), nil, map[string]any{})
 	require.NoError(t, err)
 	assert.InDelta(t, 0.0, result, 0.0001)
 }
 
 func TestMultiply_MissingArgs(t *testing.T) {
-	result, err := Multiply(context.Background(), map[string]any{})
+	result, err := Multiply(context.Background(), nil, map[string]any{})
 	require.NoError(t, err)
 	assert.InDelta(t, 0.0, result, 0.0001)
 }
@@ -101,25 +101,25 @@ func TestToFloat64_ScientificNotation(t *testing.T) {
 }
 
 func TestAdd_NegativeNumbers(t *testing.T) {
-	result, err := Add(context.Background(), map[string]any{"a": -3.0, "b": 5.0})
+	result, err := Add(context.Background(), nil, map[string]any{"a": -3.0, "b": 5.0})
 	require.NoError(t, err)
 	assert.InDelta(t, 2.0, result, 0.0001)
 }
 
 func TestMultiply_NegativeNumbers(t *testing.T) {
-	result, err := Multiply(context.Background(), map[string]any{"a": -3.0, "b": 5.0})
+	result, err := Multiply(context.Background(), nil, map[string]any{"a": -3.0, "b": 5.0})
 	require.NoError(t, err)
 	assert.InDelta(t, -15.0, result, 0.0001)
 }
 
 func TestAdd_ExtraFields(t *testing.T) {
-	result, err := Add(context.Background(), map[string]any{"a": 3.0, "b": 5.0, "c": 99.0})
+	result, err := Add(context.Background(), nil, map[string]any{"a": 3.0, "b": 5.0, "c": 99.0})
 	require.NoError(t, err)
 	assert.InDelta(t, 8.0, result, 0.0001)
 }
 
 func TestMultiply_ExtraFields(t *testing.T) {
-	result, err := Multiply(context.Background(), map[string]any{"a": 3.0, "b": 5.0, "c": 99.0})
+	result, err := Multiply(context.Background(), nil, map[string]any{"a": 3.0, "b": 5.0, "c": 99.0})
 	require.NoError(t, err)
 	assert.InDelta(t, 15.0, result, 0.0001)
 }

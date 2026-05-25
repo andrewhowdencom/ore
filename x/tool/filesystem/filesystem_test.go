@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/andrewhowdencom/ore/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +18,7 @@ func TestReadFile_HappyPath(t *testing.T) {
 	p := filepath.Join(dir, "test.txt")
 	require.NoError(t, os.WriteFile(p, []byte("line one\nline two\nline three\n"), 0o644))
 
-	result, err := ReadFile(context.Background(), map[string]any{"path": p})
+	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p})
 	require.NoError(t, err)
 	assert.Equal(t, "1|line one\n2|line two\n3|line three\n", result)
 }
@@ -28,7 +29,7 @@ func TestReadFile_OffsetAndLimit(t *testing.T) {
 	p := filepath.Join(dir, "test.txt")
 	require.NoError(t, os.WriteFile(p, []byte("line one\nline two\nline three\nline four\n"), 0o644))
 
-	result, err := ReadFile(context.Background(), map[string]any{
+	result, err := ReadFile(context.Background(), nil, map[string]any{
 		"path":   p,
 		"offset": 2.0,
 		"limit":  2.0,
@@ -43,7 +44,7 @@ func TestReadFile_OffsetZero(t *testing.T) {
 	p := filepath.Join(dir, "test.txt")
 	require.NoError(t, os.WriteFile(p, []byte("line one\nline two\n"), 0o644))
 
-	result, err := ReadFile(context.Background(), map[string]any{"path": p, "offset": 0})
+	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p, "offset": 0})
 	require.NoError(t, err)
 	assert.Equal(t, "1|line one\n2|line two\n", result)
 }
@@ -54,7 +55,7 @@ func TestReadFile_OffsetBeyondEOF(t *testing.T) {
 	p := filepath.Join(dir, "test.txt")
 	require.NoError(t, os.WriteFile(p, []byte("line one\n"), 0o644))
 
-	result, err := ReadFile(context.Background(), map[string]any{"path": p, "offset": 10})
+	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p, "offset": 10})
 	require.NoError(t, err)
 	assert.Equal(t, "", result)
 }
@@ -65,14 +66,14 @@ func TestReadFile_LimitZero(t *testing.T) {
 	p := filepath.Join(dir, "test.txt")
 	require.NoError(t, os.WriteFile(p, []byte("line one\nline two\nline three\n"), 0o644))
 
-	result, err := ReadFile(context.Background(), map[string]any{"path": p, "limit": 0})
+	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p, "limit": 0})
 	require.NoError(t, err)
 	assert.Equal(t, "1|line one\n2|line two\n3|line three\n", result)
 }
 
 func TestReadFile_EmptyPath(t *testing.T) {
 	t.Parallel()
-	_, err := ReadFile(context.Background(), map[string]any{"path": ""})
+	_, err := ReadFile(context.Background(), nil, map[string]any{"path": ""})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "path is required")
 }
@@ -82,7 +83,7 @@ func TestReadFile_MissingFile(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "missing.txt")
 
-	_, err := ReadFile(context.Background(), map[string]any{"path": p})
+	_, err := ReadFile(context.Background(), nil, map[string]any{"path": p})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to stat path")
 }
@@ -91,7 +92,7 @@ func TestReadFile_Directory(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 
-	_, err := ReadFile(context.Background(), map[string]any{"path": dir})
+	_, err := ReadFile(context.Background(), nil, map[string]any{"path": dir})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "is a directory")
 }
@@ -102,7 +103,7 @@ func TestReadFile_EmptyFile(t *testing.T) {
 	p := filepath.Join(dir, "empty.txt")
 	require.NoError(t, os.WriteFile(p, []byte{}, 0o644))
 
-	result, err := ReadFile(context.Background(), map[string]any{"path": p})
+	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p})
 	require.NoError(t, err)
 	assert.Equal(t, "", result)
 }
@@ -113,7 +114,7 @@ func TestReadFile_NoTrailingNewline(t *testing.T) {
 	p := filepath.Join(dir, "no-nl.txt")
 	require.NoError(t, os.WriteFile(p, []byte("line one\nline two"), 0o644))
 
-	result, err := ReadFile(context.Background(), map[string]any{"path": p})
+	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p})
 	require.NoError(t, err)
 	assert.Equal(t, "1|line one\n2|line two\n", result)
 }
@@ -123,7 +124,7 @@ func TestWriteFile_NewFile(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "new.txt")
 
-	result, err := WriteFile(context.Background(), map[string]any{
+	result, err := WriteFile(context.Background(), nil, map[string]any{
 		"path":    p,
 		"content": "hello world",
 	})
@@ -140,7 +141,7 @@ func TestWriteFile_NestedPath(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "subdir", "nested.txt")
 
-	result, err := WriteFile(context.Background(), map[string]any{
+	result, err := WriteFile(context.Background(), nil, map[string]any{
 		"path":    p,
 		"content": "nested content",
 	})
@@ -158,7 +159,7 @@ func TestWriteFile_AlreadyExists(t *testing.T) {
 	p := filepath.Join(dir, "exists.txt")
 	require.NoError(t, os.WriteFile(p, []byte("existing"), 0o644))
 
-	_, err := WriteFile(context.Background(), map[string]any{
+	_, err := WriteFile(context.Background(), nil, map[string]any{
 		"path":    p,
 		"content": "new content",
 	})
@@ -172,7 +173,7 @@ func TestWriteFile_DirectoryExists(t *testing.T) {
 	p := filepath.Join(dir, "subdir")
 	require.NoError(t, os.Mkdir(p, 0o755))
 
-	_, err := WriteFile(context.Background(), map[string]any{
+	_, err := WriteFile(context.Background(), nil, map[string]any{
 		"path":    p,
 		"content": "should fail",
 	})
@@ -182,7 +183,7 @@ func TestWriteFile_DirectoryExists(t *testing.T) {
 
 func TestWriteFile_EmptyPath(t *testing.T) {
 	t.Parallel()
-	_, err := WriteFile(context.Background(), map[string]any{
+	_, err := WriteFile(context.Background(), nil, map[string]any{
 		"path":    "",
 		"content": "content",
 	})
@@ -195,7 +196,7 @@ func TestWriteFile_EmptyContent(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "empty.txt")
 
-	result, err := WriteFile(context.Background(), map[string]any{
+	result, err := WriteFile(context.Background(), nil, map[string]any{
 		"path":    p,
 		"content": "",
 	})
@@ -213,7 +214,7 @@ func TestEditFile_SingleLine(t *testing.T) {
 	p := filepath.Join(dir, "edit.txt")
 	require.NoError(t, os.WriteFile(p, []byte("hello world\n"), 0o644))
 
-	result, err := EditFile(context.Background(), map[string]any{
+	result, err := EditFile(context.Background(), nil, map[string]any{
 		"path":       p,
 		"old_string": "hello",
 		"new_string": "goodbye",
@@ -232,7 +233,7 @@ func TestEditFile_MultiLine(t *testing.T) {
 	p := filepath.Join(dir, "edit.txt")
 	require.NoError(t, os.WriteFile(p, []byte("line one\nline two\nline three\n"), 0o644))
 
-	result, err := EditFile(context.Background(), map[string]any{
+	result, err := EditFile(context.Background(), nil, map[string]any{
 		"path":       p,
 		"old_string": "line two\nline three",
 		"new_string": "replaced two\nreplaced three",
@@ -251,7 +252,7 @@ func TestEditFile_EmptyOldString(t *testing.T) {
 	p := filepath.Join(dir, "edit.txt")
 	require.NoError(t, os.WriteFile(p, []byte("content\n"), 0o644))
 
-	_, err := EditFile(context.Background(), map[string]any{
+	_, err := EditFile(context.Background(), nil, map[string]any{
 		"path":       p,
 		"old_string": "",
 		"new_string": "x",
@@ -266,7 +267,7 @@ func TestEditFile_NotFound(t *testing.T) {
 	p := filepath.Join(dir, "edit.txt")
 	require.NoError(t, os.WriteFile(p, []byte("content\n"), 0o644))
 
-	_, err := EditFile(context.Background(), map[string]any{
+	_, err := EditFile(context.Background(), nil, map[string]any{
 		"path":       p,
 		"old_string": "missing",
 		"new_string": "x",
@@ -280,7 +281,7 @@ func TestEditFile_MissingFile(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "missing.txt")
 
-	_, err := EditFile(context.Background(), map[string]any{
+	_, err := EditFile(context.Background(), nil, map[string]any{
 		"path":       p,
 		"old_string": "x",
 		"new_string": "y",
@@ -295,7 +296,7 @@ func TestEditFile_EmptyNewString(t *testing.T) {
 	p := filepath.Join(dir, "edit.txt")
 	require.NoError(t, os.WriteFile(p, []byte("hello world\n"), 0o644))
 
-	result, err := EditFile(context.Background(), map[string]any{
+	result, err := EditFile(context.Background(), nil, map[string]any{
 		"path":       p,
 		"old_string": "hello",
 		"new_string": "",
@@ -310,7 +311,7 @@ func TestEditFile_EmptyNewString(t *testing.T) {
 
 func TestEditFile_EmptyPath(t *testing.T) {
 	t.Parallel()
-	_, err := EditFile(context.Background(), map[string]any{
+	_, err := EditFile(context.Background(), nil, map[string]any{
 		"path":       "",
 		"old_string": "x",
 		"new_string": "y",
@@ -325,7 +326,7 @@ func TestEditFile_FirstOccurrenceOnly(t *testing.T) {
 	p := filepath.Join(dir, "edit.txt")
 	require.NoError(t, os.WriteFile(p, []byte("ab ab ab\n"), 0o644))
 
-	result, err := EditFile(context.Background(), map[string]any{
+	result, err := EditFile(context.Background(), nil, map[string]any{
 		"path":       p,
 		"old_string": "ab",
 		"new_string": "XX",
@@ -346,7 +347,7 @@ func TestListDirectory_MixedEntries(t *testing.T) {
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "c_dir"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".hidden"), []byte("hidden"), 0o644))
 
-	result, err := ListDirectory(context.Background(), map[string]any{"path": dir})
+	result, err := ListDirectory(context.Background(), nil, map[string]any{"path": dir})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"a.txt", "b.txt", "c_dir"}, result)
 }
@@ -355,7 +356,7 @@ func TestListDirectory_Empty(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 
-	result, err := ListDirectory(context.Background(), map[string]any{"path": dir})
+	result, err := ListDirectory(context.Background(), nil, map[string]any{"path": dir})
 	require.NoError(t, err)
 	assert.Equal(t, []string{}, result)
 }
@@ -365,7 +366,7 @@ func TestListDirectory_MissingPath(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "missing")
 
-	_, err := ListDirectory(context.Background(), map[string]any{"path": p})
+	_, err := ListDirectory(context.Background(), nil, map[string]any{"path": p})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to stat path")
 }
@@ -376,7 +377,7 @@ func TestListDirectory_FileAsPath(t *testing.T) {
 	p := filepath.Join(dir, "file.txt")
 	require.NoError(t, os.WriteFile(p, []byte("content"), 0o644))
 
-	_, err := ListDirectory(context.Background(), map[string]any{"path": p})
+	_, err := ListDirectory(context.Background(), nil, map[string]any{"path": p})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "is not a directory")
 }
@@ -387,7 +388,7 @@ func TestListDirectory_HiddenSubdirectory(t *testing.T) {
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "visible"), 0o755))
 	require.NoError(t, os.Mkdir(filepath.Join(dir, ".hidden"), 0o755))
 
-	result, err := ListDirectory(context.Background(), map[string]any{"path": dir})
+	result, err := ListDirectory(context.Background(), nil, map[string]any{"path": dir})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"visible"}, result)
 }
@@ -398,7 +399,7 @@ func TestSearchFiles_SingleFile(t *testing.T) {
 	p := filepath.Join(dir, "search.txt")
 	require.NoError(t, os.WriteFile(p, []byte("hello world\ngoodbye world\nhello moon\n"), 0o644))
 
-	result, err := SearchFiles(context.Background(), map[string]any{
+	result, err := SearchFiles(context.Background(), nil, map[string]any{
 		"path":  p,
 		"query": "hello",
 	})
@@ -422,7 +423,7 @@ func TestSearchFiles_DirectoryRecursive(t *testing.T) {
 	require.NoError(t, os.WriteFile(p1, []byte("alpha\n"), 0o644))
 	require.NoError(t, os.WriteFile(p2, []byte("gamma\n"), 0o644))
 
-	result, err := SearchFiles(context.Background(), map[string]any{
+	result, err := SearchFiles(context.Background(), nil, map[string]any{
 		"path":  dir,
 		"query": "a",
 	})
@@ -444,7 +445,7 @@ func TestSearchFiles_NoMatches(t *testing.T) {
 	p := filepath.Join(dir, "search.txt")
 	require.NoError(t, os.WriteFile(p, []byte("content\n"), 0o644))
 
-	result, err := SearchFiles(context.Background(), map[string]any{
+	result, err := SearchFiles(context.Background(), nil, map[string]any{
 		"path":  p,
 		"query": "nomatch",
 	})
@@ -460,7 +461,7 @@ func TestSearchFiles_InvalidRegex(t *testing.T) {
 	p := filepath.Join(dir, "search.txt")
 	require.NoError(t, os.WriteFile(p, []byte("content\n"), 0o644))
 
-	_, err := SearchFiles(context.Background(), map[string]any{
+	_, err := SearchFiles(context.Background(), nil, map[string]any{
 		"path":  p,
 		"query": "[invalid",
 	})
@@ -476,7 +477,7 @@ func TestSearchFiles_SkipsHidden(t *testing.T) {
 	require.NoError(t, os.WriteFile(visible, []byte("visible content\n"), 0o644))
 	require.NoError(t, os.WriteFile(hidden, []byte("hidden content\n"), 0o644))
 
-	result, err := SearchFiles(context.Background(), map[string]any{
+	result, err := SearchFiles(context.Background(), nil, map[string]any{
 		"path":  dir,
 		"query": "content",
 	})
@@ -493,7 +494,7 @@ func TestSearchFiles_EmptyQuery(t *testing.T) {
 	p := filepath.Join(dir, "search.txt")
 	require.NoError(t, os.WriteFile(p, []byte("content\n"), 0o644))
 
-	_, err := SearchFiles(context.Background(), map[string]any{
+	_, err := SearchFiles(context.Background(), nil, map[string]any{
 		"path":  p,
 		"query": "",
 	})
@@ -511,7 +512,7 @@ func TestSearchFiles_HiddenSubdirectory(t *testing.T) {
 	hiddenFile := filepath.Join(hiddenDir, "hidden.txt")
 	require.NoError(t, os.WriteFile(hiddenFile, []byte("match\n"), 0o644))
 
-	result, err := SearchFiles(context.Background(), map[string]any{
+	result, err := SearchFiles(context.Background(), nil, map[string]any{
 		"path":  dir,
 		"query": "match",
 	})
@@ -548,4 +549,95 @@ func TestToString_NonString(t *testing.T) {
 	assert.Equal(t, "", toString(42))
 	assert.Equal(t, "", toString(nil))
 	assert.Equal(t, "", toString(true))
+}
+
+type mockFileSandbox struct {
+	dir string
+}
+
+func (m *mockFileSandbox) Name() string { return "mock" }
+func (m *mockFileSandbox) ResolvePath(path string) (string, error) {
+	return filepath.Join(m.dir, path), nil
+}
+func (m *mockFileSandbox) WorkingDirectory() string { return m.dir }
+
+var _ tool.FileSandbox = (*mockFileSandbox)(nil)
+
+type errorFileSandbox struct {
+	dir string
+}
+
+func (m *errorFileSandbox) Name() string { return "error" }
+func (m *errorFileSandbox) ResolvePath(path string) (string, error) {
+	return "", fmt.Errorf("sandbox rejects path %q", path)
+}
+func (m *errorFileSandbox) WorkingDirectory() string { return m.dir }
+
+var _ tool.FileSandbox = (*errorFileSandbox)(nil)
+
+func TestReadFile_WithSandbox(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "test.txt")
+	require.NoError(t, os.WriteFile(p, []byte("hello"), 0o644))
+
+	sb := &mockFileSandbox{dir: dir}
+	result, err := ReadFile(context.Background(), sb, map[string]any{"path": "test.txt"})
+	require.NoError(t, err)
+	assert.Equal(t, "1|hello\n", result)
+}
+
+func TestReadFile_AbsolutePathInSandbox(t *testing.T) {
+	t.Parallel()
+	sb := &mockFileSandbox{dir: t.TempDir()}
+	_, err := ReadFile(context.Background(), sb, map[string]any{"path": "/etc/passwd"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "absolute paths not allowed")
+}
+
+func TestWriteFile_WithSandbox(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	sb := &mockFileSandbox{dir: dir}
+
+	result, err := WriteFile(context.Background(), sb, map[string]any{
+		"path":    "new.txt",
+		"content": "hello world",
+	})
+	require.NoError(t, err)
+	assert.Contains(t, result.(string), "new.txt")
+
+	data, err := os.ReadFile(filepath.Join(dir, "new.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "hello world", string(data))
+}
+
+func TestReadFile_ResolvePathError(t *testing.T) {
+	t.Parallel()
+	sb := &errorFileSandbox{dir: t.TempDir()}
+	_, err := ReadFile(context.Background(), sb, map[string]any{"path": "test.txt"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "sandbox rejects path")
+}
+
+func TestReadFile_NegativeOffset(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "test.txt")
+	require.NoError(t, os.WriteFile(p, []byte("line1\nline2\nline3\n"), 0o644))
+
+	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p, "offset": -5})
+	require.NoError(t, err)
+	assert.Equal(t, "1|line1\n2|line2\n3|line3\n", result)
+}
+
+func TestReadFile_ZeroLimit(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "test.txt")
+	require.NoError(t, os.WriteFile(p, []byte("line1\nline2\nline3\n"), 0o644))
+
+	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p, "offset": 1, "limit": 0})
+	require.NoError(t, err)
+	assert.Equal(t, "1|line1\n2|line2\n3|line3\n", result)
 }

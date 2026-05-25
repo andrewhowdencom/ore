@@ -92,22 +92,25 @@ func run() error {
 		return fmt.Errorf("create openai provider: %w", err)
 	}
 
-	// Tool calling example (uncomment this block and comment out the provider
-	// and step setup immediately above and below it):
+	// Tool calling example (uncomment this block, comment out the provider
+	// setup above, and comment out the step setup below):
 	//
-	//   import (
-	//       "github.com/andrewhowdencom/ore/tool"
-	//       xtool "github.com/andrewhowdencom/ore/x/tool"
-	//   )
+	//   // Add these imports at the top of the file:
+	//   //   "github.com/andrewhowdencom/ore/tool"
+	//   //   xtool "github.com/andrewhowdencom/ore/x/tool"
 	//
-	//   // xtool is an alias for the extension package that provides the
-	//   // NewHandler bridge; the core tool package supplies the Registry.
 	//   registry := tool.NewRegistry()
-	//   if err := registry.Register("calculator", "A simple calculator", map[string]any{"type": "object"}, func(ctx context.Context, args map[string]any) (any, error) {
+	//   if err := registry.Register("calculator", "A simple calculator", map[string]any{"type": "object"}, func(ctx context.Context, _ tool.Sandbox, args map[string]any) (any, error) {
 	//       return "42", nil
 	//   }); err != nil {
 	//       ...
 	//   }
+	//
+	//   // Optional: register a sandbox for isolation. See tool/doc.go for
+	//   // sandbox interface details.
+	//   // sb := &mySandbox{dir: "/tmp/workspace"}
+	//   // registry.(tool.SandboxRegistry).RegisterSandbox("workspace", sb)
+	//
 	//   p, err := openai.New(append([]openai.Option{openai.WithAPIKey(apiKey), openai.WithModel(model)}, opts...)...)
 	//   s := loop.New(loop.WithHandlers(xtool.NewHandler(registry)), loop.WithInvokeOptions(openai.WithTools(registry.Tools())))
 	//
