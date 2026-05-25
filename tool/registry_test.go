@@ -130,6 +130,75 @@ func TestRegistry_Tools_LocalOnly(t *testing.T) {
 	assert.Equal(t, map[string]any{"type": "object"}, tools[0].Schema)
 }
 
+func TestRegistry_ConcurrentToolsReads(t *testing.T) {
+	r := NewRegistry()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 100)
+
+	// Concurrent writers registering distinct tools.
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			name := fmt.Sprintf("tool-%d", n)
+			if err := r.Register(name, "", nil, func(ctx context.Context, args map[string]any) (any, error) {
+				return n, nil
+			}); err != nil {
+				errCh <- err
+			}
+		}(i)
+	}
+
+	// Concurrent readers calling Tools().
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			tools := r.Tools()
+			seen := make(map[string]bool)
+			for _, tool := range tools {
+				if seen[tool.Name] {
+					t.Errorf("duplicate tool name %q in Tools() result", tool.Name)
+					return
+				}
+				seen[tool.Name] = true
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		assert.NoError(t, err)
+	}
+}
+
+func TestRegistry_ConcurrentOverwrite(t *testing.T) {
+	r := NewRegistry()
+	var wg sync.WaitGroup
+
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			_ = r.Register("test", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
+				return n, nil
+			})
+		}(i)
+	}
+
+	wg.Wait()
+
+	// After all overwrites, the final entry should be one of the registered functions.
+	fn, ok := r.Lookup("test")
+	require.True(t, ok)
+	result, err := fn(nil, nil)
+	require.NoError(t, err)
+	n, ok := result.(int)
+	require.True(t, ok)
+	assert.True(t, n >= 0 && n < 100, "result %d should be in range [0,100)", n)
+}
+
 type mockRemoteSource struct {
 	name  string
 	tools []provider.Tool

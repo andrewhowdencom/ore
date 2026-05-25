@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
@@ -172,6 +173,29 @@ func TestHandler_EmptyArguments(t *testing.T) {
 	assert.Equal(t, `"done"`, tr.Content)
 }
 
+func TestHandler_ArrayReturnValue(t *testing.T) {
+	r := toolpkg.NewRegistry()
+	require.NoError(t, r.Register("list", "", nil, func(ctx context.Context, args map[string]any) (any, error) {
+		return []int{1, 2, 3}, nil
+	}))
+	h := NewHandler(r)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	err := h.Handle(context.Background(), artifact.ToolCall{
+		ID:   "call_1",
+		Name: "list",
+	}, mem)
+	require.NoError(t, err)
+
+	turns := mem.Turns()
+	require.Len(t, turns, 2)
+	tr, ok := turns[1].Artifacts[0].(artifact.ToolResult)
+	require.True(t, ok)
+	assert.False(t, tr.IsError)
+	assert.Equal(t, "[1,2,3]", tr.Content)
+}
+
 func TestHandler_NamespacedTool(t *testing.T) {
 	remote := &mockRemoteSource{
 		name: "filesystem",
@@ -224,6 +248,16 @@ func TestHandler_NamespacedUnknownNamespace(t *testing.T) {
 	assert.Contains(t, tr.Content, "namespace")
 }
 
+type notFoundRemoteSource struct{}
+
+func (e *notFoundRemoteSource) Name() string { return "remote" }
+func (e *notFoundRemoteSource) Tools() []provider.Tool {
+	return []provider.Tool{{Name: "known", Description: "Known tool"}}
+}
+func (e *notFoundRemoteSource) Call(ctx context.Context, name string, args map[string]any) (any, error) {
+	return nil, fmt.Errorf("tool %q not found", name)
+}
+
 type errorRemoteSource struct{}
 
 func (e *errorRemoteSource) Name() string { return "remote" }
@@ -255,6 +289,28 @@ func TestHandler_NamespacedRemoteError(t *testing.T) {
 	assert.True(t, tr.IsError)
 	assert.Contains(t, tr.Content, "tool execution error")
 	assert.Contains(t, tr.Content, "remote tool failed")
+}
+
+func TestHandler_NamespacedRemoteToolNotFound(t *testing.T) {
+	r := toolpkg.NewRegistry(toolpkg.WithMCPServer(&notFoundRemoteSource{}))
+	h := NewHandler(r)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	err := h.Handle(context.Background(), artifact.ToolCall{
+		ID:   "call_1",
+		Name: "remote/unknown",
+	}, mem)
+	require.NoError(t, err)
+
+	turns := mem.Turns()
+	require.Len(t, turns, 2)
+	tr, ok := turns[1].Artifacts[0].(artifact.ToolResult)
+	require.True(t, ok)
+	assert.Equal(t, "call_1", tr.ToolCallID)
+	assert.True(t, tr.IsError)
+	assert.Contains(t, tr.Content, "tool execution error")
+	assert.Contains(t, tr.Content, "not found")
 }
 
 func TestSplitNamespace(t *testing.T) {
