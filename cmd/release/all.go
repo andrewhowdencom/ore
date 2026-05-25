@@ -115,33 +115,50 @@ func runAll(dryRun bool, args []string) error {
 		return err
 	}
 
-	// Override allVersions with target versions for dependency updates.
+	// Snapshot current versions before we override with targets.
+	currentVersions := make(map[string]string)
+	for k, v := range allVersions {
+		currentVersions[k] = v
+	}
+
+	// Override allVersions with target versions for the release phase.
 	for _, t := range targets {
 		allVersions[t.module.Path] = t.version
 	}
 
-	// Pre-flight: update deps and run go mod tidy for all changed modules.
-	fmt.Println("Pre-flight: validating go mod tidy...")
-	for _, m := range sorted {
-		fmt.Printf("  %s: updating dependencies...\n", m.Path)
-		if err := updateModuleDeps(root, m, allVersions); err != nil {
-			return fmt.Errorf("pre-flight update deps for %s: %w", m.Path, err)
+	// Pre-flight: tidy go.mod with current (already-resolvable) versions.
+	if !dryRun {
+		fmt.Println("Pre-flight: validating go mod tidy...")
+		for _, m := range sorted {
+			fmt.Printf("  %s: updating dependencies to current versions...\n", m.Path)
+			if err := updateModuleDeps(root, m, currentVersions); err != nil {
+				return fmt.Errorf("pre-flight update deps for %s: %w", m.Path, err)
+			}
+			fmt.Printf("  %s: go mod tidy...\n", m.Path)
+			if err := runGoModTidy(root, m); err != nil {
+				return fmt.Errorf("pre-flight go mod tidy for %s: %w\nRun 'git checkout -- .' to revert changes.", m.Path, err)
+			}
 		}
-		fmt.Printf("  %s: go mod tidy...\n", m.Path)
-		if err := runGoModTidy(root, m); err != nil {
-			return fmt.Errorf("pre-flight go mod tidy for %s: %w\nRun 'git checkout -- .' to revert changes.", m.Path, err)
-		}
+		fmt.Println("Pre-flight passed.")
+		fmt.Println()
+	} else {
+		fmt.Println("[dry-run] Skipping pre-flight go mod tidy (no file changes).")
+		fmt.Println()
 	}
-	fmt.Println("Pre-flight passed.")
-	fmt.Println()
 
-	// Release: commit and tag each module.
+	// Release: bump to target versions, commit and tag each module.
 	for _, m := range sorted {
 		var version string
 		for _, t := range targets {
 			if t.module.Path == m.Path {
 				version = t.version
 				break
+			}
+		}
+		if !dryRun {
+			fmt.Printf("  %s: updating dependencies to target versions...\n", m.Path)
+			if err := updateModuleDeps(root, m, allVersions); err != nil {
+				return err
 			}
 		}
 		fmt.Printf("Releasing %s %s...\n", m.Path, version)
