@@ -483,3 +483,18 @@ func TestMarshalOutputEvent_CustomMarshaler(t *testing.T) {
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"kind":"custom_marshaler","value":"hello"}`, string(data))
 }
+
+func TestArtifactJSON_ToolCallDelta_IndexRoundTrip(t *testing.T) {
+	art := artifact.ToolCallDelta{Index: 2, ID: "tc-1", Name: "add", Arguments: "1"}
+	data, err := MarshalArtifact(art)
+	require.NoError(t, err)
+
+	got, err := UnmarshalArtifact(data)
+	require.NoError(t, err)
+	td, ok := got.(artifact.ToolCallDelta)
+	require.True(t, ok)
+	assert.Equal(t, 2, td.Index)
+	assert.Equal(t, "tc-1", td.ID)
+	assert.Equal(t, "add", td.Name)
+	assert.Equal(t, "1", td.Arguments)
+}
