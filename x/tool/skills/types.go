@@ -124,6 +124,31 @@ func (c *Catalog) Search(ctx context.Context, query string) ([]SkillMeta, error)
 	return result, nil
 }
 
+// SystemPromptFragment returns a formatted prompt fragment listing all
+// discovered skills. The resulting bullet list is deterministic because
+// Catalog.List returns skills sorted by name. If no skills are discovered
+// or an error occurs, it returns an empty string so the section is omitted
+// from the prompt.
+func (c *Catalog) SystemPromptFragment(ctx context.Context) string {
+	meta, err := c.List(ctx)
+	if err != nil || len(meta) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString("You have access to the following specialized skills. Use read_skill(name=<skill>) to load detailed instructions when needed:\n\n")
+	for i, m := range meta {
+		b.WriteString("- ")
+		b.WriteString(m.Name)
+		b.WriteString(": ")
+		b.WriteString(m.Description)
+		if i < len(meta)-1 {
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
+}
+
 // refresh queries all discoverers, builds a name → entry map with
 // first-wins deduplication, and replaces the cache under a write lock.
 // Individual discoverer errors are logged and skipped rather than failing

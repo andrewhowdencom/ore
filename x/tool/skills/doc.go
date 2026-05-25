@@ -32,6 +32,22 @@
 // tool itself is a single provider tool with three callable functions;
 // individual skills are not registered as separate tools.
 //
+// System Prompt Integration
+//
+// To avoid an extra round-trip for discovery, applications can proactively
+// inject a formatted listing of all discovered skills into the system prompt:
+//
+//	import "github.com/andrewhowdencom/ore/x/systemprompt"
+//
+//	sp, _ := systemprompt.New(
+//	    systemprompt.WithContextContentFunc(tk.SystemPromptFragment()),
+//	)
+//
+// The fragment includes a header and a deterministic bullet list of skill
+// names and descriptions. If no skills are discovered or discovery fails, the
+// fragment returns an empty string and the section is cleanly omitted. The
+// LLM can still call list_skills or search_skills for interactive browsing.
+//
 // Deduplication and Overrides
 //
 // When multiple discoverers expose skills with the same name, the first
