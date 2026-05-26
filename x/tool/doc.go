@@ -14,7 +14,9 @@
 // A Handler implements loop.Handler. It detects artifact.ToolCall artifacts,
 // looks up the tool by name in its registry (local or remote), executes the
 // corresponding function, and emits a TurnCompleteEvent with RoleTool and a
-// ToolResult artifact. Unknown tools are refused with an error result.
+// ToolResult artifact. Using Emit keeps tool results on the same observable
+// event stream as other artifacts, allowing UI conduits to render them
+// without special-casing. Unknown tools are refused with an error result.
 //
 // Tool calling composes three mechanisms:
 //

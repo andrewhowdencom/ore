@@ -32,7 +32,8 @@
 //	should subscribe to it in addition to TurnCompleteEvent, which fires
 //	on every intermediate turn for incremental rendering.
 //
-// Typical composition:
+// To persist state across turns, wire an OnEmit callback that appends
+// TurnCompleteEvent to the thread's state buffer. Typical composition:
 //
 //	store := thread.NewMemoryStore()
 //	prov := openai.New(apiKey, model)
