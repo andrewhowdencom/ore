@@ -41,4 +41,8 @@
 //     lifecycle actions (audio notifications, typing indicator dismissal).
 //   - ErrorEvent fires when an individual turn fails inside the provider
 //     or a registered handler.
+//   - StatusEvent carries ambient, persistent status information as a
+//     map of key-value pairs (e.g. thread_id, token counts, model name).
+//     Any component with access to a *session.Stream can emit it, and it
+//     is delivered to all subscribers through the per-session FanOut.
 package loop
