@@ -1079,3 +1079,126 @@ func TestModel_View_PendingWithCurrentTurn_HidesPlaceholder(t *testing.T) {
 	assert.Contains(t, output2, "real")
 	assert.NotContains(t, output2, "...", "placeholder should be hidden when currentTurn has blocks")
 }
+
+// recordingMockRenderer captures the width passed to each Render call.
+type recordingMockRenderer struct {
+	widths []int
+	output string
+}
+
+func (r *recordingMockRenderer) Render(text string, width int) (string, error) {
+	r.widths = append(r.widths, width)
+	return r.output, nil
+}
+
+func TestModel_Update_MixedArtifacts_AccumulateInOrder(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.md = mockMarkdownRenderer{output: "rendered"}
+
+	// Simulate incremental artifact events arriving before TurnCompleteEvent.
+	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "hello"}})
+	mm := newM.(*model)
+	newM2, _ := mm.Update(artifactMsg{artifact: artifact.Reasoning{Content: "think"}})
+	mm2 := newM2.(*model)
+	newM3, _ := mm2.Update(artifactMsg{artifact: artifact.ToolCall{Name: "foo", Arguments: "{}"}})
+	mm3 := newM3.(*model)
+
+	require.Len(t, mm3.currentTurn.blocks, 3)
+	assert.Equal(t, "text", mm3.currentTurn.blocks[0].kind)
+	assert.Equal(t, "hello", mm3.currentTurn.blocks[0].source)
+	assert.Equal(t, "reasoning", mm3.currentTurn.blocks[1].kind)
+	assert.Equal(t, "think", mm3.currentTurn.blocks[1].source)
+	assert.Equal(t, "tool_call", mm3.currentTurn.blocks[2].kind)
+
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "hello"},
+			artifact.Reasoning{Content: "think"},
+			artifact.ToolCall{Name: "foo", Arguments: "{}"},
+		},
+	}
+	newM4, _ := mm3.Update(turnMsg{turn: turn})
+	mm4 := newM4.(*model)
+	require.Len(t, mm4.turns, 1)
+	require.Len(t, mm4.turns[0].blocks, 3)
+	assert.Equal(t, "text", mm4.turns[0].blocks[0].kind)
+	assert.Equal(t, "reasoning", mm4.turns[0].blocks[1].kind)
+	assert.Equal(t, "tool_call", mm4.turns[0].blocks[2].kind)
+}
+
+func TestModel_Update_UnknownArtifactType_Ignored(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+
+	// Sending an unhandled artifact type should not panic or add blocks.
+	newM, _ := m.Update(artifactMsg{artifact: unknownArtifact{}})
+	mm := newM.(*model)
+	assert.Len(t, mm.currentTurn.blocks, 0)
+	assert.Len(t, mm.turns, 0)
+}
+
+func TestModel_Update_ErrorMidStream_ClearsAndRecovers(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.md = mockMarkdownRenderer{output: "rendered"}
+	m.pending = true // Simulate an in-flight assistant turn.
+
+	// Start streaming an assistant turn.
+	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "partial"}})
+	mm := newM.(*model)
+	require.Len(t, mm.currentTurn.blocks, 1)
+	assert.True(t, mm.pending)
+
+	// Error arrives mid-stream: currentTurn should be cleared and pending reset.
+	newM2, _ := mm.Update(errorMsg{err: errors.New("network error")})
+	mm2 := newM2.(*model)
+	assert.Len(t, mm2.currentTurn.blocks, 0)
+	assert.False(t, mm2.pending)
+
+	// New turn starts after error (artifactMsg accumulates blocks; pending
+	// remains false until a new user submission sets it).
+	newM3, _ := mm2.Update(artifactMsg{artifact: artifact.Text{Content: "new content"}})
+	mm3 := newM3.(*model)
+	require.Len(t, mm3.currentTurn.blocks, 1)
+	assert.Equal(t, "new content", mm3.currentTurn.blocks[0].source)
+	assert.False(t, mm3.pending)
+
+	// Finalize the recovery turn.
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "new content"},
+		},
+	}
+	newM4, _ := mm3.Update(turnMsg{turn: turn})
+	mm4 := newM4.(*model)
+	require.Len(t, mm4.turns, 1)
+	assert.Equal(t, "new content", mm4.turns[0].blocks[0].source)
+	assert.False(t, mm4.pending)
+}
+
+func TestModel_Update_WindowSize_RerendersCurrentTurn(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	rec := &recordingMockRenderer{output: "rendered"}
+	m.md = rec
+
+	// Send artifact at initial viewport width (80).
+	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "hello"}})
+	mm := newM.(*model)
+	require.Len(t, mm.currentTurn.blocks, 1)
+	assert.Equal(t, "rendered", mm.currentTurn.blocks[0].rendered)
+	require.Len(t, rec.widths, 1)
+	assert.Equal(t, 80, rec.widths[0]) // full viewport width
+
+	// Resize viewport to narrower width.
+	newM2, _ := mm.Update(tea.WindowSizeMsg{Width: 40, Height: 20})
+	mm2 := newM2.(*model)
+
+	// Verify the currentTurn block was re-rendered with the new width.
+	require.Len(t, rec.widths, 2)
+	assert.Equal(t, 40, rec.widths[1]) // new full viewport width
+	assert.Equal(t, "rendered", mm2.currentTurn.blocks[0].rendered)
+}
