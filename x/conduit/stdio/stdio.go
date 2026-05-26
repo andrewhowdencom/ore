@@ -87,7 +87,7 @@ func (s *stdio) Start(ctx context.Context) error {
 		return fmt.Errorf("start session: %w", err)
 	}
 
-	outputCh := stream.Subscribe("text_delta", "reasoning_delta", "tool_call_delta", "turn_complete", "error")
+	outputCh := stream.Subscribe("text_delta", "reasoning_delta", "tool_call_delta", "turn_complete", "process_complete", "error")
 
 	done := make(chan struct{})
 	stop := make(chan struct{})
@@ -140,6 +140,13 @@ func (s *stdio) Start(ctx context.Context) error {
 					if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
 						fmt.Fprint(s.out, "\n```\n")
 					}
+					currentKind = ""
+
+				case loop.ProcessCompleteEvent:
+					if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
+						fmt.Fprint(s.out, "\n```\n")
+					}
+					turnErr = e.Err
 					return
 
 				case loop.ErrorEvent:
@@ -177,16 +184,16 @@ func (s *stdio) Start(ctx context.Context) error {
 	}
 	processErr := stream.Process(ctx, event)
 
-	// For newly created sessions, close the stream to release resources.
-	if s.threadID == "" {
-		_ = stream.Close()
-	}
-
 	close(stop)
 	select {
 	case <-done:
 	case <-ctx.Done():
 		return ctx.Err()
+	}
+
+	// For newly created sessions, close the stream to release resources.
+	if s.threadID == "" {
+		_ = stream.Close()
 	}
 
 	if processErr != nil {
