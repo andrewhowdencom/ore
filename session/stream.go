@@ -36,6 +36,7 @@ type Stream struct {
 	queue      []queuedEvent
 	queueCond  *sync.Cond
 	workerOnce sync.Once
+	workerWG   sync.WaitGroup
 }
 
 // queuedEvent wraps an Event with the caller's context and an optional
@@ -201,6 +202,8 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 // worker is the single goroutine that drains the event queue and
 // processes each event serially via processOne.
 func (s *Stream) worker() {
+	s.workerWG.Add(1)
+	defer s.workerWG.Done()
 	for {
 		s.mu.Lock()
 		for len(s.queue) == 0 && !s.closed {
@@ -296,14 +299,22 @@ func (s *Stream) ID() string { return s.id }
 
 // Close closes the stream's Step and marks it as closed.
 // The underlying thread is NOT deleted from the store.
+//
+// Close cancels any in-flight turn, waits for the worker goroutine to
+// exit, and then closes the step. This ensures all pending Process
+// calls receive errors and no goroutine leak occurs.
 func (s *Stream) Close() error {
 	s.mu.Lock()
 	s.closed = true
+	if s.cancel != nil {
+		s.cancel()
+	}
 	cond := s.queueCond
 	s.mu.Unlock()
 	if cond != nil {
 		cond.Broadcast()
 	}
+	s.workerWG.Wait()
 	if s.step != nil {
 		_ = s.step.Close()
 	}

@@ -565,3 +565,126 @@ func TestStream_ProcessAndSubmit_Mixed(t *testing.T) {
 	events := drainWithClose(t, ch, func() { _ = stream.Close() })
 	require.GreaterOrEqual(t, len(events), 6) // 3 user + 3 assistant turns
 }
+
+// slowProvider sleeps for a short duration, simulating a slow turn.
+type slowProvider struct{}
+
+func (m *slowProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+	select {
+	case <-time.After(100 * time.Millisecond):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// serialProvider detects concurrent Invoke calls via a mutex-guarded active flag.
+type serialProvider struct {
+	mu       sync.Mutex
+	active   bool
+	detected bool
+}
+
+func (m *serialProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+	m.mu.Lock()
+	if m.active {
+		m.detected = true
+	}
+	m.active = true
+	m.mu.Unlock()
+
+	time.Sleep(50 * time.Millisecond)
+
+	m.mu.Lock()
+	m.active = false
+	m.mu.Unlock()
+	return nil
+}
+
+func TestStream_Submit_AfterClose(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	err = stream.Close()
+	require.NoError(t, err)
+
+	err = stream.Submit(UserMessageEvent{Content: "should-fail"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is closed")
+}
+
+func TestStream_Close_DuringProcessing(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &slowProvider{}
+	mgr := NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	// Start a slow turn.
+	done := make(chan error)
+	go func() {
+		done <- stream.Process(context.Background(), UserMessageEvent{Content: "slow"})
+	}()
+
+	// Wait for processing to start.
+	time.Sleep(20 * time.Millisecond)
+
+	// Close while the turn is in-flight.
+	err = stream.Close()
+	require.NoError(t, err)
+
+	// Process should return within timeout (not hang forever).
+	select {
+	case err := <-done:
+		// Close cancels the in-flight turn, so Process should return
+		// an error (typically context.Canceled).
+		require.Error(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Process hung after Close during in-flight turn")
+	}
+
+	// Subsequent Submit should be rejected immediately.
+	err = stream.Submit(UserMessageEvent{Content: "after-close"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is closed")
+}
+
+func TestStream_MultipleSubmit_StartsSingleWorker(t *testing.T) {
+	store := thread.NewMemoryStore()
+	prov := &serialProvider{}
+	mgr := NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	ch := stream.Subscribe("process_complete")
+
+	// Submit 3 events rapidly from different goroutines.
+	var wg sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			require.NoError(t, stream.Submit(UserMessageEvent{Content: "concurrent"}))
+		}()
+	}
+	wg.Wait()
+
+	// Wait for all 3 events to complete.
+	for i := 0; i < 3; i++ {
+		select {
+		case <-ch:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timeout waiting for process_complete %d", i)
+		}
+	}
+
+	_ = stream.Close()
+
+	assert.False(t, prov.detected, "detected concurrent Invoke calls — multiple workers may have started")
+}
