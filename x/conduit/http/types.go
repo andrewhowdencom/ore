@@ -68,6 +68,13 @@ type artifactEventJSON struct {
 	Context *eventContextJSON `json:"context,omitempty"`
 }
 
+// statusEventJSON is the JSON representation of a StatusEvent.
+type statusEventJSON struct {
+	Kind    string            `json:"kind"`
+	Status  map[string]string `json:"status"`
+	Context *eventContextJSON `json:"context,omitempty"`
+}
+
 // eventContextToJSON converts a loop.EventContext to a JSON DTO pointer.
 // Returns nil when the context is empty so omitempty removes it from JSON.
 func eventContextToJSON(ctx loop.EventContext) *eventContextJSON {
@@ -173,6 +180,12 @@ func MarshalOutputEvent(event loop.OutputEvent) ([]byte, error) {
 			artifactJSON: *dto,
 			Context:      eventContextToJSON(e.Ctx),
 		})
+	case loop.StatusEvent:
+		return json.Marshal(statusEventJSON{
+			Kind:    "status",
+			Status:  e.Status,
+			Context: eventContextToJSON(e.Ctx),
+		})
 	default:
 		if m, ok := event.(json.Marshaler); ok {
 			return m.MarshalJSON()
@@ -277,6 +290,12 @@ func UnmarshalOutputEvent(data []byte) (loop.OutputEvent, error) {
 			err = fmt.Errorf("%s", dto.Error)
 		}
 		return loop.ProcessCompleteEvent{Err: err, Ctx: eventContextFromJSON(dto.Context)}, nil
+	case "status":
+		var dto statusEventJSON
+		if err := json.Unmarshal(data, &dto); err != nil {
+			return nil, err
+		}
+		return loop.StatusEvent{Status: dto.Status, Ctx: eventContextFromJSON(dto.Context)}, nil
 	default:
 		// Treat as artifact.
 		var dto artifactEventJSON

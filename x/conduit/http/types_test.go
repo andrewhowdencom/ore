@@ -272,6 +272,11 @@ func TestMarshalOutputEvent(t *testing.T) {
 			event: loop.ArtifactEvent{Artifact: &unknownArtifact{}},
 			want:  "",
 		},
+		{
+			name:  "status",
+			event: loop.StatusEvent{Status: map[string]string{"thread_id": "abc"}},
+			want:  `{"kind":"status","status":{"thread_id":"abc"}}`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -351,6 +356,11 @@ func TestUnmarshalOutputEvent(t *testing.T) {
 			want:  loop.ArtifactEvent{Artifact: artifact.Text{Content: "hello"}},
 		},
 		{
+			name:  "status",
+			input: `{"kind":"status","status":{"thread_id":"abc"}}`,
+			want:  loop.StatusEvent{Status: map[string]string{"thread_id": "abc"}},
+		},
+		{
 			name:    "unknown_kind",
 			input:   `{"kind":"something_else"}`,
 			wantErr: true,
@@ -378,6 +388,7 @@ func TestRoundTrip_OutputEvent(t *testing.T) {
 		loop.ArtifactEvent{Artifact: artifact.Text{Content: "some text"}},
 		loop.ArtifactEvent{Artifact: artifact.TextDelta{Content: "so"}},
 		loop.ArtifactEvent{Artifact: artifact.ToolCall{ID: "1", Name: "calc", Arguments: `{"a":1}`}},
+		loop.StatusEvent{Status: map[string]string{"thread_id": "abc", "state": "ready"}},
 	}
 
 	for _, event := range events {
@@ -422,6 +433,11 @@ func TestMarshalOutputEvent_WithContext(t *testing.T) {
 			name:  "text_artifact_with_context",
 			event: loop.ArtifactEvent{Artifact: artifact.Text{Content: "hello"}, Ctx: loop.EventContext{Provenance: "http"}},
 			want:  `{"kind":"text","content":"hello","context":{"provenance":"http"}}`,
+		},
+		{
+			name:  "status_with_context",
+			event: loop.StatusEvent{Status: map[string]string{"thread_id": "abc"}, Ctx: loop.EventContext{Provenance: "http"}},
+			want:  `{"kind":"status","status":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
 		},
 	}
 
@@ -468,6 +484,11 @@ func TestUnmarshalOutputEvent_WithContext(t *testing.T) {
 			name:  "text_artifact_with_context",
 			input: `{"kind":"text","content":"hello","context":{"provenance":"http"}}`,
 			want:  loop.ArtifactEvent{Artifact: artifact.Text{Content: "hello"}, Ctx: loop.EventContext{Provenance: "http"}},
+		},
+		{
+			name:  "status_with_context",
+			input: `{"kind":"status","status":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
+			want:  loop.StatusEvent{Status: map[string]string{"thread_id": "abc"}, Ctx: loop.EventContext{Provenance: "http"}},
 		},
 	}
 
@@ -538,4 +559,45 @@ func TestArtifactJSON_ToolCallDelta_IndexRoundTrip(t *testing.T) {
 	assert.Equal(t, "tc-1", td.ID)
 	assert.Equal(t, "add", td.Name)
 	assert.Equal(t, "1", td.Arguments)
+}
+
+func TestRoundTrip_StatusEvent(t *testing.T) {
+	tests := []struct {
+		name   string
+		event  loop.StatusEvent
+		want   string
+	}{
+		{
+			name:  "empty_map",
+			event: loop.StatusEvent{Status: map[string]string{}},
+			want:  `{"kind":"status","status":{}}`,
+		},
+		{
+			name:  "single_key",
+			event: loop.StatusEvent{Status: map[string]string{"thread_id": "abc-123"}},
+			want:  `{"kind":"status","status":{"thread_id":"abc-123"}}`,
+		},
+		{
+			name:  "multiple_keys",
+			event: loop.StatusEvent{Status: map[string]string{"thread_id": "abc", "state": "thinking...", "model": "gpt-4o"}},
+			want:  `{"kind":"status","status":{"thread_id":"abc","state":"thinking...","model":"gpt-4o"}}`,
+		},
+		{
+			name:  "with_context",
+			event: loop.StatusEvent{Status: map[string]string{"thread_id": "abc"}, Ctx: loop.EventContext{Provenance: "http"}},
+			want:  `{"kind":"status","status":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := MarshalOutputEvent(tt.event)
+			require.NoError(t, err)
+			assert.JSONEq(t, tt.want, string(data))
+
+			got, err := UnmarshalOutputEvent(data)
+			require.NoError(t, err)
+			assert.Equal(t, tt.event, got)
+		})
+	}
 }
