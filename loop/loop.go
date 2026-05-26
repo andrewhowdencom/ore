@@ -38,8 +38,10 @@ type OutputEvent interface {
 	Context() EventContext
 }
 
-// TurnCompleteEvent is emitted when an assistant turn has been fully
-// appended to state and all handlers have run.
+// TurnCompleteEvent is emitted when a turn (assistant, user, system, or
+// tool) has been fully constructed. OnEmit callbacks fire synchronously
+// before the event reaches the async FanOut and may mutate persistent
+// state; handlers run after OnEmit completes.
 type TurnCompleteEvent struct {
 	Turn state.Turn
 
@@ -117,8 +119,10 @@ type outputEventEnvelope struct {
 
 // OnEmit is a synchronous callback invoked by Emit before the event is
 // forwarded to the async FanOut. OnEmit callbacks are blocking, ordered,
-// and zero-drop. They are used for lossless state mutation and other
-// side effects that must complete before the event is considered emitted.
+// and zero-drop. They replace previous direct state.Append calls,
+// ensuring lossless state updates while keeping the event stream
+// observable for UI conduits. This is the canonical mechanism for wiring
+// state persistence.
 type OnEmit func(ctx context.Context, event OutputEvent)
 
 // Step executes a single complete inference turn: it invokes the provider,
@@ -218,6 +222,8 @@ func WithHandlers(handlers ...Handler) Option {
 // OnEmit callbacks receive every OutputEvent emitted by the Step, including
 // TurnCompleteEvent, ArtifactEvent, ErrorEvent, and ProcessCompleteEvent.
 // They are invoked in registration order, blocking, and zero-drop.
+// This is the single place to wire state persistence, replacing previous
+// patterns that mutated state directly inside Turn().
 func WithOnEmit(fns ...OnEmit) Option {
 	return func(s *Step) {
 		s.onEmit = append(s.onEmit, fns...)
@@ -324,10 +330,12 @@ func (s *Step) Submit(ctx context.Context, st state.State, role state.Role, arti
 	return s.finalizeTurn(ctx, st, role, artifacts)
 }
 
-// finalizeTurn builds a turn, emits a TurnCompleteEvent (which OnEmit
-// callbacks may append to state), runs registered handlers on each
-// artifact, and returns the state. It is the shared post-processing pipeline
-// used by both Turn() and Submit().
+// finalizeTurn builds a turn and emits a TurnCompleteEvent. OnEmit
+// callbacks execute synchronously, in registration order, before
+// handler processing and before the event is forwarded to the
+// asynchronous FanOut. They may append to state. After OnEmit
+// completes, registered handlers run on each artifact. It is the
+// shared post-processing pipeline used by both Turn() and Submit().
 func (s *Step) finalizeTurn(ctx context.Context, st state.State, role state.Role, artifacts []artifact.Artifact) (state.State, error) {
 	turn := state.Turn{Role: role, Artifacts: artifacts}
 	s.Emit(ctx, TurnCompleteEvent{Turn: turn, Ctx: s.eventContext})
