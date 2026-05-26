@@ -110,9 +110,9 @@ func TestModel_Update_Turn_Interleaved(t *testing.T) {
 
 func TestModel_Update_Status(t *testing.T) {
 	m := model{}
-	newM, _ := m.Update(statusMsg{status: "thinking..."})
+	newM, _ := m.Update(statusMsg{status: map[string]string{"state": "thinking..."}})
 	mm := newM.(*model)
-	assert.Equal(t, "thinking...", mm.status)
+	assert.Equal(t, "thinking...", mm.status["state"])
 }
 
 func TestModel_Update_KeyRunes(t *testing.T) {
@@ -283,10 +283,10 @@ func TestModel_View_ContainsToolTurn(t *testing.T) {
 func TestModel_View_ContainsStatus(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-	m.status = "thinking..."
+	m.status = map[string]string{"state": "thinking..."}
 	m.syncViewport()
 	output := m.View().Content
-	assert.Contains(t, output, "thinking...")
+	assert.Contains(t, output, "state=thinking...")
 }
 
 func TestModel_View_ContainsPrompt(t *testing.T) {
@@ -673,7 +673,7 @@ func TestModel_View_SeparatorAdaptsToResize(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.width = 80
-	m.status = "ready" // ensure viewport has content so separator is rendered
+	m.status = map[string]string{"state": "ready"} // ensure viewport has content so separator is rendered
 	m.syncViewport()
 	output := m.View().Content
 	assert.Contains(t, output, strings.Repeat("─", 80))
@@ -681,7 +681,7 @@ func TestModel_View_SeparatorAdaptsToResize(t *testing.T) {
 	// Resize to narrower width
 	newM, _ := m.Update(tea.WindowSizeMsg{Width: 50, Height: 20})
 	mm := newM.(*model)
-	mm.status = "ready"
+	mm.status = map[string]string{"state": "ready"}
 	output = mm.View().Content
 	assert.Contains(t, output, strings.Repeat("─", 50))
 }
@@ -933,7 +933,7 @@ func TestModel_Update_KeyCtrlO_RapidToggles(t *testing.T) {
 func TestModel_Update_AudioMsg(t *testing.T) {
 	m := newTestModel()
 	m.pending = true
-	m.status = "thinking..."
+	m.status = map[string]string{"state": "thinking..."}
 
 	// Capture stdout to verify the terminal bell is printed.
 	oldStdout := os.Stdout
@@ -952,7 +952,7 @@ func TestModel_Update_AudioMsg(t *testing.T) {
 
 	// audioMsg is a pure side-effect; model state should be unchanged.
 	assert.True(t, mm.pending, "audioMsg should not alter pending")
-	assert.Equal(t, "thinking...", mm.status, "audioMsg should not alter status")
+	assert.Equal(t, "thinking...", mm.status["state"], "audioMsg should not alter status")
 	assert.Nil(t, cmd)
 	assert.Equal(t, "\a", string(out), "audioMsg should print BEL to stdout")
 }
@@ -965,7 +965,7 @@ func TestModel_Update_ErrorMsg(t *testing.T) {
 	mm := newM.(*model)
 
 	assert.False(t, mm.pending, "errorMsg should clear pending")
-	assert.Equal(t, "Error: boom", mm.status)
+	assert.Equal(t, "Error: boom", mm.status["state"])
 	assert.Nil(t, cmd)
 }
 
@@ -977,6 +977,20 @@ func TestModel_Update_ErrorMsg_Empty(t *testing.T) {
 	mm := newM.(*model)
 
 	assert.False(t, mm.pending, "errorMsg should clear pending")
-	assert.Equal(t, "Error: ", mm.status)
+	assert.Equal(t, "Error: ", mm.status["state"])
 	assert.Nil(t, cmd)
+}
+
+func TestModel_Update_Status_Merges(t *testing.T) {
+	m := model{}
+	newM, _ := m.Update(statusMsg{status: map[string]string{"thread_id": "abc", "state": "ready"}})
+	mm := newM.(*model)
+	assert.Equal(t, "abc", mm.status["thread_id"])
+	assert.Equal(t, "ready", mm.status["state"])
+
+	// Second update should merge, overwriting present keys and leaving absent ones.
+	newM2, _ := mm.Update(statusMsg{status: map[string]string{"state": "thinking..."}})
+	mm2 := newM2.(*model)
+	assert.Equal(t, "abc", mm2.status["thread_id"], "thread_id should be preserved")
+	assert.Equal(t, "thinking...", mm2.status["state"], "state should be overwritten")
 }

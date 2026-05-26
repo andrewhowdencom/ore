@@ -942,3 +942,58 @@ func TestHandler_SendMessage_ErrorFallback_NoProcessComplete(t *testing.T) {
 	}
 	assert.True(t, foundError, "expected an error event in the NDJSON stream when process_complete is not subscribed")
 }
+
+func TestHandler_SendMessage_StatusEventInNDJSON(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "Hello"},
+		},
+	}
+	store := thread.NewMemoryStore()
+	stepFactory := func(thr *thread.Thread) (*loop.Step, error) {
+		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+			if tc, ok := event.(loop.TurnCompleteEvent); ok {
+				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+			}
+		})), nil
+	}
+	mgr := session.NewManager(store, prov, stepFactory, simpleProcessor())
+	h := newTestHandler(t, mgr)
+
+	// Create a session.
+	createReq := httptest.NewRequest("POST", "/sessions", nil)
+	createRr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(createRr, createReq)
+	require.Equal(t, 201, createRr.Code)
+
+	var createResp map[string]string
+	require.NoError(t, json.Unmarshal(createRr.Body.Bytes(), &createResp))
+	sessionID := createResp["id"]
+
+	// Send a message.
+	body := `{"content": "hi"}`
+	req := httptest.NewRequest("POST", "/sessions/"+sessionID+"/messages", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	require.Equal(t, 200, rr.Code)
+
+	// Parse NDJSON lines.
+	lines := strings.Split(strings.TrimSpace(rr.Body.String()), "\n")
+	require.NotEmpty(t, lines)
+
+	// Find status event lines.
+	var statusEvents []map[string]interface{}
+	for _, line := range lines {
+		var event map[string]interface{}
+		require.NoError(t, json.Unmarshal([]byte(line), &event))
+		if event["kind"] == "status" {
+			statusEvents = append(statusEvents, event)
+		}
+	}
+
+	require.GreaterOrEqual(t, len(statusEvents), 1)
+	status := statusEvents[0]["status"].(map[string]interface{})
+	assert.Equal(t, sessionID, status["thread_id"])
+	assert.Equal(t, "thinking...", status["state"])
+}
