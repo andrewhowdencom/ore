@@ -1,7 +1,7 @@
-github.com/andrewhowdencom/ore v0.1.0 h1:d1lrUlFRCjPX9O0UxmeiR6NbLdY0k/8ifugWk86hDu4=
-github.com/andrewhowdencom/ore v0.1.0/go.mod h1:ZjBqmtdKSK3S+iv5QXUOWfoLw3tHND0RinPL8If7PDA=
-github.com/andrewhowdencom/ore/x/conduit v0.1.0 h1:TkogN9hOxVMFE4F4SDOMZOEL+PJ/Wi0vW0l5wx+dtGM=
-github.com/andrewhowdencom/ore/x/conduit v0.1.0/go.mod h1:83aDeFABkaP1x98A9jxkqIr3zN4XsiprPnpAxHGpPFw=
+github.com/andrewhowdencom/ore v0.1.2 h1:SE1zDU2cYHTZcYCs88/S8e1F5LrMwCFxPO6ZSrK91I8=
+github.com/andrewhowdencom/ore v0.1.2/go.mod h1:vqRgnphNtA+8AjY8V8hXn3wWAuugVEyVU5jKdHziIB0=
+github.com/andrewhowdencom/ore/x/conduit v0.1.1 h1:zQYv5DW3Uh2q6vtXfa5MbLJyT6rr1ljkwZ83EcA3IDw=
+github.com/andrewhowdencom/ore/x/conduit v0.1.1/go.mod h1:83aDeFABkaP1x98A9jxkqIr3zN4XsiprPnpAxHGpPFw=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
