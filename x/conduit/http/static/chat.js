@@ -8,6 +8,7 @@ let sessionId = null;
 let isTurnInProgress = false;
 let typingIndicatorDiv = null;
 let audioCtx = null;
+let lastStatus = {};
 
 // ensureAudio lazily creates an AudioContext on first use. This avoids
 // the autoplay restriction in most browsers and defers resource setup
@@ -176,7 +177,11 @@ function escapeHtml(text) {
 function finalizeTurn() {
     hideTypingIndicator();
     isTurnInProgress = false;
-    setStatus('Ready');
+    if (lastStatus.thread_id) {
+        setStatus(`thread_id=${lastStatus.thread_id}`);
+    } else {
+        setStatus('Ready');
+    }
     updateSendButton();
 }
 
@@ -232,6 +237,16 @@ function handleEvent(event) {
         return;
     }
 
+    if (event.kind === 'status') {
+        Object.assign(lastStatus, event.status);
+        const parts = [];
+        for (const [key, val] of Object.entries(lastStatus)) {
+            if (val) parts.push(`${key}=${val}`);
+        }
+        setStatus(parts.join(' | ') || '');
+        return;
+    }
+
     if (event.kind === 'usage' || event.kind === 'image') {
         // Silently ignore usage and image events in the chat UI.
         return;
@@ -278,7 +293,6 @@ async function sendMessage(content) {
     if (!sessionId || isTurnInProgress) return;
 
     isTurnInProgress = true;
-    setStatus('thinking...');
     updateSendButton();
     renderUserMessage(content);
     showTypingIndicator();
