@@ -47,7 +47,25 @@ The provider contract is intentionally minimal: a single `Invoke(ctx, State) ([]
 
 ### Loop
 
-The `loop.Step` is a thin orchestrator. A `Turn()` method calls the provider, appends returned artifacts to state with `RoleAssistant`, and returns the mutated state. It does not handle retries, tool execution, or multi-turn looping — those are application-layer concerns.
+The `loop.Step` is a thin orchestrator. A `Turn()` method calls the provider,
+emits returned artifacts as a TurnCompleteEvent via OnEmit callbacks (which may
+append to state with `RoleAssistant`), and returns the mutated state. It does
+not handle retries, tool execution, or multi-turn looping — those are
+application-layer concerns.
+
+### Event Emission and State Persistence
+
+`Step.Emit` is the single gateway for all observable mutations. A
+synchronous `OnEmit` callback tier runs before the async `FanOut`,
+providing a lossless, ordered, zero-drop path for state mutation
+while preserving the intentionally lossy FanOut for conduits.
+
+- `OnEmit` callbacks receive every `OutputEvent` and are invoked in
+  registration order before the event reaches subscribers.
+- `Emitter` is the interface exposed to artifact handlers for emitting
+  events back into the stream.
+- `Handler.Handle` receives an `Emitter` instead of `state.State`,
+  keeping tool results visible to UI conduits via the same event stream.
 
 ### Transform
 
@@ -86,7 +104,10 @@ Use `log/slog` with `TextHandler` for lifecycle events (startup, shutdown, error
 
 ### Functional Options
 
-Use the functional options pattern for constructors with optional parameters (e.g., `New(apiKey, model string, opts ...Option)`).
+Use the functional options pattern for constructors with optional parameters
+(e.g., `New(apiKey, model string, opts ...Option)`).
+Common options include `WithTransforms`, `WithHandlers`, `WithOnEmit`,
+and `WithInvokeOptions`.
 
 ## Application Boundaries
 
