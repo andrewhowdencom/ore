@@ -12,6 +12,11 @@
 // at a time in order, so concurrent submissions are naturally
 // serialized without dropping messages.
 //
+// The worker goroutine starts lazily on the first Submit or Process
+// call via sync.Once, avoiding goroutine overhead for idle streams.
+// Submit returns an error only if the stream has been closed; it never
+// returns ErrSessionBusy (which has been removed).
+//
 // Process is a convenience wrapper around Submit that blocks until
 // the worker has finished processing the enqueued event. It is useful
 // when the caller needs to know when a turn is complete (e.g. HTTP
@@ -46,7 +51,7 @@
 // TurnCompleteEvent to the thread's state buffer. Typical composition:
 //
 //	store := thread.NewMemoryStore()
-//	prov := openai.New(apiKey, model)
+//	prov, _ := openai.New(openai.WithAPIKey(apiKey), openai.WithModel(model))
 //	stepFactory := func(thr *thread.Thread) (*loop.Step, error) {
 //		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
 //			if tc, ok := event.(loop.TurnCompleteEvent); ok {
