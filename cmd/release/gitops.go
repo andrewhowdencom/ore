@@ -38,6 +38,27 @@ func runGoModTidy(root string, m Module) error {
 	return nil
 }
 
+// hasStagedChanges reports whether the Git index in root contains changes
+// staged relative to HEAD.
+func hasStagedChanges(root string) (bool, error) {
+	if err := exec.Command("git", "-C", root, "diff", "--cached", "--quiet").Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+			return true, nil
+		}
+		code := -1
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			code = exitErr.ExitCode()
+		}
+		return false, fmt.Errorf("git diff --cached (exit %d): %w", code, err)
+	}
+	return false, nil
+}
+
+// stageAndCommit stages go.mod and go.sum (if present) and creates a Git commit
+// with the supplied release message. If no files change after staging, the commit
+// is silently skipped so the caller can proceed to tag creation on the current HEAD.
+// This handles modules (e.g. the root module) that have no ore-internal dependency
+// bumps and therefore no go.mod/go.sum changes. See issue #205.
 func stageAndCommit(root string, m Module, version string, dryRun bool) error {
 	relGomod := filepath.Join(m.Dir, "go.mod")
 	if m.Dir == "." {
@@ -58,6 +79,7 @@ func stageAndCommit(root string, m Module, version string, dryRun bool) error {
 	if dryRun {
 		fmt.Printf("[dry-run] git add %s\n", strings.Join(files, " "))
 		fmt.Printf("[dry-run] git commit -m %q\n", msg)
+		fmt.Printf("[dry-run] (commit skipped if no staged changes)\n")
 		return nil
 	}
 
@@ -67,15 +89,13 @@ func stageAndCommit(root string, m Module, version string, dryRun bool) error {
 		return fmt.Errorf("git add: %w\n%s", err, out)
 	}
 
-	// Check whether there are actually staged changes.
-	if err := exec.Command("git", "-C", root, "diff", "--cached", "--quiet").Run(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
-			// Staged changes exist; proceed with commit.
-		} else {
-			return fmt.Errorf("git diff --cached: %w", err)
-		}
-	} else {
-		// No staged changes; skip commit.
+	// Issue #205: git commit would fail when no files changed after git add.
+	// Check whether there are actually staged changes before committing.
+	hasChanges, err := hasStagedChanges(root)
+	if err != nil {
+		return err
+	}
+	if !hasChanges {
 		fmt.Printf("No changes to commit for %s %s; skipping commit.\n", m.Path, version)
 		return nil
 	}
