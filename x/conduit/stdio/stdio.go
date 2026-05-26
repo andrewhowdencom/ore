@@ -87,7 +87,7 @@ func (s *stdio) Start(ctx context.Context) error {
 		return fmt.Errorf("start session: %w", err)
 	}
 
-	outputCh := stream.Subscribe("text_delta", "reasoning_delta", "tool_call_delta", "turn_complete", "error")
+	outputCh := stream.Subscribe("text_delta", "reasoning_delta", "tool_call_delta", "turn_complete", "process_complete", "error")
 
 	done := make(chan struct{})
 	stop := make(chan struct{})
@@ -102,7 +102,7 @@ func (s *stdio) Start(ctx context.Context) error {
 				if !ok {
 					return
 				}
-				if event.Context().Provenance != "stdio" {
+				if p := event.Context().Provenance; p != "stdio" && p != "" {
 					continue
 				}
 
@@ -140,6 +140,13 @@ func (s *stdio) Start(ctx context.Context) error {
 					if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
 						fmt.Fprint(s.out, "\n```\n")
 					}
+					currentKind = ""
+
+				case loop.ProcessCompleteEvent:
+					if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
+						fmt.Fprint(s.out, "\n```\n")
+					}
+					turnErr = e.Err
 					return
 
 				case loop.ErrorEvent:
@@ -177,20 +184,29 @@ func (s *stdio) Start(ctx context.Context) error {
 	}
 	processErr := stream.Process(ctx, event)
 
-	// For newly created sessions, close the stream to release resources.
-	if s.threadID == "" {
-		_ = stream.Close()
+	if processErr != nil {
+		close(stop)
+		<-done
+		if s.threadID == "" {
+			_ = stream.Close()
+		}
+		return fmt.Errorf("process event: %w", processErr)
 	}
 
-	close(stop)
 	select {
 	case <-done:
 	case <-ctx.Done():
+		close(stop)
+		<-done
+		if s.threadID == "" {
+			_ = stream.Close()
+		}
 		return ctx.Err()
 	}
 
-	if processErr != nil {
-		return fmt.Errorf("process event: %w", processErr)
+	// For newly created sessions, close the stream to release resources.
+	if s.threadID == "" {
+		_ = stream.Close()
 	}
 
 	return turnErr
