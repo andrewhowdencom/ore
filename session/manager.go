@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -20,9 +19,6 @@ type TurnProcessor func(ctx context.Context, step *loop.Step, st state.State, pr
 
 // ManagerOption configures a Manager.
 type ManagerOption func(*Manager)
-
-// ErrSessionBusy is returned when a stream is already processing a turn.
-var ErrSessionBusy = errors.New("session is busy processing another turn")
 
 // SinkFunc receives OutputEvents from a specific stream, together with the
 // originating stream ID. It may be invoked concurrently for multiple streams.
@@ -185,28 +181,6 @@ func (m *Manager) Get(sessionID string) (*Stream, error) {
 		return nil, fmt.Errorf("session %s not found", sessionID)
 	}
 	return stream, nil
-}
-
-// Check verifies that the stream exists and is not busy. It returns nil if
-// the stream is ready to process.
-//
-// Errors:
-//   - "session not found" if the stream does not exist
-//   - ErrSessionBusy if the stream is already processing a turn
-func (m *Manager) Check(sessionID string) error {
-	m.mu.RLock()
-	stream, ok := m.sessions[sessionID]
-	m.mu.RUnlock()
-	if !ok {
-		return fmt.Errorf("session %s not found", sessionID)
-	}
-	stream.mu.Lock()
-	busy := stream.busy
-	stream.mu.Unlock()
-	if busy {
-		return ErrSessionBusy
-	}
-	return nil
 }
 
 // RegisterSink registers a callback that receives OutputEvents from all

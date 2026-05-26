@@ -4,16 +4,31 @@
 //
 // Stream is a per-session primitive that owns the loop.Step,
 // thread.Thread, TurnProcessor, and provider for a single active
-// conversation. It provides ingress (Process) and egress (Subscribe)
-// plus lifecycle controls (Cancel, Close).
+// conversation. It provides ingress (Submit, Process) and egress
+// (Subscribe) plus lifecycle controls (Cancel, Close).
+//
+// Submit enqueues an event into the stream's internal FIFO queue and
+// returns immediately. A single worker goroutine processes events one
+// at a time in order, so concurrent submissions are naturally
+// serialized without dropping messages.
+//
+// The worker goroutine starts lazily on the first Submit or Process
+// call via sync.Once, avoiding goroutine overhead for idle streams.
+// Submit returns an error only if the stream has been closed; it never
+// returns ErrSessionBusy (which has been removed).
+//
+// Process is a convenience wrapper around Submit that blocks until
+// the worker has finished processing the enqueued event. It is useful
+// when the caller needs to know when a turn is complete (e.g. HTTP
+// handlers that must close an NDJSON response stream).
 //
 // Manager is a factory/registry for Stream handles. It creates and
 // manages active streams, each pairing a persistent thread.Thread with
 // an ephemeral loop.Step. Applications configure a Manager with a
 // provider, step factory, and cognitive pattern (TurnProcessor).
 // Conduits obtain a *Stream from the Manager (via Create, Attach, or
-// Get) and invoke Process, Subscribe, Cancel, and Close on that
-// handle, never touching loop.Step directly.
+// Get) and invoke Submit, Process, Subscribe, Cancel, and Close on
+// that handle, never touching loop.Step directly.
 //
 // Migration note: the Session interface has been removed. Use
 // *session.Stream directly. Event types (Event, UserMessageEvent,
@@ -25,8 +40,8 @@
 //
 // Lifecycle events:
 //
-//	ProcessCompleteEvent is emitted after Process() finishes the entire
-//	inference pipeline (including all tool-call loops). It carries the
+//	ProcessCompleteEvent is emitted after the queue worker finishes
+//	processing an event (including all tool-call loops). It carries the
 //	final error state and is the preferred signal for UI-level lifecycle
 //	actions (audio notifications, typing indicator dismissal). Conduits
 //	should subscribe to it in addition to TurnCompleteEvent, which fires
@@ -36,7 +51,7 @@
 // TurnCompleteEvent to the thread's state buffer. Typical composition:
 //
 //	store := thread.NewMemoryStore()
-//	prov := openai.New(apiKey, model)
+//	prov, _ := openai.New(openai.WithAPIKey(apiKey), openai.WithModel(model))
 //	stepFactory := func(thr *thread.Thread) (*loop.Step, error) {
 //		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
 //			if tc, ok := event.(loop.TurnCompleteEvent); ok {
@@ -65,8 +80,8 @@
 //	// Subscribe to output events via the Stream handle.
 //	ch := stream.Subscribe("text_delta", "turn_complete")
 //
-//	// Process an event via the Stream handle.
-//	_ = stream.Process(ctx, UserMessageEvent{Content: "hello"})
+//	// Submit an event via the Stream handle (non-blocking).
+//	_ = stream.Submit(UserMessageEvent{Content: "hello"})
 //
 //	// HTTP conduit composes with the Manager. UI is enabled by default.
 //	c, _ := httpc.New(mgr, httpc.WithAddr(":8080"))

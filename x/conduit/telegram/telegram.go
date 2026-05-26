@@ -192,8 +192,8 @@ func (c *telegramConduit) poll(ctx context.Context, botUserID int64) {
 				Content: update.Message.Text,
 				Ctx:     loop.EventContext{Provenance: "telegram"},
 			}
-			if err := stream.Process(ctx, event); err != nil {
-				slog.Error("telegram: process event failed", "chat_id", chatIDStr, "err", err)
+			if err := stream.Submit(event); err != nil {
+				slog.Error("telegram: submit event failed", "chat_id", chatIDStr, "err", err)
 			}
 
 			if update.UpdateID >= offset {
