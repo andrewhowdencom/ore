@@ -170,6 +170,11 @@ func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		}
 	}
 
+	_ = stream.Emit(r.Context(), loop.StatusEvent{
+		Status: map[string]string{"thread_id": stream.ID()},
+		Ctx:    loop.EventContext{Provenance: "http"},
+	})
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(stdhttp.StatusCreated)
 	_ = json.NewEncoder(w).Encode(map[string]string{
@@ -224,7 +229,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 
 	// Default event kinds when none specified.
 	if len(req.Kinds) == 0 {
-		req.Kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "process_complete"}
+		req.Kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "process_complete", "status"}
 	}
 
 	// Subscribe to the session's FanOut before the goroutine starts.
@@ -233,7 +238,15 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	// Run the inference pipeline in a goroutine.
 	done := make(chan error)
 	go func() {
+		_ = stream.Emit(r.Context(), loop.StatusEvent{
+			Status: map[string]string{"thread_id": stream.ID(), "state": "thinking..."},
+			Ctx:    loop.EventContext{Provenance: "http"},
+		})
 		err := stream.Process(r.Context(), session.UserMessageEvent{Content: req.Content})
+		_ = stream.Emit(r.Context(), loop.StatusEvent{
+			Status: map[string]string{"thread_id": stream.ID(), "state": ""},
+			Ctx:    loop.EventContext{Provenance: "http"},
+		})
 		select {
 		case done <- err:
 		case <-r.Context().Done():
@@ -316,7 +329,7 @@ func (h *Handler) sessionEvents(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 	// Default event kinds when none specified.
 	if len(kinds) == 0 {
-		kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "process_complete"}
+		kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "process_complete", "status"}
 	}
 
 	// Subscribe to the session's FanOut.
