@@ -67,6 +67,19 @@ func stageAndCommit(root string, m Module, version string, dryRun bool) error {
 		return fmt.Errorf("git add: %w\n%s", err, out)
 	}
 
+	// Check whether there are actually staged changes.
+	if err := exec.Command("git", "-C", root, "diff", "--cached", "--quiet").Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+			// Staged changes exist; proceed with commit.
+		} else {
+			return fmt.Errorf("git diff --cached: %w", err)
+		}
+	} else {
+		// No staged changes; skip commit.
+		fmt.Printf("No changes to commit for %s %s; skipping commit.\n", m.Path, version)
+		return nil
+	}
+
 	cmd = exec.Command("git", "-C", root, "commit", "-m", msg)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git commit: %w\n%s", err, out)
