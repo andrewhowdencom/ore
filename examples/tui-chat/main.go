@@ -23,6 +23,9 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"sort"
+	"text/tabwriter"
+	"time"
 
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
@@ -45,8 +48,47 @@ func main() {
 func run() error {
 	// Parse command-line flags.
 	var threadID string
+	var listThreads bool
 	flag.StringVar(&threadID, "thread", "", "existing thread UUID to resume")
+	flag.BoolVar(&listThreads, "list-threads", false, "list all persisted threads and exit")
 	flag.Parse()
+
+	if listThreads {
+		// Create thread store (respecting STORE_DIR env var).
+		var store thread.Store
+		if storeDir := os.Getenv("STORE_DIR"); storeDir != "" {
+			var err error
+			store, err = thread.NewJSONStore(storeDir)
+			if err != nil {
+				return fmt.Errorf("create JSON store: %w", err)
+			}
+		} else {
+			store = thread.NewMemoryStore()
+		}
+
+		threads, err := store.List()
+		if err != nil {
+			return fmt.Errorf("list threads: %w", err)
+		}
+
+		// Sort by UpdatedAt descending (most recently active first).
+		sort.Slice(threads, func(i, j int) bool {
+			return threads[i].UpdatedAt.After(threads[j].UpdatedAt)
+		})
+
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "ID\tCreatedAt\tUpdatedAt")
+		for _, t := range threads {
+			fmt.Fprintf(w, "%s\t%s\t%s\n",
+				t.ID,
+				t.CreatedAt.Format(time.RFC3339),
+				t.UpdatedAt.Format(time.RFC3339),
+			)
+		}
+		w.Flush()
+
+		os.Exit(0)
+	}
 
 	// Environment configuration.
 	apiKey := os.Getenv("ORE_API_KEY")
