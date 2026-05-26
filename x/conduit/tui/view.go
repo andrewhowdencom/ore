@@ -159,8 +159,46 @@ func (m *model) buildContent() string {
 		b.WriteString("\n\n")
 	}
 
-	// Render pending placeholder.
-	if m.pending {
+	// Render the in-progress assistant turn accumulated from ArtifactEvents.
+	if len(m.currentTurn.blocks) > 0 {
+		for i, block := range m.currentTurn.blocks {
+			switch block.kind {
+			case "text":
+				if block.rendered != "" {
+					b.WriteString(renderBlock("Assistant: ", assistantStyle, block.rendered, 0))
+				} else {
+					b.WriteString(renderBlock("Assistant: ", assistantStyle, block.source, width))
+				}
+			case "reasoning":
+				if !m.expandLatestDetails {
+					b.WriteString(thinkingStyle.Render("Thinking..."))
+				} else {
+					if block.rendered != "" {
+						b.WriteString(renderBlock("Thinking: ", thinkingStyle, reasoningExpandedStyle.Render(block.rendered), 0))
+					} else {
+						b.WriteString(renderBlock("Thinking: ", thinkingStyle, reasoningExpandedStyle.Render(block.source), width))
+					}
+				}
+			case "tool_call":
+				content := block.compact
+				if content == "" || m.expandLatestDetails {
+					content = block.source
+				}
+				if block.compact != "" && !m.expandLatestDetails {
+					b.WriteString(compactToolCallStyle.Render("→ " + content))
+				} else {
+					b.WriteString(renderBlock("Assistant: ", toolCallStyle, content, width))
+				}
+			}
+			if i < len(m.currentTurn.blocks)-1 {
+				b.WriteString("\n\n")
+			}
+		}
+		b.WriteString("\n\n")
+	}
+
+	// Render pending placeholder only when no artifacts have arrived yet.
+	if m.pending && len(m.currentTurn.blocks) == 0 {
 		b.WriteString(renderBlock("Assistant: ", assistantStyle, "...", width))
 		b.WriteString("\n\n")
 	}
