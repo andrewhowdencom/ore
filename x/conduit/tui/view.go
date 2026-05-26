@@ -166,9 +166,22 @@ func (m *model) buildContent() string {
 	}
 
 	// Render status line.
-	if m.status != "" {
-		b.WriteString(statusStyle.Render(fmt.Sprintf("[%s]", m.status)))
-		b.WriteString("\n")
+	if len(m.status) > 0 {
+		var keys []string
+		for k := range m.status {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		var parts []string
+		for _, k := range keys {
+			if v := m.status[k]; v != "" {
+				parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+			}
+		}
+		if len(parts) > 0 {
+			b.WriteString(statusStyle.Render(fmt.Sprintf("[%s]", strings.Join(parts, " "))))
+			b.WriteString("\n")
+		}
 	}
 
 	m.cachedContent = b.String()
