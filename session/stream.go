@@ -62,11 +62,20 @@ func (s *Stream) Submit(event Event) error {
 		s.mu.Unlock()
 		return fmt.Errorf("session %s is closed", s.id)
 	}
-	s.workerOnce.Do(func() {
+	if s.queueCond == nil {
 		s.queueCond = sync.NewCond(&s.mu)
+	}
+	s.mu.Unlock()
+
+	s.workerOnce.Do(func() {
 		go s.worker()
 	})
 
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return fmt.Errorf("session %s is closed", s.id)
+	}
 	if _, ok := event.(InterruptEvent); ok {
 		s.queue = s.queue[:0]
 	}
@@ -100,11 +109,20 @@ func (s *Stream) Process(ctx context.Context, event Event) error {
 		s.mu.Unlock()
 		return fmt.Errorf("session %s is closed", s.id)
 	}
-	s.workerOnce.Do(func() {
+	if s.queueCond == nil {
 		s.queueCond = sync.NewCond(&s.mu)
+	}
+	s.mu.Unlock()
+
+	s.workerOnce.Do(func() {
 		go s.worker()
 	})
 
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return fmt.Errorf("session %s is closed", s.id)
+	}
 	if _, ok := event.(InterruptEvent); ok {
 		s.queue = s.queue[:0]
 	}

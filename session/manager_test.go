@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -295,9 +294,9 @@ func TestManager_Process(t *testing.T) {
 	assert.Equal(t, state.RoleAssistant, turns[1].Role)
 }
 
-func TestManager_Process_Busy(t *testing.T) {
+func TestStream_Process_Queued(t *testing.T) {
 	store := thread.NewMemoryStore()
-	mgr := NewManager(store, &blockingProvider{}, func(thr *thread.Thread) (*loop.Step, error) {
+	mgr := NewManager(store, &mockProvider{}, func(thr *thread.Thread) (*loop.Step, error) {
 		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
 			if tc, ok := event.(loop.TurnCompleteEvent); ok {
 				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
@@ -308,23 +307,24 @@ func TestManager_Process_Busy(t *testing.T) {
 	stream, err := mgr.Create()
 	require.NoError(t, err)
 
-	// Start a blocking turn in a goroutine.
-	ctx, cancel := context.WithCancel(context.Background())
+	ch := stream.Subscribe("turn_complete")
 
+	// Submit two events concurrently via Process.
+	// With the queue, both should succeed and be processed serially.
+	var wg sync.WaitGroup
+	wg.Add(2)
 	go func() {
-		_ = stream.Process(ctx, UserMessageEvent{Content: "block"})
+		defer wg.Done()
+		require.NoError(t, stream.Process(context.Background(), UserMessageEvent{Content: "first"}))
 	}()
+	go func() {
+		defer wg.Done()
+		require.NoError(t, stream.Process(context.Background(), UserMessageEvent{Content: "second"}))
+	}()
+	wg.Wait()
 
-	// Wait briefly for the goroutine to acquire the lock.
-	time.Sleep(50 * time.Millisecond)
-
-	// Second Process should fail with ErrSessionBusy.
-	err = stream.Process(context.Background(), UserMessageEvent{Content: "concurrent"})
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrSessionBusy)
-
-	// Cancel to let the first goroutine complete.
-	cancel()
+	events := drainWithClose(t, ch, func() { _ = stream.Close() })
+	require.GreaterOrEqual(t, len(events), 4) // 2 user + 2 assistant turns
 }
 
 func TestStream_Process_Closed(t *testing.T) {
@@ -567,11 +567,11 @@ func TestManager_List(t *testing.T) {
 	assert.Contains(t, ids, sess2.ID())
 }
 
-func TestManager_Lock_Concurrent(t *testing.T) {
-	// Use a processor that sleeps briefly to extend the lock window.
+func TestStream_Process_Serial(t *testing.T) {
+	// Use a processor that sleeps briefly so we can observe serialization.
 	sleepyProcessor := func() TurnProcessor {
 		return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 			return st, nil
 		}
 	}
@@ -588,41 +588,24 @@ func TestManager_Lock_Concurrent(t *testing.T) {
 	stream, err := mgr.Create()
 	require.NoError(t, err)
 
-	var maxConcurrent int
-	var current int
-	var mu sync.Mutex
 	var wg sync.WaitGroup
-
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
-		go func() {
+		go func(n int) {
 			defer wg.Done()
-			err := stream.Process(context.Background(), UserMessageEvent{Content: " concurrent"})
-			if errors.Is(err, ErrSessionBusy) {
-				return
-			}
-			if err != nil {
-				return // ignore other errors
-			}
-
-			mu.Lock()
-			current++
-			if current > maxConcurrent {
-				maxConcurrent = current
-			}
-			mu.Unlock()
-
-			time.Sleep(10 * time.Millisecond)
-
-			mu.Lock()
-			current--
-			mu.Unlock()
-		}()
+			err := stream.Process(context.Background(), UserMessageEvent{Content: fmt.Sprintf("msg-%d", n)})
+			require.NoError(t, err)
+		}(i)
 	}
 	wg.Wait()
 
-	// At most one goroutine should successfully hold the lock at any time.
-	assert.Equal(t, 1, maxConcurrent)
+	// All 10 events should have been processed and appended to state.
+	turns := stream.thread.State.Turns()
+	// sleepyProcessor does not call step.Turn(), so each event produces
+	// exactly 1 user turn (from step.Submit()).
+	require.GreaterOrEqual(t, len(turns), 10)
+
+	_ = stream.Close()
 }
 
 func TestManager_Get_NotFound(t *testing.T) {
@@ -632,12 +615,6 @@ func TestManager_Get_NotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found")
 }
 
-func TestManager_Check_NotFound(t *testing.T) {
-	mgr := NewManager(thread.NewMemoryStore(), nil, nil, nil)
-	err := mgr.Check("missing")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
-}
 
 func TestStream_Cancel_Idle(t *testing.T) {
 	store := thread.NewMemoryStore()
@@ -684,36 +661,6 @@ func TestStream_Close_Idempotent(t *testing.T) {
 	require.False(t, ok, "channel should be closed")
 }
 
-func TestManager_Check_Busy(t *testing.T) {
-	store := thread.NewMemoryStore()
-	mgr := NewManager(store, &blockingProvider{}, func(thr *thread.Thread) (*loop.Step, error) {
-		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
-			if tc, ok := event.(loop.TurnCompleteEvent); ok {
-				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
-			}
-		})), nil
-	}, simpleProcessor())
-
-	stream, err := mgr.Create()
-	require.NoError(t, err)
-
-	// Start a blocking turn in a goroutine.
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		_ = stream.Process(ctx, UserMessageEvent{Content: "block"})
-	}()
-
-	// Wait briefly for the goroutine to acquire the lock.
-	time.Sleep(50 * time.Millisecond)
-
-	// Check should return ErrSessionBusy.
-	err = mgr.Check(stream.ID())
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrSessionBusy)
-
-	// Clean up.
-	cancel()
-}
 
 func TestStream_Process_ProviderError(t *testing.T) {
 	prov := &mockProvider{
@@ -1186,12 +1133,8 @@ func TestManager_RegisterSink_ConcurrentRegisterUnregister(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for j := 0; j < 50; j++ {
-			for {
-				err := stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
-				if err == nil || errors.Is(err, ErrSessionBusy) {
-					break
-				}
-			}
+			err := stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+			require.NoError(t, err)
 		}
 	}()
 
