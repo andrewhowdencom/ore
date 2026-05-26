@@ -1277,3 +1277,90 @@ func TestStep_Emit_DeliversCustomEvents(t *testing.T) {
 	assert.Equal(t, "hello", custom.Value)
 	assert.Equal(t, "test", custom.Ctx.Provenance)
 }
+
+func TestOnEmit_MultipleCallbacks_Order(t *testing.T) {
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	var callbackOrder []string
+
+	cb1 := func(ctx context.Context, event OutputEvent) {
+		if tc, ok := event.(TurnCompleteEvent); ok {
+			callbackOrder = append(callbackOrder, "cb1_before")
+			mem.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+			callbackOrder = append(callbackOrder, "cb1_after")
+		}
+	}
+
+	cb2 := func(ctx context.Context, event OutputEvent) {
+		if _, ok := event.(TurnCompleteEvent); ok {
+			callbackOrder = append(callbackOrder, "cb2_before")
+			// Verify cb1 already ran by checking state
+			turns := mem.Turns()
+			if len(turns) >= 2 {
+				callbackOrder = append(callbackOrder, "cb2_state_ok")
+			}
+			callbackOrder = append(callbackOrder, "cb2_after")
+		}
+	}
+
+	s := New(WithOnEmit(cb1, cb2))
+
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world"},
+		},
+	}
+
+	_, err := s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+
+	// Verify cb1 ran completely before cb2 started, and cb2 observed cb1's state mutation
+	assert.Equal(t, []string{"cb1_before", "cb1_after", "cb2_before", "cb2_state_ok", "cb2_after"}, callbackOrder)
+}
+
+func TestEmit_NoCallbacks(t *testing.T) {
+	s := New()
+	ch := s.Subscribe("turn_complete")
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "world"},
+		},
+	}
+
+	_, err := s.Turn(context.Background(), mem, prov)
+	require.NoError(t, err)
+
+	// Event should still be emitted to FanOut even with no OnEmit callbacks
+	events := collectEvents(ch, 100*time.Millisecond)
+	require.Len(t, events, 1)
+	tc, ok := events[0].(TurnCompleteEvent)
+	require.True(t, ok)
+	assert.Equal(t, state.RoleAssistant, tc.Turn.Role)
+
+	// State should NOT be mutated because no OnEmit callback was wired
+	assert.Len(t, mem.Turns(), 1) // only the initial user turn
+}
+
+func TestOnEmit_ErrorEvent_ContextPropagation(t *testing.T) {
+	var receivedCtx EventContext
+	cb := func(ctx context.Context, event OutputEvent) {
+		receivedCtx = event.Context()
+	}
+
+	s := New(WithOnEmit(cb))
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	wantErr := errors.New("provider failed")
+	prov := &mockProvider{err: wantErr}
+
+	s.SetEventContext(EventContext{Provenance: "test-provenance"})
+	_, err := s.Turn(context.Background(), mem, prov)
+	require.ErrorIs(t, err, wantErr)
+
+	assert.Equal(t, "test-provenance", receivedCtx.Provenance)
+}
