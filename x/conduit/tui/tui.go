@@ -100,6 +100,11 @@ func (t *TUI) Start(ctx context.Context) error {
 		slog.Info("thread started", "id", stream.ID())
 	}
 
+	_ = stream.Emit(ctx, loop.StatusEvent{
+		Status: map[string]string{"thread_id": stream.ID()},
+		Ctx:    loop.EventContext{Provenance: "tui"},
+	})
+
 	surfEventsCh := make(chan session.Event, 10)
 
 	ta := textarea.New()
@@ -119,7 +124,7 @@ func (t *TUI) Start(ctx context.Context) error {
 	t.program = p
 
 	// Subscribe to the stream's output.
-	outputCh := stream.Subscribe("turn_complete", "error", "process_complete")
+	outputCh := stream.Subscribe("turn_complete", "error", "process_complete", "status")
 
 	// Goroutine to stream output events into the Bubble Tea message loop.
 	go func() {
@@ -136,6 +141,8 @@ func (t *TUI) Start(ctx context.Context) error {
 				} else {
 					_ = t.PlayDone(ctx)
 				}
+			case loop.StatusEvent:
+				t.program.Send(statusMsg{status: e.Status})
 			}
 		}
 	}()
@@ -145,16 +152,18 @@ func (t *TUI) Start(ctx context.Context) error {
 		for event := range t.eventsCh {
 			switch e := event.(type) {
 			case session.UserMessageEvent:
-				if err := t.SetStatus(context.Background(), "thinking..."); err != nil {
-					slog.Error("set status failed", "err", err)
-				}
+				_ = stream.Emit(context.Background(), loop.StatusEvent{
+					Status: map[string]string{"state": "thinking..."},
+					Ctx:    loop.EventContext{Provenance: "tui"},
+				})
 				if err := stream.Process(context.Background(), e); err != nil {
 					slog.Error("process failed", "err", err)
 					t.program.Send(clearPendingMsg{})
 				}
-				if err := t.SetStatus(context.Background(), ""); err != nil {
-					slog.Error("set status failed", "err", err)
-				}
+				_ = stream.Emit(context.Background(), loop.StatusEvent{
+					Status: map[string]string{"state": ""},
+					Ctx:    loop.EventContext{Provenance: "tui"},
+				})
 			case session.InterruptEvent:
 				if err := stream.Cancel(); err != nil {
 					slog.Error("cancel failed", "err", err)
@@ -172,13 +181,6 @@ func (t *TUI) Start(ctx context.Context) error {
 	_, err = p.Run()
 	close(t.eventsCh)
 	return err
-}
-
-// SetStatus sends a status update into the Bubble Tea message loop. The
-// actual state mutation happens in model.Update.
-func (t *TUI) SetStatus(ctx context.Context, status string) error {
-	t.program.Send(statusMsg{status: status})
-	return nil
 }
 
 // PlayDone forwards an audio notification to the Bubble Tea model so the
