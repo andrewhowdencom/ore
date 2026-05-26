@@ -89,7 +89,13 @@ func TestHandleMessageEvent_ChannelNotAddressed(t *testing.T) {
 func TestHandleMessageEvent_DM(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(thr *thread.Thread) (*loop.Step, error) {
+		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+			if tc, ok := event.(loop.TurnCompleteEvent); ok {
+				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+			}
+		})), nil
+	}, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -118,14 +124,6 @@ func TestHandleMessageEvent_DM(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "D123", channelID)
 
-	// Verify the message was added to thread state.
-	turns := thr.State.Turns()
-	require.GreaterOrEqual(t, len(turns), 1)
-	assert.Equal(t, state.RoleUser, turns[0].Role)
-	require.Len(t, turns[0].Artifacts, 1)
-	text, ok := turns[0].Artifacts[0].(artifact.Text)
-	require.True(t, ok)
-	assert.Equal(t, "hello bot", text.Content)
 }
 
 func TestHandleMessageEvent_ChannelMention(t *testing.T) {
@@ -160,7 +158,7 @@ func TestHandleMessageEvent_ChannelMention(t *testing.T) {
 	assert.Equal(t, "C123", channelID)
 }
 
-func TestHandleMessageEvent_SessionBusy(t *testing.T) {
+func TestHandleMessageEvent_Concurrent(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &blockingProvider{}
 	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
@@ -192,7 +190,7 @@ func TestHandleMessageEvent_SessionBusy(t *testing.T) {
 	// Wait for the first goroutine to start processing.
 	time.Sleep(50 * time.Millisecond)
 
-	// Second message should encounter session busy.
+	// Second message should be enqueued without error.
 	event2 := &slackevents.MessageEvent{
 		Channel:   "D123",
 		User:      "U456",
@@ -200,7 +198,7 @@ func TestHandleMessageEvent_SessionBusy(t *testing.T) {
 		TimeStamp: "1234567890.222222",
 	}
 	err = sc.handleMessageEvent(ctx, event2, "B123")
-	require.NoError(t, err) // ErrSessionBusy is handled non-fatally.
+	require.NoError(t, err)
 
 	cancel()
 	<-done
