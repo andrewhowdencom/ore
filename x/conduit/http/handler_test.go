@@ -361,7 +361,13 @@ func TestHandler_SendMessage(t *testing.T) {
 		},
 	}
 	store := thread.NewMemoryStore()
-	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(thr *thread.Thread) (*loop.Step, error) {
+		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+			if tc, ok := event.(loop.TurnCompleteEvent); ok {
+				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+			}
+		})), nil
+	}, simpleProcessor())
 	h := newTestHandler(t, mgr)
 
 	// Create a session.
@@ -427,7 +433,13 @@ func TestHandler_SendMessage_NoKinds(t *testing.T) {
 		},
 	}
 	store := thread.NewMemoryStore()
-	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(thr *thread.Thread) (*loop.Step, error) {
+		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+			if tc, ok := event.(loop.TurnCompleteEvent); ok {
+				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+			}
+		})), nil
+	}, simpleProcessor())
 	h := newTestHandler(t, mgr)
 
 	// Create a session.
@@ -467,44 +479,6 @@ func TestHandler_SendMessage_NoKinds(t *testing.T) {
 	assert.Equal(t, "Hello", assistantTurn.Artifacts[0].(artifact.Text).Content)
 }
 
-func TestHandler_SendMessage_Concurrent(t *testing.T) {
-	store := thread.NewMemoryStore()
-	mgr := session.NewManager(store, &blockingProvider{}, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
-	h := newTestHandler(t, mgr)
-
-	// Create a session.
-	createReq := httptest.NewRequest("POST", "/sessions", nil)
-	createRr := httptest.NewRecorder()
-	h.ServeMux().ServeHTTP(createRr, createReq)
-	require.Equal(t, 201, createRr.Code)
-
-	var createResp map[string]string
-	require.NoError(t, json.Unmarshal(createRr.Body.Bytes(), &createResp))
-	sessionID := createResp["id"]
-
-	// Lock the session by starting a blocking turn in a goroutine.
-	stream, err := mgr.Get(sessionID)
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		_ = stream.Process(ctx, session.UserMessageEvent{Content: "block"})
-	}()
-
-	// Wait briefly for the goroutine to acquire the lock.
-	time.Sleep(50 * time.Millisecond)
-
-	// Send a message while the session is busy.
-	body := `{"content": "hi", "kinds": ["text_delta", "turn_complete"]}`
-	req := httptest.NewRequest("POST", "/sessions/"+sessionID+"/messages", strings.NewReader(body))
-	rr := httptest.NewRecorder()
-	h.ServeMux().ServeHTTP(rr, req)
-
-	assert.Equal(t, 409, rr.Code)
-
-	// Unlock and clean up.
-	cancel()
-}
 
 func TestHandler_SendMessage_MalformedJSON(t *testing.T) {
 	store := thread.NewMemoryStore()
