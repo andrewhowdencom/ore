@@ -57,10 +57,10 @@ import (
 
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/x/provider/openai"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/thread"
 	"github.com/andrewhowdencom/ore/tool"
+	"github.com/andrewhowdencom/ore/x/provider/openai"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
 	"github.com/andrewhowdencom/ore/x/tool/calculator"
 
@@ -122,10 +122,15 @@ func run() error {
 
 	// Step factory: each session gets its own Step with tool handler
 	// and provider tool options bound.
-	stepFactory := func(*thread.Thread) (*loop.Step, error) {
+	stepFactory := func(thr *thread.Thread) (*loop.Step, error) {
 		return loop.New(
 			loop.WithHandlers(xtool.NewHandler(registry)),
 			loop.WithInvokeOptions(openai.WithTools(registry.Tools())),
+			loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+				if tc, ok := event.(loop.TurnCompleteEvent); ok {
+					thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+				}
+			}),
 		), nil
 	}
 
@@ -158,4 +163,3 @@ func run() error {
 	slog.Info("starting HTTP server", "addr", ":"+port)
 	return c.Start(ctx)
 }
-

@@ -25,11 +25,11 @@ import (
 	"os/signal"
 
 	"github.com/andrewhowdencom/ore/cognitive"
-	"github.com/andrewhowdencom/ore/x/conduit/tui"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/x/provider/openai"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/thread"
+	"github.com/andrewhowdencom/ore/x/conduit/tui"
+	"github.com/andrewhowdencom/ore/x/provider/openai"
 )
 
 func main() {
@@ -87,8 +87,12 @@ func run() error {
 	}
 
 	// Step factory for the manager.
-	stepFactory := func(*thread.Thread) (*loop.Step, error) {
-		return loop.New(), nil
+	stepFactory := func(thr *thread.Thread) (*loop.Step, error) {
+		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+			if tc, ok := event.(loop.TurnCompleteEvent); ok {
+				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+			}
+		})), nil
 	}
 
 	// Create session manager with the ReAct cognitive pattern.

@@ -13,22 +13,22 @@
 //
 // A Handler implements loop.Handler. It detects artifact.ToolCall artifacts,
 // looks up the tool by name in its registry (local or remote), executes the
-// corresponding function, and appends a state.RoleTool turn with a
-// artifact.ToolResult. Unknown tools are refused with an error result.
+// corresponding function, and emits a TurnCompleteEvent with RoleTool and a
+// ToolResult artifact. Unknown tools are refused with an error result.
 //
 // Tool calling composes three mechanisms:
 //
-//   1. Root tool/ package — provides the Registry interface, ToolFunc contract,
-//      RemoteSource abstraction, and schema validation. This is the core
-//      framework primitive.
+//  1. Root tool/ package — provides the Registry interface, ToolFunc contract,
+//     RemoteSource abstraction, and schema validation. This is the core
+//     framework primitive.
 //
-//   2. Provider adapter (e.g., x/provider/openai/) — accepts tool configuration
-//      per-invocation via openai.WithTools(), serializes them in requests,
-//      deserializes ToolCall from responses, and serializes RoleTool turns
-//      with ToolResult back to the provider.
+//  2. Provider adapter (e.g., x/provider/openai/) — accepts tool configuration
+//     per-invocation via openai.WithTools(), serializes them in requests,
+//     deserializes ToolCall from responses, and serializes RoleTool turns
+//     with ToolResult back to the provider.
 //
-//   3. Artifact Handler (this package) — bridges the root tool/ Registry to the
-//      loop framework via NewHandler(), which implements loop.Handler.
+//  3. Artifact Handler (this package) — bridges the root tool/ Registry to the
+//     loop framework via NewHandler(), which implements loop.Handler.
 //
 // The application wires them together:
 //
