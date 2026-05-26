@@ -141,8 +141,6 @@ These trigger agent-level shutdown via `agent.Run()`:
 
 These are logged with `slog.Error` and do not stop the conduit:
 
-- `session.ErrSessionBusy` when a second message arrives while the thread is
-  already processing a turn.
 - Malformed or unsupported Slack event types (skipped).
 - `chat.postMessage` delivery failure (the turn is dropped for this delivery;
   subsequent turns are still attempted).
