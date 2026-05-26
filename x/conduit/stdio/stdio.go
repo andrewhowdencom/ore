@@ -102,7 +102,7 @@ func (s *stdio) Start(ctx context.Context) error {
 				if !ok {
 					return
 				}
-				if event.Context().Provenance != "stdio" {
+				if p := event.Context().Provenance; p != "stdio" && p != "" {
 					continue
 				}
 
@@ -184,20 +184,29 @@ func (s *stdio) Start(ctx context.Context) error {
 	}
 	processErr := stream.Process(ctx, event)
 
-	close(stop)
+	if processErr != nil {
+		close(stop)
+		<-done
+		if s.threadID == "" {
+			_ = stream.Close()
+		}
+		return fmt.Errorf("process event: %w", processErr)
+	}
+
 	select {
 	case <-done:
 	case <-ctx.Done():
+		close(stop)
+		<-done
+		if s.threadID == "" {
+			_ = stream.Close()
+		}
 		return ctx.Err()
 	}
 
 	// For newly created sessions, close the stream to release resources.
 	if s.threadID == "" {
 		_ = stream.Close()
-	}
-
-	if processErr != nil {
-		return fmt.Errorf("process event: %w", processErr)
 	}
 
 	return turnErr

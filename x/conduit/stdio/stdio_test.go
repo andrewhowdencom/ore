@@ -40,6 +40,23 @@ func (p *blockingProvider) Invoke(ctx context.Context, s state.State, ch chan<- 
 	return ctx.Err()
 }
 
+type multiTurnProvider struct {
+	invocations int
+}
+
+func (m *multiTurnProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+	m.invocations++
+	switch m.invocations {
+	case 1:
+		ch <- artifact.TextDelta{Content: "First turn: "}
+		ch <- artifact.TextDelta{Content: "hello"}
+	case 2:
+		ch <- artifact.TextDelta{Content: "Second turn: "}
+		ch <- artifact.TextDelta{Content: "world"}
+	}
+	return nil
+}
+
 func simpleProcessor() session.TurnProcessor {
 	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
 		return step.Turn(ctx, st, prov)
@@ -251,4 +268,29 @@ func TestStart_ContextCancellation(t *testing.T) {
 	err = c.Start(ctx)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "context canceled"))
+}
+
+func TestStart_MultiTurnCapture(t *testing.T) {
+	prov := &multiTurnProvider{}
+	store := thread.NewMemoryStore()
+	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+		st, err := step.Turn(ctx, st, prov)
+		if err != nil {
+			return st, err
+		}
+		return step.Turn(ctx, st, prov)
+	})
+
+	out := &bytes.Buffer{}
+	in := bytes.NewBufferString("hi")
+	c, err := New(mgr, WithInput(in), WithOutput(out))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = c.Start(ctx)
+	require.NoError(t, err)
+	require.Contains(t, out.String(), "First turn: hello")
+	require.Contains(t, out.String(), "Second turn: world")
 }
