@@ -115,16 +115,23 @@ type outputEventEnvelope struct {
 	done  chan struct{}
 }
 
+// OnEmit is a synchronous callback invoked by Emit before the event is
+// forwarded to the async FanOut. OnEmit callbacks are blocking, ordered,
+// and zero-drop. They are used for lossless state mutation and other
+// side effects that must complete before the event is considered emitted.
+type OnEmit func(ctx context.Context, event OutputEvent)
+
 // Step executes a single complete inference turn: it invokes the provider,
 // distributes streaming artifacts to subscribers via an embedded FanOut, and
 // runs registered artifact handlers synchronously on the complete response.
 type Step struct {
-	events        chan outputEventEnvelope
-	fanOut        *FanOut
-	transforms    []Transform
-	handlers      []Handler
-	invokeOpts    []provider.InvokeOption
-	eventContext  EventContext
+	events       chan outputEventEnvelope
+	fanOut       *FanOut
+	transforms   []Transform
+	handlers     []Handler
+	onEmit       []OnEmit
+	invokeOpts   []provider.InvokeOption
+	eventContext EventContext
 }
 
 // New creates a Step with the given options.
@@ -140,8 +147,12 @@ func New(opts ...Option) *Step {
 	return s
 }
 
-// Emit sends an event to the FanOut and blocks until it has been delivered.
+// Emit runs all registered OnEmit callbacks synchronously, then sends the
+// event to the FanOut and blocks until it has been delivered.
 func (s *Step) Emit(ctx context.Context, event OutputEvent) {
+	for _, fn := range s.onEmit {
+		fn(ctx, event)
+	}
 	env := outputEventEnvelope{event: event, done: make(chan struct{})}
 	select {
 	case s.events <- env:
@@ -200,6 +211,16 @@ func WithTransforms(transforms ...Transform) Option {
 func WithHandlers(handlers ...Handler) Option {
 	return func(s *Step) {
 		s.handlers = handlers
+	}
+}
+
+// WithOnEmit configures synchronous callbacks that run before the FanOut.
+// OnEmit callbacks receive every OutputEvent emitted by the Step, including
+// TurnCompleteEvent, ArtifactEvent, ErrorEvent, and ProcessCompleteEvent.
+// They are invoked in registration order, blocking, and zero-drop.
+func WithOnEmit(fns ...OnEmit) Option {
+	return func(s *Step) {
+		s.onEmit = append(s.onEmit, fns...)
 	}
 }
 
@@ -288,7 +309,7 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 
 	if err != nil {
 		s.Emit(ctx, ErrorEvent{Err: err, Ctx: s.eventContext})
-		
+
 		return st, fmt.Errorf("turn failed: %w", err)
 	}
 
@@ -303,32 +324,21 @@ func (s *Step) Submit(ctx context.Context, st state.State, role state.Role, arti
 	return s.finalizeTurn(ctx, st, role, artifacts)
 }
 
-// finalizeTurn appends a turn to state, runs registered handlers on each
-// artifact, and emits a TurnCompleteEvent to all subscribers. It is the shared
-// post-processing pipeline used by both Turn() and Submit().
+// finalizeTurn builds a turn, emits a TurnCompleteEvent (which OnEmit
+// callbacks may append to state), runs registered handlers on each
+// artifact, and returns the state. It is the shared post-processing pipeline
+// used by both Turn() and Submit().
 func (s *Step) finalizeTurn(ctx context.Context, st state.State, role state.Role, artifacts []artifact.Artifact) (state.State, error) {
-	st.Append(role, artifacts...)
+	turn := state.Turn{Role: role, Artifacts: artifacts}
+	s.Emit(ctx, TurnCompleteEvent{Turn: turn, Ctx: s.eventContext})
 
-	turns := st.Turns()
-	if len(turns) == 0 {
-		return st, nil
-	}
-
-	last := turns[len(turns)-1]
-	if last.Role != role {
-		return st, nil
-	}
-
-	for _, art := range last.Artifacts {
+	for _, art := range artifacts {
 		for _, h := range s.handlers {
-			if err := h.Handle(ctx, art, st); err != nil {
+			if err := h.Handle(ctx, art, s); err != nil {
 				return st, fmt.Errorf("artifact handler failed: %w", err)
 			}
 		}
 	}
-
-	s.Emit(ctx, TurnCompleteEvent{Turn: last, Ctx: s.eventContext})
-	
 
 	return st, nil
 }
