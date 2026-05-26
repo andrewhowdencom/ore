@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/andrewhowdencom/ore/tool"
@@ -640,4 +641,72 @@ func TestReadFile_ZeroLimit(t *testing.T) {
 	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p, "offset": 1, "limit": 0})
 	require.NoError(t, err)
 	assert.Equal(t, "1|line1\n2|line2\n3|line3\n", result)
+}
+
+func TestReadFile_BinaryRejection(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "binary.bin")
+	require.NoError(t, os.WriteFile(p, []byte("\xFF"), 0o644))
+
+	_, err := ReadFile(context.Background(), nil, map[string]any{"path": p})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot read binary file")
+	assert.Contains(t, err.Error(), p)
+}
+
+func TestReadFile_TotalCharacterCap(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "large.txt")
+
+	var content strings.Builder
+	for i := 0; i < 2000; i++ {
+		content.WriteString(strings.Repeat("x", 60))
+		content.WriteByte('\n')
+	}
+	require.NoError(t, os.WriteFile(p, []byte(content.String()), 0o644))
+
+	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p})
+	require.NoError(t, err)
+	resultStr := result.(string)
+	require.LessOrEqual(t, len(resultStr), 100_000, "result should be capped at 100k chars")
+	require.True(t, strings.HasSuffix(resultStr, "\n"), "truncation should occur at line boundary")
+}
+
+func TestReadFile_StreamingTruncationWithOffset(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "large.txt")
+
+	var content strings.Builder
+	for i := 0; i < 2000; i++ {
+		content.WriteString(strings.Repeat("x", 60))
+		content.WriteByte('\n')
+	}
+	require.NoError(t, os.WriteFile(p, []byte(content.String()), 0o644))
+
+	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p, "offset": 500})
+	require.NoError(t, err)
+	resultStr := result.(string)
+	require.True(t, strings.HasPrefix(resultStr, "500|"), "result should start at offset line 500")
+	require.LessOrEqual(t, len(resultStr), 100_000, "result should still respect the 100k cap")
+}
+
+func TestReadFile_CapWithLimit(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "large.txt")
+
+	var content strings.Builder
+	for i := 0; i < 2000; i++ {
+		content.WriteString(strings.Repeat("x", 60))
+		content.WriteByte('\n')
+	}
+	require.NoError(t, os.WriteFile(p, []byte(content.String()), 0o644))
+
+	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p, "offset": 1, "limit": 2000})
+	require.NoError(t, err)
+	resultStr := result.(string)
+	require.LessOrEqual(t, len(resultStr), 100_000, "cap should win over limit")
 }

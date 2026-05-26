@@ -4,10 +4,12 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/tool"
@@ -71,34 +73,59 @@ func ReadFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, e
 		return nil, fmt.Errorf("path %q is a directory", path)
 	}
 
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
+		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
+	defer f.Close()
 
-	lines := strings.Split(string(data), "\n")
+	reader := bufio.NewReader(f)
 	var result strings.Builder
+	lineNum := 0
+	linesEmitted := 0
+	const maxChars = 100_000
 
-	start := offset - 1
-	if start < 0 {
-		start = 0
-	}
-	if start >= len(lines) {
-		return "", nil
-	}
+	for {
+		line, readErr := reader.ReadString('\n')
+		if len(line) > 0 && line[len(line)-1] == '\n' {
+			line = line[:len(line)-1]
+		}
 
-	end := len(lines)
-	if limit > 0 && start+limit < end {
-		end = start + limit
-	}
+		lineNum++
 
-	for i := start; i < end; i++ {
-		// Preserve original line content (including possible trailing spaces) but
-		// don't add extra prefix to empty final line produced by Split on trailing newline.
-		if i == len(lines)-1 && lines[i] == "" {
+		if !utf8.ValidString(line) {
+			return nil, fmt.Errorf("cannot read binary file %s (%.1f MB): invalid UTF-8 detected", path, float64(info.Size())/(1024*1024))
+		}
+
+		if readErr == io.EOF && line == "" {
+			break
+		}
+
+		if lineNum < offset {
+			if readErr == io.EOF {
+				break
+			}
 			continue
 		}
-		result.WriteString(fmt.Sprintf("%d|%s\n", i+1, lines[i]))
+
+		if limit > 0 && linesEmitted >= limit {
+			break
+		}
+
+		formatted := fmt.Sprintf("%d|%s\n", lineNum, line)
+		if result.Len()+len(formatted) > maxChars {
+			break
+		}
+
+		result.WriteString(formatted)
+		linesEmitted++
+
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return nil, fmt.Errorf("failed to read file: %w", readErr)
+		}
 	}
 
 	return result.String(), nil
