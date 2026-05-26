@@ -17,6 +17,14 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+// artifactMsg is a Bubble Tea message that carries a single artifact
+// from an ArtifactEvent into the model.Update loop so it can be
+// appended incrementally to the current assistant turn before the
+// TurnCompleteEvent boundary arrives.
+type artifactMsg struct {
+	artifact artifact.Artifact
+}
+
 // turnMsg is a Bubble Tea message that carries a complete turn into
 // the model.Update loop so it can be finalized in the conversation
 // history.
