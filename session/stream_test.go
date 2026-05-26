@@ -3,9 +3,11 @@ package session
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
@@ -399,4 +401,167 @@ func TestStream_Process_EmitsSingleProcessCompleteEvent_ForMultiTurn(t *testing.
 		turnCount++
 	}
 	assert.GreaterOrEqual(t, turnCount, 3, "expected at least 3 turn_complete events (user + 2 assistant turns)")
+}
+
+func TestStream_Submit_NonBlocking(t *testing.T) {
+	store := thread.NewMemoryStore()
+	sleepyProcessor := func() TurnProcessor {
+		return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+			time.Sleep(50 * time.Millisecond)
+			return st, nil
+		}
+	}
+	mgr := NewManager(store, &mockProvider{}, func(thr *thread.Thread) (*loop.Step, error) {
+		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+			if tc, ok := event.(loop.TurnCompleteEvent); ok {
+				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+			}
+		})), nil
+	}, sleepyProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	ch := stream.Subscribe("process_complete")
+
+	start := time.Now()
+	err = stream.Submit(UserMessageEvent{Content: "hello"})
+	elapsed := time.Since(start)
+	require.NoError(t, err)
+	assert.Less(t, elapsed, 10*time.Millisecond, "Submit should return immediately")
+
+	// Wait for the event to be processed.
+	select {
+	case <-ch:
+		// ok
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for process_complete")
+	}
+
+	_ = stream.Close()
+}
+
+func TestStream_Submit_FIFOOrder(t *testing.T) {
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, &mockProvider{}, func(thr *thread.Thread) (*loop.Step, error) {
+		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+			if tc, ok := event.(loop.TurnCompleteEvent); ok {
+				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+			}
+		})), nil
+	}, nopProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	require.NoError(t, stream.Submit(UserMessageEvent{Content: "first"}))
+	require.NoError(t, stream.Submit(UserMessageEvent{Content: "second"}))
+	require.NoError(t, stream.Submit(UserMessageEvent{Content: "third"}))
+
+	// Flush the queue with a synchronous Process to ensure all prior
+	// Submits have completed before inspecting state.
+	require.NoError(t, stream.Process(context.Background(), UserMessageEvent{Content: "flush"}))
+
+	turns := stream.thread.State.Turns()
+	require.GreaterOrEqual(t, len(turns), 4)
+	assert.Equal(t, "first", turns[0].Artifacts[0].(artifact.Text).Content)
+	assert.Equal(t, "second", turns[1].Artifacts[0].(artifact.Text).Content)
+	assert.Equal(t, "third", turns[2].Artifacts[0].(artifact.Text).Content)
+
+	_ = stream.Close()
+}
+
+func TestStream_Submit_InterruptClearsQueue(t *testing.T) {
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, &blockingProvider{}, func(thr *thread.Thread) (*loop.Step, error) {
+		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+			if tc, ok := event.(loop.TurnCompleteEvent); ok {
+				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+			}
+		})), nil
+	}, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	ch := stream.Subscribe("process_complete")
+
+	// Start draining in a goroutine before emitting events.
+	var events []loop.OutputEvent
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for e := range ch {
+			events = append(events, e)
+		}
+	}()
+
+	// Start a blocking turn.
+	go func() {
+		_ = stream.Process(context.Background(), UserMessageEvent{Content: "blocking"})
+	}()
+
+	// Wait for it to start processing.
+	time.Sleep(50 * time.Millisecond)
+
+	// Queue more events.
+	require.NoError(t, stream.Submit(UserMessageEvent{Content: "queued-1"}))
+	require.NoError(t, stream.Submit(UserMessageEvent{Content: "queued-2"}))
+
+	// Interrupt clears the queue and cancels the in-flight turn.
+	require.NoError(t, stream.Submit(InterruptEvent{}))
+
+	// Wait for processing to complete.
+	time.Sleep(200 * time.Millisecond)
+	_ = stream.Close()
+	<-done
+
+	// We should get process_complete for the cancelled blocking event and the interrupt.
+	// The queued events should have been dropped.
+	var pcEvents []loop.ProcessCompleteEvent
+	for _, e := range events {
+		if pc, ok := e.(loop.ProcessCompleteEvent); ok {
+			pcEvents = append(pcEvents, pc)
+		}
+	}
+	require.Len(t, pcEvents, 2, "expected 2 process_complete events (cancelled + interrupt)")
+
+	// First event was cancelled.
+	require.NotNil(t, pcEvents[0].Err)
+
+	// Interrupt succeeded.
+	require.Nil(t, pcEvents[1].Err)
+}
+
+func TestStream_ProcessAndSubmit_Mixed(t *testing.T) {
+	store := thread.NewMemoryStore()
+	mgr := NewManager(store, &mockProvider{}, func(thr *thread.Thread) (*loop.Step, error) {
+		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+			if tc, ok := event.(loop.TurnCompleteEvent); ok {
+				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+			}
+		})), nil
+	}, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	ch := stream.Subscribe("turn_complete")
+
+	// Mix Process (blocking) and Submit (non-blocking).
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		require.NoError(t, stream.Process(context.Background(), UserMessageEvent{Content: "process-1"}))
+	}()
+
+	require.NoError(t, stream.Submit(UserMessageEvent{Content: "submit-1"}))
+	require.NoError(t, stream.Submit(UserMessageEvent{Content: "submit-2"}))
+
+	wg.Wait()
+	time.Sleep(100 * time.Millisecond)
+
+	events := drainWithClose(t, ch, func() { _ = stream.Close() })
+	require.GreaterOrEqual(t, len(events), 6) // 3 user + 3 assistant turns
 }
