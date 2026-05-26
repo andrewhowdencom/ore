@@ -2,9 +2,7 @@ package slack
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"github.com/andrewhowdencom/ore/loop"
@@ -36,12 +34,8 @@ func (c *SlackConduit) handleMessageEvent(ctx context.Context, event *slackevent
 		Ctx:     loop.EventContext{Provenance: "slack"},
 	}
 
-	if err := stream.Process(ctx, userEvent); err != nil {
-		if errors.Is(err, session.ErrSessionBusy) {
-			slog.Error("session busy", "thread", slackThreadID, "err", err)
-			return nil
-		}
-		return fmt.Errorf("process message: %w", err)
+	if err := stream.Submit(userEvent); err != nil {
+		return fmt.Errorf("submit message: %w", err)
 	}
 
 	return nil
