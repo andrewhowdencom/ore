@@ -141,6 +141,7 @@ func (t *TUI) Start(ctx context.Context) error {
 				} else {
 					_ = t.PlayDone(ctx)
 				}
+				t.program.Send(statusMsg{status: map[string]string{"state": ""}})
 			case loop.StatusEvent:
 				t.program.Send(statusMsg{status: e.Status})
 			}
@@ -156,14 +157,10 @@ func (t *TUI) Start(ctx context.Context) error {
 					Status: map[string]string{"state": "thinking..."},
 					Ctx:    loop.EventContext{Provenance: "tui"},
 				})
-				if err := stream.Process(context.Background(), e); err != nil {
-					slog.Error("process failed", "err", err)
+				if err := stream.Submit(e); err != nil {
+					slog.Error("submit failed", "err", err)
 					t.program.Send(clearPendingMsg{})
 				}
-				_ = stream.Emit(context.Background(), loop.StatusEvent{
-					Status: map[string]string{"state": ""},
-					Ctx:    loop.EventContext{Provenance: "tui"},
-				})
 			case session.InterruptEvent:
 				if err := stream.Cancel(); err != nil {
 					slog.Error("cancel failed", "err", err)
