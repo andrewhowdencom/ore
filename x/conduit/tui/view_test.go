@@ -131,18 +131,21 @@ func TestModel_View_AssistantTurn_Reasoning_Rendered(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.md = mockMarkdownRenderer{output: "rendered-reasoning"}
+	// Simulate incremental artifact event arriving before TurnCompleteEvent.
+	newM, _ := m.Update(artifactMsg{artifact: artifact.Reasoning{Content: "let me think..."}})
+	mm := newM.(*model)
 	turn := state.Turn{
 		Role: state.RoleAssistant,
 		Artifacts: []artifact.Artifact{
 			artifact.Reasoning{Content: "let me think..."},
 		},
 	}
-	newM, _ := m.Update(turnMsg{turn: turn})
-	mm := newM.(*model)
-	mm.expandLatestDetails = true
-	mm.contentDirty = true
-	mm.syncViewport()
-	output := mm.View().Content
+	newM2, _ := mm.Update(turnMsg{turn: turn})
+	mm2 := newM2.(*model)
+	mm2.expandLatestDetails = true
+	mm2.contentDirty = true
+	mm2.syncViewport()
+	output := mm2.View().Content
 	assert.Contains(t, output, "Thinking: ")
 	assert.Contains(t, output, "rendered-reasoning")
 	assert.NotContains(t, output, "let me think...")
@@ -223,32 +226,35 @@ func TestModel_Update_KeyCtrlO_TogglesReasoningExpansion(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.md = mockMarkdownRenderer{output: "rendered-reasoning"}
 
+	// Simulate incremental artifact event arriving before TurnCompleteEvent.
+	newM, _ := m.Update(artifactMsg{artifact: artifact.Reasoning{Content: "let me think..."}})
+	mm := newM.(*model)
 	turn := state.Turn{
 		Role: state.RoleAssistant,
 		Artifacts: []artifact.Artifact{
 			artifact.Reasoning{Content: "let me think..."},
 		},
 	}
-	newM, _ := m.Update(turnMsg{turn: turn})
-	mm := newM.(*model)
+	newM2, _ := mm.Update(turnMsg{turn: turn})
+	mm2 := newM2.(*model)
 
 	// Default: collapsed
-	output := mm.buildContent()
+	output := mm2.buildContent()
 	assert.Contains(t, output, "Thinking...")
 	assert.NotContains(t, output, "rendered-reasoning")
 
 	// Toggle open
-	newM2, _ := mm.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
-	mm2 := newM2.(*model)
-	output2 := mm2.buildContent()
+	newM3, _ := mm2.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
+	mm3 := newM3.(*model)
+	output2 := mm3.buildContent()
 	assert.Contains(t, output2, "Thinking: ")
 	assert.Contains(t, output2, "rendered-reasoning")
 	assert.NotContains(t, output2, "Thinking...")
 
 	// Toggle closed again
-	newM3, _ := mm2.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
-	mm3 := newM3.(*model)
-	output3 := mm3.buildContent()
+	newM4, _ := mm3.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
+	mm4 := newM4.(*model)
+	output3 := mm4.buildContent()
 	assert.Contains(t, output3, "Thinking...")
 	assert.NotContains(t, output3, "rendered-reasoning")
 }
@@ -381,23 +387,26 @@ func TestRenderReasoning_ErrorFallback(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.md = mockMarkdownRenderer{err: errors.New("render failed")}
+	// Simulate incremental artifact event arriving before TurnCompleteEvent.
+	newM, _ := m.Update(artifactMsg{artifact: artifact.Reasoning{Content: "let me think..."}})
+	mm := newM.(*model)
 	turn := state.Turn{
 		Role: state.RoleAssistant,
 		Artifacts: []artifact.Artifact{
 			artifact.Reasoning{Content: "let me think..."},
 		},
 	}
-	newM, _ := m.Update(turnMsg{turn: turn})
-	mm := newM.(*model)
-	require.Len(t, mm.turns, 1)
-	require.Len(t, mm.turns[0].blocks, 1)
-	assert.Empty(t, mm.turns[0].blocks[0].rendered, "render error should leave rendered empty")
-	assert.Equal(t, "let me think...", mm.turns[0].blocks[0].source, "raw text should still be stored")
+	newM2, _ := mm.Update(turnMsg{turn: turn})
+	mm2 := newM2.(*model)
+	require.Len(t, mm2.turns, 1)
+	require.Len(t, mm2.turns[0].blocks, 1)
+	assert.Empty(t, mm2.turns[0].blocks[0].rendered, "render error should leave rendered empty")
+	assert.Equal(t, "let me think...", mm2.turns[0].blocks[0].source, "raw text should still be stored")
 
-	mm.expandLatestDetails = true
-	mm.contentDirty = true
-	mm.syncViewport()
-	output := mm.View().Content
+	mm2.expandLatestDetails = true
+	mm2.contentDirty = true
+	mm2.syncViewport()
+	output := mm2.View().Content
 	assert.Contains(t, output, "Thinking: ")
 	assert.Contains(t, output, "let me think...")
 }
@@ -726,4 +735,77 @@ func TestBuildContent_CompactToolCall_AmberStyling(t *testing.T) {
 	output := m.buildContent()
 	expected := compactToolCallStyle.Render("→ foo")
 	assert.Contains(t, output, expected)
+}
+
+func TestModel_View_MixedArtifacts_Rendered(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.md = mockMarkdownRenderer{output: "rendered"}
+
+	// Simulate incremental artifact events arriving before TurnCompleteEvent.
+	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "hello"}})
+	mm := newM.(*model)
+	newM2, _ := mm.Update(artifactMsg{artifact: artifact.Reasoning{Content: "think"}})
+	mm2 := newM2.(*model)
+	newM3, _ := mm2.Update(artifactMsg{artifact: artifact.ToolCall{Name: "foo", Arguments: "{}"}})
+	mm3 := newM3.(*model)
+
+	mm3.syncViewport()
+	output := mm3.View().Content
+	assert.Contains(t, output, "Assistant: ")
+	assert.Contains(t, output, "rendered")   // text block
+	assert.Contains(t, output, "Thinking...") // reasoning collapsed by default
+	assert.Contains(t, output, "→")          // tool_call compact arrow
+}
+
+func TestModel_View_IncrementalToolCall_CompactAndExpanded(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+
+	// Simulate incremental artifact event arriving before TurnCompleteEvent.
+	newM, _ := m.Update(artifactMsg{artifact: artifact.ToolCall{Name: "foo", Arguments: "{}"}})
+	mm := newM.(*model)
+	mm.syncViewport()
+	output1 := mm.View().Content
+	assert.Contains(t, output1, "→")               // compact arrow
+	assert.NotContains(t, output1, "Calling: foo({})") // full source hidden
+
+	// Toggle expanded.
+	mm.expandLatestDetails = true
+	mm.contentDirty = true
+	mm.syncViewport()
+	output2 := mm.View().Content
+	assert.Contains(t, output2, "Calling: foo({})") // full source visible
+	assert.NotContains(t, output2, "→")               // compact arrow gone
+}
+
+func TestModel_View_IncrementalReasoning_ExpandCollapse(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.md = mockMarkdownRenderer{output: "rendered-reasoning"}
+
+	// Simulate incremental artifact event arriving before TurnCompleteEvent.
+	newM, _ := m.Update(artifactMsg{artifact: artifact.Reasoning{Content: "let me think..."}})
+	mm := newM.(*model)
+	mm.syncViewport()
+	output1 := mm.View().Content
+	assert.Contains(t, output1, "Thinking...")
+	assert.NotContains(t, output1, "rendered-reasoning")
+
+	// Toggle expanded.
+	mm.expandLatestDetails = true
+	mm.contentDirty = true
+	mm.syncViewport()
+	output2 := mm.View().Content
+	assert.Contains(t, output2, "Thinking: ")
+	assert.Contains(t, output2, "rendered-reasoning")
+	assert.NotContains(t, output2, "Thinking...")
+
+	// Toggle collapsed again.
+	mm.expandLatestDetails = false
+	mm.contentDirty = true
+	mm.syncViewport()
+	output3 := mm.View().Content
+	assert.Contains(t, output3, "Thinking...")
+	assert.NotContains(t, output3, "rendered-reasoning")
 }

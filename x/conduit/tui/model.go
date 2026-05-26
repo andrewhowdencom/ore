@@ -17,6 +17,14 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+// artifactMsg is a Bubble Tea message that carries a single artifact
+// from an ArtifactEvent into the model.Update loop so it can be
+// appended incrementally to the current assistant turn before the
+// TurnCompleteEvent boundary arrives.
+type artifactMsg struct {
+	artifact artifact.Artifact
+}
+
 // turnMsg is a Bubble Tea message that carries a complete turn into
 // the model.Update loop so it can be finalized in the conversation
 // history.
@@ -76,6 +84,11 @@ type model struct {
 
 	// Conversation history.
 	turns []renderedTurn
+
+	// currentTurn accumulates renderedBlock values from ArtifactEvent
+	// messages for the in-progress assistant turn. It is flushed into
+	// turns when the TurnCompleteEvent boundary arrives.
+	currentTurn renderedTurn
 
 	// pending indicates an assistant response is in flight.
 	pending bool
@@ -177,6 +190,47 @@ func (m *model) syncViewport() {
 	m.viewport.SetContent(m.buildContent())
 }
 
+// renderArtifact creates a renderedBlock from a single artifact.Artifact.
+// It is used both for incremental ArtifactEvent accumulation (assistant
+// turns) and for building user/tool turns from TurnCompleteEvent.
+// When shouldRenderMarkdown is true, text and reasoning artifacts are
+// processed through the Markdown renderer; this is only appropriate for
+// assistant turns.
+func (m *model) renderArtifact(art artifact.Artifact, shouldRenderMarkdown bool) renderedBlock {
+	switch a := art.(type) {
+	case artifact.Text:
+		block := renderedBlock{kind: "text", source: a.Content}
+		if shouldRenderMarkdown {
+			rendered, err := m.renderMarkdown(a.Content, m.viewport.Width())
+			if err == nil {
+				block.rendered = rendered
+			}
+		}
+		return block
+	case artifact.Reasoning:
+		block := renderedBlock{kind: "reasoning", source: a.Content, compact: "Thinking..."}
+		if shouldRenderMarkdown {
+			rendered, err := m.renderMarkdown(a.Content, m.viewport.Width())
+			if err == nil {
+				block.rendered = rendered
+			}
+		}
+		return block
+	case artifact.ToolCall:
+		source := fmt.Sprintf("Calling: %s(%s)", a.Name, a.Arguments)
+		compact := compactToolCall(a, m.viewport.Width())
+		return renderedBlock{kind: "tool_call", source: source, compact: compact}
+	case artifact.ToolResult:
+		source := a.Content
+		if a.IsError {
+			source = "Error: " + source
+		}
+		compact := compactToolResult(a, m.viewport.Width())
+		return renderedBlock{kind: "tool_result", source: source, compact: compact}
+	}
+	return renderedBlock{}
+}
+
 // Init returns an initial command. No periodic ticks are needed because
 // turns arrive via program.Send from the orchestrator goroutine.
 func (m *model) Init() tea.Cmd {
@@ -187,52 +241,39 @@ func (m *model) Init() tea.Cmd {
 // custom messages carrying delta/turn/status data from the conduit methods.
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case artifactMsg:
+		block := m.renderArtifact(msg.artifact, true)
+		if block.kind != "" {
+			m.currentTurn.blocks = append(m.currentTurn.blocks, block)
+		}
+		m.contentDirty = true
+		m.syncViewport()
+		m.viewport.GotoBottom()
 	case turnMsg:
-		var blocks []renderedBlock
-		for _, art := range msg.turn.Artifacts {
-			switch a := art.(type) {
-			case artifact.Text:
-				block := renderedBlock{kind: "text", source: a.Content}
-				if msg.turn.Role == state.RoleAssistant {
-					rendered, err := m.renderMarkdown(a.Content, m.viewport.Width())
-					if err == nil {
-						block.rendered = rendered
-					}
-				}
-				blocks = append(blocks, block)
-			// Reasoning artifacts are rendered via the Markdown renderer to
-			// support formatting (code fences, bold, etc.) and cached for
-			// later View() calls, just like text artifacts.
-			case artifact.Reasoning:
-				block := renderedBlock{kind: "reasoning", source: a.Content, compact: "Thinking..."}
-				if msg.turn.Role == state.RoleAssistant {
-					rendered, err := m.renderMarkdown(a.Content, m.viewport.Width())
-					if err == nil {
-						block.rendered = rendered
-					}
-				}
-				blocks = append(blocks, block)
-			case artifact.ToolCall:
-				source := fmt.Sprintf("Calling: %s(%s)", a.Name, a.Arguments)
-				compact := compactToolCall(a, m.viewport.Width())
-				blocks = append(blocks, renderedBlock{kind: "tool_call", source: source, compact: compact})
-			case artifact.ToolResult:
-				source := a.Content
-				if a.IsError {
-					source = "Error: " + source
-				}
-				compact := compactToolResult(a, m.viewport.Width())
-				blocks = append(blocks, renderedBlock{kind: "tool_result", source: source, compact: compact})
-			}
-		}
-		rt := renderedTurn{
-			role:   msg.turn.Role,
-			blocks: blocks,
-		}
-		m.turns = append(m.turns, rt)
 		if msg.turn.Role == state.RoleAssistant {
+			// Finalize the currentTurn that was built incrementally from
+			// ArtifactEvents. If no ArtifactEvents arrived (empty response),
+			// currentTurn may be empty; we still record the turn boundary.
+			m.currentTurn.role = msg.turn.Role
+			m.turns = append(m.turns, m.currentTurn)
+			m.currentTurn = renderedTurn{}
 			m.pending = false
 			m.expandLatestDetails = false
+		} else {
+			// User and tool turns do not emit individual ArtifactEvents;
+			// build the turn from the full Turn content.
+			var blocks []renderedBlock
+			for _, art := range msg.turn.Artifacts {
+				block := m.renderArtifact(art, msg.turn.Role == state.RoleAssistant)
+				if block.kind != "" {
+					blocks = append(blocks, block)
+				}
+			}
+			rt := renderedTurn{
+				role:   msg.turn.Role,
+				blocks: blocks,
+			}
+			m.turns = append(m.turns, rt)
 		}
 		m.contentDirty = true
 		m.syncViewport()
@@ -257,7 +298,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case errorMsg:
 		// Surface the error to the user and reset UI state so the
-		// input area is usable again.
+		// input area is usable again. Discard any partial assistant
+		// output accumulated in currentTurn.
+		m.currentTurn = renderedTurn{}
 		m.pending = false
 		if m.status == nil {
 			m.status = make(map[string]string)
@@ -349,6 +392,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.turns[i].blocks[j].rendered = rendered
 						}
 					}
+				}
+			}
+		}
+		// Also re-render the in-progress currentTurn blocks.
+		for j, block := range m.currentTurn.blocks {
+			if block.kind == "text" && block.source != "" {
+				rendered, err := m.renderMarkdown(block.source, m.viewport.Width())
+				if err == nil {
+					m.currentTurn.blocks[j].rendered = rendered
 				}
 			}
 		}
