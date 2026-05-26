@@ -123,13 +123,17 @@ func (t *TUI) Start(ctx context.Context) error {
 	t.eventsCh = surfEventsCh
 	t.program = p
 
-	// Subscribe to the stream's output.
-	outputCh := stream.Subscribe("turn_complete", "error", "process_complete", "status")
+	// Subscribe to the stream's output, including complete artifact kinds so
+	// the TUI can render assistant content incrementally as each artifact
+	// arrives, rather than waiting for TurnCompleteEvent.
+	outputCh := stream.Subscribe("text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "process_complete", "status")
 
 	// Goroutine to stream output events into the Bubble Tea message loop.
 	go func() {
 		for event := range outputCh {
 			switch e := event.(type) {
+			case loop.ArtifactEvent:
+				t.program.Send(artifactMsg{artifact: e.Artifact})
 			case loop.TurnCompleteEvent:
 				t.program.Send(turnMsg{turn: e.Turn})
 			case loop.ErrorEvent:
