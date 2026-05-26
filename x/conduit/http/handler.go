@@ -3,7 +3,6 @@ package http
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	stdhttp "net/http"
@@ -201,19 +200,9 @@ func (h *Handler) deleteSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	id := r.PathValue("id")
 
-	// Verify the session exists and is not busy before starting the response.
-	if err := h.mgr.Check(id); err != nil {
-		if errors.Is(err, session.ErrSessionBusy) {
-			w.WriteHeader(stdhttp.StatusConflict)
-		} else {
-			w.WriteHeader(stdhttp.StatusNotFound)
-		}
-		return
-	}
-
 	stream, err := h.mgr.Get(id)
 	if err != nil {
-		w.WriteHeader(stdhttp.StatusInternalServerError)
+		w.WriteHeader(stdhttp.StatusNotFound)
 		return
 	}
 
