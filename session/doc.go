@@ -20,21 +20,29 @@
 // InterruptEvent) have moved from the conduit package to session.
 // All event types carry an optional loop.EventContext for routing
 // metadata (e.g., provenance). Set it when constructing the event:
-//   UserMessageEvent{Content: "hello", Ctx: loop.EventContext{Provenance: "slack-123"}}
+//
+//	UserMessageEvent{Content: "hello", Ctx: loop.EventContext{Provenance: "slack-123"}}
 //
 // Lifecycle events:
-//   ProcessCompleteEvent is emitted after Process() finishes the entire
-//   inference pipeline (including all tool-call loops). It carries the
-//   final error state and is the preferred signal for UI-level lifecycle
-//   actions (audio notifications, typing indicator dismissal). Conduits
-//   should subscribe to it in addition to TurnCompleteEvent, which fires
-//   on every intermediate turn for incremental rendering.
+//
+//	ProcessCompleteEvent is emitted after Process() finishes the entire
+//	inference pipeline (including all tool-call loops). It carries the
+//	final error state and is the preferred signal for UI-level lifecycle
+//	actions (audio notifications, typing indicator dismissal). Conduits
+//	should subscribe to it in addition to TurnCompleteEvent, which fires
+//	on every intermediate turn for incremental rendering.
 //
 // Typical composition:
 //
 //	store := thread.NewMemoryStore()
 //	prov := openai.New(apiKey, model)
-//	stepFactory := func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }
+//	stepFactory := func(thr *thread.Thread) (*loop.Step, error) {
+//		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+//			if tc, ok := event.(loop.TurnCompleteEvent); ok {
+//				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+//			}
+//		})), nil
+//	}
 //	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())
 //
 // The factory receives *thread.Thread so it can bind per-session state.
@@ -43,7 +51,11 @@
 //
 //	stepFactory := func(thr *thread.Thread) (*loop.Step, error) {
 //		// Build transforms that use thr.Metadata, thr.ID, etc.
-//		return loop.New(), nil
+//		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+//			if tc, ok := event.(loop.TurnCompleteEvent); ok {
+//				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+//			}
+//		})), nil
 //	}
 //
 //	// Obtain a *Stream from the manager.

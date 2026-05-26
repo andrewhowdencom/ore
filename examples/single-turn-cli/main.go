@@ -15,8 +15,8 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/x/provider/openai"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/x/provider/openai"
 )
 
 // systemPromptTransform is an inline loop.Transform that prepends a
@@ -128,7 +128,11 @@ func run() error {
 	if sysPrompt := os.Getenv("ORE_SYSTEM_PROMPT"); sysPrompt != "" {
 		stepOpts = append(stepOpts, loop.WithTransforms(&systemPromptTransform{content: sysPrompt}))
 	}
-	s := loop.New(stepOpts...)
+	s := loop.New(append(stepOpts, loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+		if tc, ok := event.(loop.TurnCompleteEvent); ok {
+			mem.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+		}
+	}))...)
 
 	// Execute a single loop turn.
 	_, err = s.Turn(ctx, mem, p)

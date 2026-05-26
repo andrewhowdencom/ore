@@ -14,9 +14,9 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/x/provider/openai"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/tool"
+	"github.com/andrewhowdencom/ore/x/provider/openai"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
 	"github.com/andrewhowdencom/ore/x/tool/filesystem"
 )
@@ -112,6 +112,11 @@ func run() error {
 	step := loop.New(
 		loop.WithHandlers(xtool.NewHandler(registry)),
 		loop.WithInvokeOptions(openai.WithTools(registry.Tools())),
+		loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+			if tc, ok := event.(loop.TurnCompleteEvent); ok {
+				mem.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+			}
+		}),
 	)
 
 	// Run the cognitive pattern.
