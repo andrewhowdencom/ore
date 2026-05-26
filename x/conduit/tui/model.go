@@ -27,7 +27,7 @@ type turnMsg struct {
 // statusMsg is a Bubble Tea message that carries a status update into
 // the model.Update loop so it can update the transient status line.
 type statusMsg struct {
-	status string
+	status map[string]string
 }
 
 // clearPendingMsg is a Bubble Tea message that instructs the model to
@@ -87,8 +87,9 @@ type model struct {
 	// the next assistant turn is received, restoring the default compact view.
 	expandLatestDetails bool
 
-	// Transient status line (e.g., "thinking...").
-	status string
+	// Status map carries structured key-value status pairs received from
+	// StatusEvent output events (e.g. thread_id, state).
+	status map[string]string
 
 	// User input widget.
 	textarea textarea.Model
@@ -237,7 +238,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncViewport()
 		m.viewport.GotoBottom()
 	case statusMsg:
-		m.status = msg.status
+		if m.status == nil {
+			m.status = make(map[string]string)
+		}
+		for k, v := range msg.status {
+			m.status[k] = v
+		}
 		m.contentDirty = true
 		m.syncViewport()
 	case clearPendingMsg:
@@ -253,7 +259,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Surface the error to the user and reset UI state so the
 		// input area is usable again.
 		m.pending = false
-		m.status = "Error: " + msg.err.Error()
+		if m.status == nil {
+			m.status = make(map[string]string)
+		}
+		m.status["state"] = "Error: " + msg.err.Error()
 		m.contentDirty = true
 		m.syncViewport()
 		return m, nil
