@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 	toolpkg "github.com/andrewhowdencom/ore/tool"
@@ -14,34 +15,41 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type mockEmitter struct {
+	events []loop.OutputEvent
+}
+
+func (m *mockEmitter) Emit(ctx context.Context, event loop.OutputEvent) {
+	m.events = append(m.events, event)
+}
+
 func TestHandler_IgnoresNonToolCall(t *testing.T) {
 	r := toolpkg.NewRegistry()
 	h := NewHandler(r)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	emitter := &mockEmitter{}
 
-	err := h.Handle(context.Background(), artifact.Text{Content: "world"}, mem)
+	err := h.Handle(context.Background(), artifact.Text{Content: "world"}, emitter)
 	require.NoError(t, err)
-	assert.Len(t, mem.Turns(), 1) // No new turns appended.
+	assert.Len(t, emitter.events, 0) // No events emitted.
 }
 
 func TestHandler_UnknownTool(t *testing.T) {
 	r := toolpkg.NewRegistry()
 	h := NewHandler(r)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	emitter := &mockEmitter{}
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
 		ID:   "call_1",
 		Name: "unknown",
-	}, mem)
+	}, emitter)
 	require.NoError(t, err)
 
-	turns := mem.Turns()
-	require.Len(t, turns, 2)
-	assert.Equal(t, state.RoleTool, turns[1].Role)
-	require.Len(t, turns[1].Artifacts, 1)
-	tr, ok := turns[1].Artifacts[0].(artifact.ToolResult)
+	require.Len(t, emitter.events, 1)
+	tc, ok := emitter.events[0].(loop.TurnCompleteEvent)
+	require.True(t, ok)
+	assert.Equal(t, state.RoleTool, tc.Turn.Role)
+	require.Len(t, tc.Turn.Artifacts, 1)
+	tr, ok := tc.Turn.Artifacts[0].(artifact.ToolResult)
 	require.True(t, ok)
 	assert.Equal(t, "call_1", tr.ToolCallID)
 	assert.True(t, tr.IsError)
@@ -56,21 +64,21 @@ func TestHandler_ExecutesRegisteredTool(t *testing.T) {
 		return a + b, nil
 	}))
 	h := NewHandler(r)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	emitter := &mockEmitter{}
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
 		ID:        "call_1",
 		Name:      "add",
 		Arguments: `{"a": 3, "b": 5}`,
-	}, mem)
+	}, emitter)
 	require.NoError(t, err)
 
-	turns := mem.Turns()
-	require.Len(t, turns, 2)
-	assert.Equal(t, state.RoleTool, turns[1].Role)
-	require.Len(t, turns[1].Artifacts, 1)
-	tr, ok := turns[1].Artifacts[0].(artifact.ToolResult)
+	require.Len(t, emitter.events, 1)
+	tc, ok := emitter.events[0].(loop.TurnCompleteEvent)
+	require.True(t, ok)
+	assert.Equal(t, state.RoleTool, tc.Turn.Role)
+	require.Len(t, tc.Turn.Artifacts, 1)
+	tr, ok := tc.Turn.Artifacts[0].(artifact.ToolResult)
 	require.True(t, ok)
 	assert.Equal(t, "call_1", tr.ToolCallID)
 	assert.False(t, tr.IsError)
@@ -83,19 +91,20 @@ func TestHandler_InvalidArguments(t *testing.T) {
 		return nil, nil
 	}))
 	h := NewHandler(r)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	emitter := &mockEmitter{}
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
 		ID:        "call_1",
 		Name:      "add",
 		Arguments: `not json`,
-	}, mem)
+	}, emitter)
 	require.NoError(t, err)
 
-	turns := mem.Turns()
-	require.Len(t, turns, 2)
-	tr, ok := turns[1].Artifacts[0].(artifact.ToolResult)
+	require.Len(t, emitter.events, 1)
+	tc, ok := emitter.events[0].(loop.TurnCompleteEvent)
+	require.True(t, ok)
+	require.Len(t, tc.Turn.Artifacts, 1)
+	tr, ok := tc.Turn.Artifacts[0].(artifact.ToolResult)
 	require.True(t, ok)
 	assert.True(t, tr.IsError)
 	assert.Contains(t, tr.Content, "invalid tool arguments")
@@ -107,19 +116,20 @@ func TestHandler_ToolExecutionError(t *testing.T) {
 		return nil, errors.New("boom")
 	}))
 	h := NewHandler(r)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	emitter := &mockEmitter{}
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
 		ID:        "call_1",
 		Name:      "fail",
 		Arguments: `{}`,
-	}, mem)
+	}, emitter)
 	require.NoError(t, err)
 
-	turns := mem.Turns()
-	require.Len(t, turns, 2)
-	tr, ok := turns[1].Artifacts[0].(artifact.ToolResult)
+	require.Len(t, emitter.events, 1)
+	tc, ok := emitter.events[0].(loop.TurnCompleteEvent)
+	require.True(t, ok)
+	require.Len(t, tc.Turn.Artifacts, 1)
+	tr, ok := tc.Turn.Artifacts[0].(artifact.ToolResult)
 	require.True(t, ok)
 	assert.True(t, tr.IsError)
 	assert.Contains(t, tr.Content, "tool execution error")
@@ -132,19 +142,20 @@ func TestHandler_SerializationError(t *testing.T) {
 		return make(chan int), nil
 	}))
 	h := NewHandler(r)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	emitter := &mockEmitter{}
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
 		ID:        "call_1",
 		Name:      "bad",
 		Arguments: `{}`,
-	}, mem)
+	}, emitter)
 	require.NoError(t, err)
 
-	turns := mem.Turns()
-	require.Len(t, turns, 2)
-	tr, ok := turns[1].Artifacts[0].(artifact.ToolResult)
+	require.Len(t, emitter.events, 1)
+	tc, ok := emitter.events[0].(loop.TurnCompleteEvent)
+	require.True(t, ok)
+	require.Len(t, tc.Turn.Artifacts, 1)
+	tr, ok := tc.Turn.Artifacts[0].(artifact.ToolResult)
 	require.True(t, ok)
 	assert.True(t, tr.IsError)
 	assert.Contains(t, tr.Content, "failed to serialize result")
@@ -156,18 +167,19 @@ func TestHandler_EmptyArguments(t *testing.T) {
 		return "done", nil
 	}))
 	h := NewHandler(r)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	emitter := &mockEmitter{}
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
 		ID:   "call_1",
 		Name: "noop",
-	}, mem)
+	}, emitter)
 	require.NoError(t, err)
 
-	turns := mem.Turns()
-	require.Len(t, turns, 2)
-	tr, ok := turns[1].Artifacts[0].(artifact.ToolResult)
+	require.Len(t, emitter.events, 1)
+	tc, ok := emitter.events[0].(loop.TurnCompleteEvent)
+	require.True(t, ok)
+	require.Len(t, tc.Turn.Artifacts, 1)
+	tr, ok := tc.Turn.Artifacts[0].(artifact.ToolResult)
 	require.True(t, ok)
 	assert.False(t, tr.IsError)
 	assert.Equal(t, `"done"`, tr.Content)
@@ -179,18 +191,19 @@ func TestHandler_ArrayReturnValue(t *testing.T) {
 		return []int{1, 2, 3}, nil
 	}))
 	h := NewHandler(r)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	emitter := &mockEmitter{}
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
 		ID:   "call_1",
 		Name: "list",
-	}, mem)
+	}, emitter)
 	require.NoError(t, err)
 
-	turns := mem.Turns()
-	require.Len(t, turns, 2)
-	tr, ok := turns[1].Artifacts[0].(artifact.ToolResult)
+	require.Len(t, emitter.events, 1)
+	tc, ok := emitter.events[0].(loop.TurnCompleteEvent)
+	require.True(t, ok)
+	require.Len(t, tc.Turn.Artifacts, 1)
+	tr, ok := tc.Turn.Artifacts[0].(artifact.ToolResult)
 	require.True(t, ok)
 	assert.False(t, tr.IsError)
 	assert.Equal(t, "[1,2,3]", tr.Content)
@@ -206,21 +219,21 @@ func TestHandler_NamespacedTool(t *testing.T) {
 
 	r := toolpkg.NewRegistry(toolpkg.WithMCPServer(remote))
 	h := NewHandler(r)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	emitter := &mockEmitter{}
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
 		ID:        "call_1",
 		Name:      "filesystem/read_file",
 		Arguments: `{"path": "/tmp/test"}`,
-	}, mem)
+	}, emitter)
 	require.NoError(t, err)
 
-	turns := mem.Turns()
-	require.Len(t, turns, 2)
-	assert.Equal(t, state.RoleTool, turns[1].Role)
-	require.Len(t, turns[1].Artifacts, 1)
-	tr, ok := turns[1].Artifacts[0].(artifact.ToolResult)
+	require.Len(t, emitter.events, 1)
+	tc, ok := emitter.events[0].(loop.TurnCompleteEvent)
+	require.True(t, ok)
+	assert.Equal(t, state.RoleTool, tc.Turn.Role)
+	require.Len(t, tc.Turn.Artifacts, 1)
+	tr, ok := tc.Turn.Artifacts[0].(artifact.ToolResult)
 	require.True(t, ok)
 	assert.Equal(t, "call_1", tr.ToolCallID)
 	assert.False(t, tr.IsError)
@@ -230,18 +243,19 @@ func TestHandler_NamespacedTool(t *testing.T) {
 func TestHandler_NamespacedUnknownNamespace(t *testing.T) {
 	r := toolpkg.NewRegistry()
 	h := NewHandler(r)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	emitter := &mockEmitter{}
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
 		ID:   "call_1",
 		Name: "unknown/read_file",
-	}, mem)
+	}, emitter)
 	require.NoError(t, err)
 
-	turns := mem.Turns()
-	require.Len(t, turns, 2)
-	tr, ok := turns[1].Artifacts[0].(artifact.ToolResult)
+	require.Len(t, emitter.events, 1)
+	tc, ok := emitter.events[0].(loop.TurnCompleteEvent)
+	require.True(t, ok)
+	require.Len(t, tc.Turn.Artifacts, 1)
+	tr, ok := tc.Turn.Artifacts[0].(artifact.ToolResult)
 	require.True(t, ok)
 	assert.Equal(t, "call_1", tr.ToolCallID)
 	assert.True(t, tr.IsError)
@@ -271,19 +285,20 @@ func (e *errorRemoteSource) Call(ctx context.Context, name string, args map[stri
 func TestHandler_NamespacedRemoteError(t *testing.T) {
 	r := toolpkg.NewRegistry(toolpkg.WithMCPServer(&errorRemoteSource{}))
 	h := NewHandler(r)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	emitter := &mockEmitter{}
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
 		ID:        "call_1",
 		Name:      "remote/fail",
 		Arguments: `{}`,
-	}, mem)
+	}, emitter)
 	require.NoError(t, err)
 
-	turns := mem.Turns()
-	require.Len(t, turns, 2)
-	tr, ok := turns[1].Artifacts[0].(artifact.ToolResult)
+	require.Len(t, emitter.events, 1)
+	tc, ok := emitter.events[0].(loop.TurnCompleteEvent)
+	require.True(t, ok)
+	require.Len(t, tc.Turn.Artifacts, 1)
+	tr, ok := tc.Turn.Artifacts[0].(artifact.ToolResult)
 	require.True(t, ok)
 	assert.Equal(t, "call_1", tr.ToolCallID)
 	assert.True(t, tr.IsError)
@@ -294,18 +309,19 @@ func TestHandler_NamespacedRemoteError(t *testing.T) {
 func TestHandler_NamespacedRemoteToolNotFound(t *testing.T) {
 	r := toolpkg.NewRegistry(toolpkg.WithMCPServer(&notFoundRemoteSource{}))
 	h := NewHandler(r)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	emitter := &mockEmitter{}
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
 		ID:   "call_1",
 		Name: "remote/unknown",
-	}, mem)
+	}, emitter)
 	require.NoError(t, err)
 
-	turns := mem.Turns()
-	require.Len(t, turns, 2)
-	tr, ok := turns[1].Artifacts[0].(artifact.ToolResult)
+	require.Len(t, emitter.events, 1)
+	tc, ok := emitter.events[0].(loop.TurnCompleteEvent)
+	require.True(t, ok)
+	require.Len(t, tc.Turn.Artifacts, 1)
+	tr, ok := tc.Turn.Artifacts[0].(artifact.ToolResult)
 	require.True(t, ok)
 	assert.Equal(t, "call_1", tr.ToolCallID)
 	assert.True(t, tr.IsError)
@@ -373,14 +389,13 @@ func TestHandler_ResolvesSandboxFromArgs(t *testing.T) {
 	r.RegisterSandbox("worktree", sb)
 
 	h := NewHandler(r)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	emitter := &mockEmitter{}
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
 		ID:        "call_1",
 		Name:      "check",
 		Arguments: `{"sandbox": "worktree"}`,
-	}, mem)
+	}, emitter)
 	require.NoError(t, err)
 
 	assert.Equal(t, sb, calledWith)
@@ -398,14 +413,13 @@ func TestHandler_UsesDefaultSandbox(t *testing.T) {
 	r.SetDefaultSandbox(defaultSb)
 
 	h := NewHandler(r)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	emitter := &mockEmitter{}
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
 		ID:        "call_1",
 		Name:      "check",
 		Arguments: `{}`,
-	}, mem)
+	}, emitter)
 	require.NoError(t, err)
 
 	assert.Equal(t, defaultSb, calledWith)
@@ -423,14 +437,13 @@ func TestHandler_StripsSandboxArg(t *testing.T) {
 	r.RegisterSandbox("worktree", sb)
 
 	h := NewHandler(r)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	emitter := &mockEmitter{}
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
 		ID:        "call_1",
 		Name:      "echo",
 		Arguments: `{"sandbox": "worktree", "msg": "hello"}`,
-	}, mem)
+	}, emitter)
 	require.NoError(t, err)
 
 	_, hasSandbox := receivedArgs["sandbox"]
@@ -450,14 +463,13 @@ func TestHandler_MissingSandboxName(t *testing.T) {
 	r.RegisterSandbox("worktree", sb)
 
 	h := NewHandler(r)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	emitter := &mockEmitter{}
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
 		ID:        "call_1",
 		Name:      "check",
 		Arguments: `{"sandbox": "nonexistent"}`,
-	}, mem)
+	}, emitter)
 	require.NoError(t, err)
 
 	assert.Nil(t, calledWith)
@@ -472,14 +484,13 @@ func TestHandler_PassesNilWhenNoSandboxRegistry(t *testing.T) {
 	}))
 
 	h := NewHandler(r)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	emitter := &mockEmitter{}
 
 	err := h.Handle(context.Background(), artifact.ToolCall{
 		ID:        "call_1",
 		Name:      "check",
 		Arguments: `{}`,
-	}, mem)
+	}, emitter)
 	require.NoError(t, err)
 
 	assert.Nil(t, calledWith)

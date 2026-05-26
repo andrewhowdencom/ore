@@ -86,12 +86,12 @@ var _ provider.Provider = (*cancelCheckingProvider)(nil)
 
 // testHandler implements loop.Handler for testing.
 type testHandler struct {
-	fn func(ctx context.Context, art artifact.Artifact, s state.State) error
+	fn func(ctx context.Context, art artifact.Artifact, e loop.Emitter) error
 }
 
-func (h *testHandler) Handle(ctx context.Context, art artifact.Artifact, s state.State) error {
+func (h *testHandler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emitter) error {
 	if h.fn != nil {
-		return h.fn(ctx, art, s)
+		return h.fn(ctx, art, e)
 	}
 	return nil
 }
@@ -100,8 +100,13 @@ var _ loop.Handler = (*testHandler)(nil)
 
 func TestReAct_SingleTurn(t *testing.T) {
 	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
 
-	s := loop.New()
+	s := loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+		if tc, ok := event.(loop.TurnCompleteEvent); ok {
+			mem.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+		}
+	}))
 
 	prov := &simpleProvider{
 		artifacts: []artifact.Artifact{
@@ -114,7 +119,6 @@ func TestReAct_SingleTurn(t *testing.T) {
 		Provider: prov,
 	}
 
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
 	result, err := r.Run(context.Background(), mem)
 	require.NoError(t, err)
 
@@ -127,17 +131,30 @@ func TestReAct_SingleTurn(t *testing.T) {
 
 func TestReAct_ToolLoop(t *testing.T) {
 	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "do something"})
 
 	toolHandler := &testHandler{
-		fn: func(ctx context.Context, art artifact.Artifact, s state.State) error {
+		fn: func(ctx context.Context, art artifact.Artifact, e loop.Emitter) error {
 			if art.Kind() == "tool_call" {
-				s.Append(state.RoleTool, artifact.Text{Content: "tool result"})
+				e.Emit(ctx, loop.TurnCompleteEvent{
+					Turn: state.Turn{
+						Role:      state.RoleTool,
+						Artifacts: []artifact.Artifact{artifact.Text{Content: "tool result"}},
+					},
+				})
 			}
 			return nil
 		},
 	}
 
-	s := loop.New(loop.WithHandlers(toolHandler))
+	s := loop.New(
+		loop.WithHandlers(toolHandler),
+		loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+			if tc, ok := event.(loop.TurnCompleteEvent); ok {
+				mem.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+			}
+		}),
+	)
 
 	prov := &countingProvider{}
 
@@ -146,7 +163,6 @@ func TestReAct_ToolLoop(t *testing.T) {
 		Provider: prov,
 	}
 
-	mem.Append(state.RoleUser, artifact.Text{Content: "do something"})
 	result, err := r.Run(context.Background(), mem)
 	require.NoError(t, err)
 
@@ -162,8 +178,13 @@ func TestReAct_ToolLoop(t *testing.T) {
 
 func TestReAct_ProviderError(t *testing.T) {
 	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
 
-	s := loop.New()
+	s := loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+		if tc, ok := event.(loop.TurnCompleteEvent); ok {
+			mem.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+		}
+	}))
 
 	wantErr := context.Canceled
 	prov := &simpleProvider{err: wantErr}
@@ -173,17 +194,17 @@ func TestReAct_ProviderError(t *testing.T) {
 		Provider: prov,
 	}
 
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
 	_, err := r.Run(context.Background(), mem)
 	require.ErrorIs(t, err, wantErr)
 }
 
 func TestReAct_HandlerError(t *testing.T) {
 	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "do something"})
 
 	wantErr := errors.New("handler failed")
 	toolHandler := &testHandler{
-		fn: func(ctx context.Context, art artifact.Artifact, s state.State) error {
+		fn: func(ctx context.Context, art artifact.Artifact, e loop.Emitter) error {
 			if art.Kind() == "tool_call" {
 				return wantErr
 			}
@@ -191,7 +212,14 @@ func TestReAct_HandlerError(t *testing.T) {
 		},
 	}
 
-	s := loop.New(loop.WithHandlers(toolHandler))
+	s := loop.New(
+		loop.WithHandlers(toolHandler),
+		loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+			if tc, ok := event.(loop.TurnCompleteEvent); ok {
+				mem.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+			}
+		}),
+	)
 
 	prov := &simpleProvider{
 		artifacts: []artifact.Artifact{
@@ -205,22 +233,24 @@ func TestReAct_HandlerError(t *testing.T) {
 		Provider: prov,
 	}
 
-	mem.Append(state.RoleUser, artifact.Text{Content: "do something"})
 	_, err := r.Run(context.Background(), mem)
 	require.ErrorIs(t, err, wantErr)
 }
 
 func TestReAct_ContextCancellation(t *testing.T) {
 	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "do something"})
 
 	prov := &cancelCheckingProvider{}
-	s := loop.New()
+	s := loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+		if tc, ok := event.(loop.TurnCompleteEvent); ok {
+			mem.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+		}
+	}))
 	r := &ReAct{
 		Step:     s,
 		Provider: prov,
 	}
-
-	mem.Append(state.RoleUser, artifact.Text{Content: "do something"})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately.
