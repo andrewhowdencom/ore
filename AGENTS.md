@@ -132,7 +132,10 @@ They **MUST NOT**:
 
 Cognitive patterns, provider invocation, and conversation orchestration are **application-level concerns**, composed in `examples/` or `cmd/` packages. The library exposes its `Session`, `Step`, and `State` via exported accessors so the application can call `Step.Submit()`, `Step.Turn()`, or run a full `cognitive.ReAct` loop as needed.
 
-This mirrors the TUI pattern: `x/conduit/tui/` is a dumb pipe; `examples/tui-chat/main.go` composes the ReAct loop. The HTTP conduit must follow the same separation.
+This mirrors the TUI pattern: `x/conduit/tui/` is a dumb pipe that
+subscribes to `*_delta` artifact events and renders them incrementally
+using a short-interval debounce; `examples/tui-chat/main.go` composes the
+ReAct loop. The HTTP conduit must follow the same separation.
 
 ### TUI Rendering Expectations
 

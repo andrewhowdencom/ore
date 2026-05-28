@@ -6,6 +6,12 @@
 // session's output stream, and sends user events back through it.
 // Available options include WithThreadID to resume an existing thread.
 //
+// Streaming model:
+// The TUI subscribes to delta artifact events (text_delta, reasoning_delta,
+// tool_call, tool_result, turn_complete) and renders assistant output
+// incrementally as chunks arrive. A 16ms debounced render tick batches
+// glamour markdown re-renders to keep the UI smooth at ~60fps.
+//
 // Keyboard shortcuts:
 //   Ctrl+O — toggle expansion of latest assistant turn's tool blocks
 //            (compact by default; resets after each new turn)
