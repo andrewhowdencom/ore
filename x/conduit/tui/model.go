@@ -252,6 +252,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case artifactMsg:
 		switch a := msg.artifact.(type) {
 		case artifact.TextDelta:
+			if a.Content == "" {
+				return m, nil
+			}
 			found := false
 			for i := len(m.currentTurn.blocks) - 1; i >= 0; i-- {
 				if m.currentTurn.blocks[i].kind == "text" {
@@ -265,6 +268,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.currentTurn.blocks = append(m.currentTurn.blocks, renderedBlock{kind: "text", source: a.Content})
 			}
 		case artifact.ReasoningDelta:
+			if a.Content == "" {
+				return m, nil
+			}
 			found := false
 			for i := len(m.currentTurn.blocks) - 1; i >= 0; i-- {
 				if m.currentTurn.blocks[i].kind == "reasoning" {
@@ -484,6 +490,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+		m.renderScheduled = false
 		m.contentDirty = true
 		m.syncViewport()
 	}
