@@ -757,7 +757,7 @@ func TestModel_View_MixedArtifacts_Rendered(t *testing.T) {
 	output := mm3.View().Content
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "rendered")   // text block
-	assert.Contains(t, output, "Thinking...") // reasoning collapsed by default
+	assert.Contains(t, output, "Thinking...") // reasoning is completed (not last block)
 	assert.Contains(t, output, "→")          // tool_call compact arrow
 }
 
@@ -813,4 +813,66 @@ func TestModel_View_IncrementalReasoning_ExpandCollapse(t *testing.T) {
 	output3 := mm.View().Content
 	assert.Contains(t, output3, "Thinking · 15 Chars")
 	assert.NotContains(t, output3, "rendered-reasoning")
+}
+
+func TestBuildContent_ActiveReasoning_Counter(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.currentTurn.blocks = []renderedBlock{
+		{kind: "reasoning", source: "abc"},
+	}
+	output := m.buildContent()
+	assert.Contains(t, output, "Thinking · 3 Chars")
+	assert.NotContains(t, output, "Thinking...")
+}
+
+func TestBuildContent_ActiveReasoning_UnicodeCounter(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.currentTurn.blocks = []renderedBlock{
+		{kind: "reasoning", source: "日本語"},
+	}
+	output := m.buildContent()
+	assert.Contains(t, output, "Thinking · 3 Chars")
+	assert.NotContains(t, output, "Thinking...")
+}
+
+func TestBuildContent_CompletedReasoning_RevertsToDots(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	// Reasoning followed by text means reasoning is no longer the active (last) block.
+	m.currentTurn.blocks = []renderedBlock{
+		{kind: "reasoning", source: "let me think..."},
+		{kind: "text", source: "the answer"},
+	}
+	output := m.buildContent()
+	assert.Contains(t, output, "Thinking...")
+	assert.NotContains(t, output, "Thinking ·")
+}
+
+func TestBuildContent_Reasoning_Expanded_NoCounter(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.expandLatestDetails = true
+	m.currentTurn.blocks = []renderedBlock{
+		{kind: "reasoning", source: "let me think...", rendered: "rendered-reasoning"},
+	}
+	output := m.buildContent()
+	assert.Contains(t, output, "Thinking: ")
+	assert.Contains(t, output, "rendered-reasoning")
+	assert.NotContains(t, output, "Thinking ·")
+	assert.NotContains(t, output, "Thinking...")
+}
+
+func TestBuildContent_HistoricalReasoning_NoCounter(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.turns = []renderedTurn{
+		{role: state.RoleAssistant, blocks: []renderedBlock{
+			{kind: "reasoning", source: "historical reasoning"},
+		}},
+	}
+	output := m.buildContent()
+	assert.Contains(t, output, "Thinking...")
+	assert.NotContains(t, output, "Thinking ·")
 }
