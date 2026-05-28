@@ -1232,3 +1232,94 @@ func TestModel_Update_DeltaAccumulationAndDebounce(t *testing.T) {
 	assert.Equal(t, "rendered", mm3.currentTurn.blocks[0].rendered, "tick should populate rendered")
 	assert.False(t, mm3.renderScheduled, "renderScheduled should be cleared after tick")
 }
+
+func TestModel_Update_EmptyDelta_Ignored(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+
+	// Empty TextDelta should not create a block.
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: ""}})
+	mm := newM.(*model)
+	assert.Empty(t, mm.currentTurn.blocks, "empty TextDelta should not add a block")
+
+	// Empty ReasoningDelta should not create a block.
+	newM2, _ := mm.Update(artifactMsg{artifact: artifact.ReasoningDelta{Content: ""}})
+	mm2 := newM2.(*model)
+	assert.Empty(t, mm2.currentTurn.blocks, "empty ReasoningDelta should not add a block")
+
+	// No tick should be scheduled.
+	assert.False(t, mm2.renderScheduled, "empty delta should not schedule a tick")
+}
+
+func TestModel_Update_ErrorCancelsPendingTick(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+
+	// Send a delta to schedule a tick.
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "hello"}})
+	mm := newM.(*model)
+	assert.True(t, mm.renderScheduled, "tick should be scheduled")
+
+	// Error arrives — should cancel the pending tick.
+	newM2, _ := mm.Update(errorMsg{err: errors.New("boom")})
+	mm2 := newM2.(*model)
+	assert.False(t, mm2.renderScheduled, "error should cancel pending tick")
+
+	// Simulate the tick firing after error — should be ignored.
+	newM3, _ := mm2.Update(renderTickMsg{})
+	mm3 := newM3.(*model)
+	assert.False(t, mm3.renderScheduled, "tick should remain false after ignored tick")
+	assert.Empty(t, mm3.currentTurn.blocks, "currentTurn should stay empty after error")
+}
+
+func TestModel_Update_WindowResizeCancelsPendingTick(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	rec := &recordingMockRenderer{output: "rendered"}
+	m.md = rec
+
+	// Send a delta at width 80 to schedule a tick.
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "hello"}})
+	mm := newM.(*model)
+	assert.True(t, mm.renderScheduled, "tick should be scheduled")
+	assert.Len(t, rec.widths, 0, "delta should not trigger immediate render")
+
+	// Resize to width 40 before the tick fires.
+	newM2, _ := mm.Update(tea.WindowSizeMsg{Width: 40, Height: 20})
+	mm2 := newM2.(*model)
+	assert.False(t, mm2.renderScheduled, "resize should cancel pending tick")
+	assert.Equal(t, 40, rec.widths[0], "resize should re-render currentTurn at new width")
+
+	// Simulate the tick firing after resize — should be ignored.
+	newM3, _ := mm2.Update(renderTickMsg{})
+	mm3 := newM3.(*model)
+	assert.False(t, mm3.renderScheduled, "tick should remain false after ignored tick")
+	assert.Len(t, rec.widths, 1, "tick after resize should not trigger extra render")
+}
+
+func TestModel_Update_MultipleDeltas_SingleTick(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+
+	// First delta should schedule a tick.
+	newM, cmd1 := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "hello"}})
+	mm1 := newM.(*model)
+	assert.NotNil(t, cmd1, "first delta should return a tick command")
+	assert.True(t, mm1.renderScheduled, "renderScheduled should be true after first delta")
+
+	// Second delta while tick is pending should NOT schedule another tick.
+	newM2, cmd2 := mm1.Update(artifactMsg{artifact: artifact.TextDelta{Content: " world"}})
+	mm2 := newM2.(*model)
+	assert.Nil(t, cmd2, "second delta should not return a command while tick is pending")
+	assert.True(t, mm2.renderScheduled, "renderScheduled should still be true")
+
+	// Third delta also should not schedule a tick.
+	newM3, cmd3 := mm2.Update(artifactMsg{artifact: artifact.TextDelta{Content: "!"}})
+	mm3 := newM3.(*model)
+	assert.Nil(t, cmd3, "third delta should not return a command while tick is pending")
+	assert.True(t, mm3.renderScheduled, "renderScheduled should still be true")
+
+	// All three deltas should be merged into one block.
+	require.Len(t, mm3.currentTurn.blocks, 1)
+	assert.Equal(t, "hello world!", mm3.currentTurn.blocks[0].source)
+}
