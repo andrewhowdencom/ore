@@ -6,6 +6,12 @@
 // session's output stream, and sends user events back through it.
 // Available options include WithThreadID to resume an existing thread.
 //
+// Streaming model:
+// The TUI subscribes to delta artifact events (text_delta, reasoning_delta,
+// tool_call, tool_result, turn_complete) and renders assistant output
+// incrementally as chunks arrive. A 16ms debounced render tick batches
+// glamour markdown re-renders to keep the UI smooth at ~60fps.
+//
 // Keyboard shortcuts:
 //   Ctrl+O — toggle expansion of latest assistant turn's tool blocks
 //            (compact by default; resets after each new turn)
@@ -123,10 +129,10 @@ func (t *TUI) Start(ctx context.Context) error {
 	t.eventsCh = surfEventsCh
 	t.program = p
 
-	// Subscribe to the stream's output, including complete artifact kinds so
-	// the TUI can render assistant content incrementally as each artifact
-	// arrives, rather than waiting for TurnCompleteEvent.
-	outputCh := stream.Subscribe("text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "process_complete", "status")
+	// Subscribe to the stream's output, including delta artifact kinds so
+	// the TUI can accumulate assistant content incrementally as each delta
+	// chunk arrives, rather than waiting for TurnCompleteEvent.
+	outputCh := stream.Subscribe("text_delta", "reasoning_delta", "tool_call", "tool_result", "turn_complete", "error", "process_complete", "status")
 
 	// Goroutine to stream output events into the Bubble Tea message loop.
 	go func() {

@@ -31,4 +31,11 @@ terminal space. Users can press `Ctrl+O` to temporarily expand the latest
 assistant turn's details, inspecting full tool arguments, error messages, or
 reasoning content. Historical detail blocks always remain compact.
 
+## Streaming Model
+
+The TUI subscribes to `text_delta`, `reasoning_delta`, `tool_call`,
+`tool_result`, and `turn_complete` events. Assistant output is rendered
+incrementally as deltas arrive, with a 16ms debounced render tick that
+reduces flicker while preserving low latency.
+
 For full API documentation, run `go doc ./x/conduit/tui`.
