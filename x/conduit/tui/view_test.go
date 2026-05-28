@@ -132,7 +132,7 @@ func TestModel_View_AssistantTurn_Reasoning_Rendered(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.md = mockMarkdownRenderer{output: "rendered-reasoning"}
 	// Simulate incremental artifact event arriving before TurnCompleteEvent.
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Reasoning{Content: "let me think..."}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.ReasoningDelta{Content: "let me think..."}})
 	mm := newM.(*model)
 	turn := state.Turn{
 		Role: state.RoleAssistant,
@@ -227,7 +227,7 @@ func TestModel_Update_KeyCtrlO_TogglesReasoningExpansion(t *testing.T) {
 	m.md = mockMarkdownRenderer{output: "rendered-reasoning"}
 
 	// Simulate incremental artifact event arriving before TurnCompleteEvent.
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Reasoning{Content: "let me think..."}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.ReasoningDelta{Content: "let me think..."}})
 	mm := newM.(*model)
 	turn := state.Turn{
 		Role: state.RoleAssistant,
@@ -388,7 +388,7 @@ func TestRenderReasoning_ErrorFallback(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.md = mockMarkdownRenderer{err: errors.New("render failed")}
 	// Simulate incremental artifact event arriving before TurnCompleteEvent.
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Reasoning{Content: "let me think..."}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.ReasoningDelta{Content: "let me think..."}})
 	mm := newM.(*model)
 	turn := state.Turn{
 		Role: state.RoleAssistant,
@@ -743,12 +743,15 @@ func TestModel_View_MixedArtifacts_Rendered(t *testing.T) {
 	m.md = mockMarkdownRenderer{output: "rendered"}
 
 	// Simulate incremental artifact events arriving before TurnCompleteEvent.
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "hello"}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "hello"}})
 	mm := newM.(*model)
-	newM2, _ := mm.Update(artifactMsg{artifact: artifact.Reasoning{Content: "think"}})
+	newM2, _ := mm.Update(artifactMsg{artifact: artifact.ReasoningDelta{Content: "think"}})
 	mm2 := newM2.(*model)
 	newM3, _ := mm2.Update(artifactMsg{artifact: artifact.ToolCall{Name: "foo", Arguments: "{}"}})
 	mm3 := newM3.(*model)
+
+	newM3, _ = mm3.Update(renderTickMsg{})
+	mm3 = newM3.(*model)
 
 	mm3.syncViewport()
 	output := mm3.View().Content
@@ -785,8 +788,10 @@ func TestModel_View_IncrementalReasoning_ExpandCollapse(t *testing.T) {
 	m.md = mockMarkdownRenderer{output: "rendered-reasoning"}
 
 	// Simulate incremental artifact event arriving before TurnCompleteEvent.
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Reasoning{Content: "let me think..."}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.ReasoningDelta{Content: "let me think..."}})
 	mm := newM.(*model)
+	newM, _ = mm.Update(renderTickMsg{})
+	mm = newM.(*model)
 	mm.syncViewport()
 	output1 := mm.View().Content
 	assert.Contains(t, output1, "Thinking...")
