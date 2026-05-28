@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/session"
@@ -56,6 +57,10 @@ type audioMsg struct{}
 type errorMsg struct {
 	err error
 }
+
+// renderTickMsg triggers a debounced markdown re-render of the current
+// assistant turn's text and reasoning blocks.
+type renderTickMsg struct{}
 
 // renderedBlock tracks a finalized piece of turn content with its kind,
 // original source, optional compact representation, and optional
@@ -124,6 +129,9 @@ type model struct {
 
 	// contentDirty is true when cachedContent is stale and needs rebuilding.
 	contentDirty bool
+
+	// renderScheduled is true when a debounced render tick is pending.
+	renderScheduled bool
 }
 
 // renderedTurn represents a single turn in the conversation history.
@@ -242,15 +250,69 @@ func (m *model) Init() tea.Cmd {
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case artifactMsg:
-		block := m.renderArtifact(msg.artifact, true)
-		if block.kind != "" {
-			m.currentTurn.blocks = append(m.currentTurn.blocks, block)
+		switch a := msg.artifact.(type) {
+		case artifact.TextDelta:
+			if a.Content == "" {
+				return m, nil
+			}
+			found := false
+			for i := len(m.currentTurn.blocks) - 1; i >= 0; i-- {
+				if m.currentTurn.blocks[i].kind == "text" {
+					m.currentTurn.blocks[i].source += a.Content
+					m.currentTurn.blocks[i].rendered = ""
+					found = true
+					break
+				}
+			}
+			if !found {
+				m.currentTurn.blocks = append(m.currentTurn.blocks, renderedBlock{kind: "text", source: a.Content})
+			}
+		case artifact.ReasoningDelta:
+			if a.Content == "" {
+				return m, nil
+			}
+			found := false
+			for i := len(m.currentTurn.blocks) - 1; i >= 0; i-- {
+				if m.currentTurn.blocks[i].kind == "reasoning" {
+					m.currentTurn.blocks[i].source += a.Content
+					m.currentTurn.blocks[i].rendered = ""
+					found = true
+					break
+				}
+			}
+			if !found {
+				m.currentTurn.blocks = append(m.currentTurn.blocks, renderedBlock{kind: "reasoning", source: a.Content, compact: "Thinking..."})
+			}
+		default:
+			block := m.renderArtifact(msg.artifact, true)
+			if block.kind != "" {
+				m.currentTurn.blocks = append(m.currentTurn.blocks, block)
+			}
 		}
 		m.contentDirty = true
-		m.syncViewport()
-		m.viewport.GotoBottom()
+		if !m.renderScheduled {
+			m.renderScheduled = true
+			return m, tea.Tick(16*time.Millisecond, func(t time.Time) tea.Msg {
+				return renderTickMsg{}
+			})
+		}
 	case turnMsg:
 		if msg.turn.Role == state.RoleAssistant {
+			// Cancel any pending render tick.
+			m.renderScheduled = false
+
+			// Final render pass on the accumulated blocks before
+			// moving them into the permanent conversation history.
+			for j := range m.currentTurn.blocks {
+				block := &m.currentTurn.blocks[j]
+				if (block.kind == "text" || block.kind == "reasoning") && block.source != "" {
+					rendered, err := m.renderMarkdown(block.source, m.viewport.Width())
+					if err == nil {
+						block.rendered = rendered
+					}
+				}
+			}
+
 			// Finalize the currentTurn that was built incrementally from
 			// ArtifactEvents. If no ArtifactEvents arrived (empty response),
 			// currentTurn may be empty; we still record the turn boundary.
@@ -302,6 +364,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// output accumulated in currentTurn.
 		m.currentTurn = renderedTurn{}
 		m.pending = false
+		m.renderScheduled = false
 		if m.status == nil {
 			m.status = make(map[string]string)
 		}
@@ -309,6 +372,29 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.contentDirty = true
 		m.syncViewport()
 		return m, nil
+	case renderTickMsg:
+		if !m.renderScheduled {
+			return m, nil
+		}
+		for j := range m.currentTurn.blocks {
+			block := &m.currentTurn.blocks[j]
+			if (block.kind == "text" || block.kind == "reasoning") && block.source != "" {
+				rendered, err := m.renderMarkdown(block.source, m.viewport.Width())
+				if err == nil {
+					block.rendered = rendered
+				}
+			}
+		}
+		m.syncViewport()
+		m.viewport.GotoBottom()
+		m.contentDirty = false
+		m.renderScheduled = false
+		if m.contentDirty {
+			m.renderScheduled = true
+			return m, tea.Tick(16*time.Millisecond, func(t time.Time) tea.Msg {
+				return renderTickMsg{}
+			})
+		}
 	case tea.KeyPressMsg:
 		switch msg.Key().Code {
 		case tea.KeyPgUp, tea.KeyPgDown:
@@ -404,6 +490,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+		m.renderScheduled = false
 		m.contentDirty = true
 		m.syncViewport()
 	}
