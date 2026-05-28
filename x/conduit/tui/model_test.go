@@ -36,7 +36,7 @@ func TestModel_Update_Turn(t *testing.T) {
 	m := model{}
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	// Simulate incremental artifact event arriving before TurnCompleteEvent.
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "hello world"}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "hello world"}})
 	mm := newM.(*model)
 	turn := state.Turn{
 		Role: state.RoleAssistant,
@@ -55,9 +55,9 @@ func TestModel_Update_Turn_PreservesReasoning(t *testing.T) {
 		viewport: viewport.New(viewport.WithWidth(80), viewport.WithHeight(20)),
 	}
 	// Simulate incremental artifact events arriving before TurnCompleteEvent.
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "the answer is 42"}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "the answer is 42"}})
 	mm := newM.(*model)
-	newM2, _ := mm.Update(artifactMsg{artifact: artifact.Reasoning{Content: "let me think..."}})
+	newM2, _ := mm.Update(artifactMsg{artifact: artifact.ReasoningDelta{Content: "let me think..."}})
 	mm2 := newM2.(*model)
 	turn := state.Turn{
 		Role: state.RoleAssistant,
@@ -92,11 +92,11 @@ func TestModel_Update_Turn_Interleaved(t *testing.T) {
 	m := model{}
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	// Simulate incremental artifact events for interleaved text/reasoning/text.
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "Hello"}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "Hello"}})
 	mm := newM.(*model)
-	newM2, _ := mm.Update(artifactMsg{artifact: artifact.Reasoning{Content: "think"}})
+	newM2, _ := mm.Update(artifactMsg{artifact: artifact.ReasoningDelta{Content: "think"}})
 	mm2 := newM2.(*model)
-	newM3, _ := mm2.Update(artifactMsg{artifact: artifact.Text{Content: " world"}})
+	newM3, _ := mm2.Update(artifactMsg{artifact: artifact.TextDelta{Content: " world"}})
 	mm3 := newM3.(*model)
 	turn := state.Turn{
 		Role: state.RoleAssistant,
@@ -104,13 +104,11 @@ func TestModel_Update_Turn_Interleaved(t *testing.T) {
 	newM4, _ := mm3.Update(turnMsg{turn: turn})
 	mm4 := newM4.(*model)
 	require.Len(t, mm4.turns, 1)
-	require.Len(t, mm4.turns[0].blocks, 3)
+	require.Len(t, mm4.turns[0].blocks, 2)
 	assert.Equal(t, "text", mm4.turns[0].blocks[0].kind)
-	assert.Equal(t, "Hello", mm4.turns[0].blocks[0].source)
+	assert.Equal(t, "Hello world", mm4.turns[0].blocks[0].source)
 	assert.Equal(t, "reasoning", mm4.turns[0].blocks[1].kind)
 	assert.Equal(t, "think", mm4.turns[0].blocks[1].source)
-	assert.Equal(t, "text", mm4.turns[0].blocks[2].kind)
-	assert.Equal(t, " world", mm4.turns[0].blocks[2].source)
 }
 
 func TestModel_Update_Status(t *testing.T) {
@@ -445,7 +443,7 @@ func TestModel_Update_Turn_Assistant_PopulatesRendered(t *testing.T) {
 		viewport: viewport.New(viewport.WithWidth(80), viewport.WithHeight(20)),
 	}
 	// Simulate incremental artifact event with Markdown text.
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "# Hello\n\n**bold** text"}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "# Hello\n\n**bold** text"}})
 	mm := newM.(*model)
 	turn := state.Turn{
 		Role: state.RoleAssistant,
@@ -479,7 +477,7 @@ func TestModel_Update_WindowSize_RerendersAssistantTurns(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	// Simulate incremental artifact event with text that wraps differently at different widths.
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "# Title\n\nThis is a longer paragraph that should definitely wrap differently at width forty versus width eighty."}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "# Title\n\nThis is a longer paragraph that should definitely wrap differently at width forty versus width eighty."}})
 	mm := newM.(*model)
 	turn := state.Turn{
 		Role: state.RoleAssistant,
@@ -513,7 +511,7 @@ func TestModel_Update_Turn_Assistant_RenderError_Fallback(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.md = mockMarkdownRenderer{err: errors.New("render failed")}
 	// Simulate incremental artifact event; render error should leave rendered empty.
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "# Hello"}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "# Hello"}})
 	mm := newM.(*model)
 	turn := state.Turn{
 		Role: state.RoleAssistant,
@@ -531,7 +529,7 @@ func TestModel_View_AssistantTurn_RenderError_FallbackToPlainText(t *testing.T) 
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.md = mockMarkdownRenderer{err: errors.New("render failed")}
 	// Simulate incremental artifact event.
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "plain fallback text"}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "plain fallback text"}})
 	mm := newM.(*model)
 	turn := state.Turn{
 		Role: state.RoleAssistant,
@@ -548,8 +546,10 @@ func TestModel_Update_WindowSize_RerenderError_KeepsOldCache(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.md = mockMarkdownRenderer{output: "initial-render"}
 	// Simulate incremental artifact event.
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "text"}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "text"}})
 	mm := newM.(*model)
+	newM, _ = mm.Update(renderTickMsg{})
+	mm = newM.(*model)
 	turn := state.Turn{
 		Role: state.RoleAssistant,
 	}
@@ -812,7 +812,7 @@ func TestAutoScroll_MultipleTurns(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
 	for i := 0; i < 3; i++ {
 		// Simulate incremental artifact event for each assistant turn.
-		newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: strings.Repeat("content ", 200)}})
+		newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: strings.Repeat("content ", 200)}})
 		m = *newM.(*model)
 		turn := state.Turn{
 			Role: state.RoleAssistant,
@@ -1006,14 +1006,14 @@ func TestModel_Update_ArtifactMsg_AccumulatesBlocks(t *testing.T) {
 	m := model{}
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	// First artifact: text block
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "hello"}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "hello"}})
 	mm := newM.(*model)
 	require.Len(t, mm.currentTurn.blocks, 1)
 	assert.Equal(t, "text", mm.currentTurn.blocks[0].kind)
 	assert.Equal(t, "hello", mm.currentTurn.blocks[0].source)
 
 	// Second artifact: reasoning block
-	newM2, _ := mm.Update(artifactMsg{artifact: artifact.Reasoning{Content: "thinking..."}})
+	newM2, _ := mm.Update(artifactMsg{artifact: artifact.ReasoningDelta{Content: "thinking..."}})
 	mm2 := newM2.(*model)
 	require.Len(t, mm2.currentTurn.blocks, 2)
 	assert.Equal(t, "reasoning", mm2.currentTurn.blocks[1].kind)
@@ -1022,7 +1022,7 @@ func TestModel_Update_ArtifactMsg_AccumulatesBlocks(t *testing.T) {
 func TestModel_Update_ArtifactMsg_FinalizedByTurnMsg(t *testing.T) {
 	m := model{}
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "response"}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "response"}})
 	mm := newM.(*model)
 	require.Len(t, mm.currentTurn.blocks, 1)
 
@@ -1041,7 +1041,7 @@ func TestModel_Update_ArtifactMsg_ClearedByError(t *testing.T) {
 	m := model{}
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.pending = true
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "partial"}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "partial"}})
 	mm := newM.(*model)
 	require.Len(t, mm.currentTurn.blocks, 1)
 
@@ -1055,7 +1055,8 @@ func TestModel_View_ContainsCurrentTurn(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.width = 80
-	m.Update(artifactMsg{artifact: artifact.Text{Content: "in-progress"}})
+	m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "in-progress"}})
+	m.Update(renderTickMsg{})
 	output := m.View().Content
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "in-progress")
@@ -1072,7 +1073,7 @@ func TestModel_View_PendingWithCurrentTurn_HidesPlaceholder(t *testing.T) {
 	assert.Contains(t, output1, "...")
 
 	// After artifact arrives, placeholder should be replaced by actual content
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "real content"}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "real content"}})
 	mm := newM.(*model)
 	mm.syncViewport()
 	output2 := mm.View().Content
@@ -1097,9 +1098,9 @@ func TestModel_Update_MixedArtifacts_AccumulateInOrder(t *testing.T) {
 	m.md = mockMarkdownRenderer{output: "rendered"}
 
 	// Simulate incremental artifact events arriving before TurnCompleteEvent.
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "hello"}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "hello"}})
 	mm := newM.(*model)
-	newM2, _ := mm.Update(artifactMsg{artifact: artifact.Reasoning{Content: "think"}})
+	newM2, _ := mm.Update(artifactMsg{artifact: artifact.ReasoningDelta{Content: "think"}})
 	mm2 := newM2.(*model)
 	newM3, _ := mm2.Update(artifactMsg{artifact: artifact.ToolCall{Name: "foo", Arguments: "{}"}})
 	mm3 := newM3.(*model)
@@ -1146,7 +1147,7 @@ func TestModel_Update_ErrorMidStream_ClearsAndRecovers(t *testing.T) {
 	m.pending = true // Simulate an in-flight assistant turn.
 
 	// Start streaming an assistant turn.
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "partial"}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "partial"}})
 	mm := newM.(*model)
 	require.Len(t, mm.currentTurn.blocks, 1)
 	assert.True(t, mm.pending)
@@ -1159,7 +1160,7 @@ func TestModel_Update_ErrorMidStream_ClearsAndRecovers(t *testing.T) {
 
 	// New turn starts after error (artifactMsg accumulates blocks; pending
 	// remains false until a new user submission sets it).
-	newM3, _ := mm2.Update(artifactMsg{artifact: artifact.Text{Content: "new content"}})
+	newM3, _ := mm2.Update(artifactMsg{artifact: artifact.TextDelta{Content: "new content"}})
 	mm3 := newM3.(*model)
 	require.Len(t, mm3.currentTurn.blocks, 1)
 	assert.Equal(t, "new content", mm3.currentTurn.blocks[0].source)
@@ -1186,8 +1187,10 @@ func TestModel_Update_WindowSize_RerendersCurrentTurn(t *testing.T) {
 	m.md = rec
 
 	// Send artifact at initial viewport width (80).
-	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: "hello"}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "hello"}})
 	mm := newM.(*model)
+	newM, _ = mm.Update(renderTickMsg{})
+	mm = newM.(*model)
 	require.Len(t, mm.currentTurn.blocks, 1)
 	assert.Equal(t, "rendered", mm.currentTurn.blocks[0].rendered)
 	require.Len(t, rec.widths, 1)
@@ -1201,4 +1204,31 @@ func TestModel_Update_WindowSize_RerendersCurrentTurn(t *testing.T) {
 	require.Len(t, rec.widths, 2)
 	assert.Equal(t, 40, rec.widths[1]) // new full viewport width
 	assert.Equal(t, "rendered", mm2.currentTurn.blocks[0].rendered)
+}
+
+func TestModel_Update_DeltaAccumulationAndDebounce(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.md = mockMarkdownRenderer{output: "rendered"}
+
+	// Send two TextDelta messages rapidly — they should accumulate
+	// into a single text block, with a render tick pending.
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "hello"}})
+	mm := newM.(*model)
+	newM2, _ := mm.Update(artifactMsg{artifact: artifact.TextDelta{Content: " world"}})
+	mm2 := newM2.(*model)
+
+	// Before the tick fires, both deltas should be merged into one block.
+	require.Len(t, mm2.currentTurn.blocks, 1)
+	assert.Equal(t, "text", mm2.currentTurn.blocks[0].kind)
+	assert.Equal(t, "hello world", mm2.currentTurn.blocks[0].source)
+	assert.Empty(t, mm2.currentTurn.blocks[0].rendered, "rendered should be empty before tick")
+	assert.True(t, mm2.renderScheduled, "render tick should be scheduled")
+
+	// Simulate the render tick firing.
+	newM3, _ := mm2.Update(renderTickMsg{})
+	mm3 := newM3.(*model)
+
+	assert.Equal(t, "rendered", mm3.currentTurn.blocks[0].rendered, "tick should populate rendered")
+	assert.False(t, mm3.renderScheduled, "renderScheduled should be cleared after tick")
 }
