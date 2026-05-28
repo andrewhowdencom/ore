@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
@@ -171,7 +172,13 @@ func (m *model) buildContent() string {
 				}
 			case "reasoning":
 				if !m.expandLatestDetails {
-					b.WriteString(thinkingStyle.Render("Thinking..."))
+					isActive := (i == len(m.currentTurn.blocks)-1 && block.kind == "reasoning")
+					if isActive {
+						// Use rune count for user-visible "chars" metric.
+						b.WriteString(thinkingStyle.Render(fmt.Sprintf("Thinking · %d Chars", utf8.RuneCountInString(block.source))))
+					} else {
+						b.WriteString(thinkingStyle.Render("Thinking..."))
+					}
 				} else {
 					if block.rendered != "" {
 						b.WriteString(renderBlock("Thinking: ", thinkingStyle, reasoningExpandedStyle.Render(block.rendered), 0))

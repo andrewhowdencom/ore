@@ -238,7 +238,7 @@ func TestModel_Update_KeyCtrlO_TogglesReasoningExpansion(t *testing.T) {
 	newM2, _ := mm.Update(turnMsg{turn: turn})
 	mm2 := newM2.(*model)
 
-	// Default: collapsed
+	// Default: collapsed — active reasoning shows counter
 	output := mm2.buildContent()
 	assert.Contains(t, output, "Thinking...")
 	assert.NotContains(t, output, "rendered-reasoning")
@@ -794,7 +794,7 @@ func TestModel_View_IncrementalReasoning_ExpandCollapse(t *testing.T) {
 	mm = newM.(*model)
 	mm.syncViewport()
 	output1 := mm.View().Content
-	assert.Contains(t, output1, "Thinking...")
+	assert.Contains(t, output1, "Thinking · 15 Chars")
 	assert.NotContains(t, output1, "rendered-reasoning")
 
 	// Toggle expanded.
@@ -811,6 +811,6 @@ func TestModel_View_IncrementalReasoning_ExpandCollapse(t *testing.T) {
 	mm.contentDirty = true
 	mm.syncViewport()
 	output3 := mm.View().Content
-	assert.Contains(t, output3, "Thinking...")
+	assert.Contains(t, output3, "Thinking · 15 Chars")
 	assert.NotContains(t, output3, "rendered-reasoning")
 }
