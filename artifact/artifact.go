@@ -3,7 +3,10 @@
 // method to allow custom artifact types to be defined in other packages.
 package artifact
 
-import "strconv"
+import (
+	"encoding/json"
+	"strconv"
+)
 
 // Artifact is the base interface for all LLM response artifacts.
 type Artifact interface {
@@ -45,15 +48,65 @@ type ToolCall struct {
 // Kind returns the artifact kind identifier.
 func (t ToolCall) Kind() string { return "tool_call" }
 
+// LLMRenderer is implemented by tool result values that know how to
+// serialize themselves for consumption by an LLM provider.
+type LLMRenderer interface {
+	MarshalLLM() string
+}
+
+// MarkdownRenderer is implemented by tool result values that know how to
+// render themselves as Markdown for human display.
+type MarkdownRenderer interface {
+	MarshalMarkdown() string
+}
+
 // ToolResult represents the result of executing a tool call.
+// Content holds a JSON-marshaled fallback string for consumers that do not
+// support custom rendering. Value holds the raw typed result, enabling
+// downstream packages (providers, conduits) to apply custom serialization
+// via LLMRenderer or MarkdownRenderer. When Value is nil or its type is
+// not recognized, consumers fall back to Content.
 type ToolResult struct {
 	ToolCallID string
 	Content    string
+	Value      any
 	IsError    bool
 }
 
 // Kind returns the artifact kind identifier.
 func (t ToolResult) Kind() string { return "tool_result" }
+
+// LLMString returns a string representation of the tool result suitable
+// for consumption by an LLM provider. It prefers the custom LLMRenderer
+// on Value, falls back to json.Marshal of Value, and finally falls back
+// to the pre-serialized Content string.
+func (t ToolResult) LLMString() string {
+	if t.Value != nil {
+		if r, ok := t.Value.(LLMRenderer); ok {
+			return r.MarshalLLM()
+		}
+		if b, err := json.Marshal(t.Value); err == nil {
+			return string(b)
+		}
+	}
+	return t.Content
+}
+
+// MarkdownString returns a string representation of the tool result
+// suitable for human display. It prefers the custom MarkdownRenderer on
+// Value, falls back to json.Marshal of Value, and finally falls back
+// to the pre-serialized Content string.
+func (t ToolResult) MarkdownString() string {
+	if t.Value != nil {
+		if r, ok := t.Value.(MarkdownRenderer); ok {
+			return r.MarshalMarkdown()
+		}
+		if b, err := json.Marshal(t.Value); err == nil {
+			return string(b)
+		}
+	}
+	return t.Content
+}
 
 // Usage represents token consumption metadata from a provider response.
 type Usage struct {
