@@ -192,7 +192,7 @@ func TestCatalog_SystemPromptFragment(t *testing.T) {
 	c := NewCatalog(d)
 	fragment := c.SystemPromptFragment(context.Background())
 
-	expected := "You have access to the following specialized skills. Use read_skill(name=<skill>) to load detailed instructions when needed:\n\n- alpha: first skill\n- beta: second skill"
+	expected := "When your task matches a skill description below, call read_skill(name=<skill>) to load its detailed instructions before proceeding.\n\n- alpha: first skill\n- beta: second skill"
 	assert.Equal(t, expected, fragment)
 }
 
@@ -223,4 +223,19 @@ func TestCatalog_SystemPromptFragment_PartialFailure(t *testing.T) {
 
 	assert.Contains(t, fragment, "good-skill")
 	assert.Contains(t, fragment, "from good discoverer")
+}
+
+func TestCatalog_SetDirective(t *testing.T) {
+	t.Parallel()
+	d := &mockDiscoverer{
+		meta: []SkillMeta{
+			{Name: "alpha", Description: "first skill"},
+		},
+	}
+	c := NewCatalog(d)
+	c.SetDirective("Custom directive text.")
+	fragment := c.SystemPromptFragment(context.Background())
+
+	expected := "Custom directive text.\n\n- alpha: first skill"
+	assert.Equal(t, expected, fragment)
 }
