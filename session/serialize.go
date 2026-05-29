@@ -1,8 +1,4 @@
-// Package thread (serialize.go) provides JSON marshaling and
-// unmarshaling for Thread turns and artifacts. Only non-delta
-// artifact types can be persisted; attempts to serialize a delta
-// artifact (TextDelta, ReasoningDelta, ToolCallDelta) return an error.
-package thread
+package session
 
 import (
 	"encoding/json"

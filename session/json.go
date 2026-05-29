@@ -1,4 +1,4 @@
-package thread
+package session
 
 import (
 	"encoding/json"

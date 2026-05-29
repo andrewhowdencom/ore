@@ -14,7 +14,6 @@ import (
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
-	"github.com/andrewhowdencom/ore/thread"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,9 +27,9 @@ func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- arti
 func testManager(t *testing.T) *session.Manager {
 	t.Helper()
 	return session.NewManager(
-		thread.NewMemoryStore(),
+		session.NewMemoryStore(),
 		&mockProvider{},
-		func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil },
+		func(*session.Thread) (*loop.Step, error) { return loop.New(), nil },
 		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
 			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "Test reply"})
 		},
@@ -333,9 +332,9 @@ func TestProvenanceFiltering(t *testing.T) {
 	}
 
 	mgr := session.NewManager(
-		thread.NewMemoryStore(),
+		session.NewMemoryStore(),
 		&mockProvider{},
-		func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil },
+		func(*session.Thread) (*loop.Step, error) { return loop.New(), nil },
 		preservingProcessor,
 	)
 
@@ -430,9 +429,9 @@ func TestMultipleTextArtifacts(t *testing.T) {
 	defer srv.Close()
 
 	m := session.NewManager(
-		thread.NewMemoryStore(),
+		session.NewMemoryStore(),
 		&mockProvider{},
-		func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil },
+		func(*session.Thread) (*loop.Step, error) { return loop.New(), nil },
 		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
 			return step.Submit(ctx, st, state.RoleAssistant,
 				artifact.Text{Content: "Hello"},
@@ -513,9 +512,9 @@ func TestEmptyAssistantTurn(t *testing.T) {
 	defer srv.Close()
 
 	m := session.NewManager(
-		thread.NewMemoryStore(),
+		session.NewMemoryStore(),
 		&mockProvider{},
-		func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil },
+		func(*session.Thread) (*loop.Step, error) { return loop.New(), nil },
 		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
 			return step.Submit(ctx, st, state.RoleAssistant)
 		},
@@ -598,9 +597,9 @@ func TestNonTextArtifact(t *testing.T) {
 	defer srv.Close()
 
 	m := session.NewManager(
-		thread.NewMemoryStore(),
+		session.NewMemoryStore(),
 		&mockProvider{},
-		func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil },
+		func(*session.Thread) (*loop.Step, error) { return loop.New(), nil },
 		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
 			return step.Submit(ctx, st, state.RoleAssistant, mockArtifact{})
 		},
@@ -678,9 +677,9 @@ func TestOffsetAdvancement(t *testing.T) {
 	defer srv.Close()
 
 	m := session.NewManager(
-		thread.NewMemoryStore(),
+		session.NewMemoryStore(),
 		&mockProvider{},
-		func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil },
+		func(*session.Thread) (*loop.Step, error) { return loop.New(), nil },
 		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
 			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "Test reply"})
 		},
@@ -729,9 +728,9 @@ func TestGetUpdatesHTTPError(t *testing.T) {
 	defer srv.Close()
 
 	m := session.NewManager(
-		thread.NewMemoryStore(),
+		session.NewMemoryStore(),
 		&mockProvider{},
-		func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil },
+		func(*session.Thread) (*loop.Step, error) { return loop.New(), nil },
 		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
 			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "Test reply"})
 		},
@@ -797,9 +796,9 @@ func TestNilChatField(t *testing.T) {
 	defer srv.Close()
 
 	m := session.NewManager(
-		thread.NewMemoryStore(),
+		session.NewMemoryStore(),
 		&mockProvider{},
-		func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil },
+		func(*session.Thread) (*loop.Step, error) { return loop.New(), nil },
 		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
 			processCalled.Store(true)
 			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "reply"})

@@ -24,7 +24,7 @@ func (c *SlackConduit) handleMessageEvent(ctx context.Context, event *slackevent
 	}
 
 	slackThreadID := slackThreadIDFromEvent(event)
-	stream, _, err := c.resolveThread(slackThreadID, event.Channel)
+	stream, err := c.resolveThread(slackThreadID, event.Channel)
 	if err != nil {
 		return err
 	}

@@ -5,7 +5,6 @@ import (
 
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
-	"github.com/andrewhowdencom/ore/thread"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -54,9 +53,9 @@ func TestIsDM(t *testing.T) {
 }
 
 func TestResolveThread_Create(t *testing.T) {
-	store := thread.NewMemoryStore()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -64,25 +63,24 @@ func TestResolveThread_Create(t *testing.T) {
 	sc, ok := c.(*SlackConduit)
 	require.True(t, ok)
 
-	stream, thr, err := sc.resolveThread("test-slack-thread-1", "C999")
+	stream, err := sc.resolveThread("test-slack-thread-1", "C999")
 	require.NoError(t, err)
 	require.NotNil(t, stream)
-	require.NotNil(t, thr)
 
 	// Verify metadata was set.
-	val, ok := thr.GetMetadata("slack_thread_id")
+	val, ok := stream.GetMetadata("slack_thread_id")
 	require.True(t, ok)
 	assert.Equal(t, "test-slack-thread-1", val)
 
-	channelID, ok := thr.GetMetadata("slack_channel_id")
+	channelID, ok := stream.GetMetadata("slack_channel_id")
 	require.True(t, ok)
 	assert.Equal(t, "C999", channelID)
 }
 
 func TestResolveThread_Resume(t *testing.T) {
-	store := thread.NewMemoryStore()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -91,22 +89,20 @@ func TestResolveThread_Resume(t *testing.T) {
 	require.True(t, ok)
 
 	// Create a thread first.
-	stream1, thr1, err := sc.resolveThread("test-slack-thread-2", "C999")
+	stream1, err := sc.resolveThread("test-slack-thread-2", "C999")
 	require.NoError(t, err)
 	require.NotNil(t, stream1)
-	require.NotNil(t, thr1)
 
 	// Verify channel metadata was stored.
-	channelID, ok := thr1.GetMetadata("slack_channel_id")
+	channelID, ok := stream1.GetMetadata("slack_channel_id")
 	require.True(t, ok)
 	assert.Equal(t, "C999", channelID)
 
 	// Resolve again — should attach to the same thread.
-	stream2, thr2, err := sc.resolveThread("test-slack-thread-2", "C999")
+	stream2, err := sc.resolveThread("test-slack-thread-2", "C999")
 	require.NoError(t, err)
 	require.NotNil(t, stream2)
-	require.NotNil(t, thr2)
 
-	// Both should map to the same thread ID.
-	assert.Equal(t, thr1.ID, thr2.ID)
+	// Both should map to the same stream ID.
+	assert.Equal(t, stream1.ID(), stream2.ID())
 }
