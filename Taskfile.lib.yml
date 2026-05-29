@@ -1,0 +1,22 @@
+version: '3'
+
+tasks:
+  build:
+    desc: Compile the application and all packages
+    cmds:
+      - go build ./...
+
+  test:
+    desc: Run unit tests with race detection
+    cmds:
+      - go test -race ./...
+
+  lint:
+    desc: Run code linters
+    cmds:
+      - go vet ./...
+      - golangci-lint run ./...
+
+  validate:
+    desc: Run lints, tests, and build
+    deps: [lint, test, build]
