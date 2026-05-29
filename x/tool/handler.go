@@ -108,6 +108,7 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 				Artifacts: []artifact.Artifact{artifact.ToolResult{
 					ToolCallID: tc.ID,
 					Content:    string(content),
+					Value:      result,
 				}},
 			},
 		})
@@ -181,6 +182,7 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 			Artifacts: []artifact.Artifact{artifact.ToolResult{
 				ToolCallID: tc.ID,
 				Content:    string(content),
+				Value:      result,
 			}},
 		},
 	})
