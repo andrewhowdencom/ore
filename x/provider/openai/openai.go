@@ -195,7 +195,7 @@ func (p *Provider) serializeMessages(s state.State) []openai.ChatCompletionMessa
 			var toolMsgs []openai.ChatCompletionMessageParamUnion
 			for _, art := range turn.Artifacts {
 				if tr, ok := art.(artifact.ToolResult); ok {
-					toolMsgs = append(toolMsgs, openai.ToolMessage(tr.Content, tr.ToolCallID))
+					toolMsgs = append(toolMsgs, openai.ToolMessage(tr.LLMString(), tr.ToolCallID))
 				}
 			}
 			if len(toolMsgs) > 0 {

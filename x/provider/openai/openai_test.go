@@ -665,6 +665,132 @@ func TestProviderInvoke_InterleavedTextReasoningChunks(t *testing.T) {
 	assert.Equal(t, " world", artifacts[2].(artifact.TextDelta).Content)
 }
 
+// mockLLMValue is a test type that implements artifact.LLMRenderer.
+type mockLLMValue struct {
+	output string
+}
+
+func (m *mockLLMValue) MarshalLLM() string {
+	return m.output
+}
+
+func TestProviderInvoke_ToolResult_LLMRenderer(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(simpleSSE("ok")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	// Append an assistant turn with a tool call.
+	mem.Append(state.RoleAssistant, artifact.ToolCall{ID: "call_1", Name: "search", Arguments: `{}`})
+	// Append a tool result with a Value that implements LLMRenderer.
+	mem.Append(state.RoleTool, artifact.ToolResult{
+		ToolCallID: "call_1",
+		Content:    `{"raw":"json"}`,
+		Value:      &mockLLMValue{output: "custom llm output"},
+	})
+
+	ch := make(chan artifact.Artifact, 10)
+	_ = p.Invoke(t.Context(), mem, ch)
+	close(ch)
+	for range ch {
+	}
+
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+
+	msgs, ok := reqBody["messages"].([]any)
+	require.True(t, ok)
+	require.Len(t, msgs, 3)
+
+	// Third message is the tool result.
+	toolMsg, ok := msgs[2].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "tool", toolMsg["role"])
+	assert.Equal(t, "custom llm output", toolMsg["content"])
+	assert.Equal(t, "call_1", toolMsg["tool_call_id"])
+}
+
+func TestProviderInvoke_ToolResult_JSONFallback(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(simpleSSE("ok")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem.Append(state.RoleAssistant, artifact.ToolCall{ID: "call_1", Name: "search", Arguments: `{}`})
+	// Tool result with a simple string Value (no LLMRenderer).
+	mem.Append(state.RoleTool, artifact.ToolResult{
+		ToolCallID: "call_1",
+		Content:    "fallback",
+		Value:      "json value",
+	})
+
+	ch := make(chan artifact.Artifact, 10)
+	_ = p.Invoke(t.Context(), mem, ch)
+	close(ch)
+	for range ch {
+	}
+
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+
+	msgs, ok := reqBody["messages"].([]any)
+	require.True(t, ok)
+	require.Len(t, msgs, 3)
+
+	toolMsg, ok := msgs[2].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "tool", toolMsg["role"])
+	// json.Marshal("json value") produces "\"json value\""
+	assert.Equal(t, `"json value"`, toolMsg["content"])
+}
+
+func TestProviderInvoke_ToolResult_ContentFallback(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(simpleSSE("ok")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem.Append(state.RoleAssistant, artifact.ToolCall{ID: "call_1", Name: "search", Arguments: `{}`})
+	// Tool result with nil Value — should fall back to Content.
+	mem.Append(state.RoleTool, artifact.ToolResult{
+		ToolCallID: "call_1",
+		Content:    "plain content",
+	})
+
+	ch := make(chan artifact.Artifact, 10)
+	_ = p.Invoke(t.Context(), mem, ch)
+	close(ch)
+	for range ch {
+	}
+
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+
+	msgs, ok := reqBody["messages"].([]any)
+	require.True(t, ok)
+	require.Len(t, msgs, 3)
+
+	toolMsg, ok := msgs[2].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "tool", toolMsg["role"])
+	assert.Equal(t, "plain content", toolMsg["content"])
+}
+
 func TestProviderInvoke_ToolCallDeltaAccumulation(t *testing.T) {
 	toolCallBody := "data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"search\",\"arguments\":\"first_\"}}]},\"finish_reason\":null}]}\n\n" +
 		"data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":2,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"second\"}}]},\"finish_reason\":null}]}\n\n" +
