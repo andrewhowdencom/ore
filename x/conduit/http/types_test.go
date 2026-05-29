@@ -279,14 +279,9 @@ func TestMarshalOutputEvent(t *testing.T) {
 			want:  `{"kind":"error","message":"boom"}`,
 		},
 		{
-			name:  "process_complete",
-			event: loop.ProcessCompleteEvent{},
-			want:  `{"kind":"process_complete"}`,
-		},
-		{
-			name:  "process_complete_with_error",
-			event: loop.ProcessCompleteEvent{Err: errors.New("boom")},
-			want:  `{"kind":"process_complete","error":"boom"}`,
+			name:  "lifecycle_done",
+			event: loop.LifecycleEvent{Phase: "done"},
+			want:  `{"kind":"lifecycle","phase":"done"}`,
 		},
 		{
 			name:  "text_artifact",
@@ -304,9 +299,19 @@ func TestMarshalOutputEvent(t *testing.T) {
 			want:  "",
 		},
 		{
-			name:  "status",
-			event: loop.StatusEvent{Status: map[string]string{"thread_id": "abc"}},
-			want:  `{"kind":"status","status":{"thread_id":"abc"}}`,
+			name:  "properties",
+			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}},
+			want:  `{"kind":"properties","properties":{"thread_id":"abc"}}`,
+		},
+		{
+			name:  "lifecycle",
+			event: loop.LifecycleEvent{Phase: "submitted"},
+			want:  `{"kind":"lifecycle","phase":"submitted"}`,
+		},
+		{
+			name:  "lifecycle_with_context",
+			event: loop.LifecycleEvent{Phase: "done", Ctx: loop.EventContext{Provenance: "http"}},
+			want:  `{"kind":"lifecycle","phase":"done","context":{"provenance":"http"}}`,
 		},
 	}
 
@@ -372,14 +377,9 @@ func TestUnmarshalOutputEvent(t *testing.T) {
 			want:  loop.ErrorEvent{Err: errors.New("boom")},
 		},
 		{
-			name:  "process_complete",
-			input: `{"kind":"process_complete"}`,
-			want:  loop.ProcessCompleteEvent{},
-		},
-		{
-			name:  "process_complete_with_error",
-			input: `{"kind":"process_complete","error":"boom"}`,
-			want:  loop.ProcessCompleteEvent{Err: errors.New("boom")},
+			name:  "lifecycle_done",
+			input: `{"kind":"lifecycle","phase":"done"}`,
+			want:  loop.LifecycleEvent{Phase: "done"},
 		},
 		{
 			name:  "text_artifact",
@@ -387,9 +387,19 @@ func TestUnmarshalOutputEvent(t *testing.T) {
 			want:  loop.ArtifactEvent{Artifact: artifact.Text{Content: "hello"}},
 		},
 		{
-			name:  "status",
-			input: `{"kind":"status","status":{"thread_id":"abc"}}`,
-			want:  loop.StatusEvent{Status: map[string]string{"thread_id": "abc"}},
+			name:  "properties",
+			input: `{"kind":"properties","properties":{"thread_id":"abc"}}`,
+			want:  loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}},
+		},
+		{
+			name:  "lifecycle",
+			input: `{"kind":"lifecycle","phase":"submitted"}`,
+			want:  loop.LifecycleEvent{Phase: "submitted"},
+		},
+		{
+			name:  "lifecycle_with_context",
+			input: `{"kind":"lifecycle","phase":"done","context":{"provenance":"http"}}`,
+			want:  loop.LifecycleEvent{Phase: "done", Ctx: loop.EventContext{Provenance: "http"}},
 		},
 		{
 			name:    "unknown_kind",
@@ -415,11 +425,13 @@ func TestRoundTrip_OutputEvent(t *testing.T) {
 	events := []loop.OutputEvent{
 		loop.TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}},
 		loop.ErrorEvent{Err: errors.New("something went wrong")},
-		loop.ProcessCompleteEvent{},
+		loop.LifecycleEvent{Phase: "done"},
 		loop.ArtifactEvent{Artifact: artifact.Text{Content: "some text"}},
 		loop.ArtifactEvent{Artifact: artifact.TextDelta{Content: "so"}},
 		loop.ArtifactEvent{Artifact: artifact.ToolCall{ID: "1", Name: "calc", Arguments: `{"a":1}`}},
-		loop.StatusEvent{Status: map[string]string{"thread_id": "abc", "state": "ready"}},
+		loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc", "state": "ready"}},
+		loop.LifecycleEvent{Phase: "submitted"},
+		loop.LifecycleEvent{Phase: "done", Ctx: loop.EventContext{Provenance: "http"}},
 	}
 
 	for _, event := range events {
@@ -451,14 +463,9 @@ func TestMarshalOutputEvent_WithContext(t *testing.T) {
 			want:  `{"kind":"error","message":"boom","context":{"provenance":"tui"}}`,
 		},
 		{
-			name:  "process_complete_with_context",
-			event: loop.ProcessCompleteEvent{Ctx: loop.EventContext{Provenance: "http"}},
-			want:  `{"kind":"process_complete","context":{"provenance":"http"}}`,
-		},
-		{
-			name:  "process_complete_with_error_and_context",
-			event: loop.ProcessCompleteEvent{Err: errors.New("boom"), Ctx: loop.EventContext{Provenance: "http"}},
-			want:  `{"kind":"process_complete","error":"boom","context":{"provenance":"http"}}`,
+			name:  "lifecycle_done_with_context",
+			event: loop.LifecycleEvent{Phase: "done", Ctx: loop.EventContext{Provenance: "http"}},
+			want:  `{"kind":"lifecycle","phase":"done","context":{"provenance":"http"}}`,
 		},
 		{
 			name:  "text_artifact_with_context",
@@ -467,8 +474,8 @@ func TestMarshalOutputEvent_WithContext(t *testing.T) {
 		},
 		{
 			name:  "status_with_context",
-			event: loop.StatusEvent{Status: map[string]string{"thread_id": "abc"}, Ctx: loop.EventContext{Provenance: "http"}},
-			want:  `{"kind":"status","status":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
+			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}, Ctx: loop.EventContext{Provenance: "http"}},
+			want:  `{"kind":"properties","properties":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
 		},
 	}
 
@@ -502,14 +509,9 @@ func TestUnmarshalOutputEvent_WithContext(t *testing.T) {
 			want:  loop.ErrorEvent{Err: errors.New("boom"), Ctx: loop.EventContext{Provenance: "tui"}},
 		},
 		{
-			name:  "process_complete_with_context",
-			input: `{"kind":"process_complete","context":{"provenance":"http"}}`,
-			want:  loop.ProcessCompleteEvent{Ctx: loop.EventContext{Provenance: "http"}},
-		},
-		{
-			name:  "process_complete_with_error_and_context",
-			input: `{"kind":"process_complete","error":"boom","context":{"provenance":"http"}}`,
-			want:  loop.ProcessCompleteEvent{Err: errors.New("boom"), Ctx: loop.EventContext{Provenance: "http"}},
+			name:  "lifecycle_done_with_context",
+			input: `{"kind":"lifecycle","phase":"done","context":{"provenance":"http"}}`,
+			want:  loop.LifecycleEvent{Phase: "done", Ctx: loop.EventContext{Provenance: "http"}},
 		},
 		{
 			name:  "text_artifact_with_context",
@@ -518,8 +520,8 @@ func TestUnmarshalOutputEvent_WithContext(t *testing.T) {
 		},
 		{
 			name:  "status_with_context",
-			input: `{"kind":"status","status":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
-			want:  loop.StatusEvent{Status: map[string]string{"thread_id": "abc"}, Ctx: loop.EventContext{Provenance: "http"}},
+			input: `{"kind":"properties","properties":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
+			want:  loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}, Ctx: loop.EventContext{Provenance: "http"}},
 		},
 	}
 
@@ -592,31 +594,72 @@ func TestArtifactJSON_ToolCallDelta_IndexRoundTrip(t *testing.T) {
 	assert.Equal(t, "1", td.Arguments)
 }
 
-func TestRoundTrip_StatusEvent(t *testing.T) {
+func TestRoundTrip_PropertiesEvent(t *testing.T) {
 	tests := []struct {
 		name   string
-		event  loop.StatusEvent
+		event  loop.PropertiesEvent
 		want   string
 	}{
 		{
 			name:  "empty_map",
-			event: loop.StatusEvent{Status: map[string]string{}},
-			want:  `{"kind":"status","status":{}}`,
+			event: loop.PropertiesEvent{Properties: map[string]string{}},
+			want:  `{"kind":"properties","properties":{}}`,
 		},
 		{
 			name:  "single_key",
-			event: loop.StatusEvent{Status: map[string]string{"thread_id": "abc-123"}},
-			want:  `{"kind":"status","status":{"thread_id":"abc-123"}}`,
+			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc-123"}},
+			want:  `{"kind":"properties","properties":{"thread_id":"abc-123"}}`,
 		},
 		{
 			name:  "multiple_keys",
-			event: loop.StatusEvent{Status: map[string]string{"thread_id": "abc", "state": "thinking...", "model": "gpt-4o"}},
-			want:  `{"kind":"status","status":{"thread_id":"abc","state":"thinking...","model":"gpt-4o"}}`,
+			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc", "state": "thinking...", "model": "gpt-4o"}},
+			want:  `{"kind":"properties","properties":{"thread_id":"abc","state":"thinking...","model":"gpt-4o"}}`,
 		},
 		{
 			name:  "with_context",
-			event: loop.StatusEvent{Status: map[string]string{"thread_id": "abc"}, Ctx: loop.EventContext{Provenance: "http"}},
-			want:  `{"kind":"status","status":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
+			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}, Ctx: loop.EventContext{Provenance: "http"}},
+			want:  `{"kind":"properties","properties":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := MarshalOutputEvent(tt.event)
+			require.NoError(t, err)
+			assert.JSONEq(t, tt.want, string(data))
+
+			got, err := UnmarshalOutputEvent(data)
+			require.NoError(t, err)
+			assert.Equal(t, tt.event, got)
+		})
+	}
+}
+
+func TestRoundTrip_LifecycleEvent(t *testing.T) {
+	tests := []struct {
+		name  string
+		event loop.LifecycleEvent
+		want  string
+	}{
+		{
+			name:  "submitted",
+			event: loop.LifecycleEvent{Phase: "submitted"},
+			want:  `{"kind":"lifecycle","phase":"submitted"}`,
+		},
+		{
+			name:  "streaming",
+			event: loop.LifecycleEvent{Phase: "streaming"},
+			want:  `{"kind":"lifecycle","phase":"streaming"}`,
+		},
+		{
+			name:  "done",
+			event: loop.LifecycleEvent{Phase: "done"},
+			want:  `{"kind":"lifecycle","phase":"done"}`,
+		},
+		{
+			name:  "with_context",
+			event: loop.LifecycleEvent{Phase: "done", Ctx: loop.EventContext{Provenance: "http"}},
+			want:  `{"kind":"lifecycle","phase":"done","context":{"provenance":"http"}}`,
 		},
 	}
 

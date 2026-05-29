@@ -106,9 +106,9 @@ func (t *TUI) Start(ctx context.Context) error {
 		slog.Info("thread started", "id", stream.ID())
 	}
 
-	_ = stream.Emit(ctx, loop.StatusEvent{
-		Status: map[string]string{"thread_id": stream.ID()},
-		Ctx:    loop.EventContext{Provenance: "tui"},
+	_ = stream.Emit(ctx, loop.PropertiesEvent{
+		Properties: map[string]string{"thread_id": stream.ID()},
+		Ctx:        loop.EventContext{Provenance: "tui"},
 	})
 
 	surfEventsCh := make(chan session.Event, 10)
@@ -132,7 +132,7 @@ func (t *TUI) Start(ctx context.Context) error {
 	// Subscribe to the stream's output, including delta artifact kinds so
 	// the TUI can accumulate assistant content incrementally as each delta
 	// chunk arrives, rather than waiting for TurnCompleteEvent.
-	outputCh := stream.Subscribe("text_delta", "reasoning_delta", "tool_call", "tool_result", "turn_complete", "error", "process_complete", "status")
+	outputCh := stream.Subscribe("text_delta", "reasoning_delta", "tool_call", "tool_result", "turn_complete", "error", "properties", "lifecycle")
 
 	// Goroutine to stream output events into the Bubble Tea message loop.
 	go func() {
@@ -145,15 +145,13 @@ func (t *TUI) Start(ctx context.Context) error {
 			case loop.ErrorEvent:
 				t.program.Send(errorMsg{err: e.Err})
 				_ = t.PlayError(ctx)
-			case loop.ProcessCompleteEvent:
-				if e.Err != nil {
-					_ = t.PlayError(ctx)
-				} else {
+			case loop.LifecycleEvent:
+				t.program.Send(lifecycleMsg{phase: e.Phase})
+				if e.Phase == "done" {
 					_ = t.PlayDone(ctx)
 				}
-				t.program.Send(statusMsg{status: map[string]string{"state": ""}})
-			case loop.StatusEvent:
-				t.program.Send(statusMsg{status: e.Status})
+			case loop.PropertiesEvent:
+				t.program.Send(statusMsg{status: e.Properties})
 			}
 		}
 	}()
@@ -163,13 +161,8 @@ func (t *TUI) Start(ctx context.Context) error {
 		for event := range t.eventsCh {
 			switch e := event.(type) {
 			case session.UserMessageEvent:
-				_ = stream.Emit(context.Background(), loop.StatusEvent{
-					Status: map[string]string{"state": "thinking..."},
-					Ctx:    loop.EventContext{Provenance: "tui"},
-				})
 				if err := stream.Submit(e); err != nil {
 					slog.Error("submit failed", "err", err)
-					t.program.Send(clearPendingMsg{})
 				}
 			case session.InterruptEvent:
 				if err := stream.Cancel(); err != nil {

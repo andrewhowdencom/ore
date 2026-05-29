@@ -71,27 +71,27 @@ func (e ErrorEvent) Kind() string { return "error" }
 // Context returns the event context.
 func (e ErrorEvent) Context() EventContext { return e.Ctx }
 
-// ProcessCompleteEvent is emitted when the entire inference pipeline
-// (including all tool-call loops) has finished. It carries the final
-// error state so subscribers can distinguish success from failure.
-// Err contains the final error from the TurnProcessor, the thread
-// store save step, or context cancellation. A nil Err means the
-// pipeline completed without error.
-// Unlike TurnCompleteEvent, which fires on every intermediate turn,
-// this event signals the end of a complete user-initiated interaction.
-type ProcessCompleteEvent struct {
-	Err error
+// LifecycleEvent is emitted at structural boundaries of a single inference
+// turn to signal phase transitions. Phases are linear per-pipeline:
+//   - "submitted": the user message has been accepted and the provider call
+//     is about to start (after transforms).
+//   - "streaming": the first artifact has arrived from the provider.
+//   - "done": the turn (including accumulation and handler execution) is
+//     complete. For tool-execution loops, the framework returns to
+//     "submitted" for each subsequent provider call.
+type LifecycleEvent struct {
+	Phase string // "submitted", "streaming", "done"
 
 	// Ctx carries routing metadata for the event, such as provenance
 	// information for echo suppression.
 	Ctx EventContext
 }
 
-// Kind returns the event kind identifier for ProcessCompleteEvent.
-func (e ProcessCompleteEvent) Kind() string { return "process_complete" }
+// Kind returns the event kind identifier.
+func (e LifecycleEvent) Kind() string { return "lifecycle" }
 
-// Context returns the routing metadata for ProcessCompleteEvent.
-func (e ProcessCompleteEvent) Context() EventContext { return e.Ctx }
+// Context returns the event context.
+func (e LifecycleEvent) Context() EventContext { return e.Ctx }
 
 // ArtifactEvent wraps an artifact.Artifact with an EventContext so it
 // can be emitted as an OutputEvent without polluting the artifact type
@@ -110,12 +110,12 @@ func (e ArtifactEvent) Kind() string { return e.Artifact.Kind() }
 // Context returns the event context.
 func (e ArtifactEvent) Context() EventContext { return e.Ctx }
 
-// StatusEvent carries ambient, persistent status information as a
-// map of key-value pairs. It is emitted by any producer holding a
+// PropertiesEvent carries ambient, persistent metadata as a map of
+// key-value pairs. It is emitted by any producer holding a
 // *session.Stream and flows through the per-session FanOut so all
 // conduits receive it simultaneously.
-type StatusEvent struct {
-	Status map[string]string
+type PropertiesEvent struct {
+	Properties map[string]string
 
 	// Ctx carries routing metadata for the event, such as provenance
 	// information for echo suppression.
@@ -123,10 +123,10 @@ type StatusEvent struct {
 }
 
 // Kind returns the event kind identifier.
-func (e StatusEvent) Kind() string { return "status" }
+func (e PropertiesEvent) Kind() string { return "properties" }
 
 // Context returns the event context.
-func (e StatusEvent) Context() EventContext { return e.Ctx }
+func (e PropertiesEvent) Context() EventContext { return e.Ctx }
 
 // outputEventEnvelope wraps an OutputEvent with an acknowledgment channel.
 // The producer blocks until the FanOut closes done after delivering the event.
@@ -238,7 +238,7 @@ func WithHandlers(handlers ...Handler) Option {
 
 // WithOnEmit configures synchronous callbacks that run before the FanOut.
 // OnEmit callbacks receive every OutputEvent emitted by the Step, including
-// TurnCompleteEvent, ArtifactEvent, ErrorEvent, and ProcessCompleteEvent.
+// TurnCompleteEvent, ArtifactEvent, ErrorEvent, and LifecycleEvent.
 // They are invoked in registration order, blocking, and zero-drop.
 // This is the single place to wire state persistence, replacing previous
 // patterns that mutated state directly inside Turn().
@@ -276,6 +276,8 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 		}
 	}
 
+	s.Emit(ctx, LifecycleEvent{Phase: "submitted", Ctx: s.eventContext})
+
 	provCh := make(chan artifact.Artifact, 100)
 	var accumulatedArtifacts []artifact.Artifact
 
@@ -285,8 +287,13 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 		defer wg.Done()
 		accumulators := make(map[string]artifact.Artifact)
 		var keys []string
+		var hasStreamed bool
 
 		for art := range provCh {
+			if !hasStreamed {
+				hasStreamed = true
+				s.Emit(ctx, LifecycleEvent{Phase: "streaming", Ctx: s.eventContext})
+			}
 			if d, ok := art.(artifact.Accumulable); ok {
 				key := d.AccumulatorKey()
 				if _, exists := accumulators[key]; !exists {
@@ -337,7 +344,9 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 		return st, fmt.Errorf("turn failed: %w", err)
 	}
 
-	return s.finalizeTurn(ctx, st, state.RoleAssistant, accumulatedArtifacts)
+	st, err = s.finalizeTurn(ctx, st, state.RoleAssistant, accumulatedArtifacts)
+	s.Emit(ctx, LifecycleEvent{Phase: "done", Ctx: s.eventContext})
+	return st, err
 }
 
 // Submit records a non-inference turn into state, runs registered handlers,

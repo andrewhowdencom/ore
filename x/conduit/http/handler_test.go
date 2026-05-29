@@ -888,7 +888,7 @@ func TestHandler_SendMessage_ErrorFallback_NoProcessComplete(t *testing.T) {
 	require.NoError(t, json.Unmarshal(createRr.Body.Bytes(), &createResp))
 	sessionID := createResp["id"]
 
-	// Send a message WITHOUT subscribing to process_complete.
+	// Send a message WITHOUT subscribing to lifecycle.
 	// This simulates an older client that only knows about turn_complete and error.
 	body := `{"content": "hi", "kinds": ["text_delta", "turn_complete", "error"]}`
 	req := httptest.NewRequest("POST", "/sessions/"+sessionID+"/messages", strings.NewReader(body))
@@ -914,10 +914,10 @@ func TestHandler_SendMessage_ErrorFallback_NoProcessComplete(t *testing.T) {
 			assert.Contains(t, event.Message, "boom")
 		}
 	}
-	assert.True(t, foundError, "expected an error event in the NDJSON stream when process_complete is not subscribed")
+	assert.True(t, foundError, "expected an error event in the NDJSON stream when lifecycle is not subscribed")
 }
 
-func TestHandler_SendMessage_StatusEventInNDJSON(t *testing.T) {
+func TestHandler_SendMessage_LifecycleEventInNDJSON(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "Hello"},
@@ -956,18 +956,23 @@ func TestHandler_SendMessage_StatusEventInNDJSON(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(rr.Body.String()), "\n")
 	require.NotEmpty(t, lines)
 
-	// Find status event lines.
-	var statusEvents []map[string]interface{}
+	// Verify lifecycle events are present in the NDJSON stream.
+	// No self-emitted properties events should appear (they were removed
+	// in favor of structured lifecycle phases).
+	var lifecycleEvents []map[string]interface{}
 	for _, line := range lines {
 		var event map[string]interface{}
 		require.NoError(t, json.Unmarshal([]byte(line), &event))
-		if event["kind"] == "status" {
-			statusEvents = append(statusEvents, event)
+		if event["kind"] == "lifecycle" {
+			lifecycleEvents = append(lifecycleEvents, event)
 		}
 	}
+	require.GreaterOrEqual(t, len(lifecycleEvents), 1)
+	assert.Equal(t, "submitted", lifecycleEvents[0]["phase"])
 
-	require.GreaterOrEqual(t, len(statusEvents), 1)
-	status := statusEvents[0]["status"].(map[string]interface{})
-	assert.Equal(t, sessionID, status["thread_id"])
-	assert.Equal(t, "thinking...", status["state"])
+	var phases []string
+	for _, ev := range lifecycleEvents {
+		phases = append(phases, ev["phase"].(string))
+	}
+	assert.Equal(t, []string{"submitted", "streaming", "done", "done"}, phases)
 }

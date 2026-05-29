@@ -27,7 +27,7 @@
 // Capability and Descriptor provide a lingua franca for capability discovery
 // across ore frontends. Each conduit package exports a Descriptor variable that
 // enumerates the well-known capabilities it supports (e.g., event-source,
-// render-delta, show-status (structured status events via loop.StatusEvent),
+// render-delta, show-status (structured metadata events via loop.PropertiesEvent),
 // accept-text, render-markdown).
 //
 // Standard Conduit Contract
