@@ -169,9 +169,9 @@ func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		}
 	}
 
-	_ = stream.Emit(r.Context(), loop.StatusEvent{
-		Status: map[string]string{"thread_id": stream.ID()},
-		Ctx:    loop.EventContext{Provenance: "http"},
+	_ = stream.Emit(r.Context(), loop.PropertiesEvent{
+		Properties: map[string]string{"thread_id": stream.ID()},
+		Ctx:        loop.EventContext{Provenance: "http"},
 	})
 
 	w.Header().Set("Content-Type", "application/json")
@@ -218,7 +218,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 
 	// Default event kinds when none specified.
 	if len(req.Kinds) == 0 {
-		req.Kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "process_complete", "status"}
+		req.Kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "properties", "lifecycle"}
 	}
 
 	// Subscribe to the session's FanOut before the goroutine starts.
@@ -227,15 +227,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	// Run the inference pipeline in a goroutine.
 	done := make(chan error)
 	go func() {
-		_ = stream.Emit(r.Context(), loop.StatusEvent{
-			Status: map[string]string{"thread_id": stream.ID(), "state": "thinking..."},
-			Ctx:    loop.EventContext{Provenance: "http"},
-		})
 		err := stream.Process(r.Context(), session.UserMessageEvent{Content: req.Content})
-		_ = stream.Emit(r.Context(), loop.StatusEvent{
-			Status: map[string]string{"thread_id": stream.ID(), "state": ""},
-			Ctx:    loop.EventContext{Provenance: "http"},
-		})
 		select {
 		case done <- err:
 		case <-r.Context().Done():
@@ -276,11 +268,10 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 			// after the FanOut has delivered all events to subCh.
 		case err := <-done:
 			// Drain all remaining events from the subscription buffer before
-			// returning. ProcessCompleteEvent is the terminal event; any
-			// post-process error is included in it. For backward
-			// compatibility with clients not subscribing to process_complete,
-			// write a separate ErrorEvent if one was not seen.
-			sawProcessComplete := false
+			// returning. LifecycleEvent with Phase "done" is the terminal
+			// event. If no terminal event was observed and the pipeline
+			// errored, write a fallback ErrorEvent.
+			sawTerminal := false
 			for {
 				select {
 				case event := <-subCh:
@@ -288,11 +279,11 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 					if data != nil {
 						_ = nw.WriteEvent(data)
 					}
-					if _, ok := event.(loop.ProcessCompleteEvent); ok {
-						sawProcessComplete = true
+					if le, ok := event.(loop.LifecycleEvent); ok && le.Phase == "done" {
+						sawTerminal = true
 					}
 				default:
-					if !sawProcessComplete && err != nil {
+					if !sawTerminal && err != nil {
 						data, _ := MarshalOutputEvent(loop.ErrorEvent{Err: err})
 						_ = nw.WriteEvent(data)
 					}
@@ -318,7 +309,7 @@ func (h *Handler) sessionEvents(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 	// Default event kinds when none specified.
 	if len(kinds) == 0 {
-		kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "process_complete", "status"}
+		kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "properties", "lifecycle"}
 	}
 
 	// Subscribe to the session's FanOut.

@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -882,19 +883,6 @@ func TestStep_Turn_ContextCancellationMidAccumulation(t *testing.T) {
 	assert.Len(t, mem.Turns(), 1)
 }
 
-func TestProcessCompleteEvent_Kind(t *testing.T) {
-	event := ProcessCompleteEvent{Err: nil, Ctx: EventContext{Provenance: "test"}}
-	assert.Equal(t, "process_complete", event.Kind())
-	assert.Equal(t, EventContext{Provenance: "test"}, event.Context())
-}
-
-func TestProcessCompleteEvent_WithError(t *testing.T) {
-	wantErr := errors.New("pipeline failed")
-	event := ProcessCompleteEvent{Err: wantErr}
-	assert.Equal(t, "process_complete", event.Kind())
-	assert.Equal(t, wantErr, event.Err)
-}
-
 func TestStep_Submit_AppendsUserTurn(t *testing.T) {
 	mem := &state.Buffer{}
 
@@ -1365,33 +1353,96 @@ func TestOnEmit_ErrorEvent_ContextPropagation(t *testing.T) {
 	assert.Equal(t, "test-provenance", receivedCtx.Provenance)
 }
 
-func TestStatusEvent_Kind(t *testing.T) {
-	event := StatusEvent{Status: map[string]string{"key": "val"}}
-	assert.Equal(t, "status", event.Kind())
+func TestPropertiesEvent_Kind(t *testing.T) {
+	event := PropertiesEvent{Properties: map[string]string{"key": "val"}}
+	assert.Equal(t, "properties", event.Kind())
 }
 
-func TestStatusEvent_Context(t *testing.T) {
-	event := StatusEvent{
-		Status: map[string]string{"key": "val"},
+func TestPropertiesEvent_Context(t *testing.T) {
+	event := PropertiesEvent{
+		Properties: map[string]string{"key": "val"},
 		Ctx:    EventContext{Provenance: "test"},
 	}
 	assert.Equal(t, EventContext{Provenance: "test"}, event.Context())
 }
 
-func TestStatusEvent_EmitAndReceive(t *testing.T) {
+func TestPropertiesEvent_EmitAndReceive(t *testing.T) {
 	s := New()
-	ch := s.Subscribe("status")
+	ch := s.Subscribe("properties")
 
-	s.Emit(context.Background(), StatusEvent{
-		Status: map[string]string{"thread_id": "abc-123", "state": "thinking..."},
+	s.Emit(context.Background(), PropertiesEvent{
+		Properties: map[string]string{"thread_id": "abc-123", "state": "thinking..."},
 		Ctx:    EventContext{Provenance: "test"},
 	})
 
 	events := collectEvents(ch, 100*time.Millisecond)
 	require.Len(t, events, 1)
-	status, ok := events[0].(StatusEvent)
+	status, ok := events[0].(PropertiesEvent)
 	require.True(t, ok)
-	assert.Equal(t, "abc-123", status.Status["thread_id"])
-	assert.Equal(t, "thinking...", status.Status["state"])
+	assert.Equal(t, "abc-123", status.Properties["thread_id"])
+	assert.Equal(t, "thinking...", status.Properties["state"])
 	assert.Equal(t, "test", status.Ctx.Provenance)
+}
+
+func TestLifecycleEvent_Kind(t *testing.T) {
+	event := LifecycleEvent{Phase: "submitted", Ctx: EventContext{Provenance: "test"}}
+	assert.Equal(t, "lifecycle", event.Kind())
+}
+
+func TestLifecycleEvent_Context(t *testing.T) {
+	ctx := EventContext{Provenance: "http"}
+	event := LifecycleEvent{Phase: "done", Ctx: ctx}
+	assert.Equal(t, ctx, event.Context())
+}
+
+func TestTurn_LifecyclePhases(t *testing.T) {
+	tests := []struct {
+		name      string
+		artifacts []artifact.Artifact
+		wantErr   error
+		wantPhases []string
+	}{
+		{
+			name:      "artifacts emit submitted streaming done",
+			artifacts: []artifact.Artifact{artifact.TextDelta{Content: "Hello"}},
+			wantPhases: []string{"submitted", "streaming", "done"},
+		},
+		{
+			name:      "no artifacts emit submitted done without streaming",
+			artifacts: nil,
+			wantPhases: []string{"submitted", "done"},
+		},
+		{
+			name:      "provider error emits submitted only",
+			artifacts: nil,
+			wantErr:   fmt.Errorf("provider failed"),
+			wantPhases: []string{"submitted"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			step := New()
+			lifecycleCh := step.Subscribe("lifecycle")
+
+			prov := &mockProvider{artifacts: tt.artifacts, err: tt.wantErr}
+			st := &state.Buffer{}
+
+			_, err := step.Turn(context.Background(), st, prov)
+			if tt.wantErr != nil {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			events := collectEvents(lifecycleCh, 100*time.Millisecond)
+			var phases []string
+			for _, e := range events {
+				if le, ok := e.(LifecycleEvent); ok {
+					phases = append(phases, le.Phase)
+				}
+			}
+			assert.Equal(t, tt.wantPhases, phases)
+		})
+	}
 }

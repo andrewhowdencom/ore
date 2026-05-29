@@ -32,17 +32,20 @@
 // controls whether an artifact is persisted to state; it does NOT filter
 // event-stream visibility. All artifacts are forwarded to subscribers.
 //
-// Output event lifecycle:
-//   - TurnCompleteEvent fires after each individual assistant turn,
-//     carrying the turn content for incremental rendering.
-//   - ProcessCompleteEvent fires once per user-initiated interaction
-//     when the entire pipeline (including all tool-call loops) finishes.
-//     It carries the final error state and is the correct signal for
-//     lifecycle actions (audio notifications, typing indicator dismissal).
+// Output event taxonomy:
+//   - ArtifactEvent wraps a provider artifact (text, reasoning, tool_call,
+//     etc.) and is emitted for every chunk received from the provider.
+//   - TurnCompleteEvent fires after each individual turn is fully
+//     accumulated, carrying the complete turn for state persistence
+//     and non-streaming delivery (e.g. Slack, Telegram).
+//   - LifecycleEvent signals phase transitions: "submitted" (message
+//     accepted, waiting for provider), "streaming" (first artifact
+//     arrived), and "done" (turn complete). Conduits observe this to
+//     drive UI state without inferring lifecycle from data events.
 //   - ErrorEvent fires when an individual turn fails inside the provider
 //     or a registered handler.
-//   - StatusEvent carries ambient, persistent status information as a
-//     map of key-value pairs (e.g. thread_id, token counts, model name).
-//     Any component with access to a *session.Stream can emit it, and it
-//     is delivered to all subscribers through the per-session FanOut.
+//   - PropertiesEvent carries ambient, persistent metadata as a map of
+//     key-value pairs (e.g. thread_id, token counts, model name). It is
+//     emitted by any component holding a *session.Stream and delivered to
+//     all subscribers through the per-session FanOut.
 package loop
