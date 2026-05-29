@@ -1446,3 +1446,29 @@ func TestTurn_LifecyclePhases(t *testing.T) {
 		})
 	}
 }
+
+// TestStep_Turn_ErrorEvent_NoSubscriber verifies that Turn() does not deadlock
+// when the Step has zero subscribers and the provider returns an error.
+// This is a regression guard for the ErrorEvent emission path that uses
+// context.Background() instead of the cancelled turn context.
+func TestStep_Turn_ErrorEvent_NoSubscriber(t *testing.T) {
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	s := New()
+	wantErr := errors.New("provider failed")
+	prov := &mockProvider{err: wantErr}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := s.Turn(context.Background(), mem, prov)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, wantErr)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Turn() deadlocked with no subscribers and provider error")
+	}
+}

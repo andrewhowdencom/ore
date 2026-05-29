@@ -46,6 +46,8 @@ Follow these steps in order. Do not skip or reorder.
 
 1. **Create package `x/conduit/<name>/`** with its own `go.mod`. Use
    `replace github.com/andrewhowdencom/ore => ../../..` to link the core module.
+   Then add the new module to the root `Taskfile.yml` `includes:` block so
+   `task validate` covers it (follow the pattern of existing entries).
 2. **Implement `conduit.Conduit`** — a type with exactly one method:
    `Start(ctx context.Context) error`.
 3. **Accept `*session.Manager`** via the constructor using the functional options
@@ -126,6 +128,8 @@ After implementing a conduit, verify:
 - [ ] Passes `go test -race ./...`
 - [ ] Handles provenance echo suppression
 - [ ] `README.md` is present with all required sections (see `./README_EXAMPLE.md`)
+- [ ] Module is registered in root `Taskfile.yml` `includes:` block so
+  `task validate` covers it
 
 ## Boolean Guards
 
@@ -171,6 +175,10 @@ If any of the following are true, **STOP** and reassess:
    patterns: NDJSON streaming over a request/response connection, and SSE over a
    persistent ambient connection. The TUI subscribes to `"turn_complete"` for
    batched rendering. Choose the pattern that matches your transport.
+7. **Missing from `Taskfile.yml`.** Every workspace module with its own `go.mod`
+   must be listed in the root `Taskfile.yml` `includes:` block pointing to
+   `Taskfile.lib.yml`. If omitted, `task validate` silently skips the module
+   and compilation errors or test failures are hidden from CI.
 ## References
 
 - `AGENTS.md` — ore architectural boundaries and the Conduit/Library vs.
