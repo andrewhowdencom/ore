@@ -14,6 +14,17 @@ var _ Artifact = Usage{}
 var _ Artifact = Image{}
 var _ Artifact = Reasoning{}
 
+var _ LLMRenderer = (*mockLLMRenderer)(nil)
+var _ MarkdownRenderer = (*mockMarkdownRenderer)(nil)
+
+type mockLLMRenderer struct{}
+
+func (m *mockLLMRenderer) MarshalLLM() string { return "llm" }
+
+type mockMarkdownRenderer struct{}
+
+func (m *mockMarkdownRenderer) MarshalMarkdown() string { return "markdown" }
+
 var _ Delta = TextDelta{}
 var _ Delta = ReasoningDelta{}
 var _ Delta = ToolCallDelta{}
@@ -69,6 +80,14 @@ func TestAccumulableInterface(t *testing.T) {
 	assert.Implements(t, (*Accumulable)(nil), TextDelta{})
 	assert.Implements(t, (*Accumulable)(nil), ReasoningDelta{})
 	assert.Implements(t, (*Accumulable)(nil), ToolCallDelta{})
+}
+
+func TestToolResult_ValueField(t *testing.T) {
+	tr := ToolResult{ToolCallID: "call_1", Content: "ok", Value: 42, IsError: false}
+	assert.Equal(t, "call_1", tr.ToolCallID)
+	assert.Equal(t, "ok", tr.Content)
+	assert.Equal(t, 42, tr.Value)
+	assert.False(t, tr.IsError)
 }
 
 func TestAccumulable_MergeInto_EdgeCases(t *testing.T) {

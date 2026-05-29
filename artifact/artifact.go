@@ -45,10 +45,23 @@ type ToolCall struct {
 // Kind returns the artifact kind identifier.
 func (t ToolCall) Kind() string { return "tool_call" }
 
+// LLMRenderer is implemented by tool result values that know how to
+// serialize themselves for consumption by an LLM provider.
+type LLMRenderer interface {
+	MarshalLLM() string
+}
+
+// MarkdownRenderer is implemented by tool result values that know how to
+// render themselves as Markdown for human display.
+type MarkdownRenderer interface {
+	MarshalMarkdown() string
+}
+
 // ToolResult represents the result of executing a tool call.
 type ToolResult struct {
 	ToolCallID string
 	Content    string
+	Value      any
 	IsError    bool
 }
 
