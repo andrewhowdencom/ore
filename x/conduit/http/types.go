@@ -75,6 +75,13 @@ type propertiesEventJSON struct {
 	Context    *eventContextJSON `json:"context,omitempty"`
 }
 
+// lifecycleEventJSON is the JSON representation of a LifecycleEvent.
+type lifecycleEventJSON struct {
+	Kind    string            `json:"kind"`
+	Phase   string            `json:"phase"`
+	Context *eventContextJSON `json:"context,omitempty"`
+}
+
 // eventContextToJSON converts a loop.EventContext to a JSON DTO pointer.
 // Returns nil when the context is empty so omitempty removes it from JSON.
 func eventContextToJSON(ctx loop.EventContext) *eventContextJSON {
@@ -141,9 +148,10 @@ func artifactToJSON(art artifact.Artifact) (*artifactJSON, bool) {
 
 // MarshalOutputEvent serializes a loop.OutputEvent to JSON bytes.
 // It handles TurnCompleteEvent, ErrorEvent, ProcessCompleteEvent,
-// and all loop.ArtifactEvent wrapper types that contain an artifact.Artifact.
-// Unknown artifact kinds are silently skipped (returns nil, nil).
-// Returns an error only for unsupported event kinds.
+// PropertiesEvent, LifecycleEvent, and all loop.ArtifactEvent wrapper
+// types that contain an artifact.Artifact. Unknown artifact kinds are
+// silently skipped (returns nil, nil). Returns an error only for
+// unsupported event kinds.
 func MarshalOutputEvent(event loop.OutputEvent) ([]byte, error) {
 	switch e := event.(type) {
 	case loop.TurnCompleteEvent:
@@ -185,6 +193,12 @@ func MarshalOutputEvent(event loop.OutputEvent) ([]byte, error) {
 			Kind:       "properties",
 			Properties: e.Properties,
 			Context:    eventContextToJSON(e.Ctx),
+		})
+	case loop.LifecycleEvent:
+		return json.Marshal(lifecycleEventJSON{
+			Kind:    "lifecycle",
+			Phase:   e.Phase,
+			Context: eventContextToJSON(e.Ctx),
 		})
 	default:
 		if m, ok := event.(json.Marshaler); ok {
@@ -252,9 +266,9 @@ func artifactFromJSON(dto artifactJSON) (artifact.Artifact, error) {
 }
 
 // UnmarshalOutputEvent deserializes JSON bytes into a loop.OutputEvent.
-// It handles "turn_complete", "error", "process_complete", and all
-// loop.ArtifactEvent types carrying artifact kinds. Returns an error for
-// unsupported kinds or malformed JSON.
+// It handles "turn_complete", "error", "process_complete", "properties",
+// "lifecycle", and all loop.ArtifactEvent types carrying artifact kinds.
+// Returns an error for unsupported kinds or malformed JSON.
 func UnmarshalOutputEvent(data []byte) (loop.OutputEvent, error) {
 	var peek struct {
 		Kind string `json:"kind"`
@@ -296,6 +310,12 @@ func UnmarshalOutputEvent(data []byte) (loop.OutputEvent, error) {
 			return nil, err
 		}
 		return loop.PropertiesEvent{Properties: dto.Properties, Ctx: eventContextFromJSON(dto.Context)}, nil
+	case "lifecycle":
+		var dto lifecycleEventJSON
+		if err := json.Unmarshal(data, &dto); err != nil {
+			return nil, err
+		}
+		return loop.LifecycleEvent{Phase: dto.Phase, Ctx: eventContextFromJSON(dto.Context)}, nil
 	default:
 		// Treat as artifact.
 		var dto artifactEventJSON
