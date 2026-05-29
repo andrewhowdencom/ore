@@ -883,19 +883,6 @@ func TestStep_Turn_ContextCancellationMidAccumulation(t *testing.T) {
 	assert.Len(t, mem.Turns(), 1)
 }
 
-func TestProcessCompleteEvent_Kind(t *testing.T) {
-	event := ProcessCompleteEvent{Err: nil, Ctx: EventContext{Provenance: "test"}}
-	assert.Equal(t, "process_complete", event.Kind())
-	assert.Equal(t, EventContext{Provenance: "test"}, event.Context())
-}
-
-func TestProcessCompleteEvent_WithError(t *testing.T) {
-	wantErr := errors.New("pipeline failed")
-	event := ProcessCompleteEvent{Err: wantErr}
-	assert.Equal(t, "process_complete", event.Kind())
-	assert.Equal(t, wantErr, event.Err)
-}
-
 func TestStep_Submit_AppendsUserTurn(t *testing.T) {
 	mem := &state.Buffer{}
 

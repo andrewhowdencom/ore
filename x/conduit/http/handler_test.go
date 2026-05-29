@@ -888,7 +888,7 @@ func TestHandler_SendMessage_ErrorFallback_NoProcessComplete(t *testing.T) {
 	require.NoError(t, json.Unmarshal(createRr.Body.Bytes(), &createResp))
 	sessionID := createResp["id"]
 
-	// Send a message WITHOUT subscribing to process_complete.
+	// Send a message WITHOUT subscribing to lifecycle.
 	// This simulates an older client that only knows about turn_complete and error.
 	body := `{"content": "hi", "kinds": ["text_delta", "turn_complete", "error"]}`
 	req := httptest.NewRequest("POST", "/sessions/"+sessionID+"/messages", strings.NewReader(body))
@@ -914,7 +914,7 @@ func TestHandler_SendMessage_ErrorFallback_NoProcessComplete(t *testing.T) {
 			assert.Contains(t, event.Message, "boom")
 		}
 	}
-	assert.True(t, foundError, "expected an error event in the NDJSON stream when process_complete is not subscribed")
+	assert.True(t, foundError, "expected an error event in the NDJSON stream when lifecycle is not subscribed")
 }
 
 func TestHandler_SendMessage_LifecycleEventInNDJSON(t *testing.T) {
