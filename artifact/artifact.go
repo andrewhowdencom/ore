@@ -3,7 +3,10 @@
 // method to allow custom artifact types to be defined in other packages.
 package artifact
 
-import "strconv"
+import (
+	"encoding/json"
+	"strconv"
+)
 
 // Artifact is the base interface for all LLM response artifacts.
 type Artifact interface {
@@ -67,6 +70,38 @@ type ToolResult struct {
 
 // Kind returns the artifact kind identifier.
 func (t ToolResult) Kind() string { return "tool_result" }
+
+// LLMString returns a string representation of the tool result suitable
+// for consumption by an LLM provider. It prefers the custom LLMRenderer
+// on Value, falls back to json.Marshal of Value, and finally falls back
+// to the pre-serialized Content string.
+func (t ToolResult) LLMString() string {
+	if t.Value != nil {
+		if r, ok := t.Value.(LLMRenderer); ok {
+			return r.MarshalLLM()
+		}
+		if b, err := json.Marshal(t.Value); err == nil {
+			return string(b)
+		}
+	}
+	return t.Content
+}
+
+// MarkdownString returns a string representation of the tool result
+// suitable for human display. It prefers the custom MarkdownRenderer on
+// Value, falls back to json.Marshal of Value, and finally falls back
+// to the pre-serialized Content string.
+func (t ToolResult) MarkdownString() string {
+	if t.Value != nil {
+		if r, ok := t.Value.(MarkdownRenderer); ok {
+			return r.MarshalMarkdown()
+		}
+		if b, err := json.Marshal(t.Value); err == nil {
+			return string(b)
+		}
+	}
+	return t.Content
+}
 
 // Usage represents token consumption metadata from a provider response.
 type Usage struct {

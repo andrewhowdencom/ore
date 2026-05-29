@@ -90,6 +90,76 @@ func TestToolResult_ValueField(t *testing.T) {
 	assert.False(t, tr.IsError)
 }
 
+func TestToolResult_LLMString(t *testing.T) {
+	tests := []struct {
+		name    string
+		tr      ToolResult
+		want    string
+	}{
+		{
+			name: "LLMRenderer takes precedence",
+			tr:   ToolResult{Value: &mockLLMRenderer{}, Content: "fallback"},
+			want: "llm",
+		},
+		{
+			name: "json.Marshal fallback for simple value",
+			tr:   ToolResult{Value: "hello", Content: "fallback"},
+			want: `"hello"`,
+		},
+		{
+			name: "nil Value falls back to Content",
+			tr:   ToolResult{Value: nil, Content: "fallback"},
+			want: "fallback",
+		},
+		{
+			name: "zero Value falls back to Content",
+			tr:   ToolResult{Content: "fallback"},
+			want: "fallback",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.tr.LLMString())
+		})
+	}
+}
+
+func TestToolResult_MarkdownString(t *testing.T) {
+	tests := []struct {
+		name string
+		tr   ToolResult
+		want string
+	}{
+		{
+			name: "MarkdownRenderer takes precedence",
+			tr:   ToolResult{Value: &mockMarkdownRenderer{}, Content: "fallback"},
+			want: "markdown",
+		},
+		{
+			name: "json.Marshal fallback for simple value",
+			tr:   ToolResult{Value: 42, Content: "fallback"},
+			want: `42`,
+		},
+		{
+			name: "nil Value falls back to Content",
+			tr:   ToolResult{Value: nil, Content: "fallback"},
+			want: "fallback",
+		},
+		{
+			name: "zero Value falls back to Content",
+			tr:   ToolResult{Content: "fallback"},
+			want: "fallback",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.tr.MarkdownString())
+		})
+	}
+}
+
 func TestAccumulable_MergeInto_EdgeCases(t *testing.T) {
 	tests := []struct {
 		name     string
