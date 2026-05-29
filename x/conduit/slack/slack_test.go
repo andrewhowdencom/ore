@@ -12,7 +12,6 @@ import (
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
-	"github.com/andrewhowdencom/ore/thread"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/socketmode"
@@ -51,9 +50,9 @@ func TestNew_NilManager(t *testing.T) {
 }
 
 func TestNew_ValidManager(t *testing.T) {
-	store := thread.NewMemoryStore()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -72,9 +71,9 @@ func TestDescriptor(t *testing.T) {
 }
 
 func TestWithEventsAPI(t *testing.T) {
-	store := thread.NewMemoryStore()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	c, err := New(mgr, WithEventsAPI())
 	require.NoError(t, err)
@@ -126,9 +125,9 @@ func (f *fakeSocketModeClient) stop() {
 }
 
 func TestStart_MissingTokens(t *testing.T) {
-	store := thread.NewMemoryStore()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -142,9 +141,9 @@ func TestStart_MissingTokens(t *testing.T) {
 }
 
 func TestStart_EventsAPIStub(t *testing.T) {
-	store := thread.NewMemoryStore()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	c, err := New(mgr, WithEventsAPI(), WithBotToken("test"), WithAppToken("test"))
 	require.NoError(t, err)
@@ -158,9 +157,9 @@ func TestStart_EventsAPIStub(t *testing.T) {
 }
 
 func TestStart_BlocksUntilContextCancelled(t *testing.T) {
-	store := thread.NewMemoryStore()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	fakeSMC := &fakeSocketModeClient{
 		events:  make(chan socketmode.Event),
@@ -186,9 +185,9 @@ func TestStart_BlocksUntilContextCancelled(t *testing.T) {
 }
 
 func TestStart_AuthTestFailure(t *testing.T) {
-	store := thread.NewMemoryStore()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	fakeSMC := &fakeSocketModeClient{
 		events:  make(chan socketmode.Event),

@@ -170,12 +170,12 @@ func (c *SlackConduit) Start(ctx context.Context) error {
 		if !ok || tc.Turn.Role != state.RoleAssistant || tc.Ctx.Provenance != "slack" {
 			return
 		}
-		thr, ok := c.mgr.Store().Get(streamID)
-		if !ok {
+		stream, err := c.mgr.Get(streamID)
+		if err != nil {
 			return
 		}
-		channelID, _ := thr.GetMetadata("slack_channel_id")
-		threadTS, _ := thr.GetMetadata("slack_thread_id")
+		channelID, _ := stream.GetMetadata("slack_channel_id")
+		threadTS, _ := stream.GetMetadata("slack_thread_id")
 		if channelID == "" {
 			return
 		}

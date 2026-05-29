@@ -92,11 +92,11 @@ Environment variables read at runtime (by `Start()`, not at construction time):
   a DM):
   - `mgr.Create()` creates a new ore thread and stream.
   - The Slack thread identifier is stored in `Thread.Metadata["slack_thread_id"]`.
-  - The Slack channel ID is stored in `Thread.Metadata["slack_channel_id"]`.
-  - `mgr.Store().Save(thr)` persists the metadata.
+  - The Slack channel ID is stored via `stream.SetMetadata("slack_channel_id", ...)`.
+  - `stream.Save()` persists the metadata.
 - **Subsequent messages** in the same thread/DM:
   - Extract `thread_ts` (channel) or `channel_id` (DM).
-  - `store.GetBy("slack_thread_id", id)` finds the existing thread.
+  - `mgr.GetBy("slack_thread_id", id)` finds the existing thread.
   - `mgr.Attach(thr.ID)` resumes the active stream.
 
 | Slack Context | Slack Thread Identifier | Ore Metadata Key |

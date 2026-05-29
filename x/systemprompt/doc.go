@@ -44,7 +44,7 @@
 //
 // Dynamic system prompt that reads from thread metadata:
 //
-//	// Assuming `thr` is a *thread.Thread captured in outer scope.
+//	// Assuming `thr` is a *session.Thread captured in outer scope.
 //	transform, err := systemprompt.New(systemprompt.WithContentFunc(func() string {
 //		if p, ok := thr.GetMetadata("persona"); ok {
 //			return "You are a " + p + "."
