@@ -283,13 +283,60 @@ func TestModel_View_ContainsToolTurn(t *testing.T) {
 	assert.Contains(t, segment, "\n", "label and content should be on separate lines")
 }
 
-func TestModel_View_ContainsStatus(t *testing.T) {
+func TestModel_View_StatusBarFixedBelowInput(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-	m.status = map[string]string{"state": "thinking..."}
-	m.syncViewport()
+	m.width = 80
+	m.status = map[string]string{"state": "thinking...", "model": "gpt-4o"}
 	output := m.View().Content
-	assert.Contains(t, output, "state=thinking...")
+	// Status should appear after the second separator, below the textarea.
+	assert.Contains(t, output, "state: thinking...")
+	assert.Contains(t, output, "model: gpt-4o")
+	// Verify there are two separators in the output.
+	sep := strings.Repeat("─", 80)
+	idx1 := strings.Index(output, sep)
+	require.GreaterOrEqual(t, idx1, 0, "first separator should exist")
+	idx2 := strings.Index(output[idx1+len(sep):], sep)
+	require.GreaterOrEqual(t, idx2, 0, "second separator should exist")
+}
+
+func TestModel_View_StatusBarHiddenWhenEmpty(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.width = 80
+	m.status = map[string]string{"state": ""}
+	output := m.View().Content
+	sep := strings.Repeat("─", 80)
+	assert.Equal(t, 1, strings.Count(output, sep), "only one separator when status is empty")
+	assert.NotContains(t, output, "state:")
+}
+
+func TestModel_View_StatusBarHiddenWhenNil(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.width = 80
+	m.status = nil
+	output := m.View().Content
+	sep := strings.Repeat("─", 80)
+	assert.Equal(t, 1, strings.Count(output, sep), "only one separator when status is nil")
+}
+
+func TestModel_View_StatusBarWraps(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(40), viewport.WithHeight(20))
+	m.width = 40
+	// A long status that will wrap at width 40.
+	m.status = map[string]string{"state": "thinking very deeply about the problem at hand"}
+	_, statusLines := buildStatusLine(m.status, 40)
+	require.Greater(t, statusLines, 1, "status should wrap to multiple lines")
+
+	// Verify the wrapped status appears in the output.
+	output := m.View().Content
+	assert.Contains(t, output, "state: thinking")
+
+	// Two separators should be present.
+	sep := strings.Repeat("─", 40)
+	assert.Equal(t, 2, strings.Count(output, sep), "two separators when status is present")
 }
 
 func TestModel_View_ContainsPrompt(t *testing.T) {

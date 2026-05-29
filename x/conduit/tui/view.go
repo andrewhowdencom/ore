@@ -50,12 +50,13 @@ func renderBlock(label string, labelStyle lipgloss.Style, content string, width 
 	return styledLabel + "\n" + content
 }
 
-// buildContent constructs the full conversation string for the viewport,
-// including all turns, the pending placeholder, and the status line.
+// buildContent constructs the full conversation string for the viewport.
+// It includes all turns and the pending placeholder, but NOT the status
+// line (which is now rendered as a fixed bar below the input area).
 //
 // The result is memoized: when contentDirty is false and cachedContent is
 // non-empty, the cached string is returned immediately without recomputing.
-// Callers that mutate visual state (turns, status, pending, expandLatestDetails)
+// Callers that mutate visual state (turns, pending, expandLatestDetails)
 // must set contentDirty = true before the next buildContent call so the
 // cache is rebuilt. In practice Update() does this via syncViewport().
 func (m *model) buildContent() string {
@@ -210,28 +211,51 @@ func (m *model) buildContent() string {
 		b.WriteString("\n\n")
 	}
 
-	// Render status line.
-	if len(m.status) > 0 {
-		var keys []string
-		for k := range m.status {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		var parts []string
-		for _, k := range keys {
-			if v := m.status[k]; v != "" {
-				parts = append(parts, fmt.Sprintf("%s=%s", k, v))
-			}
-		}
-		if len(parts) > 0 {
-			b.WriteString(statusStyle.Render(fmt.Sprintf("[%s]", strings.Join(parts, " "))))
-			b.WriteString("\n")
-		}
-	}
-
 	m.cachedContent = b.String()
 	m.contentDirty = false
 	return m.cachedContent
+}
+
+// buildStatusLine renders the status map into a single wrapped line using
+// "key: value · key: value" format with ANSI styling.
+//
+// It returns the rendered string and the number of display lines it
+// occupies at the given width. Returns 0 lines when all values are empty.
+func buildStatusLine(status map[string]string, width int) (string, int) {
+	if len(status) == 0 {
+		return "", 0
+	}
+	var keys []string
+	for k := range status {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var parts []string
+	for _, k := range keys {
+		if v := status[k]; v != "" {
+			parts = append(parts, fmt.Sprintf("%s: %s", k, v))
+		}
+	}
+	if len(parts) == 0 {
+		return "", 0
+	}
+	rendered := statusStyle.Render(strings.Join(parts, " · "))
+	if width <= 0 {
+		return rendered, 1
+	}
+	// Count wrapped display lines using lipgloss width.
+	lines := 1
+	lineWidth := 0
+	for _, r := range rendered {
+		w := lipgloss.Width(string(r))
+		if lineWidth+w > width {
+			lines++
+			lineWidth = w
+		} else {
+			lineWidth += w
+		}
+	}
+	return rendered, lines
 }
 
 // compactToolCall formats a tool call into a compact single-line string.
@@ -319,18 +343,25 @@ func truncateString(s string, maxWidth int) string {
 // View renders the conversation history inside a scrollable viewport and
 // anchors the input prompt at the bottom of the terminal.
 func (m *model) View() tea.View {
-	// Render a thin horizontal line to visually separate the conversation
-	// history (viewport) from the input area at the bottom of the terminal.
+	// Render thin horizontal lines to visually separate the conversation
+	// history (viewport), the input area, and the fixed status bar.
 	var separator string
 	if m.width > 0 {
 		separator = strings.Repeat("─", m.width)
 	}
 
+	statusStr, statusLines := buildStatusLine(m.status, m.width)
+
 	view := m.viewport.View()
 	if view != "" {
-		v := tea.NewView(view + "\n" + separator + "\n" + m.textarea.View())
-	v.AltScreen = true
-	return v
+		var parts []string
+		parts = append(parts, view, separator, m.textarea.View())
+		if statusLines > 0 {
+			parts = append(parts, separator, statusStr)
+		}
+		v := tea.NewView(strings.Join(parts, "\n"))
+		v.AltScreen = true
+		return v
 	}
 	v := tea.NewView(m.textarea.View())
 	v.AltScreen = true
