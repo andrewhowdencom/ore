@@ -185,7 +185,15 @@ func (m *model) recalcLayout() {
 	desiredHeight = max(desiredHeight, 1)
 
 	m.textarea.SetHeight(desiredHeight)
-	m.viewport.SetHeight(m.height - m.textarea.Height() - 1) // -1 for separator
+	// Reserve space for one or two separators plus the status bar when
+	// status has non-empty content.
+	_, statusLines := buildStatusLine(m.status, m.width)
+	separatorCount := 1
+	if statusLines > 0 {
+		separatorCount = 2
+	}
+
+	m.viewport.SetHeight(m.height - m.textarea.Height() - separatorCount - statusLines)
 	if m.viewport.Height() < 1 {
 		m.viewport.SetHeight(1)
 	}
@@ -347,7 +355,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for k, v := range msg.status {
 			m.status[k] = v
 		}
-		m.contentDirty = true
+		m.recalcLayout()
 		m.syncViewport()
 	case clearPendingMsg:
 		m.pending = false
@@ -370,6 +378,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.status["state"] = "Error: " + msg.err.Error()
 		m.contentDirty = true
+		m.recalcLayout()
 		m.syncViewport()
 		return m, nil
 	case renderTickMsg:
