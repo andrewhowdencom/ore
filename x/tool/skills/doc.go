@@ -40,13 +40,23 @@
 //	import "github.com/andrewhowdencom/ore/x/systemprompt"
 //
 //	sp, _ := systemprompt.New(
-//	    systemprompt.WithContextContentFunc(tk.SystemPromptFragment()),
+//	    systemprompt.WithContextContentFunc(tk.SystemPromptFragment()), // returns func(context.Context) string
 //	)
 //
-// The fragment includes a header and a deterministic bullet list of skill
-// names and descriptions. If no skills are discovered or discovery fails, the
-// fragment returns an empty string and the section is cleanly omitted. The
-// LLM can still call list_skills or search_skills for interactive browsing.
+// The default fragment includes a strong behavioral directive that tells the
+// LLM when to load skills — for example: "When your task matches a skill
+// description below, call read_skill(name=<skill>) to load its detailed
+// instructions before proceeding." This is followed by a deterministic bullet
+// list of skill names and descriptions.
+//
+// Applications can customize the directive via SetDirective on either Catalog
+// or Toolkit:
+//
+//	tk.SetDirective("When you need domain expertise, load the relevant skill.")
+//
+// If no skills are discovered or discovery fails, the fragment returns an empty
+// string and the section is cleanly omitted. The LLM can still call
+// list_skills or search_skills for interactive browsing.
 //
 // Deduplication and Overrides
 //

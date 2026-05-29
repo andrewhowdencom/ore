@@ -37,6 +37,7 @@ type Catalog struct {
 	mu          sync.RWMutex
 	discoverers []Discoverer
 	cache       map[string]discovererEntry
+	directive   string
 }
 
 // NewCatalog creates a Catalog backed by the given discoverers.
@@ -44,6 +45,7 @@ func NewCatalog(discoverers ...Discoverer) *Catalog {
 	return &Catalog{
 		discoverers: discoverers,
 		cache:       make(map[string]discovererEntry),
+		directive:   "When your task matches a skill description below, call read_skill(name=<skill>) to load its detailed instructions before proceeding.",
 	}
 }
 
@@ -135,8 +137,15 @@ func (c *Catalog) SystemPromptFragment(ctx context.Context) string {
 		return ""
 	}
 
+	c.mu.RLock()
+	directive := c.directive
+	c.mu.RUnlock()
+
 	var b strings.Builder
-	b.WriteString("You have access to the following specialized skills. Use read_skill(name=<skill>) to load detailed instructions when needed:\n\n")
+	if strings.TrimSpace(directive) != "" {
+		b.WriteString(directive)
+		b.WriteString("\n\n")
+	}
 	for i, m := range meta {
 		b.WriteString("- ")
 		b.WriteString(m.Name)
@@ -147,6 +156,15 @@ func (c *Catalog) SystemPromptFragment(ctx context.Context) string {
 		}
 	}
 	return b.String()
+}
+
+// SetDirective overrides the default behavioral directive used in the
+// system prompt fragment. The method is safe for concurrent use and
+// affects all future SystemPromptFragment calls.
+func (c *Catalog) SetDirective(directive string) {
+	c.mu.Lock()
+	c.directive = directive
+	c.mu.Unlock()
 }
 
 // refresh queries all discoverers, builds a name → entry map with
