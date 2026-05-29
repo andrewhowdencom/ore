@@ -93,6 +93,28 @@ func (e ProcessCompleteEvent) Kind() string { return "process_complete" }
 // Context returns the routing metadata for ProcessCompleteEvent.
 func (e ProcessCompleteEvent) Context() EventContext { return e.Ctx }
 
+// LifecycleEvent is emitted at structural boundaries of a single inference
+// turn to signal phase transitions. Phases are linear per-pipeline:
+//   - "submitted": the user message has been accepted and the provider call
+//     is about to start (after transforms).
+//   - "streaming": the first artifact has arrived from the provider.
+//   - "done": the turn (including accumulation and handler execution) is
+//     complete. For tool-execution loops, the framework returns to
+//     "submitted" for each subsequent provider call.
+type LifecycleEvent struct {
+	Phase string // "submitted", "streaming", "done"
+
+	// Ctx carries routing metadata for the event, such as provenance
+	// information for echo suppression.
+	Ctx EventContext
+}
+
+// Kind returns the event kind identifier.
+func (e LifecycleEvent) Kind() string { return "lifecycle" }
+
+// Context returns the event context.
+func (e LifecycleEvent) Context() EventContext { return e.Ctx }
+
 // ArtifactEvent wraps an artifact.Artifact with an EventContext so it
 // can be emitted as an OutputEvent without polluting the artifact type
 // with routing metadata.
