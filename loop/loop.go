@@ -298,6 +298,8 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 		}
 	}
 
+	s.Emit(ctx, LifecycleEvent{Phase: "submitted", Ctx: s.eventContext})
+
 	provCh := make(chan artifact.Artifact, 100)
 	var accumulatedArtifacts []artifact.Artifact
 
@@ -307,8 +309,13 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 		defer wg.Done()
 		accumulators := make(map[string]artifact.Artifact)
 		var keys []string
+		var hasStreamed bool
 
 		for art := range provCh {
+			if !hasStreamed {
+				hasStreamed = true
+				s.Emit(ctx, LifecycleEvent{Phase: "streaming", Ctx: s.eventContext})
+			}
 			if d, ok := art.(artifact.Accumulable); ok {
 				key := d.AccumulatorKey()
 				if _, exists := accumulators[key]; !exists {
@@ -359,7 +366,9 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 		return st, fmt.Errorf("turn failed: %w", err)
 	}
 
-	return s.finalizeTurn(ctx, st, state.RoleAssistant, accumulatedArtifacts)
+	st, err = s.finalizeTurn(ctx, st, state.RoleAssistant, accumulatedArtifacts)
+	s.Emit(ctx, LifecycleEvent{Phase: "done", Ctx: s.eventContext})
+	return st, err
 }
 
 // Submit records a non-inference turn into state, runs registered handlers,
