@@ -248,14 +248,9 @@ func TestMarshalOutputEvent(t *testing.T) {
 			want:  `{"kind":"error","message":"boom"}`,
 		},
 		{
-			name:  "process_complete",
-			event: loop.ProcessCompleteEvent{},
-			want:  `{"kind":"process_complete"}`,
-		},
-		{
-			name:  "process_complete_with_error",
-			event: loop.ProcessCompleteEvent{Err: errors.New("boom")},
-			want:  `{"kind":"process_complete","error":"boom"}`,
+			name:  "lifecycle_done",
+			event: loop.LifecycleEvent{Phase: "done"},
+			want:  `{"kind":"lifecycle","phase":"done"}`,
 		},
 		{
 			name:  "text_artifact",
@@ -351,14 +346,9 @@ func TestUnmarshalOutputEvent(t *testing.T) {
 			want:  loop.ErrorEvent{Err: errors.New("boom")},
 		},
 		{
-			name:  "process_complete",
-			input: `{"kind":"process_complete"}`,
-			want:  loop.ProcessCompleteEvent{},
-		},
-		{
-			name:  "process_complete_with_error",
-			input: `{"kind":"process_complete","error":"boom"}`,
-			want:  loop.ProcessCompleteEvent{Err: errors.New("boom")},
+			name:  "lifecycle_done",
+			input: `{"kind":"lifecycle","phase":"done"}`,
+			want:  loop.LifecycleEvent{Phase: "done"},
 		},
 		{
 			name:  "text_artifact",
@@ -404,7 +394,7 @@ func TestRoundTrip_OutputEvent(t *testing.T) {
 	events := []loop.OutputEvent{
 		loop.TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}},
 		loop.ErrorEvent{Err: errors.New("something went wrong")},
-		loop.ProcessCompleteEvent{},
+		loop.LifecycleEvent{Phase: "done"},
 		loop.ArtifactEvent{Artifact: artifact.Text{Content: "some text"}},
 		loop.ArtifactEvent{Artifact: artifact.TextDelta{Content: "so"}},
 		loop.ArtifactEvent{Artifact: artifact.ToolCall{ID: "1", Name: "calc", Arguments: `{"a":1}`}},
@@ -442,14 +432,9 @@ func TestMarshalOutputEvent_WithContext(t *testing.T) {
 			want:  `{"kind":"error","message":"boom","context":{"provenance":"tui"}}`,
 		},
 		{
-			name:  "process_complete_with_context",
-			event: loop.ProcessCompleteEvent{Ctx: loop.EventContext{Provenance: "http"}},
-			want:  `{"kind":"process_complete","context":{"provenance":"http"}}`,
-		},
-		{
-			name:  "process_complete_with_error_and_context",
-			event: loop.ProcessCompleteEvent{Err: errors.New("boom"), Ctx: loop.EventContext{Provenance: "http"}},
-			want:  `{"kind":"process_complete","error":"boom","context":{"provenance":"http"}}`,
+			name:  "lifecycle_done_with_context",
+			event: loop.LifecycleEvent{Phase: "done", Ctx: loop.EventContext{Provenance: "http"}},
+			want:  `{"kind":"lifecycle","phase":"done","context":{"provenance":"http"}}`,
 		},
 		{
 			name:  "text_artifact_with_context",
@@ -493,14 +478,9 @@ func TestUnmarshalOutputEvent_WithContext(t *testing.T) {
 			want:  loop.ErrorEvent{Err: errors.New("boom"), Ctx: loop.EventContext{Provenance: "tui"}},
 		},
 		{
-			name:  "process_complete_with_context",
-			input: `{"kind":"process_complete","context":{"provenance":"http"}}`,
-			want:  loop.ProcessCompleteEvent{Ctx: loop.EventContext{Provenance: "http"}},
-		},
-		{
-			name:  "process_complete_with_error_and_context",
-			input: `{"kind":"process_complete","error":"boom","context":{"provenance":"http"}}`,
-			want:  loop.ProcessCompleteEvent{Err: errors.New("boom"), Ctx: loop.EventContext{Provenance: "http"}},
+			name:  "lifecycle_done_with_context",
+			input: `{"kind":"lifecycle","phase":"done","context":{"provenance":"http"}}`,
+			want:  loop.LifecycleEvent{Phase: "done", Ctx: loop.EventContext{Provenance: "http"}},
 		},
 		{
 			name:  "text_artifact_with_context",

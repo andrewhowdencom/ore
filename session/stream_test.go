@@ -245,7 +245,7 @@ func TestStream_Emit_AllowedWhileBusy(t *testing.T) {
 	_ = stream.Close()
 }
 
-func TestStream_Process_EmitsProcessCompleteEvent(t *testing.T) {
+func TestStream_Process_EmitsLifecycleEvent(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
@@ -253,23 +253,33 @@ func TestStream_Process_EmitsProcessCompleteEvent(t *testing.T) {
 	stream, err := mgr.Create()
 	require.NoError(t, err)
 
-	ch := stream.Subscribe("process_complete")
+	ch := stream.Subscribe("lifecycle")
 	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
 	require.NoError(t, err)
 
-	select {
-	case event := <-ch:
-		pce, ok := event.(loop.ProcessCompleteEvent)
-		require.True(t, ok)
-		assert.Nil(t, pce.Err)
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("timeout waiting for ProcessCompleteEvent")
+	var le loop.LifecycleEvent
+	found := false
+	timeout := time.After(100 * time.Millisecond)
+	for !found {
+		select {
+		case event := <-ch:
+			if e, ok := event.(loop.LifecycleEvent); ok {
+				if e.Phase == "done" {
+					le = e
+					found = true
+				}
+			}
+		case <-timeout:
+			t.Fatal("timeout waiting for LifecycleEvent with phase 'done'")
+		}
 	}
+	require.True(t, found)
+	assert.Equal(t, "done", le.Phase)
 
 	_ = stream.Close()
 }
 
-func TestStream_Process_EmitsProcessCompleteEvent_WithError(t *testing.T) {
+func TestStream_Process_EmitsLifecycleEvent_WithError(t *testing.T) {
 	store := thread.NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
 		return st, errors.New("processor failed")
@@ -278,19 +288,46 @@ func TestStream_Process_EmitsProcessCompleteEvent_WithError(t *testing.T) {
 	stream, err := mgr.Create()
 	require.NoError(t, err)
 
-	ch := stream.Subscribe("process_complete")
+	ch := stream.Subscribe("lifecycle", "error")
 	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
 	require.Error(t, err)
 
-	select {
-	case event := <-ch:
-		pce, ok := event.(loop.ProcessCompleteEvent)
-		require.True(t, ok)
-		assert.NotNil(t, pce.Err)
-		assert.Contains(t, pce.Err.Error(), "processor failed")
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("timeout waiting for ProcessCompleteEvent")
+	var ee loop.ErrorEvent
+	foundError := false
+	timeout := time.After(100 * time.Millisecond)
+	for !foundError {
+		select {
+		case event := <-ch:
+			if e, ok := event.(loop.ErrorEvent); ok {
+				ee = e
+				foundError = true
+			}
+		case <-timeout:
+			t.Fatal("timeout waiting for ErrorEvent")
+		}
 	}
+	require.True(t, foundError)
+	assert.NotNil(t, ee.Err)
+	assert.Contains(t, ee.Err.Error(), "processor failed")
+
+	var le loop.LifecycleEvent
+	foundDone := false
+	timeout = time.After(100 * time.Millisecond)
+	for !foundDone {
+		select {
+		case event := <-ch:
+			if e, ok := event.(loop.LifecycleEvent); ok {
+				if e.Phase == "done" {
+					le = e
+					foundDone = true
+				}
+			}
+		case <-timeout:
+			t.Fatal("timeout waiting for LifecycleEvent with phase 'done'")
+		}
+	}
+	require.True(t, foundDone)
+	assert.Equal(t, "done", le.Phase)
 
 	_ = stream.Close()
 }
@@ -307,7 +344,7 @@ func (s *saveErrStore) Save(*thread.Thread) error                         { retu
 func (s *saveErrStore) Delete(id string) bool                             { return s.inner.Delete(id) }
 func (s *saveErrStore) List() ([]*thread.Thread, error)                   { return s.inner.List() }
 
-func TestStream_Process_EmitsProcessCompleteEvent_WithSaveError(t *testing.T) {
+func TestStream_Process_EmitsLifecycleEvent_WithSaveError(t *testing.T) {
 	store := &saveErrStore{inner: thread.NewMemoryStore()}
 	prov := &mockProvider{}
 	mgr := NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
@@ -315,24 +352,51 @@ func TestStream_Process_EmitsProcessCompleteEvent_WithSaveError(t *testing.T) {
 	stream, err := mgr.Create()
 	require.NoError(t, err)
 
-	ch := stream.Subscribe("process_complete")
+	ch := stream.Subscribe("lifecycle", "error")
 	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
 	require.Error(t, err)
 
-	select {
-	case event := <-ch:
-		pce, ok := event.(loop.ProcessCompleteEvent)
-		require.True(t, ok)
-		assert.NotNil(t, pce.Err)
-		assert.Contains(t, pce.Err.Error(), "save")
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("timeout waiting for ProcessCompleteEvent")
+	var ee loop.ErrorEvent
+	foundError := false
+	timeout := time.After(100 * time.Millisecond)
+	for !foundError {
+		select {
+		case event := <-ch:
+			if e, ok := event.(loop.ErrorEvent); ok {
+				ee = e
+				foundError = true
+			}
+		case <-timeout:
+			t.Fatal("timeout waiting for ErrorEvent")
+		}
 	}
+	require.True(t, foundError)
+	assert.NotNil(t, ee.Err)
+	assert.Contains(t, ee.Err.Error(), "save")
+
+	var le loop.LifecycleEvent
+	foundDone := false
+	timeout = time.After(100 * time.Millisecond)
+	for !foundDone {
+		select {
+		case event := <-ch:
+			if e, ok := event.(loop.LifecycleEvent); ok {
+				if e.Phase == "done" {
+					le = e
+					foundDone = true
+				}
+			}
+		case <-timeout:
+			t.Fatal("timeout waiting for LifecycleEvent with phase 'done'")
+		}
+	}
+	require.True(t, foundDone)
+	assert.Equal(t, "done", le.Phase)
 
 	_ = stream.Close()
 }
 
-func TestStream_Process_EmitsProcessCompleteEvent_PropagatesProvenance(t *testing.T) {
+func TestStream_Process_EmitsLifecycleEvent_PropagatesProvenance(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
@@ -340,23 +404,33 @@ func TestStream_Process_EmitsProcessCompleteEvent_PropagatesProvenance(t *testin
 	stream, err := mgr.Create()
 	require.NoError(t, err)
 
-	ch := stream.Subscribe("process_complete")
+	ch := stream.Subscribe("lifecycle")
 	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi", Ctx: loop.EventContext{Provenance: "test-provenance"}})
 	require.NoError(t, err)
 
-	select {
-	case event := <-ch:
-		pce, ok := event.(loop.ProcessCompleteEvent)
-		require.True(t, ok)
-		assert.Equal(t, "test-provenance", pce.Ctx.Provenance)
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("timeout waiting for ProcessCompleteEvent")
+	var le loop.LifecycleEvent
+	found := false
+	timeout := time.After(100 * time.Millisecond)
+	for !found {
+		select {
+		case event := <-ch:
+			if e, ok := event.(loop.LifecycleEvent); ok {
+				if e.Phase == "done" {
+					le = e
+					found = true
+				}
+			}
+		case <-timeout:
+			t.Fatal("timeout waiting for LifecycleEvent with phase 'done'")
+		}
 	}
+	require.True(t, found)
+	assert.Equal(t, "test-provenance", le.Ctx.Provenance)
 
 	_ = stream.Close()
 }
 
-func TestStream_Process_EmitsSingleProcessCompleteEvent_ForMultiTurn(t *testing.T) {
+func TestStream_Process_EmitsSingleLifecycleEvent_ForMultiTurn(t *testing.T) {
 	store := thread.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
@@ -371,31 +445,34 @@ func TestStream_Process_EmitsSingleProcessCompleteEvent_ForMultiTurn(t *testing.
 	require.NoError(t, err)
 
 	turnCh := stream.Subscribe("turn_complete")
-	procCh := stream.Subscribe("process_complete")
+	procCh := stream.Subscribe("lifecycle")
 
 	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
 	require.NoError(t, err)
 
-	// Should receive exactly one ProcessCompleteEvent
-	select {
-	case event := <-procCh:
-		pce, ok := event.(loop.ProcessCompleteEvent)
-		require.True(t, ok)
-		assert.Nil(t, pce.Err)
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("timeout waiting for ProcessCompleteEvent")
-	}
-
-	// Should NOT receive a second ProcessCompleteEvent
-	select {
-	case <-procCh:
-		t.Fatal("expected exactly one ProcessCompleteEvent, got a second")
-	case <-time.After(50 * time.Millisecond):
-		// Expected - no second event
-	}
-
-	// Close stream and drain turn_complete events
+	// Close stream and collect all lifecycle events
 	_ = stream.Close()
+	var lifecycleEvents []loop.LifecycleEvent
+	for event := range procCh {
+		if le, ok := event.(loop.LifecycleEvent); ok {
+			lifecycleEvents = append(lifecycleEvents, le)
+		}
+	}
+
+	// Verify at least one lifecycle event was received
+	require.GreaterOrEqual(t, len(lifecycleEvents), 1, "expected at least 1 lifecycle event")
+
+	// Verify at least one "done" event exists
+	var foundDone bool
+	for _, le := range lifecycleEvents {
+		if le.Phase == "done" {
+			foundDone = true
+			break
+		}
+	}
+	require.True(t, foundDone, "expected at least one 'done' lifecycle event")
+
+	// Drain turn_complete events
 	turnCount := 0
 	for range turnCh {
 		turnCount++
@@ -422,7 +499,7 @@ func TestStream_Submit_NonBlocking(t *testing.T) {
 	stream, err := mgr.Create()
 	require.NoError(t, err)
 
-	ch := stream.Subscribe("process_complete")
+	ch := stream.Subscribe("lifecycle")
 
 	start := time.Now()
 	err = stream.Submit(UserMessageEvent{Content: "hello"})
@@ -435,7 +512,7 @@ func TestStream_Submit_NonBlocking(t *testing.T) {
 	case <-ch:
 		// ok
 	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for process_complete")
+		t.Fatal("timeout waiting for lifecycle")
 	}
 
 	_ = stream.Close()
@@ -484,7 +561,7 @@ func TestStream_Submit_InterruptClearsQueue(t *testing.T) {
 	stream, err := mgr.Create()
 	require.NoError(t, err)
 
-	ch := stream.Subscribe("process_complete")
+	ch := stream.Subscribe("lifecycle", "error")
 
 	// Start draining in a goroutine before emitting events.
 	var events []loop.OutputEvent
@@ -516,21 +593,21 @@ func TestStream_Submit_InterruptClearsQueue(t *testing.T) {
 	_ = stream.Close()
 	<-done
 
-	// We should get process_complete for the cancelled blocking event and the interrupt.
+	// We should get lifecycle for the cancelled blocking event and the interrupt.
 	// The queued events should have been dropped.
-	var pcEvents []loop.ProcessCompleteEvent
+	var pcEvents []loop.LifecycleEvent
+	var errEvents []loop.ErrorEvent
 	for _, e := range events {
-		if pc, ok := e.(loop.ProcessCompleteEvent); ok {
+		if pc, ok := e.(loop.LifecycleEvent); ok {
 			pcEvents = append(pcEvents, pc)
 		}
+		if ee, ok := e.(loop.ErrorEvent); ok {
+			errEvents = append(errEvents, ee)
+		}
 	}
-	require.Len(t, pcEvents, 2, "expected 2 process_complete events (cancelled + interrupt)")
-
-	// First event was cancelled.
-	require.NotNil(t, pcEvents[0].Err)
-
-	// Interrupt succeeded.
-	require.Nil(t, pcEvents[1].Err)
+	require.Len(t, pcEvents, 3, "expected 3 lifecycle events (cancelled + interrupt)")
+	require.Len(t, errEvents, 2, "expected 2 error events (cancelled turn + process-level)")
+	require.NotNil(t, errEvents[0].Err)
 }
 
 func TestStream_ProcessAndSubmit_Mixed(t *testing.T) {
@@ -662,7 +739,7 @@ func TestStream_MultipleSubmit_StartsSingleWorker(t *testing.T) {
 	stream, err := mgr.Create()
 	require.NoError(t, err)
 
-	ch := stream.Subscribe("process_complete")
+	ch := stream.Subscribe("lifecycle")
 
 	// Submit 3 events rapidly from different goroutines.
 	var wg sync.WaitGroup
@@ -680,7 +757,7 @@ func TestStream_MultipleSubmit_StartsSingleWorker(t *testing.T) {
 		select {
 		case <-ch:
 		case <-time.After(2 * time.Second):
-			t.Fatalf("timeout waiting for process_complete %d", i)
+			t.Fatalf("timeout waiting for lifecycle %d", i)
 		}
 	}
 

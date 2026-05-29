@@ -218,7 +218,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 
 	// Default event kinds when none specified.
 	if len(req.Kinds) == 0 {
-		req.Kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "process_complete", "properties", "lifecycle"}
+		req.Kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "properties", "lifecycle"}
 	}
 
 	// Subscribe to the session's FanOut before the goroutine starts.
@@ -269,9 +269,8 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		case err := <-done:
 			// Drain all remaining events from the subscription buffer before
 			// returning. LifecycleEvent with Phase "done" is the terminal
-			// event. For backward compatibility, ProcessCompleteEvent is
-			// still written if seen. If no terminal event was observed and
-			// the pipeline errored, write a fallback ErrorEvent.
+			// event. If no terminal event was observed and the pipeline
+			// errored, write a fallback ErrorEvent.
 			sawTerminal := false
 			for {
 				select {
@@ -310,7 +309,7 @@ func (h *Handler) sessionEvents(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 	// Default event kinds when none specified.
 	if len(kinds) == 0 {
-		kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "process_complete", "properties", "lifecycle"}
+		kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "properties", "lifecycle"}
 	}
 
 	// Subscribe to the session's FanOut.

@@ -96,9 +96,10 @@ func (s *Stream) Submit(event Event) error {
 // in-flight turn; use Cancel() to abort a running turn.
 //
 // After the TurnProcessor returns (including all tool-call loops),
-// Process emits a ProcessCompleteEvent carrying the final error state
-// before performing save cleanup. Subscribers can use this event for
-// lifecycle signalling (audio notifications, UI state finalization).
+// Process emits a LifecycleEvent{Phase: "done"} to signal pipeline
+// completion before performing save cleanup. Subscribers can use
+// this event for lifecycle signalling (audio notifications, UI state
+// finalization).
 //
 // Errors:
 //   - "session %s is closed" if the stream has been closed
@@ -184,10 +185,12 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 		runErr = fmt.Errorf("save thread: %w", saveErr)
 	}
 
-	// Emit LifecycleEvent to signal pipeline completion, then ProcessCompleteEvent
-	// for backward compatibility until Task 7 removes it.
+	if runErr != nil {
+		s.step.Emit(ctx, loop.ErrorEvent{Err: runErr, Ctx: eventCtx})
+	}
+
+	// Emit LifecycleEvent to signal pipeline completion.
 	s.step.Emit(ctx, loop.LifecycleEvent{Phase: "done", Ctx: eventCtx})
-	s.step.Emit(ctx, loop.ProcessCompleteEvent{Err: runErr, Ctx: eventCtx})
 
 	// Cleanup.
 	s.mu.Lock()

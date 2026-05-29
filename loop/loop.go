@@ -71,28 +71,6 @@ func (e ErrorEvent) Kind() string { return "error" }
 // Context returns the event context.
 func (e ErrorEvent) Context() EventContext { return e.Ctx }
 
-// ProcessCompleteEvent is emitted when the entire inference pipeline
-// (including all tool-call loops) has finished. It carries the final
-// error state so subscribers can distinguish success from failure.
-// Err contains the final error from the TurnProcessor, the thread
-// store save step, or context cancellation. A nil Err means the
-// pipeline completed without error.
-// Unlike TurnCompleteEvent, which fires on every intermediate turn,
-// this event signals the end of a complete user-initiated interaction.
-type ProcessCompleteEvent struct {
-	Err error
-
-	// Ctx carries routing metadata for the event, such as provenance
-	// information for echo suppression.
-	Ctx EventContext
-}
-
-// Kind returns the event kind identifier for ProcessCompleteEvent.
-func (e ProcessCompleteEvent) Kind() string { return "process_complete" }
-
-// Context returns the routing metadata for ProcessCompleteEvent.
-func (e ProcessCompleteEvent) Context() EventContext { return e.Ctx }
-
 // LifecycleEvent is emitted at structural boundaries of a single inference
 // turn to signal phase transitions. Phases are linear per-pipeline:
 //   - "submitted": the user message has been accepted and the provider call
@@ -260,7 +238,7 @@ func WithHandlers(handlers ...Handler) Option {
 
 // WithOnEmit configures synchronous callbacks that run before the FanOut.
 // OnEmit callbacks receive every OutputEvent emitted by the Step, including
-// TurnCompleteEvent, ArtifactEvent, ErrorEvent, and ProcessCompleteEvent.
+// TurnCompleteEvent, ArtifactEvent, ErrorEvent, and LifecycleEvent.
 // They are invoked in registration order, blocking, and zero-drop.
 // This is the single place to wire state persistence, replacing previous
 // patterns that mutated state directly inside Turn().

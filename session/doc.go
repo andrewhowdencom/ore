@@ -42,14 +42,8 @@
 //
 //	LifecycleEvent signals phase transitions for the inference pipeline:
 //	"submitted" (message accepted), "streaming" (first artifact arrived),
-//	and "done" (turn complete). Conduits should subscribe to it to drive
-//	UI state without inferring lifecycle from data events.
-//	ProcessCompleteEvent is emitted after the queue worker finishes
-//	processing an event (including all tool-call loops). It carries the
-//	final error state and is the preferred signal for UI-level lifecycle
-//	actions (audio notifications, typing indicator dismissal). Conduits
-//	should subscribe to it in addition to TurnCompleteEvent, which fires
-//	on every intermediate turn for incremental rendering.
+//	and "done" (turn or pipeline complete). Conduits should subscribe to
+//	it to drive UI state without inferring lifecycle from data events.
 //
 // To persist state across turns, wire an OnEmit callback that appends
 // TurnCompleteEvent to the thread's state buffer. Typical composition:

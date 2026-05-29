@@ -53,13 +53,6 @@ type errorEventJSON struct {
 	Context *eventContextJSON `json:"context,omitempty"`
 }
 
-// processCompleteEventJSON is the JSON representation of a ProcessCompleteEvent.
-type processCompleteEventJSON struct {
-	Kind    string            `json:"kind"`
-	Error   string            `json:"error,omitempty"`
-	Context *eventContextJSON `json:"context,omitempty"`
-}
-
 // artifactEventJSON is the JSON representation of an ArtifactEvent.
 // It embeds artifactJSON so the artifact fields appear at the top level
 // alongside the context envelope. The Context field is omitted when empty.
@@ -147,8 +140,8 @@ func artifactToJSON(art artifact.Artifact) (*artifactJSON, bool) {
 }
 
 // MarshalOutputEvent serializes a loop.OutputEvent to JSON bytes.
-// It handles TurnCompleteEvent, ErrorEvent, ProcessCompleteEvent,
-// PropertiesEvent, LifecycleEvent, and all loop.ArtifactEvent wrapper
+// It handles TurnCompleteEvent, ErrorEvent, PropertiesEvent,
+// LifecycleEvent, and all loop.ArtifactEvent wrapper
 // types that contain an artifact.Artifact. Unknown artifact kinds are
 // silently skipped (returns nil, nil). Returns an error only for
 // unsupported event kinds.
@@ -170,15 +163,6 @@ func MarshalOutputEvent(event loop.OutputEvent) ([]byte, error) {
 			Message: e.Err.Error(),
 			Context: eventContextToJSON(e.Ctx),
 		})
-	case loop.ProcessCompleteEvent:
-		dto := processCompleteEventJSON{
-			Kind:    "process_complete",
-			Context: eventContextToJSON(e.Ctx),
-		}
-		if e.Err != nil {
-			dto.Error = e.Err.Error()
-		}
-		return json.Marshal(dto)
 	case loop.ArtifactEvent:
 		dto, ok := artifactToJSON(e.Artifact)
 		if !ok {
@@ -266,8 +250,8 @@ func artifactFromJSON(dto artifactJSON) (artifact.Artifact, error) {
 }
 
 // UnmarshalOutputEvent deserializes JSON bytes into a loop.OutputEvent.
-// It handles "turn_complete", "error", "process_complete", "properties",
-// "lifecycle", and all loop.ArtifactEvent types carrying artifact kinds.
+// It handles "turn_complete", "error", "properties", "lifecycle",
+// and all loop.ArtifactEvent types carrying artifact kinds.
 // Returns an error for unsupported kinds or malformed JSON.
 func UnmarshalOutputEvent(data []byte) (loop.OutputEvent, error) {
 	var peek struct {
@@ -294,16 +278,6 @@ func UnmarshalOutputEvent(data []byte) (loop.OutputEvent, error) {
 			return nil, err
 		}
 		return loop.ErrorEvent{Err: fmt.Errorf("%s", dto.Message), Ctx: eventContextFromJSON(dto.Context)}, nil
-	case "process_complete":
-		var dto processCompleteEventJSON
-		if err := json.Unmarshal(data, &dto); err != nil {
-			return nil, err
-		}
-		var err error
-		if dto.Error != "" {
-			err = fmt.Errorf("%s", dto.Error)
-		}
-		return loop.ProcessCompleteEvent{Err: err, Ctx: eventContextFromJSON(dto.Context)}, nil
 	case "properties":
 		var dto propertiesEventJSON
 		if err := json.Unmarshal(data, &dto); err != nil {
