@@ -133,3 +133,19 @@ func TestToolkit_SetDirective(t *testing.T) {
 	expected := "Custom directive text.\n\n- alpha: first skill"
 	assert.Equal(t, expected, fragment)
 }
+
+func TestToolkit_SetDirective_PartialFailure(t *testing.T) {
+	t.Parallel()
+	good := &mockDiscoverer{
+		meta: []SkillMeta{
+			{Name: "good-skill", Description: "from good discoverer"},
+		},
+	}
+	tk := NewToolkit(good, &failingDiscoverer{})
+	tk.SetDirective("Custom directive text.")
+	fn := tk.SystemPromptFragment()
+	fragment := fn(context.Background())
+
+	expected := "Custom directive text.\n\n- good-skill: from good discoverer"
+	assert.Equal(t, expected, fragment)
+}
