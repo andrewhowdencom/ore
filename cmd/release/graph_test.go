@@ -10,20 +10,30 @@ func TestBuildDependencyGraph(t *testing.T) {
 	root := t.TempDir()
 
 	// Root module depends on x/tool
-	os.WriteFile(filepath.Join(root, "go.mod"), []byte(
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(
 		"module example.com/root\ngo 1.21\nrequire github.com/andrewhowdencom/ore/x/tool v0.1.0\n"),
-		0644)
+		0644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Submodule with no ore deps
-	os.MkdirAll(filepath.Join(root, "x", "tool"), 0755)
-	os.WriteFile(filepath.Join(root, "x", "tool", "go.mod"),
-		[]byte("module example.com/root/x/tool\ngo 1.21\n"), 0644)
+	if err := os.MkdirAll(filepath.Join(root, "x", "tool"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "x", "tool", "go.mod"),
+		[]byte("module example.com/root/x/tool\ngo 1.21\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Another submodule depends on root and tool
-	os.MkdirAll(filepath.Join(root, "x", "provider", "openai"), 0755)
-	os.WriteFile(filepath.Join(root, "x", "provider", "openai", "go.mod"), []byte(
+	if err := os.MkdirAll(filepath.Join(root, "x", "provider", "openai"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "x", "provider", "openai", "go.mod"), []byte(
 		"module example.com/root/x/provider/openai\ngo 1.21\nrequire (\n\tgithub.com/andrewhowdencom/ore v0.1.0\n\tgithub.com/andrewhowdencom/ore/x/tool v0.1.0\n)\n"),
-		0644)
+		0644); err != nil {
+		t.Fatal(err)
+	}
 
 	modules := []Module{
 		{Path: "example.com/root", Dir: "."},

@@ -85,7 +85,7 @@ func (s *Stream) Submit(event Event) error {
 	s.queueCond.Signal()
 
 	if _, ok := event.(InterruptEvent); ok {
-		s.Cancel()
+		_ = s.Cancel()
 	}
 
 	return nil
@@ -133,7 +133,7 @@ func (s *Stream) Process(ctx context.Context, event Event) error {
 	s.queueCond.Signal()
 
 	if _, ok := event.(InterruptEvent); ok {
-		s.Cancel()
+		_ = s.Cancel()
 	}
 
 	select {
