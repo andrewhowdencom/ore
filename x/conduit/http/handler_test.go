@@ -41,14 +41,6 @@ func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- arti
 	return m.err
 }
 
-// blockingProvider is a provider that blocks until the context is cancelled.
-type blockingProvider struct{}
-
-func (m *blockingProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
-	<-ctx.Done()
-	return ctx.Err()
-}
-
 // noFlusherWriter implements http.ResponseWriter but NOT http.Flusher.
 // Used to test writer creation failure paths.
 type noFlusherWriter struct {
