@@ -60,7 +60,8 @@ func (t *Toolkit) SystemPromptFragment() func(context.Context) string {
 }
 
 // SetDirective overrides the default behavioral directive used in the
-// system prompt fragment. Delegates to the underlying Catalog.SetDirective.
+// system prompt fragment. It delegates to the underlying Catalog and
+// is safe for concurrent use.
 func (t *Toolkit) SetDirective(directive string) {
 	t.catalog.SetDirective(directive)
 }

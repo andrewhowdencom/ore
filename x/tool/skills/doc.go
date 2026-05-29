@@ -40,7 +40,7 @@
 //	import "github.com/andrewhowdencom/ore/x/systemprompt"
 //
 //	sp, _ := systemprompt.New(
-//	    systemprompt.WithContextContentFunc(tk.SystemPromptFragment()),
+//	    systemprompt.WithContextContentFunc(tk.SystemPromptFragment()), // returns func(context.Context) string
 //	)
 //
 // The default fragment includes a strong behavioral directive that tells the

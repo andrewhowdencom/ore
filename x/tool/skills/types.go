@@ -137,9 +137,15 @@ func (c *Catalog) SystemPromptFragment(ctx context.Context) string {
 		return ""
 	}
 
+	c.mu.RLock()
+	directive := c.directive
+	c.mu.RUnlock()
+
 	var b strings.Builder
-	b.WriteString(c.directive)
-	b.WriteString("\n\n")
+	if strings.TrimSpace(directive) != "" {
+		b.WriteString(directive)
+		b.WriteString("\n\n")
+	}
 	for i, m := range meta {
 		b.WriteString("- ")
 		b.WriteString(m.Name)
@@ -153,8 +159,8 @@ func (c *Catalog) SystemPromptFragment(ctx context.Context) string {
 }
 
 // SetDirective overrides the default behavioral directive used in the
-// system prompt fragment. Applications can use this to customize when
-// and how the LLM should load skill instructions.
+// system prompt fragment. The method is safe for concurrent use and
+// affects all future SystemPromptFragment calls.
 func (c *Catalog) SetDirective(directive string) {
 	c.mu.Lock()
 	c.directive = directive
