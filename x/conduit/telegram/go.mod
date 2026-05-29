@@ -3,8 +3,8 @@ module github.com/andrewhowdencom/ore/x/conduit/telegram
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.1.3
-	github.com/andrewhowdencom/ore/x/conduit v0.1.1
+	github.com/andrewhowdencom/ore v0.2.0
+	github.com/andrewhowdencom/ore/x/conduit v0.1.2
 	github.com/stretchr/testify v1.11.1
 )
 
