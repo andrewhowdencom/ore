@@ -237,11 +237,11 @@ func (m *model) renderArtifact(art artifact.Artifact, shouldRenderMarkdown bool)
 		compact := compactToolCall(a, m.viewport.Width())
 		return renderedBlock{kind: "tool_call", source: source, compact: compact}
 	case artifact.ToolResult:
-		source := a.Content
+		source := a.MarkdownString()
 		if a.IsError {
 			source = "Error: " + source
 		}
-		compact := compactToolResult(a, m.viewport.Width())
+		compact := compactToolResult(source, m.viewport.Width())
 		return renderedBlock{kind: "tool_result", source: source, compact: compact}
 	}
 	return renderedBlock{}

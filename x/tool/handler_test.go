@@ -83,6 +83,7 @@ func TestHandler_ExecutesRegisteredTool(t *testing.T) {
 	assert.Equal(t, "call_1", tr.ToolCallID)
 	assert.False(t, tr.IsError)
 	assert.Equal(t, "8", tr.Content)
+	assert.Equal(t, 8.0, tr.Value)
 }
 
 func TestHandler_InvalidArguments(t *testing.T) {
@@ -183,6 +184,7 @@ func TestHandler_EmptyArguments(t *testing.T) {
 	require.True(t, ok)
 	assert.False(t, tr.IsError)
 	assert.Equal(t, `"done"`, tr.Content)
+	assert.Equal(t, "done", tr.Value)
 }
 
 func TestHandler_ArrayReturnValue(t *testing.T) {
@@ -207,6 +209,7 @@ func TestHandler_ArrayReturnValue(t *testing.T) {
 	require.True(t, ok)
 	assert.False(t, tr.IsError)
 	assert.Equal(t, "[1,2,3]", tr.Content)
+	assert.Equal(t, []int{1, 2, 3}, tr.Value)
 }
 
 func TestHandler_NamespacedTool(t *testing.T) {
@@ -238,6 +241,7 @@ func TestHandler_NamespacedTool(t *testing.T) {
 	assert.Equal(t, "call_1", tr.ToolCallID)
 	assert.False(t, tr.IsError)
 	assert.Equal(t, `"remote-result"`, tr.Content)
+	assert.Equal(t, "remote-result", tr.Value)
 }
 
 func TestHandler_NamespacedUnknownNamespace(t *testing.T) {
