@@ -189,14 +189,9 @@ func (s *stdio) Start(ctx context.Context) error {
 	}
 	processErr := stream.Process(ctx, event)
 
-	if processErr != nil {
-		close(stop)
-		<-done
-		_ = stream.Close()
-		return fmt.Errorf("process event: %w", processErr)
-	}
-
-	// Close the stream to unblock the goroutine in the happy path.
+	// Close the stream to signal completion and let the goroutine drain
+	// any remaining events (including ErrorEvent on failure) before the
+	// subscriber channel is closed.
 	_ = stream.Close()
 
 	select {
@@ -205,6 +200,10 @@ func (s *stdio) Start(ctx context.Context) error {
 		close(stop)
 		<-done
 		return ctx.Err()
+	}
+
+	if processErr != nil {
+		return fmt.Errorf("process event: %w", processErr)
 	}
 
 	return turnErr

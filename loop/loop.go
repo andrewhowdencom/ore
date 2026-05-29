@@ -339,7 +339,9 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 	wg.Wait()
 
 	if err != nil {
-		s.Emit(ctx, ErrorEvent{Err: err, Ctx: s.eventContext})
+		// Emit the error event with a background context so it is not
+		// dropped when the turn context has already been cancelled.
+		s.Emit(context.Background(), ErrorEvent{Err: err, Ctx: s.eventContext})
 
 		return st, fmt.Errorf("turn failed: %w", err)
 	}

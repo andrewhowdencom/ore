@@ -1,5 +1,57 @@
 version: '3'
 
+# Root Taskfile — orchestrates the shared tasks from Taskfile.lib.yml for each
+# workspace module. The includes section maps every sub-workspace to the shared
+# library so they all expose the same build, test, lint, and validate targets.
+includes:
+  # When adding a new workspace module, add an entry here pointing to
+  # Taskfile.lib.yml with dir: set to the module directory.
+  examples:
+    taskfile: Taskfile.lib.yml
+    dir: examples
+  x-conduit:
+    taskfile: Taskfile.lib.yml
+    dir: x/conduit
+  x-conduit-http:
+    taskfile: Taskfile.lib.yml
+    dir: x/conduit/http
+  x-conduit-slack:
+    taskfile: Taskfile.lib.yml
+    dir: x/conduit/slack
+  x-conduit-stdio:
+    taskfile: Taskfile.lib.yml
+    dir: x/conduit/stdio
+  x-conduit-telegram:
+    taskfile: Taskfile.lib.yml
+    dir: x/conduit/telegram
+  x-conduit-tui:
+    taskfile: Taskfile.lib.yml
+    dir: x/conduit/tui
+  x-provider-openai:
+    taskfile: Taskfile.lib.yml
+    dir: x/provider/openai
+  x-tool:
+    taskfile: Taskfile.lib.yml
+    dir: x/tool
+  x-tool-bash:
+    taskfile: Taskfile.lib.yml
+    dir: x/tool/bash
+  x-tool-calculator:
+    taskfile: Taskfile.lib.yml
+    dir: x/tool/calculator
+  x-tool-filesystem:
+    taskfile: Taskfile.lib.yml
+    dir: x/tool/filesystem
+  x-tool-mcp:
+    taskfile: Taskfile.lib.yml
+    dir: x/tool/mcp
+  x-tool-sandbox-unsafe:
+    taskfile: Taskfile.lib.yml
+    dir: x/tool/sandbox/unsafe
+  x-tool-skills:
+    taskfile: Taskfile.lib.yml
+    dir: x/tool/skills
+
 tasks:
   setup:
     desc: Install required tools and dependencies
@@ -28,9 +80,28 @@ tasks:
     cmds:
       - echo "No code generation required"
 
+  # ---------------------------------------------------------------------------
+  # Validate the whole repository
+  # ---------------------------------------------------------------------------
   validate:
-    desc: Run lints, tests, and build before committing
+    desc: Run lints, tests, and build across all workspace modules
     deps: [lint, test, build]
+    cmds:
+      - task examples:validate
+      - task x-conduit:validate
+      - task x-conduit-http:validate
+      - task x-conduit-slack:validate
+      - task x-conduit-stdio:validate
+      - task x-conduit-telegram:validate
+      - task x-conduit-tui:validate
+      - task x-provider-openai:validate
+      - task x-tool:validate
+      - task x-tool-bash:validate
+      - task x-tool-calculator:validate
+      - task x-tool-filesystem:validate
+      - task x-tool-mcp:validate
+      - task x-tool-sandbox-unsafe:validate
+      - task x-tool-skills:validate
 
   release:
     desc: Release all modules with pending changes
