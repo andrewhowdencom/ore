@@ -917,7 +917,7 @@ func TestHandler_SendMessage_ErrorFallback_NoProcessComplete(t *testing.T) {
 	assert.True(t, foundError, "expected an error event in the NDJSON stream when process_complete is not subscribed")
 }
 
-func TestHandler_SendMessage_PropertiesEventInNDJSON(t *testing.T) {
+func TestHandler_SendMessage_LifecycleEventInNDJSON(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "Hello"},
@@ -956,18 +956,23 @@ func TestHandler_SendMessage_PropertiesEventInNDJSON(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(rr.Body.String()), "\n")
 	require.NotEmpty(t, lines)
 
-	// Find status event lines.
-	var statusEvents []map[string]interface{}
+	// Verify lifecycle events are present in the NDJSON stream.
+	// No self-emitted properties events should appear (they were removed
+	// in favor of structured lifecycle phases).
+	var lifecycleEvents []map[string]interface{}
 	for _, line := range lines {
 		var event map[string]interface{}
 		require.NoError(t, json.Unmarshal([]byte(line), &event))
-		if event["kind"] == "properties" {
-			statusEvents = append(statusEvents, event)
+		if event["kind"] == "lifecycle" {
+			lifecycleEvents = append(lifecycleEvents, event)
 		}
 	}
+	require.GreaterOrEqual(t, len(lifecycleEvents), 1)
+	assert.Equal(t, "submitted", lifecycleEvents[0]["phase"])
 
-	require.GreaterOrEqual(t, len(statusEvents), 1)
-	status := statusEvents[0]["properties"].(map[string]interface{})
-	assert.Equal(t, sessionID, status["thread_id"])
-	assert.Equal(t, "thinking...", status["state"])
+	var phases []string
+	for _, ev := range lifecycleEvents {
+		phases = append(phases, ev["phase"].(string))
+	}
+	assert.Equal(t, []string{"submitted", "streaming", "done", "done"}, phases)
 }
