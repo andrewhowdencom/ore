@@ -273,9 +273,9 @@ func TestMarshalOutputEvent(t *testing.T) {
 			want:  "",
 		},
 		{
-			name:  "status",
-			event: loop.StatusEvent{Status: map[string]string{"thread_id": "abc"}},
-			want:  `{"kind":"status","status":{"thread_id":"abc"}}`,
+			name:  "properties",
+			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}},
+			want:  `{"kind":"properties","properties":{"thread_id":"abc"}}`,
 		},
 	}
 
@@ -356,9 +356,9 @@ func TestUnmarshalOutputEvent(t *testing.T) {
 			want:  loop.ArtifactEvent{Artifact: artifact.Text{Content: "hello"}},
 		},
 		{
-			name:  "status",
-			input: `{"kind":"status","status":{"thread_id":"abc"}}`,
-			want:  loop.StatusEvent{Status: map[string]string{"thread_id": "abc"}},
+			name:  "properties",
+			input: `{"kind":"properties","properties":{"thread_id":"abc"}}`,
+			want:  loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}},
 		},
 		{
 			name:    "unknown_kind",
@@ -388,7 +388,7 @@ func TestRoundTrip_OutputEvent(t *testing.T) {
 		loop.ArtifactEvent{Artifact: artifact.Text{Content: "some text"}},
 		loop.ArtifactEvent{Artifact: artifact.TextDelta{Content: "so"}},
 		loop.ArtifactEvent{Artifact: artifact.ToolCall{ID: "1", Name: "calc", Arguments: `{"a":1}`}},
-		loop.StatusEvent{Status: map[string]string{"thread_id": "abc", "state": "ready"}},
+		loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc", "state": "ready"}},
 	}
 
 	for _, event := range events {
@@ -436,8 +436,8 @@ func TestMarshalOutputEvent_WithContext(t *testing.T) {
 		},
 		{
 			name:  "status_with_context",
-			event: loop.StatusEvent{Status: map[string]string{"thread_id": "abc"}, Ctx: loop.EventContext{Provenance: "http"}},
-			want:  `{"kind":"status","status":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
+			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}, Ctx: loop.EventContext{Provenance: "http"}},
+			want:  `{"kind":"properties","properties":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
 		},
 	}
 
@@ -487,8 +487,8 @@ func TestUnmarshalOutputEvent_WithContext(t *testing.T) {
 		},
 		{
 			name:  "status_with_context",
-			input: `{"kind":"status","status":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
-			want:  loop.StatusEvent{Status: map[string]string{"thread_id": "abc"}, Ctx: loop.EventContext{Provenance: "http"}},
+			input: `{"kind":"properties","properties":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
+			want:  loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}, Ctx: loop.EventContext{Provenance: "http"}},
 		},
 	}
 
@@ -561,31 +561,31 @@ func TestArtifactJSON_ToolCallDelta_IndexRoundTrip(t *testing.T) {
 	assert.Equal(t, "1", td.Arguments)
 }
 
-func TestRoundTrip_StatusEvent(t *testing.T) {
+func TestRoundTrip_PropertiesEvent(t *testing.T) {
 	tests := []struct {
 		name   string
-		event  loop.StatusEvent
+		event  loop.PropertiesEvent
 		want   string
 	}{
 		{
 			name:  "empty_map",
-			event: loop.StatusEvent{Status: map[string]string{}},
-			want:  `{"kind":"status","status":{}}`,
+			event: loop.PropertiesEvent{Properties: map[string]string{}},
+			want:  `{"kind":"properties","properties":{}}`,
 		},
 		{
 			name:  "single_key",
-			event: loop.StatusEvent{Status: map[string]string{"thread_id": "abc-123"}},
-			want:  `{"kind":"status","status":{"thread_id":"abc-123"}}`,
+			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc-123"}},
+			want:  `{"kind":"properties","properties":{"thread_id":"abc-123"}}`,
 		},
 		{
 			name:  "multiple_keys",
-			event: loop.StatusEvent{Status: map[string]string{"thread_id": "abc", "state": "thinking...", "model": "gpt-4o"}},
-			want:  `{"kind":"status","status":{"thread_id":"abc","state":"thinking...","model":"gpt-4o"}}`,
+			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc", "state": "thinking...", "model": "gpt-4o"}},
+			want:  `{"kind":"properties","properties":{"thread_id":"abc","state":"thinking...","model":"gpt-4o"}}`,
 		},
 		{
 			name:  "with_context",
-			event: loop.StatusEvent{Status: map[string]string{"thread_id": "abc"}, Ctx: loop.EventContext{Provenance: "http"}},
-			want:  `{"kind":"status","status":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
+			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}, Ctx: loop.EventContext{Provenance: "http"}},
+			want:  `{"kind":"properties","properties":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
 		},
 	}
 

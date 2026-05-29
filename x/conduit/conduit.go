@@ -25,7 +25,7 @@ type AudioNotifier interface {
 const (
 	CapEventSource Capability = "event-source"
 	// CapShowStatus signals that the conduit can display a structured
-	// status line fed by "status" OutputEvents carrying map[string]string
+	// status line fed by "properties" OutputEvents carrying map[string]string
 	// key-value pairs (e.g. thread_id, token counts, model name).
 	CapShowStatus Capability = "show-status"
 	CapRenderDelta         Capability = "render-delta"

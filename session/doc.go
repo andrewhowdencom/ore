@@ -40,6 +40,10 @@
 //
 // Lifecycle events:
 //
+//	LifecycleEvent signals phase transitions for the inference pipeline:
+//	"submitted" (message accepted), "streaming" (first artifact arrived),
+//	and "done" (turn complete). Conduits should subscribe to it to drive
+//	UI state without inferring lifecycle from data events.
 //	ProcessCompleteEvent is emitted after the queue worker finishes
 //	processing an event (including all tool-call loops). It carries the
 //	final error state and is the preferred signal for UI-level lifecycle
@@ -92,5 +96,5 @@
 //	_ = tuiConduit.Start(ctx)
 //
 //	// Emit custom output events (e.g. status updates) into the stream's FanOut.
-//	_ = stream.Emit(ctx, loop.StatusEvent{Status: map[string]string{"thread_id": stream.ID()}})
+//	_ = stream.Emit(ctx, loop.PropertiesEvent{Properties: map[string]string{"thread_id": stream.ID()}})
 package session

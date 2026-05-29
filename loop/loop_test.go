@@ -1365,33 +1365,33 @@ func TestOnEmit_ErrorEvent_ContextPropagation(t *testing.T) {
 	assert.Equal(t, "test-provenance", receivedCtx.Provenance)
 }
 
-func TestStatusEvent_Kind(t *testing.T) {
-	event := StatusEvent{Status: map[string]string{"key": "val"}}
-	assert.Equal(t, "status", event.Kind())
+func TestPropertiesEvent_Kind(t *testing.T) {
+	event := PropertiesEvent{Properties: map[string]string{"key": "val"}}
+	assert.Equal(t, "properties", event.Kind())
 }
 
-func TestStatusEvent_Context(t *testing.T) {
-	event := StatusEvent{
-		Status: map[string]string{"key": "val"},
+func TestPropertiesEvent_Context(t *testing.T) {
+	event := PropertiesEvent{
+		Properties: map[string]string{"key": "val"},
 		Ctx:    EventContext{Provenance: "test"},
 	}
 	assert.Equal(t, EventContext{Provenance: "test"}, event.Context())
 }
 
-func TestStatusEvent_EmitAndReceive(t *testing.T) {
+func TestPropertiesEvent_EmitAndReceive(t *testing.T) {
 	s := New()
-	ch := s.Subscribe("status")
+	ch := s.Subscribe("properties")
 
-	s.Emit(context.Background(), StatusEvent{
-		Status: map[string]string{"thread_id": "abc-123", "state": "thinking..."},
+	s.Emit(context.Background(), PropertiesEvent{
+		Properties: map[string]string{"thread_id": "abc-123", "state": "thinking..."},
 		Ctx:    EventContext{Provenance: "test"},
 	})
 
 	events := collectEvents(ch, 100*time.Millisecond)
 	require.Len(t, events, 1)
-	status, ok := events[0].(StatusEvent)
+	status, ok := events[0].(PropertiesEvent)
 	require.True(t, ok)
-	assert.Equal(t, "abc-123", status.Status["thread_id"])
-	assert.Equal(t, "thinking...", status.Status["state"])
+	assert.Equal(t, "abc-123", status.Properties["thread_id"])
+	assert.Equal(t, "thinking...", status.Properties["state"])
 	assert.Equal(t, "test", status.Ctx.Provenance)
 }

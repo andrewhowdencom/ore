@@ -917,7 +917,7 @@ func TestHandler_SendMessage_ErrorFallback_NoProcessComplete(t *testing.T) {
 	assert.True(t, foundError, "expected an error event in the NDJSON stream when process_complete is not subscribed")
 }
 
-func TestHandler_SendMessage_StatusEventInNDJSON(t *testing.T) {
+func TestHandler_SendMessage_PropertiesEventInNDJSON(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "Hello"},
@@ -961,13 +961,13 @@ func TestHandler_SendMessage_StatusEventInNDJSON(t *testing.T) {
 	for _, line := range lines {
 		var event map[string]interface{}
 		require.NoError(t, json.Unmarshal([]byte(line), &event))
-		if event["kind"] == "status" {
+		if event["kind"] == "properties" {
 			statusEvents = append(statusEvents, event)
 		}
 	}
 
 	require.GreaterOrEqual(t, len(statusEvents), 1)
-	status := statusEvents[0]["status"].(map[string]interface{})
+	status := statusEvents[0]["properties"].(map[string]interface{})
 	assert.Equal(t, sessionID, status["thread_id"])
 	assert.Equal(t, "thinking...", status["state"])
 }
