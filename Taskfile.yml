@@ -1,5 +1,8 @@
 version: '3'
 
+# Root Taskfile — orchestrates the shared tasks from Taskfile.lib.yml for each
+# workspace module. The includes section maps every sub-workspace to the shared
+# library so they all expose the same build, test, lint, and validate targets.
 includes:
   examples:
     taskfile: Taskfile.lib.yml
@@ -75,6 +78,9 @@ tasks:
     cmds:
       - echo "No code generation required"
 
+  # ---------------------------------------------------------------------------
+  # Validate the whole repository
+  # ---------------------------------------------------------------------------
   validate:
     desc: Run lints, tests, and build across all workspace modules
     deps: [lint, test, build]
