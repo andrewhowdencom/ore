@@ -1,7 +1,6 @@
-package thread
+package session
 
 import (
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -74,17 +73,6 @@ func TestMemoryStore_Delete(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestThread_Lock(t *testing.T) {
-	thread := &Thread{}
-
-	assert.True(t, thread.Lock())
-	assert.False(t, thread.Lock(), "second lock should fail")
-
-	thread.Unlock()
-	assert.True(t, thread.Lock(), "lock after unlock should succeed")
-	thread.Unlock()
-}
-
 func TestMemoryStore_List(t *testing.T) {
 	store := NewMemoryStore()
 	thread1, err := store.Create()
@@ -116,44 +104,6 @@ func TestMemoryStore_ConcurrentCreate(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-}
-
-func TestThread_Lock_HighContention(t *testing.T) {
-	thread, err := NewMemoryStore().Create()
-	require.NoError(t, err)
-
-	var maxConcurrent int
-	var current int
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if !thread.Lock() {
-				return
-			}
-
-			mu.Lock()
-			current++
-			if current > maxConcurrent {
-				maxConcurrent = current
-			}
-			mu.Unlock()
-
-			// Hold briefly to increase contention window.
-			time.Sleep(1 * time.Millisecond)
-
-			mu.Lock()
-			current--
-			mu.Unlock()
-			thread.Unlock()
-		}()
-	}
-	wg.Wait()
-
-	assert.Equal(t, 1, maxConcurrent, "at most one goroutine should hold the lock at any time")
 }
 
 func TestMemoryStore_GetBy(t *testing.T) {
@@ -223,27 +173,4 @@ func TestMemoryStore_GetBy_EmptyMetadata(t *testing.T) {
 
 	_, ok := store.GetBy("any_key", "any_value")
 	assert.False(t, ok)
-}
-
-func TestMemoryStore_GetBy_ConcurrentMutation(t *testing.T) {
-	store := NewMemoryStore()
-	thread, err := store.Create()
-	require.NoError(t, err)
-
-	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
-		wg.Add(2)
-		go func(i int) {
-			defer wg.Done()
-			if thread.Lock() {
-				thread.SetMetadata(fmt.Sprintf("key-%d", i), fmt.Sprintf("value-%d", i))
-				thread.Unlock()
-			}
-		}(i)
-		go func(i int) {
-			defer wg.Done()
-			store.GetBy(fmt.Sprintf("key-%d", i), fmt.Sprintf("value-%d", i))
-		}(i)
-	}
-	wg.Wait()
 }

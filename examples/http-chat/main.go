@@ -58,7 +58,6 @@ import (
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
-	"github.com/andrewhowdencom/ore/thread"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
@@ -122,7 +121,7 @@ func run() error {
 
 	// Step factory: each session gets its own Step with tool handler
 	// and provider tool options bound.
-	stepFactory := func(thr *thread.Thread) (*loop.Step, error) {
+	stepFactory := func(thr *session.Thread) (*loop.Step, error) {
 		return loop.New(
 			loop.WithHandlers(xtool.NewHandler(registry)),
 			loop.WithInvokeOptions(openai.WithTools(registry.Tools())),
@@ -135,15 +134,15 @@ func run() error {
 	}
 
 	// Create the thread store.
-	var threadStore thread.Store
+	var threadStore session.Store
 	if storeDir := os.Getenv("STORE_DIR"); storeDir != "" {
 		var err error
-		threadStore, err = thread.NewJSONStore(storeDir)
+		threadStore, err = session.NewJSONStore(storeDir)
 		if err != nil {
 			return fmt.Errorf("create JSON store: %w", err)
 		}
 	} else {
-		threadStore = thread.NewMemoryStore()
+		threadStore = session.NewMemoryStore()
 	}
 
 	// Create the session manager with the ReAct cognitive pattern.

@@ -30,7 +30,6 @@ import (
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
-	"github.com/andrewhowdencom/ore/thread"
 	"github.com/andrewhowdencom/ore/x/conduit/tui"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
 )
@@ -55,15 +54,15 @@ func run() error {
 
 	if listThreads {
 		// Create thread store (respecting STORE_DIR env var).
-		var store thread.Store
+		var store session.Store
 		if storeDir := os.Getenv("STORE_DIR"); storeDir != "" {
 			var err error
-			store, err = thread.NewJSONStore(storeDir)
+			store, err = session.NewJSONStore(storeDir)
 			if err != nil {
 				return fmt.Errorf("create JSON store: %w", err)
 			}
 		} else {
-			store = thread.NewMemoryStore()
+			store = session.NewMemoryStore()
 		}
 
 		threads, err := store.List()
@@ -104,15 +103,15 @@ func run() error {
 	baseURL := os.Getenv("ORE_BASE_URL")
 
 	// Create thread store.
-	var store thread.Store
+	var store session.Store
 	if storeDir := os.Getenv("STORE_DIR"); storeDir != "" {
 		var err error
-		store, err = thread.NewJSONStore(storeDir)
+		store, err = session.NewJSONStore(storeDir)
 		if err != nil {
 			return fmt.Errorf("create JSON store: %w", err)
 		}
 	} else {
-		store = thread.NewMemoryStore()
+		store = session.NewMemoryStore()
 	}
 
 	// Build OpenAI provider.
@@ -129,7 +128,7 @@ func run() error {
 	}
 
 	// Step factory for the manager.
-	stepFactory := func(thr *thread.Thread) (*loop.Step, error) {
+	stepFactory := func(thr *session.Thread) (*loop.Step, error) {
 		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
 			if tc, ok := event.(loop.TurnCompleteEvent); ok {
 				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)

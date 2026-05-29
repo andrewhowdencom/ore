@@ -10,7 +10,6 @@ import (
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
-	"github.com/andrewhowdencom/ore/thread"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,9 +39,9 @@ func TestIsAddressedToBot_ChannelNoMention(t *testing.T) {
 }
 
 func TestHandleMessageEvent_BotEcho(t *testing.T) {
-	store := thread.NewMemoryStore()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -64,9 +63,9 @@ func TestHandleMessageEvent_BotEcho(t *testing.T) {
 }
 
 func TestHandleMessageEvent_ChannelNotAddressed(t *testing.T) {
-	store := thread.NewMemoryStore()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -87,9 +86,9 @@ func TestHandleMessageEvent_ChannelNotAddressed(t *testing.T) {
 }
 
 func TestHandleMessageEvent_DM(t *testing.T) {
-	store := thread.NewMemoryStore()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(thr *thread.Thread) (*loop.Step, error) {
+	mgr := session.NewManager(store, prov, func(thr *session.Thread) (*loop.Step, error) {
 		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
 			if tc, ok := event.(loop.TurnCompleteEvent); ok {
 				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
@@ -127,9 +126,9 @@ func TestHandleMessageEvent_DM(t *testing.T) {
 }
 
 func TestHandleMessageEvent_ChannelMention(t *testing.T) {
-	store := thread.NewMemoryStore()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -159,9 +158,9 @@ func TestHandleMessageEvent_ChannelMention(t *testing.T) {
 }
 
 func TestHandleMessageEvent_Concurrent(t *testing.T) {
-	store := thread.NewMemoryStore()
+	store := session.NewMemoryStore()
 	prov := &blockingProvider{}
-	mgr := session.NewManager(store, prov, func(*thread.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -169,7 +168,7 @@ func TestHandleMessageEvent_Concurrent(t *testing.T) {
 	sc := c.(*SlackConduit)
 
 	// Create the thread first so both messages resolve to the same stream.
-	_, _, err = sc.resolveThread("D123", "D123")
+	_, err = sc.resolveThread("D123", "D123")
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())

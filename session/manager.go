@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
-	"github.com/andrewhowdencom/ore/thread"
 )
 
 // TurnProcessor runs the full inference pipeline for a single turn after
@@ -44,9 +44,9 @@ func makeKindsSet(kinds []string) map[string]struct{} {
 // Manager owns the Thread↔Step binding and acts as a factory/registry for
 // Stream handles.
 type Manager struct {
-	store     thread.Store
+	store     Store
 	provider  provider.Provider
-	newStep   func(*thread.Thread) (*loop.Step, error)
+	newStep   func(*Thread) (*loop.Step, error)
 	processor TurnProcessor
 	sessions  map[string]*Stream
 	mu        sync.RWMutex
@@ -56,7 +56,7 @@ type Manager struct {
 }
 
 // NewManager creates a new Manager with the given dependencies.
-func NewManager(store thread.Store, prov provider.Provider, newStep func(*thread.Thread) (*loop.Step, error), processor TurnProcessor, opts ...ManagerOption) *Manager {
+func NewManager(store Store, prov provider.Provider, newStep func(*Thread) (*loop.Step, error), processor TurnProcessor, opts ...ManagerOption) *Manager {
 	m := &Manager{
 		store:     store,
 		provider:  prov,
@@ -155,9 +155,53 @@ func (m *Manager) Close(sessionID string) error {
 	return stream.Close()
 }
 
-// Store returns the underlying thread.Store.
-func (m *Manager) Store() thread.Store {
-	return m.store
+// GetBy retrieves a thread by a metadata key-value pair.
+func (m *Manager) GetBy(key, value string) (*Thread, bool) {
+	return m.store.GetBy(key, value)
+}
+
+// GetThread retrieves a thread by ID.
+func (m *Manager) GetThread(id string) (*Thread, bool) {
+	return m.store.Get(id)
+}
+
+// ListThreads returns all stored threads.
+func (m *Manager) ListThreads() ([]*Thread, error) {
+	return m.store.List()
+}
+
+// CreateWithID creates a new thread with the given ID and an active stream backed by it.
+func (m *Manager) CreateWithID(id string) (*Stream, error) {
+	thr := &Thread{
+		ID:        id,
+		State:     &state.Buffer{},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Metadata:  make(map[string]string),
+	}
+	if err := m.store.Save(thr); err != nil {
+		return nil, fmt.Errorf("save thread: %w", err)
+	}
+	step, err := m.newStep(thr)
+	if err != nil {
+		return nil, fmt.Errorf("create step: %w", err)
+	}
+	stream := &Stream{
+		id:        thr.ID,
+		thread:    thr,
+		step:      step,
+		provider:  m.provider,
+		processor: m.processor,
+		store:     m.store,
+	}
+
+	m.mu.Lock()
+	m.sessions[thr.ID] = stream
+	m.mu.Unlock()
+
+	m.startSinkForwarding(stream)
+
+	return stream, nil
 }
 
 // List returns handles for all active streams.
