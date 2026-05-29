@@ -184,7 +184,9 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 		runErr = fmt.Errorf("save thread: %w", saveErr)
 	}
 
-	// Emit ProcessCompleteEvent with the final error state (including save errors).
+	// Emit LifecycleEvent to signal pipeline completion, then ProcessCompleteEvent
+	// for backward compatibility until Task 7 removes it.
+	s.step.Emit(ctx, loop.LifecycleEvent{Phase: "done", Ctx: eventCtx})
 	s.step.Emit(ctx, loop.ProcessCompleteEvent{Err: runErr, Ctx: eventCtx})
 
 	// Cleanup.
