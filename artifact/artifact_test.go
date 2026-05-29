@@ -116,6 +116,11 @@ func TestToolResult_LLMString(t *testing.T) {
 			tr:   ToolResult{Content: "fallback"},
 			want: "fallback",
 		},
+		{
+			name: "unserializable Value falls back to Content",
+			tr:   ToolResult{Value: make(chan int), Content: "fallback"},
+			want: "fallback",
+		},
 	}
 
 	for _, tt := range tests {
@@ -149,6 +154,11 @@ func TestToolResult_MarkdownString(t *testing.T) {
 		{
 			name: "zero Value falls back to Content",
 			tr:   ToolResult{Content: "fallback"},
+			want: "fallback",
+		},
+		{
+			name: "unserializable Value falls back to Content",
+			tr:   ToolResult{Value: make(chan int), Content: "fallback"},
 			want: "fallback",
 		},
 	}

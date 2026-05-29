@@ -61,6 +61,11 @@ type MarkdownRenderer interface {
 }
 
 // ToolResult represents the result of executing a tool call.
+// Content holds a JSON-marshaled fallback string for consumers that do not
+// support custom rendering. Value holds the raw typed result, enabling
+// downstream packages (providers, conduits) to apply custom serialization
+// via LLMRenderer or MarkdownRenderer. When Value is nil or its type is
+// not recognized, consumers fall back to Content.
 type ToolResult struct {
 	ToolCallID string
 	Content    string
