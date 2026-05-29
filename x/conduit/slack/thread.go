@@ -5,50 +5,42 @@ import (
 	"strings"
 
 	"github.com/andrewhowdencom/ore/session"
-	"github.com/andrewhowdencom/ore/thread"
 	"github.com/slack-go/slack/slackevents"
 )
 
 // resolveThread looks up or creates an ore Thread mapped to the given
 // Slack thread identifier and channel ID, then returns the active session
-// Stream and the underlying Thread.
-func (c *SlackConduit) resolveThread(slackThreadID string, channelID string) (*session.Stream, *thread.Thread, error) {
-	store := c.mgr.Store()
-
+// Stream.
+func (c *SlackConduit) resolveThread(slackThreadID string, channelID string) (*session.Stream, error) {
 	// Try to resume an existing thread by slack_thread_id metadata.
-	if thr, ok := store.GetBy("slack_thread_id", slackThreadID); ok {
+	if thr, ok := c.mgr.GetBy("slack_thread_id", slackThreadID); ok {
 		stream, err := c.mgr.Attach(thr.ID)
 		if err != nil {
-			return nil, nil, fmt.Errorf("attach to thread %q: %w", thr.ID, err)
+			return nil, fmt.Errorf("attach to thread %q: %w", thr.ID, err)
 		}
 		c.streamsMu.Lock()
 		c.activeStreams[stream.ID()] = stream
 		c.streamsMu.Unlock()
-		return stream, thr, nil
+		return stream, nil
 	}
 
 	// No existing thread — create a new one.
 	stream, err := c.mgr.Create()
 	if err != nil {
-		return nil, nil, fmt.Errorf("create thread: %w", err)
+		return nil, fmt.Errorf("create thread: %w", err)
 	}
 
-	thr, ok := store.Get(stream.ID())
-	if !ok {
-		return nil, nil, fmt.Errorf("created thread %q not found in store", stream.ID())
-	}
-
-	thr.SetMetadata("slack_thread_id", slackThreadID)
-	thr.SetMetadata("slack_channel_id", channelID)
-	if err := store.Save(thr); err != nil {
-		return nil, nil, fmt.Errorf("save thread metadata: %w", err)
+	stream.SetMetadata("slack_thread_id", slackThreadID)
+	stream.SetMetadata("slack_channel_id", channelID)
+	if err := stream.Save(); err != nil {
+		return nil, fmt.Errorf("save thread metadata: %w", err)
 	}
 
 	c.streamsMu.Lock()
 	c.activeStreams[stream.ID()] = stream
 	c.streamsMu.Unlock()
 
-	return stream, thr, nil
+	return stream, nil
 }
 
 // slackThreadIDFromEvent extracts the ore thread identifier from a Slack

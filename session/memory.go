@@ -1,4 +1,4 @@
-package thread
+package session
 
 import (
 	"crypto/rand"
@@ -14,7 +14,7 @@ import (
 // MemoryStore is an in-memory Store implementation.
 type MemoryStore struct {
 	threads map[string]*Thread
-	mu            sync.RWMutex
+	mu      sync.RWMutex
 }
 
 // NewMemoryStore creates a new empty in-memory store.

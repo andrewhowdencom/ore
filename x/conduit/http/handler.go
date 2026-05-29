@@ -12,7 +12,7 @@ import (
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
-	"github.com/andrewhowdencom/ore/thread"
+
 )
 
 // Option configures a Handler via functional options.
@@ -381,9 +381,7 @@ func (h *Handler) serveUI(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 // listThreads handles GET /threads by returning all threads
 // in the store as a JSON array.
 func (h *Handler) listThreads(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-	var threads []*thread.Thread
-	var err error
-	threads, err = h.mgr.Store().List()
+	threads, err := h.mgr.ListThreads()
 	if err != nil {
 		w.WriteHeader(stdhttp.StatusInternalServerError)
 		return

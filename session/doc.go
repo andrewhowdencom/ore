@@ -3,7 +3,7 @@
 // framework.
 //
 // Stream is a per-session primitive that owns the loop.Step,
-// thread.Thread, TurnProcessor, and provider for a single active
+// Thread, TurnProcessor, and provider for a single active
 // conversation. It provides ingress (Submit, Process) and egress
 // (Subscribe) plus lifecycle controls (Cancel, Close).
 //
@@ -23,7 +23,7 @@
 // handlers that must close an NDJSON response stream).
 //
 // Manager is a factory/registry for Stream handles. It creates and
-// manages active streams, each pairing a persistent thread.Thread with
+// manages active streams, each pairing a persistent Thread with
 // an ephemeral loop.Step. Applications configure a Manager with a
 // provider, step factory, and cognitive pattern (TurnProcessor).
 // Conduits obtain a *Stream from the Manager (via Create, Attach, or
@@ -48,9 +48,9 @@
 // To persist state across turns, wire an OnEmit callback that appends
 // TurnCompleteEvent to the thread's state buffer. Typical composition:
 //
-//	store := thread.NewMemoryStore()
+//	store := NewMemoryStore()
 //	prov, _ := openai.New(openai.WithAPIKey(apiKey), openai.WithModel(model))
-//	stepFactory := func(thr *thread.Thread) (*loop.Step, error) {
+//	stepFactory := func(thr *Thread) (*loop.Step, error) {
 //		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
 //			if tc, ok := event.(loop.TurnCompleteEvent); ok {
 //				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
@@ -59,11 +59,11 @@
 //	}
 //	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())
 //
-// The factory receives *thread.Thread so it can bind per-session state.
+// The factory receives *Thread so it can bind per-session state.
 // For example, a factory can close over the thread to inject a dynamic
 // system prompt that reads from thread.GetMetadata("persona"):
 //
-//	stepFactory := func(thr *thread.Thread) (*loop.Step, error) {
+//	stepFactory := func(thr *Thread) (*loop.Step, error) {
 //		// Build transforms that use thr.Metadata, thr.ID, etc.
 //		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
 //			if tc, ok := event.(loop.TurnCompleteEvent); ok {

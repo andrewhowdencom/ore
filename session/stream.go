@@ -9,10 +9,9 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
-	"github.com/andrewhowdencom/ore/thread"
 )
 
-// Stream is a per-session primitive that owns the loop.Step, thread.Thread,
+// Stream is a per-session primitive that owns the loop.Step, Thread,
 // TurnProcessor, and provider for a single active conversation. It provides
 // ingress (Process, Submit) and egress (Subscribe) for the session, plus
 // lifecycle controls (Cancel, Close).
@@ -22,11 +21,11 @@ import (
 // also enqueues but blocks until the event has been fully processed.
 type Stream struct {
 	id          string
-	thread      *thread.Thread
+	thread      *Thread
 	step        *loop.Step
 	provider    provider.Provider
 	processor   TurnProcessor
-	store       thread.Store
+	store       Store
 	mu          sync.Mutex
 	cancel      context.CancelFunc
 	closed      bool
@@ -301,6 +300,21 @@ func (s *Stream) Emit(ctx context.Context, event loop.OutputEvent) error {
 
 // ID returns the stream's unique identifier (same as the thread ID).
 func (s *Stream) ID() string { return s.id }
+
+// GetMetadata retrieves a metadata value from the underlying thread.
+func (s *Stream) GetMetadata(key string) (string, bool) {
+	return s.thread.GetMetadata(key)
+}
+
+// SetMetadata sets a metadata value on the underlying thread.
+func (s *Stream) SetMetadata(key, value string) {
+	s.thread.SetMetadata(key, value)
+}
+
+// Save persists the underlying thread to the store.
+func (s *Stream) Save() error {
+	return s.store.Save(s.thread)
+}
 
 // Close closes the stream's Step and marks it as closed.
 // The underlying thread is NOT deleted from the store.

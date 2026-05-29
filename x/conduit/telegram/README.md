@@ -74,8 +74,8 @@ Environment variables read at runtime (not at construction time):
 
 Each unique Telegram `chat_id` gets its own isolated ore `session.Thread`. The
 first time a message arrives from a given chat, the conduit creates a
-`thread.Thread` with the `chat_id` as its deterministic thread ID via
-`mgr.Store().Save()` and then attaches to it. Subsequent messages from the same
+`session.Thread` with the `chat_id` as its deterministic thread ID via
+`mgr.CreateWithID(chat_id)` and then attaches to it. Subsequent messages from the same
 chat resume the existing thread via `mgr.Attach(chat_id)`.
 
 Sessions are closed when the conduit shuts down (`ctx.Done()`). Threads are

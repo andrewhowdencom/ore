@@ -15,7 +15,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
-	"github.com/andrewhowdencom/ore/thread"
+
 	"github.com/andrewhowdencom/ore/x/conduit"
 )
 
@@ -214,18 +214,12 @@ func (c *telegramConduit) getOrCreateStream(chatIDStr string) (*session.Stream, 
 	}
 
 	// Thread not found; create it with the chat_id as the thread ID.
-	thr := &thread.Thread{
-		ID:        chatIDStr,
-		State:     &state.Buffer{},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-		Metadata:  make(map[string]string),
-	}
-	if err := c.mgr.Store().Save(thr); err != nil {
+	stream, err = c.mgr.CreateWithID(chatIDStr)
+	if err != nil {
 		return nil, fmt.Errorf("create thread: %w", err)
 	}
 
-	return c.mgr.Attach(chatIDStr)
+	return stream, nil
 }
 
 // Telegram API structs.
