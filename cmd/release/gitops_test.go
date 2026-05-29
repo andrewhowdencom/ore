@@ -26,7 +26,7 @@ func captureStdout(t *testing.T, fn func()) string {
 	outC := make(chan string)
 	go func() {
 		var buf bytes.Buffer
-		io.Copy(&buf, r)
+		_, _ = io.Copy(&buf, r)
 		outC <- buf.String()
 	}()
 
@@ -88,8 +88,12 @@ func TestStageAndCommit_WithGoSum_CreatesCommit(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "go.sum"), []byte("example.com/test h1:abc\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	exec.Command("git", "-C", dir, "add", "go.sum").Run()
-	exec.Command("git", "-C", dir, "commit", "-m", "add go.sum").Run()
+	if err := exec.Command("git", "-C", dir, "add", "go.sum").Run(); err != nil {
+		t.Fatal(err)
+	}
+	if err := exec.Command("git", "-C", dir, "commit", "-m", "add go.sum").Run(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Modify only go.mod.
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/test\ngo 1.26\n\nrequire foo v1.0.0\n"), 0644); err != nil {
