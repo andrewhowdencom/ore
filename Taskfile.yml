@@ -4,6 +4,8 @@ version: '3'
 # workspace module. The includes section maps every sub-workspace to the shared
 # library so they all expose the same build, test, lint, and validate targets.
 includes:
+  # When adding a new workspace module, add an entry here pointing to
+  # Taskfile.lib.yml with dir: set to the module directory.
   examples:
     taskfile: Taskfile.lib.yml
     dir: examples

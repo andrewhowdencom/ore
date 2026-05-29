@@ -80,11 +80,14 @@ All examples read `ORE_API_KEY` from the environment. Set `ORE_MODEL` to choose
 a different model (default: `gpt-4o`). Set `STORE_DIR` for persistent JSON
 thread storage.
 
+See [Development / Validation](#development--validation) for how to validate
+the entire codebase before submitting changes.
+
 ## Development / Validation
 
 The repository uses **Taskfile** for common developer commands. The root task
-`validate` runs the full lint–test–build pipeline for **every** workspace
-module (core, `examples/`, and all `x/*` packages):
+`validate` runs the full lint–test–build pipeline for **all 16 workspace
+modules** (root, `examples/`, and every `x/*` package):
 
 ```bash
 task validate
