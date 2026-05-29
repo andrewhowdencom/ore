@@ -3,6 +3,7 @@ package skills
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -192,7 +193,7 @@ func TestCatalog_SystemPromptFragment(t *testing.T) {
 	c := NewCatalog(d)
 	fragment := c.SystemPromptFragment(context.Background())
 
-	expected := "You have access to the following specialized skills. Use read_skill(name=<skill>) to load detailed instructions when needed:\n\n- alpha: first skill\n- beta: second skill"
+	expected := "When your task matches a skill description below, call read_skill(name=<skill>) to load its detailed instructions before proceeding.\n\n- alpha: first skill\n- beta: second skill"
 	assert.Equal(t, expected, fragment)
 }
 
@@ -223,4 +224,94 @@ func TestCatalog_SystemPromptFragment_PartialFailure(t *testing.T) {
 
 	assert.Contains(t, fragment, "good-skill")
 	assert.Contains(t, fragment, "from good discoverer")
+}
+
+func TestCatalog_SetDirective(t *testing.T) {
+	t.Parallel()
+	d := &mockDiscoverer{
+		meta: []SkillMeta{
+			{Name: "alpha", Description: "first skill"},
+		},
+	}
+	c := NewCatalog(d)
+	c.SetDirective("Custom directive text.")
+	fragment := c.SystemPromptFragment(context.Background())
+
+	expected := "Custom directive text.\n\n- alpha: first skill"
+	assert.Equal(t, expected, fragment)
+}
+
+func TestCatalog_SetDirective_EmptyCatalog(t *testing.T) {
+	t.Parallel()
+	c := NewCatalog()
+	c.SetDirective("Custom directive text.")
+	fragment := c.SystemPromptFragment(context.Background())
+	assert.Empty(t, fragment)
+}
+
+func TestCatalog_SetDirective_EmptyDirective(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		directive string
+	}{
+		{"empty string", ""},
+		{"whitespace only", "   "},
+		{"newline whitespace", "\n\t  \n"},
+	}
+
+	d := &mockDiscoverer{
+		meta: []SkillMeta{
+			{Name: "alpha", Description: "first skill"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewCatalog(d)
+			c.SetDirective(tt.directive)
+			fragment := c.SystemPromptFragment(context.Background())
+
+			// When directive is empty or whitespace-only, the header line
+			// and its trailing newlines should be omitted.
+			assert.Equal(t, "- alpha: first skill", fragment)
+		})
+	}
+}
+
+func TestCatalog_DirectiveRace(t *testing.T) {
+	t.Parallel()
+	d := &mockDiscoverer{
+		meta: []SkillMeta{
+			{Name: "alpha", Description: "first skill"},
+		},
+	}
+	c := NewCatalog(d)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			c.SetDirective(fmt.Sprintf("directive %d", i))
+			_ = c.SystemPromptFragment(context.Background())
+		}(i)
+	}
+	wg.Wait()
+}
+
+func TestCatalog_SetDirective_PartialFailure(t *testing.T) {
+	t.Parallel()
+	good := &mockDiscoverer{
+		meta: []SkillMeta{
+			{Name: "good-skill", Description: "from good discoverer"},
+		},
+	}
+	bad := &failingDiscoverer{}
+	c := NewCatalog(good, bad)
+	c.SetDirective("Custom directive text.")
+	fragment := c.SystemPromptFragment(context.Background())
+
+	expected := "Custom directive text.\n\n- good-skill: from good discoverer"
+	assert.Equal(t, expected, fragment)
 }

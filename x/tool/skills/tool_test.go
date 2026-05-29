@@ -107,7 +107,7 @@ func TestToolkit_SystemPromptFragment(t *testing.T) {
 	fn := tk.SystemPromptFragment()
 	fragment := fn(context.Background())
 
-	expected := "You have access to the following specialized skills. Use read_skill(name=<skill>) to load detailed instructions when needed:\n\n- alpha: first skill\n- beta: second skill"
+	expected := "When your task matches a skill description below, call read_skill(name=<skill>) to load its detailed instructions before proceeding.\n\n- alpha: first skill\n- beta: second skill"
 	assert.Equal(t, expected, fragment)
 }
 
@@ -117,4 +117,35 @@ func TestToolkit_SystemPromptFragment_ErrorFallback(t *testing.T) {
 	fn := tk.SystemPromptFragment()
 	fragment := fn(context.Background())
 	assert.Empty(t, fragment)
+}
+
+func TestToolkit_SetDirective(t *testing.T) {
+	t.Parallel()
+	tk := NewToolkit(&mockDiscoverer{
+		meta: []SkillMeta{
+			{Name: "alpha", Description: "first skill"},
+		},
+	})
+	tk.SetDirective("Custom directive text.")
+	fn := tk.SystemPromptFragment()
+	fragment := fn(context.Background())
+
+	expected := "Custom directive text.\n\n- alpha: first skill"
+	assert.Equal(t, expected, fragment)
+}
+
+func TestToolkit_SetDirective_PartialFailure(t *testing.T) {
+	t.Parallel()
+	good := &mockDiscoverer{
+		meta: []SkillMeta{
+			{Name: "good-skill", Description: "from good discoverer"},
+		},
+	}
+	tk := NewToolkit(good, &failingDiscoverer{})
+	tk.SetDirective("Custom directive text.")
+	fn := tk.SystemPromptFragment()
+	fragment := fn(context.Background())
+
+	expected := "Custom directive text.\n\n- good-skill: from good discoverer"
+	assert.Equal(t, expected, fragment)
 }
