@@ -87,7 +87,7 @@ func (s *stdio) Start(ctx context.Context) error {
 		return fmt.Errorf("start session: %w", err)
 	}
 
-	outputCh := stream.Subscribe("text_delta", "reasoning_delta", "tool_call_delta", "turn_complete", "process_complete", "error")
+	outputCh := stream.Subscribe("text_delta", "reasoning_delta", "tool_call_delta", "turn_complete", "process_complete", "error", "lifecycle")
 
 	done := make(chan struct{})
 	stop := make(chan struct{})
@@ -142,7 +142,19 @@ func (s *stdio) Start(ctx context.Context) error {
 					}
 					currentKind = ""
 
-				case loop.ProcessCompleteEvent:
+				case loop.LifecycleEvent:
+				// Print phase transitions for user feedback.
+				// Turn-level "done" is handled by TurnCompleteEvent for
+				// fence closing; pipeline-level "done" is handled by
+				// ProcessCompleteEvent (to be replaced in Task 7).
+				switch e.Phase {
+				case "submitted":
+					fmt.Fprint(s.out, "\n")
+				case "done":
+					fmt.Fprint(s.out, "\n")
+				}
+
+			case loop.ProcessCompleteEvent:
 					if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
 						fmt.Fprint(s.out, "\n```\n")
 					}
