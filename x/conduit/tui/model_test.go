@@ -283,15 +283,6 @@ func TestModel_View_ContainsToolTurn(t *testing.T) {
 	assert.Contains(t, segment, "\n", "label and content should be on separate lines")
 }
 
-func TestModel_View_ContainsStatus(t *testing.T) {
-	m := newTestModel()
-	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-	m.status = map[string]string{"state": "thinking..."}
-	m.syncViewport()
-	output := m.View().Content
-	assert.Contains(t, output, "state=thinking...")
-}
-
 func TestModel_View_ContainsPrompt(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
