@@ -306,21 +306,16 @@ func compactToolCall(tc artifact.ToolCall, maxWidth int) string {
 	return truncateString(result, maxWidth)
 }
 
-// compactToolResult formats a tool result into a compact single-line string,
-// keeping the TUI concise by truncating at the first newline or maxWidth
-// characters. If the result is an error (IsError == true), the prefix
-// "Error: " is added before truncation so the compact line still signals
-// a failure. maxWidth is normally the current viewport width.
-func compactToolResult(tr artifact.ToolResult, maxWidth int) string {
-	content := tr.Content
+// compactToolResult formats a pre-rendered tool result string into a compact
+// single-line representation, keeping the TUI concise by truncating at the
+// first newline or maxWidth characters. The caller is responsible for
+// pre-rendering (e.g. via MarkdownString) and adding an "Error: " prefix
+// when appropriate. maxWidth is normally the current viewport width.
+func compactToolResult(content string, maxWidth int) string {
 	if idx := strings.Index(content, "\n"); idx != -1 {
 		content = content[:idx]
 	}
-	prefix := ""
-	if tr.IsError {
-		prefix = "Error: "
-	}
-	return truncateString(prefix+content, maxWidth)
+	return truncateString(content, maxWidth)
 }
 
 // truncateString truncates s to maxWidth runes, adding "…" if truncated.

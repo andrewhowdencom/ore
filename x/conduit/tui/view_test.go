@@ -491,26 +491,22 @@ func TestCompactToolCall_EmptyObject(t *testing.T) {
 }
 
 func TestCompactToolResult_Normal(t *testing.T) {
-	tr := artifact.ToolResult{Content: "result data"}
-	output := compactToolResult(tr, 80)
+	output := compactToolResult("result data", 80)
 	assert.Equal(t, "result data", output)
 }
 
 func TestCompactToolResult_Multiline(t *testing.T) {
-	tr := artifact.ToolResult{Content: "line1\nline2"}
-	output := compactToolResult(tr, 80)
+	output := compactToolResult("line1\nline2", 80)
 	assert.Equal(t, "line1", output)
 }
 
 func TestCompactToolResult_Error(t *testing.T) {
-	tr := artifact.ToolResult{Content: "failed", IsError: true}
-	output := compactToolResult(tr, 80)
+	output := compactToolResult("Error: failed", 80)
 	assert.Equal(t, "Error: failed", output)
 }
 
 func TestCompactToolResult_Truncation(t *testing.T) {
-	tr := artifact.ToolResult{Content: strings.Repeat("a", 100)}
-	output := compactToolResult(tr, 10)
+	output := compactToolResult(strings.Repeat("a", 100), 10)
 	assert.Equal(t, "aaaaaaaaa…", output)
 }
 
@@ -875,4 +871,68 @@ func TestBuildContent_HistoricalReasoning_NoCounter(t *testing.T) {
 	output := m.buildContent()
 	assert.Contains(t, output, "Thinking...")
 	assert.NotContains(t, output, "Thinking ·")
+}
+
+// mockMarkdownValue is a test double that implements artifact.MarkdownRenderer.
+type mockMarkdownValue struct {
+	output string
+}
+
+func (m mockMarkdownValue) MarshalMarkdown() string {
+	return m.output
+}
+
+func TestRenderArtifact_ToolResult_MarkdownRenderer(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	tr := artifact.ToolResult{
+		ToolCallID: "call_1",
+		Content:    `{"raw":"json"}`,
+		Value:      mockMarkdownValue{output: "# Custom Markdown"},
+	}
+	block := m.renderArtifact(tr, false)
+	assert.Equal(t, "tool_result", block.kind)
+	assert.Equal(t, "# Custom Markdown", block.source)
+	assert.Equal(t, "# Custom Markdown", block.compact)
+}
+
+func TestRenderArtifact_ToolResult_JSONFallback(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	tr := artifact.ToolResult{
+		ToolCallID: "call_1",
+		Content:    "fallback",
+		Value:      "json value",
+	}
+	block := m.renderArtifact(tr, false)
+	assert.Equal(t, "tool_result", block.kind)
+	assert.Equal(t, `"json value"`, block.source)
+	assert.Equal(t, `"json value"`, block.compact)
+}
+
+func TestRenderArtifact_ToolResult_Error(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	tr := artifact.ToolResult{
+		ToolCallID: "call_1",
+		Content:    "failed",
+		IsError:    true,
+	}
+	block := m.renderArtifact(tr, false)
+	assert.Equal(t, "tool_result", block.kind)
+	assert.Equal(t, "Error: failed", block.source)
+	assert.Equal(t, "Error: failed", block.compact)
+}
+
+func TestRenderArtifact_ToolResult_ContentFallback(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	tr := artifact.ToolResult{
+		ToolCallID: "call_1",
+		Content:    "plain content",
+	}
+	block := m.renderArtifact(tr, false)
+	assert.Equal(t, "tool_result", block.kind)
+	assert.Equal(t, "plain content", block.source)
+	assert.Equal(t, "plain content", block.compact)
 }
