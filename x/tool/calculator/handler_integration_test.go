@@ -5,12 +5,25 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/tool"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// testEmitter wraps a state.Buffer and implements loop.Emitter so that
+// TurnCompleteEvents emitted by the handler are persisted into state.
+type testEmitter struct {
+	buf *state.Buffer
+}
+
+func (e *testEmitter) Emit(ctx context.Context, event loop.OutputEvent) {
+	if tc, ok := event.(loop.TurnCompleteEvent); ok {
+		e.buf.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+	}
+}
 
 func TestHandler_Add(t *testing.T) {
 	registry := tool.NewRegistry()
@@ -24,7 +37,7 @@ func TestHandler_Add(t *testing.T) {
 		ID:        "call_1",
 		Name:      "add",
 		Arguments: `{"a": 2, "b": 3}`,
-	}, mem)
+	}, &testEmitter{buf: mem})
 	require.NoError(t, err)
 
 	turns := mem.Turns()
@@ -51,7 +64,7 @@ func TestHandler_Multiply(t *testing.T) {
 		ID:        "call_2",
 		Name:      "multiply",
 		Arguments: `{"a": 4, "b": 5}`,
-	}, mem)
+	}, &testEmitter{buf: mem})
 	require.NoError(t, err)
 
 	turns := mem.Turns()
@@ -78,7 +91,7 @@ func TestHandler_UnknownTool(t *testing.T) {
 		ID:        "call_3",
 		Name:      "divide",
 		Arguments: `{"a": 10, "b": 2}`,
-	}, mem)
+	}, &testEmitter{buf: mem})
 	require.NoError(t, err)
 
 	turns := mem.Turns()
