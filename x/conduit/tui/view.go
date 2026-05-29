@@ -343,18 +343,25 @@ func truncateString(s string, maxWidth int) string {
 // View renders the conversation history inside a scrollable viewport and
 // anchors the input prompt at the bottom of the terminal.
 func (m *model) View() tea.View {
-	// Render a thin horizontal line to visually separate the conversation
-	// history (viewport) from the input area at the bottom of the terminal.
+	// Render thin horizontal lines to visually separate the conversation
+	// history (viewport), the input area, and the fixed status bar.
 	var separator string
 	if m.width > 0 {
 		separator = strings.Repeat("─", m.width)
 	}
 
+	statusStr, statusLines := buildStatusLine(m.status, m.width)
+
 	view := m.viewport.View()
 	if view != "" {
-		v := tea.NewView(view + "\n" + separator + "\n" + m.textarea.View())
-	v.AltScreen = true
-	return v
+		var parts []string
+		parts = append(parts, view, separator, m.textarea.View())
+		if statusLines > 0 {
+			parts = append(parts, separator, statusStr)
+		}
+		v := tea.NewView(strings.Join(parts, "\n"))
+		v.AltScreen = true
+		return v
 	}
 	v := tea.NewView(m.textarea.View())
 	v.AltScreen = true
