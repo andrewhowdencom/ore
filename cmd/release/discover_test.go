@@ -51,32 +51,54 @@ func TestDiscoverModules(t *testing.T) {
 	root := t.TempDir()
 
 	// Root module
-	os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/example/root\n\ngo 1.21\n"), 0644)
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/example/root\n\ngo 1.21\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Submodule
 	subDir := filepath.Join(root, "x", "provider", "openai")
-	os.MkdirAll(subDir, 0755)
-	os.WriteFile(filepath.Join(subDir, "go.mod"), []byte("module github.com/example/root/x/provider/openai\n\ngo 1.21\n"), 0644)
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(subDir, "go.mod"), []byte("module github.com/example/root/x/provider/openai\n\ngo 1.21\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Parent submodule
 	parentDir := filepath.Join(root, "x", "tool")
-	os.MkdirAll(parentDir, 0755)
-	os.WriteFile(filepath.Join(parentDir, "go.mod"), []byte("module github.com/example/root/x/tool\n\ngo 1.21\n"), 0644)
+	if err := os.MkdirAll(parentDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(parentDir, "go.mod"), []byte("module github.com/example/root/x/tool\n\ngo 1.21\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Nested submodule
 	nestedDir := filepath.Join(root, "x", "tool", "bash")
-	os.MkdirAll(nestedDir, 0755)
-	os.WriteFile(filepath.Join(nestedDir, "go.mod"), []byte("module github.com/example/root/x/tool/bash\n\ngo 1.21\n"), 0644)
+	if err := os.MkdirAll(nestedDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nestedDir, "go.mod"), []byte("module github.com/example/root/x/tool/bash\n\ngo 1.21\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Hidden directory should be skipped
 	hiddenDir := filepath.Join(root, ".pi", "agent")
-	os.MkdirAll(hiddenDir, 0755)
-	os.WriteFile(filepath.Join(hiddenDir, "go.mod"), []byte("module hidden\n"), 0644)
+	if err := os.MkdirAll(hiddenDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hiddenDir, "go.mod"), []byte("module hidden\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Vendor should be skipped
 	vendorDir := filepath.Join(root, "vendor", "github.com", "example", "lib")
-	os.MkdirAll(vendorDir, 0755)
-	os.WriteFile(filepath.Join(vendorDir, "go.mod"), []byte("module vendor\n"), 0644)
+	if err := os.MkdirAll(vendorDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vendorDir, "go.mod"), []byte("module vendor\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	modules, err := discoverModules(root)
 	if err != nil {

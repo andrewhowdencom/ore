@@ -83,9 +83,7 @@ func isFeat(msg string) bool {
 	prefix := msg[:idx]
 
 	// Strip optional breaking indicator (handled by isBreaking).
-	if strings.HasSuffix(prefix, "!") {
-		prefix = prefix[:len(prefix)-1]
-	}
+	prefix = strings.TrimSuffix(prefix, "!")
 
 	// Strip optional scope.
 	if open := strings.Index(prefix, "("); open >= 0 {

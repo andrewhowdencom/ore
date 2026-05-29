@@ -181,10 +181,7 @@ func (s *JSONStore) Delete(id string) bool {
 	_, ok := s.cache[id]
 	delete(s.cache, id)
 
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		// File removal error is non-fatal; the thread is already
-		// removed from the cache.
-	}
+	_ = os.Remove(path)
 
 	return ok
 }

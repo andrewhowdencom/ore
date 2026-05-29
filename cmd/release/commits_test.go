@@ -12,7 +12,9 @@ func TestCommitsSinceTag(t *testing.T) {
 	commitFile(t, dir, "main.go", "initial commit")
 
 	// Tag v0.1.0
-	exec.Command("git", "-C", dir, "tag", "v0.1.0").Run()
+	if err := exec.Command("git", "-C", dir, "tag", "v0.1.0").Run(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Commit 2
 	commitFile(t, dir, "feature.go", "feat: add feature")
@@ -48,7 +50,9 @@ func TestCommitsSinceTag(t *testing.T) {
 func TestCommitsSinceTag_Empty(t *testing.T) {
 	dir := setupTestRepo(t)
 	commitFile(t, dir, "main.go", "init")
-	exec.Command("git", "-C", dir, "tag", "v1.0.0").Run()
+	if err := exec.Command("git", "-C", dir, "tag", "v1.0.0").Run(); err != nil {
+		t.Fatal(err)
+	}
 
 	commits, err := commitsSinceTag(dir, "v1.0.0", newCommitCache())
 	if err != nil {
