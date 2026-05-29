@@ -132,12 +132,12 @@ func (e ArtifactEvent) Kind() string { return e.Artifact.Kind() }
 // Context returns the event context.
 func (e ArtifactEvent) Context() EventContext { return e.Ctx }
 
-// StatusEvent carries ambient, persistent status information as a
-// map of key-value pairs. It is emitted by any producer holding a
+// PropertiesEvent carries ambient, persistent metadata as a map of
+// key-value pairs. It is emitted by any producer holding a
 // *session.Stream and flows through the per-session FanOut so all
 // conduits receive it simultaneously.
-type StatusEvent struct {
-	Status map[string]string
+type PropertiesEvent struct {
+	Properties map[string]string
 
 	// Ctx carries routing metadata for the event, such as provenance
 	// information for echo suppression.
@@ -145,10 +145,10 @@ type StatusEvent struct {
 }
 
 // Kind returns the event kind identifier.
-func (e StatusEvent) Kind() string { return "status" }
+func (e PropertiesEvent) Kind() string { return "properties" }
 
 // Context returns the event context.
-func (e StatusEvent) Context() EventContext { return e.Ctx }
+func (e PropertiesEvent) Context() EventContext { return e.Ctx }
 
 // outputEventEnvelope wraps an OutputEvent with an acknowledgment channel.
 // The producer blocks until the FanOut closes done after delivering the event.

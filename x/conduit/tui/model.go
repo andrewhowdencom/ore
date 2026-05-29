@@ -105,8 +105,8 @@ type model struct {
 	// the next assistant turn is received, restoring the default compact view.
 	expandLatestDetails bool
 
-	// Status map carries structured key-value status pairs received from
-	// StatusEvent output events (e.g. thread_id, state).
+	// Status map carries structured key-value metadata pairs received from
+	// PropertiesEvent output events (e.g. thread_id, state).
 	status map[string]string
 
 	// User input widget.
