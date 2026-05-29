@@ -12,6 +12,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// mockHTTPMarkdownValue is a test double that implements artifact.MarkdownRenderer.
+type mockHTTPMarkdownValue struct {
+	output string
+}
+
+func (m mockHTTPMarkdownValue) MarshalMarkdown() string {
+	return m.output
+}
+
 func TestArtifactToJSON(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -60,6 +69,18 @@ func TestArtifactToJSON(t *testing.T) {
 			art:      artifact.ToolResult{ToolCallID: "1", Content: "42", IsError: true},
 			wantKind: "tool_result",
 			wantDTO:  artifactJSON{Kind: "tool_result", ToolCallID: "1", Content: "42", IsError: true},
+		},
+		{
+			name:     "tool_result_markdown_renderer",
+			art:      artifact.ToolResult{ToolCallID: "1", Content: `{"raw":"json"}`, Value: mockHTTPMarkdownValue{output: "# Custom Markdown"}},
+			wantKind: "tool_result",
+			wantDTO:  artifactJSON{Kind: "tool_result", ToolCallID: "1", Content: "# Custom Markdown", IsError: false},
+		},
+		{
+			name:     "tool_result_json_fallback",
+			art:      artifact.ToolResult{ToolCallID: "1", Content: "fallback", Value: "hello"},
+			wantKind: "tool_result",
+			wantDTO:  artifactJSON{Kind: "tool_result", ToolCallID: "1", Content: `"hello"`, IsError: false},
 		},
 		{
 			name:     "usage",
@@ -112,6 +133,16 @@ func TestMarshalArtifact(t *testing.T) {
 			name: "tool_result",
 			art:  artifact.ToolResult{ToolCallID: "1", Content: "42", IsError: true},
 			want: `{"kind":"tool_result","tool_call_id":"1","content":"42","is_error":true}`,
+		},
+		{
+			name: "tool_result_markdown_renderer",
+			art:  artifact.ToolResult{ToolCallID: "1", Content: `{"raw":"json"}`, Value: mockHTTPMarkdownValue{output: "# Markdown Result"}},
+			want: `{"kind":"tool_result","tool_call_id":"1","content":"# Markdown Result"}`,
+		},
+		{
+			name: "tool_result_json_fallback",
+			art:  artifact.ToolResult{ToolCallID: "1", Content: "fallback", Value: 42},
+			want: `{"kind":"tool_result","tool_call_id":"1","content":"42"}`,
 		},
 		{
 			name: "unsupported",
