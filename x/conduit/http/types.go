@@ -124,7 +124,7 @@ func artifactToJSON(art artifact.Artifact) (*artifactJSON, bool) {
 	case artifact.ToolCallDelta:
 		return &artifactJSON{Kind: "tool_call_delta", ID: a.ID, Name: a.Name, Arguments: a.Arguments, Index: a.Index}, true
 	case artifact.ToolResult:
-		return &artifactJSON{Kind: "tool_result", ToolCallID: a.ToolCallID, Content: a.Content, IsError: a.IsError}, true
+		return &artifactJSON{Kind: "tool_result", ToolCallID: a.ToolCallID, Content: a.MarkdownString(), IsError: a.IsError}, true
 	case artifact.Usage:
 		return &artifactJSON{
 			Kind:             "usage",
