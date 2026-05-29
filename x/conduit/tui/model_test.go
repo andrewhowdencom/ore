@@ -73,17 +73,11 @@ func TestModel_Update_Turn_PreservesReasoning(t *testing.T) {
 	assert.NotEmpty(t, mm3.turns[0].blocks[1].rendered, "reasoning block should be rendered for assistant turns")
 }
 
-func TestModel_Update_Turn_ClearsPending(t *testing.T) {
+func TestModel_Update_LifecycleDone_ClearsPending(t *testing.T) {
 	m := model{}
 	m.pending = true
 
-	turn := state.Turn{
-		Role: state.RoleAssistant,
-		Artifacts: []artifact.Artifact{
-			artifact.Text{Content: "complete"},
-		},
-	}
-	newM, _ := m.Update(turnMsg{turn: turn})
+	newM, _ := m.Update(lifecycleMsg{phase: "done"})
 	mm := newM.(*model)
 	assert.False(t, mm.pending)
 }
@@ -764,31 +758,25 @@ func TestModel_Update_RecalcLayout_MinimumViewportHeight(t *testing.T) {
 	assert.GreaterOrEqual(t, mm.viewport.Height(), 1, "viewport height should never be < 1")
 }
 
-func TestModel_Update_KeyEnter_SetsPending(t *testing.T) {
-	eventsCh := make(chan session.Event, 10)
-	m := newTestModel()
-	m.eventsCh = eventsCh
-	m.textarea.SetValue("hello")
+func TestModel_Update_LifecycleSubmitted_SetsPending(t *testing.T) {
+	m := model{}
 
-	newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	newM, _ := m.Update(lifecycleMsg{phase: "submitted"})
 	mm := newM.(*model)
 
-	assert.True(t, mm.pending, "KeyEnter should set pending=true")
+	assert.True(t, mm.pending, "lifecycle submitted should set pending=true")
 }
 
-func TestModel_Update_Turn_Assistant_ClearsPending(t *testing.T) {
+func TestModel_Update_LifecycleSubmittedThenDone(t *testing.T) {
 	m := model{}
-	m.pending = true
 
-	turn := state.Turn{
-		Role: state.RoleAssistant,
-		Artifacts: []artifact.Artifact{
-			artifact.Text{Content: "response"},
-		},
-	}
-	newM, _ := m.Update(turnMsg{turn: turn})
+	newM, _ := m.Update(lifecycleMsg{phase: "submitted"})
 	mm := newM.(*model)
-	assert.False(t, mm.pending, "assistant turn should clear pending")
+	assert.True(t, mm.pending, "submitted should set pending")
+
+	newM2, _ := mm.Update(lifecycleMsg{phase: "done"})
+	mm2 := newM2.(*model)
+	assert.False(t, mm2.pending, "done should clear pending")
 }
 
 func TestModel_Update_Turn_User_DoesNotClearPending(t *testing.T) {
@@ -825,14 +813,12 @@ func TestModel_Update_RapidSubmissions(t *testing.T) {
 	// First submission
 	newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	mm := newM.(*model)
-	assert.True(t, mm.pending, "first submission should set pending")
 	assert.Empty(t, mm.textarea.Value())
 
-	// Second submission while still pending
+	// Second submission
 	mm.textarea.SetValue("second")
 	newM2, _ := mm.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	mm2 := newM2.(*model)
-	assert.True(t, mm2.pending, "second submission should keep pending true")
 	assert.Empty(t, mm2.textarea.Value())
 
 	// Both events should be on the channel

@@ -39,6 +39,13 @@ type statusMsg struct {
 	status map[string]string
 }
 
+// lifecycleMsg is a Bubble Tea message that carries a LifecycleEvent
+// phase into the model.Update loop so the UI can reflect structural
+// turn boundaries (submitted, streaming, done).
+type lifecycleMsg struct {
+	phase string
+}
+
 // clearPendingMsg is a Bubble Tea message that instructs the model to
 // clear the pending flag, typically because the manager failed to produce
 // a turn.
@@ -327,7 +334,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.currentTurn.role = msg.turn.Role
 			m.turns = append(m.turns, m.currentTurn)
 			m.currentTurn = renderedTurn{}
-			m.pending = false
 			m.expandLatestDetails = false
 		} else {
 			// User and tool turns do not emit individual ArtifactEvents;
@@ -357,6 +363,20 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.recalcLayout()
 		m.syncViewport()
+	case lifecycleMsg:
+		switch msg.phase {
+		case "submitted":
+			m.pending = true
+		case "done":
+			m.pending = false
+		}
+		if m.status == nil {
+			m.status = make(map[string]string)
+		}
+		m.status["phase"] = msg.phase
+		m.contentDirty = true
+		m.recalcLayout()
+		m.syncViewport()
 	case clearPendingMsg:
 		m.pending = false
 		m.contentDirty = true
@@ -376,6 +396,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.status == nil {
 			m.status = make(map[string]string)
 		}
+		m.status["phase"] = "error"
 		m.status["state"] = "Error: " + msg.err.Error()
 		m.contentDirty = true
 		m.recalcLayout()
@@ -421,7 +442,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					default:
 						slog.Warn("event channel full, dropping user message")
 					}
-					m.pending = true
 					m.contentDirty = true
 					m.syncViewport()
 				}
