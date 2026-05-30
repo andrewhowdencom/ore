@@ -20,6 +20,7 @@ type artifactJSON struct {
 	ID               string `json:"id,omitempty"`
 	Name             string `json:"name,omitempty"`
 	Arguments        string `json:"arguments,omitempty"`
+	Display          string `json:"display,omitempty"`
 	ToolCallID       string `json:"tool_call_id,omitempty"`
 	IsError          bool   `json:"is_error,omitempty"`
 	PromptTokens     int    `json:"prompt_tokens,omitempty"`
@@ -122,7 +123,12 @@ func artifactToJSON(art artifact.Artifact) (*artifactJSON, bool) {
 	case artifact.ReasoningDelta:
 		return &artifactJSON{Kind: "reasoning_delta", Content: a.Content}, true
 	case artifact.ToolCall:
-		return &artifactJSON{Kind: "tool_call", ID: a.ID, Name: a.Name, Arguments: a.Arguments}, true
+		display := a.MarkdownString()
+		// Only populate Display when the custom value differs from raw arguments
+		if display == a.Arguments {
+			display = ""
+		}
+		return &artifactJSON{Kind: "tool_call", ID: a.ID, Name: a.Name, Arguments: a.Arguments, Display: display}, true
 	case artifact.ToolCallDelta:
 		return &artifactJSON{Kind: "tool_call_delta", ID: a.ID, Name: a.Name, Arguments: a.Arguments, Index: a.Index}, true
 	case artifact.ToolResult:
