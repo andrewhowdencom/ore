@@ -32,7 +32,7 @@ type discovererEntry struct {
 }
 
 // Catalog aggregates results from multiple Discoverers, caches metadata,
-// handles deduplication (first-wins), and exposes List, Read, and Search.
+// handles deduplication (first-wins), and exposes List and Read.
 type Catalog struct {
 	mu          sync.RWMutex
 	discoverers []Discoverer
@@ -105,25 +105,6 @@ func (c *Catalog) Read(ctx context.Context, name string) (string, error) {
 	}
 
 	return content, nil
-}
-
-// Search returns metadata for skills whose name or description contains the
-// query as a case-insensitive substring.
-func (c *Catalog) Search(ctx context.Context, query string) ([]SkillMeta, error) {
-	all, err := c.List(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list skills: %w", err)
-	}
-
-	query = strings.ToLower(query)
-	result := make([]SkillMeta, 0)
-	for _, meta := range all {
-		if strings.Contains(strings.ToLower(meta.Name), query) ||
-			strings.Contains(strings.ToLower(meta.Description), query) {
-			result = append(result, meta)
-		}
-	}
-	return result, nil
 }
 
 // SystemPromptFragment returns a formatted prompt fragment listing all
