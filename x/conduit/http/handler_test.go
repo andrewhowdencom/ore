@@ -784,8 +784,8 @@ func TestHandler_WithUI_StaticFiles(t *testing.T) {
 	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
 	h := newTestHandler(t, mgr, WithUI())
 
-	t.Run("GET / returns text/html", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/", nil)
+	t.Run("GET /chat returns text/html", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/chat", nil)
 		rr := httptest.NewRecorder()
 		h.ServeMux().ServeHTTP(rr, req)
 		assert.Equal(t, 200, rr.Code)
@@ -825,7 +825,7 @@ func TestHandler_WithUI_StaticFiles_ErrorPath(t *testing.T) {
 		name string
 		path string
 	}{
-		{"GET / errors", "/"},
+		{"GET /chat errors", "/chat"},
 		{"GET /chat.js errors", "/chat.js"},
 	}
 
@@ -837,6 +837,20 @@ func TestHandler_WithUI_StaticFiles_ErrorPath(t *testing.T) {
 			assert.Equal(t, 500, rr.Code)
 		})
 	}
+}
+
+func TestHandler_WithUI_RedirectRoot(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	h := newTestHandler(t, mgr, WithUI())
+
+	req := httptest.NewRequest("GET", "/", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	assert.Equal(t, 307, rr.Code)
+	assert.Equal(t, "/chat", rr.Header().Get("Location"))
 }
 
 func TestHandler_WithoutUI_Root404(t *testing.T) {
