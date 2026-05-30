@@ -14,6 +14,8 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
+	toolpkg "github.com/andrewhowdencom/ore/tool"
+	xtool "github.com/andrewhowdencom/ore/x/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -46,6 +48,47 @@ func (m *concurrentMockTransport) RoundTrip(req *http.Request) (*http.Response, 
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(strings.NewReader(m.responseBody)),
 	}, nil
+}
+
+// recordedRequest captures an outgoing HTTP request and its body bytes
+// for later inspection.
+type recordedRequest struct {
+	request *http.Request
+	body    []byte
+}
+
+// recordingMockTransport is safe for concurrent use and captures every
+// outgoing request together with its body in a mutex-protected slice.
+type recordingMockTransport struct {
+	mu           sync.Mutex
+	requests     []recordedRequest
+	responseBody string
+	err          error
+}
+
+func (m *recordingMockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	body, _ := io.ReadAll(req.Body)
+
+	m.mu.Lock()
+	m.requests = append(m.requests, recordedRequest{request: req, body: body})
+	m.mu.Unlock()
+
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &http.Response{
+		StatusCode: 200,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(m.responseBody)),
+	}, nil
+}
+
+func (m *recordingMockTransport) Requests() []recordedRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]recordedRequest, len(m.requests))
+	copy(out, m.requests)
+	return out
 }
 
 func mockClient(transport *mockTransport) *http.Client {
@@ -857,6 +900,57 @@ func TestProviderInvoke_EmptyToolsOmitted(t *testing.T) {
 	assert.False(t, ok, "tools field should not be present when empty slice is passed")
 }
 
+func TestProviderInvoke_DynamicToolsOption(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(simpleSSE("ok")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	// Dynamic ToolsOption whose function inspects context and state.
+	dynamicOpt := provider.ToolsOption{
+		Tools: func(ctx context.Context, st state.State) []provider.Tool {
+			assert.NotNil(t, ctx)
+			turns := st.Turns()
+			assert.Len(t, turns, 1)
+			assert.Equal(t, state.RoleUser, turns[0].Role)
+
+			return []provider.Tool{
+				{
+					Name:        "dynamic_tool",
+					Description: "a dynamic tool",
+					Schema:      map[string]any{"type": "object"},
+				},
+			}
+		},
+	}
+
+	ch := make(chan artifact.Artifact, 10)
+	_ = p.Invoke(t.Context(), mem, ch, dynamicOpt)
+	close(ch)
+	for range ch {
+	}
+
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+
+	reqTools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, reqTools, 1)
+
+	t1, ok := reqTools[0].(map[string]any)
+	require.True(t, ok)
+	fn1, ok := t1["function"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "dynamic_tool", fn1["name"])
+	assert.Equal(t, "a dynamic tool", fn1["description"])
+}
+
 func TestProviderInvoke_ToolsOptionPrecedence(t *testing.T) {
 	transport := &mockTransport{
 		response: mockResponseSSE(simpleSSE("ok")),
@@ -867,12 +961,19 @@ func TestProviderInvoke_ToolsOptionPrecedence(t *testing.T) {
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
-	// Pass both the legacy internal toolOption and the new provider.ToolsOption.
-	// provider.ToolsOption should take precedence because it's checked after toolOption.
 	ch := make(chan artifact.Artifact, 10)
+	// Later ToolsOption should override the earlier one.
 	_ = p.Invoke(t.Context(), mem, ch,
-		toolOption{tools: []provider.Tool{{Name: "legacy", Description: "legacy tool"}}},
-		provider.WithTools([]provider.Tool{{Name: "modern", Description: "modern tool"}}),
+		provider.WithTools([]provider.Tool{{Name: "first", Description: "first tool"}}),
+		provider.ToolsOption{Tools: func(context.Context, state.State) []provider.Tool {
+			return []provider.Tool{
+				{
+					Name:        "second",
+					Description: "second tool",
+					Schema:      map[string]any{"type": "object"},
+				},
+			}
+		}},
 	)
 	close(ch)
 	for range ch {
@@ -891,5 +992,147 @@ func TestProviderInvoke_ToolsOptionPrecedence(t *testing.T) {
 	require.True(t, ok)
 	fn1, ok := t1["function"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, "modern", fn1["name"], "provider.ToolsOption should take precedence over legacy toolOption")
+	assert.Equal(t, "second", fn1["name"], "later ToolsOption should take precedence")
+}
+
+func TestProviderInvoke_DynamicTools_EmptyResult(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(simpleSSE("ok")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	_ = p.Invoke(t.Context(), mem, ch, provider.ToolsOption{
+		Tools: func(context.Context, state.State) []provider.Tool {
+			return nil
+		},
+	})
+	close(ch)
+	for range ch {
+	}
+
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+
+	_, ok := reqBody["tools"]
+	assert.False(t, ok, "tools field should not be present when dynamic filter returns nil")
+}
+
+func TestProviderInvoke_DynamicTools_Concurrency(t *testing.T) {
+	transport := &recordingMockTransport{
+		responseBody: simpleSSE("ok"),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(&http.Client{Transport: transport}))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			tools := []provider.Tool{
+				{
+					Name:        fmt.Sprintf("tool-%d", idx),
+					Description: "test",
+					Schema:      map[string]any{"type": "object"},
+				},
+			}
+			ch := make(chan artifact.Artifact, 10)
+			_ = p.Invoke(t.Context(), mem, ch, provider.ToolsOption{
+				Tools: func(context.Context, state.State) []provider.Tool {
+					return tools
+				},
+			})
+			close(ch)
+			for range ch {
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	requests := transport.Requests()
+	require.Len(t, requests, 10)
+
+	for i, rr := range requests {
+		var reqBody map[string]any
+		require.NoError(t, json.Unmarshal(rr.body, &reqBody))
+
+		reqTools, ok := reqBody["tools"].([]any)
+		require.True(t, ok, "request %d should contain tools", i)
+		require.Len(t, reqTools, 1, "request %d should contain exactly one tool", i)
+
+		t1, ok := reqTools[0].(map[string]any)
+		require.True(t, ok)
+		fn1, ok := t1["function"].(map[string]any)
+		require.True(t, ok)
+
+		found := false
+		for j := 0; j < 10; j++ {
+			if fn1["name"] == fmt.Sprintf("tool-%d", j) {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "request %d should have a valid tool name, got %v", i, fn1["name"])
+	}
+}
+
+func TestProviderInvoke_WithFilteredTools(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(simpleSSE("ok")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	registry := toolpkg.NewRegistry()
+	require.NoError(t, registry.Register("allowed", "Allowed tool", map[string]any{"type": "object"}, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
+		return nil, nil
+	}))
+	require.NoError(t, registry.Register("denied", "Denied tool", map[string]any{"type": "object"}, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
+		return nil, nil
+	}))
+
+	filter := func(ctx context.Context, st state.State, tools []provider.Tool) []provider.Tool {
+		var result []provider.Tool
+		for _, tool := range tools {
+			if tool.Name == "allowed" {
+				result = append(result, tool)
+			}
+		}
+		return result
+	}
+
+	ch := make(chan artifact.Artifact, 10)
+	_ = p.Invoke(t.Context(), mem, ch, xtool.WithFilteredTools(registry, filter))
+	close(ch)
+	for range ch {
+	}
+
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+
+	reqTools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, reqTools, 1)
+
+	t1, ok := reqTools[0].(map[string]any)
+	require.True(t, ok)
+	fn1, ok := t1["function"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "allowed", fn1["name"])
+	assert.Equal(t, "Allowed tool", fn1["description"])
 }
