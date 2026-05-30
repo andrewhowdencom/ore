@@ -66,6 +66,11 @@ type Tool struct {
 	Description string
 	// Schema defines the JSON Schema for the tool's parameters.
 	Schema map[string]any
+	// DisplayHint is an optional formatter that receives parsed JSON
+	// arguments and returns a displayable value (implementing
+	// MarkdownRenderer / LLMRenderer). When nil, conduits fall back to
+	// raw JSON Arguments.
+	DisplayHint func(map[string]any) any
 }
 
 
