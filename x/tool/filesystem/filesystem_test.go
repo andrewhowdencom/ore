@@ -576,6 +576,22 @@ func (m *errorFileSandbox) WorkingDirectory() string { return m.dir }
 
 var _ tool.FileSandbox = (*errorFileSandbox)(nil)
 
+// rejectAbsSandbox is a FileSandbox that rejects absolute paths.
+type rejectAbsSandbox struct {
+	dir string
+}
+
+func (m *rejectAbsSandbox) Name() string { return "reject-abs" }
+func (m *rejectAbsSandbox) ResolvePath(path string) (string, error) {
+	if filepath.IsAbs(path) {
+		return "", fmt.Errorf("absolute paths not allowed in sandbox %q", m.Name())
+	}
+	return filepath.Join(m.dir, path), nil
+}
+func (m *rejectAbsSandbox) WorkingDirectory() string { return m.dir }
+
+var _ tool.FileSandbox = (*rejectAbsSandbox)(nil)
+
 func TestReadFile_WithSandbox(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -590,7 +606,20 @@ func TestReadFile_WithSandbox(t *testing.T) {
 
 func TestReadFile_AbsolutePathInSandbox(t *testing.T) {
 	t.Parallel()
-	sb := &mockFileSandbox{dir: t.TempDir()}
+	dir := t.TempDir()
+	p := filepath.Join(dir, "etc", "passwd")
+	require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+	require.NoError(t, os.WriteFile(p, []byte("hello"), 0o644))
+
+	sb := &mockFileSandbox{dir: dir}
+	result, err := ReadFile(context.Background(), sb, map[string]any{"path": "/etc/passwd"})
+	require.NoError(t, err)
+	assert.Equal(t, "1|hello\n", result)
+}
+
+func TestReadFile_SandboxRejectsAbsolutePath(t *testing.T) {
+	t.Parallel()
+	sb := &rejectAbsSandbox{dir: t.TempDir()}
 	_, err := ReadFile(context.Background(), sb, map[string]any{"path": "/etc/passwd"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "absolute paths not allowed")
