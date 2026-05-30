@@ -856,3 +856,163 @@ func TestProviderInvoke_EmptyToolsOmitted(t *testing.T) {
 	_, ok := reqBody["tools"]
 	assert.False(t, ok, "tools field should not be present when empty slice is passed")
 }
+
+func TestProviderInvoke_DynamicToolsOption(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(simpleSSE("ok")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	// Dynamic ToolsOption whose function inspects context and state.
+	dynamicOpt := provider.ToolsOption{
+		Tools: func(ctx context.Context, st state.State) []provider.Tool {
+			assert.NotNil(t, ctx)
+			turns := st.Turns()
+			assert.Len(t, turns, 1)
+			assert.Equal(t, state.RoleUser, turns[0].Role)
+
+			return []provider.Tool{
+				{
+					Name:        "dynamic_tool",
+					Description: "a dynamic tool",
+					Schema:      map[string]any{"type": "object"},
+				},
+			}
+		},
+	}
+
+	ch := make(chan artifact.Artifact, 10)
+	_ = p.Invoke(t.Context(), mem, ch, dynamicOpt)
+	close(ch)
+	for range ch {
+	}
+
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+
+	reqTools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, reqTools, 1)
+
+	t1, ok := reqTools[0].(map[string]any)
+	require.True(t, ok)
+	fn1, ok := t1["function"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "dynamic_tool", fn1["name"])
+	assert.Equal(t, "a dynamic tool", fn1["description"])
+}
+
+func TestProviderInvoke_ToolsOptionPrecedence(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(simpleSSE("ok")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	// Later ToolsOption should override the earlier one.
+	_ = p.Invoke(t.Context(), mem, ch,
+		provider.WithTools([]provider.Tool{{Name: "first", Description: "first tool"}}),
+		provider.ToolsOption{Tools: func(context.Context, state.State) []provider.Tool {
+			return []provider.Tool{
+				{
+					Name:        "second",
+					Description: "second tool",
+					Schema:      map[string]any{"type": "object"},
+				},
+			}
+		}},
+	)
+	close(ch)
+	for range ch {
+	}
+
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+
+	reqTools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, reqTools, 1)
+
+	t1, ok := reqTools[0].(map[string]any)
+	require.True(t, ok)
+	fn1, ok := t1["function"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "second", fn1["name"], "later ToolsOption should take precedence")
+}
+
+func TestProviderInvoke_DynamicTools_EmptyResult(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(simpleSSE("ok")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	_ = p.Invoke(t.Context(), mem, ch, provider.ToolsOption{
+		Tools: func(context.Context, state.State) []provider.Tool {
+			return nil
+		},
+	})
+	close(ch)
+	for range ch {
+	}
+
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+
+	_, ok := reqBody["tools"]
+	assert.False(t, ok, "tools field should not be present when dynamic filter returns nil")
+}
+
+func TestProviderInvoke_DynamicTools_Concurrency(t *testing.T) {
+	transport := &concurrentMockTransport{
+		responseBody: simpleSSE("ok"),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(&http.Client{Transport: transport}))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			tools := []provider.Tool{
+				{
+					Name:        fmt.Sprintf("tool-%d", idx),
+					Description: "test",
+					Schema:      map[string]any{"type": "object"},
+				},
+			}
+			ch := make(chan artifact.Artifact, 10)
+			_ = p.Invoke(t.Context(), mem, ch, provider.ToolsOption{
+				Tools: func(context.Context, state.State) []provider.Tool {
+					return tools
+				},
+			})
+			close(ch)
+			for range ch {
+			}
+		}(i)
+	}
+	wg.Wait()
+}
