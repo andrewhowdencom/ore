@@ -18,7 +18,13 @@ type InvokeOption interface {
 }
 
 // ToolsOption is a per-invocation option that configures available tools.
+// The Tools field is a function so the tool list can be resolved dynamically
+// based on the current context and conversation state (e.g. filtering by
+// permissions, user role, or runtime discovery).
 type ToolsOption struct {
+	// Tools returns the slice of tools available for the current invocation.
+	// The function receives the request context and the current state, enabling
+	// per-turn dynamic selection of tools.
 	Tools func(ctx context.Context, st state.State) []Tool
 }
 
@@ -26,7 +32,9 @@ type ToolsOption struct {
 func (ToolsOption) IsInvokeOption() {}
 
 // WithTools returns an InvokeOption that configures the set of available tools
-// for a single provider invocation.
+// for a single provider invocation. It is a convenience wrapper for the common
+// case where the tool set is static; it creates a ToolsOption whose Tools
+// function simply returns the provided slice.
 func WithTools(tools []Tool) InvokeOption {
 	return ToolsOption{Tools: func(context.Context, state.State) []Tool { return tools }}
 }
