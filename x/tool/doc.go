@@ -65,13 +65,37 @@
 //	registry := tool.NewRegistry(tool.WithMCPServer(mcpClient))
 //
 // Dynamic tool configuration. The tool list can be evolved during a session by
-// passing different openai.WithTools options to each Step.Turn call. This allows
-// the application to prune, expand, or replace tools based on context, user
-// permissions, or discovered capabilities:
+// passing different provider-level InvokeOption values (e.g. openai.WithTools or
+// WithFilteredTools) to each Step.Turn call. This allows the application to
+// prune, expand, or replace tools based on context, user permissions, or
+// discovered capabilities:
 //
 //	// Pass different tool sets per-turn.
 //	tools := selectToolsForContext(ctx, state)
 //	_, err := step.Turn(ctx, state, prov, openai.WithTools(tools))
+//
+// The x/tool package also provides a convenience constructor for the common
+// dynamic-filtering pattern. Instead of manually selecting tools per-turn,
+// applications can register a filter function that is called automatically
+// on each invocation:
+//
+//	import (
+//	    "context"
+//	    "github.com/andrewhowdencom/ore/provider"
+//	    "github.com/andrewhowdencom/ore/state"
+//	    "github.com/andrewhowdencom/ore/x/provider/openai"
+//	    xtool "github.com/andrewhowdencom/ore/x/tool"
+//	)
+//
+//	filter := func(ctx context.Context, st state.State, tools []provider.Tool) []provider.Tool {
+//	    // Return only tools permitted for the current user/role.
+//	    return filterByRole(tools, st)
+//	}
+//	opt := xtool.WithFilteredTools(registry, filter)
+//	_, err := step.Turn(ctx, state, prov, opt)
+//
+// A nil filter is treated as an identity function — it returns the full
+// slice of tools obtained from the registry unchanged.
 //
 // Because tools are passed per-invocation through provider.InvokeOption, there
 // is no mutable provider state and no need for synchronization. The provider.Tool
