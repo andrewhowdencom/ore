@@ -898,6 +898,35 @@ func (m mockMarkdownValue) MarshalMarkdown() string {
 	return m.output
 }
 
+func TestRenderArtifact_ToolCall_MarkdownRenderer(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	tc := artifact.ToolCall{
+		ID:        "call_1",
+		Name:      "bash",
+		Arguments: `{"command":"go test ./..."}`,
+		Value:     mockMarkdownValue{output: "```bash\n$ go test ./...\n```"},
+	}
+	block := m.renderArtifact(tc, false)
+	assert.Equal(t, "tool_call", block.kind)
+	assert.Equal(t, "```bash\n$ go test ./...\n```", block.source)
+	// compact should still use compactToolCall (which ignores Value for compact view)
+	assert.NotEmpty(t, block.compact)
+}
+
+func TestRenderArtifact_ToolCall_FallbackToArguments(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	tc := artifact.ToolCall{
+		ID:        "call_1",
+		Name:      "search",
+		Arguments: `{"q":"hello"}`,
+	}
+	block := m.renderArtifact(tc, false)
+	assert.Equal(t, "tool_call", block.kind)
+	assert.Equal(t, "Calling: search({\"q\":\"hello\"})", block.source)
+}
+
 func TestRenderArtifact_ToolResult_MarkdownRenderer(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))

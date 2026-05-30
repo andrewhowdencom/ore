@@ -216,7 +216,12 @@ func (m *model) renderArtifact(art artifact.Artifact, shouldRenderMarkdown bool)
 		}
 		return block
 	case artifact.ToolCall:
-		source := fmt.Sprintf("Calling: %s(%s)", a.Name, a.Arguments)
+		source := a.MarkdownString()
+		// When no custom display hint is present, MarkdownString() falls back to
+		// raw Arguments. Preserve the legacy "Calling:" prefix for readability.
+		if source == a.Arguments {
+			source = fmt.Sprintf("Calling: %s(%s)", a.Name, a.Arguments)
+		}
 		compact := compactToolCall(a, m.viewport.Width())
 		return renderedBlock{kind: "tool_call", source: source, compact: compact}
 	case artifact.ToolResult:
