@@ -8,12 +8,27 @@ Terminal user interface conduit for the ore framework, built with [Bubble Tea](h
 import "github.com/andrewhowdencom/ore/x/conduit/tui"
 
 // Create a TUI conduit and start it.
-t, err := tui.New(manager)
+t, err := tui.New(manager, tui.WithName("my-app"))
 if err != nil {
     // handle error
 }
 err = t.Start(ctx)
 ```
+
+## Window Title
+
+The TUI sets the terminal window title dynamically based on the
+session lifecycle state. The default name is `Ore`; pass
+`WithName("your-app")` to override it.
+
+| Phase | Title |
+|-------|-------|
+| submitted, streaming | `<name> [...]` |
+| done, initial | `<name> [ok]` |
+| error | `<name> [err]` |
+
+This makes it easy to distinguish multiple ore sessions in tmux or
+a terminal multiplexer.
 
 ## Keyboard Shortcuts
 
