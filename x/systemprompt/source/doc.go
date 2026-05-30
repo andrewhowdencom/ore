@@ -25,4 +25,13 @@
 //	transform, _ := systemprompt.New(
 //	    systemprompt.WithContentFunc(source.AgentsMD("/project/subdir")),
 //	)
+//
+// Composable prompt fragments from multiple sources:
+//
+//	transform, _ := systemprompt.New(
+//	    systemprompt.WithContentFunc(source.AgentsMD("/project/subdir")),
+//	    systemprompt.WithContentFunc(source.Harness("my-agent")),
+//	    systemprompt.WithContentFunc(source.Model("gpt-4o")),
+//	    systemprompt.WithContentFunc(source.Provider("openai")),
+//	)
 package source
