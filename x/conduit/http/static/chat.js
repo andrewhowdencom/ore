@@ -166,14 +166,22 @@ function renderReasoningBlock(content) {
     scrollToBottom();
 }
 
-function renderToolCallBlock(id, name, args) {
+function renderToolCallBlock(id, name, args, display) {
     hideTypingIndicator();
     const chat = document.getElementById('chat');
     const div = document.createElement('div');
     div.className = 'message tool-call';
-    div.innerHTML = '<strong>Tool Call:</strong> ' + escapeHtml(name) +
-        ' <span class="tool-id">(' + escapeHtml(id) + ')</span>' +
-        '<pre><code>' + escapeHtml(args) + '</code></pre>';
+    var content;
+    if (display) {
+        content = '<strong>Tool Call:</strong> ' + escapeHtml(name) +
+            ' <span class="tool-id">(' + escapeHtml(id) + ')</span>' +
+            '<pre><code>' + escapeHtml(display) + '</code></pre>';
+    } else {
+        content = '<strong>Tool Call:</strong> ' + escapeHtml(name) +
+            ' <span class="tool-id">(' + escapeHtml(id) + ')</span>' +
+            '<pre><code>' + escapeHtml(args) + '</code></pre>';
+    }
+    div.innerHTML = content;
     chat.appendChild(div);
     scrollToBottom();
 }
@@ -228,7 +236,7 @@ function handleEvent(event) {
     }
 
     if (event.kind === 'tool_call') {
-        renderToolCallBlock(event.id, event.name, event.arguments);
+        renderToolCallBlock(event.id, event.name, event.arguments, event.display);
         return;
     }
 
