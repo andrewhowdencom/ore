@@ -393,30 +393,56 @@ func TestModel_Update_PgDown_ScrollsViewport(t *testing.T) {
 }
 
 func TestModel_Update_Turn_AutoScrollsViewport(t *testing.T) {
-	m := newTestModel()
-	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
-	// Pre-populate with tall content so buildContent() exceeds viewport height.
-	m.turns = []renderedTurn{
-		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 200)}}},
-	}
-	m.viewport.SetContent(m.buildContent())
-	m.viewport.GotoBottom()
-	oldBottom := m.viewport.YOffset()
-	m.viewport.HalfPageUp()
-	assert.False(t, m.viewport.AtBottom(), "should not be at bottom after scrolling up")
+	t.Run("at bottom", func(t *testing.T) {
+		m := newTestModel()
+		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
+		// Pre-populate with tall content so buildContent() exceeds viewport height.
+		m.turns = []renderedTurn{
+			{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 200)}}},
+		}
+		m.viewport.SetContent(m.buildContent())
+		m.viewport.GotoBottom()
+		oldBottom := m.viewport.YOffset()
+		require.True(t, m.viewport.AtBottom(), "should start at bottom")
 
-	// Add another tall turn to genuinely increase content height.
-	turn := state.Turn{
-		Role: state.RoleAssistant,
-		Artifacts: []artifact.Artifact{
-			artifact.Text{Content: strings.Repeat("more content ", 200)},
-		},
-	}
-	newM, _ := m.Update(turnMsg{turn: turn})
-	mm := newM.(*model)
+		// Add another tall turn to genuinely increase content height.
+		turn := state.Turn{
+			Role: state.RoleAssistant,
+			Artifacts: []artifact.Artifact{
+				artifact.Text{Content: strings.Repeat("more content ", 200)},
+			},
+		}
+		newM, _ := m.Update(turnMsg{turn: turn})
+		mm := newM.(*model)
 
-	assert.True(t, mm.viewport.AtBottom(), "turn should auto-scroll viewport to bottom")
-	assert.Greater(t, mm.viewport.YOffset(), oldBottom, "should scroll to new bottom past old bottom")
+		assert.True(t, mm.viewport.AtBottom(), "turn should auto-scroll viewport to bottom")
+		assert.Greater(t, mm.viewport.YOffset(), oldBottom, "should scroll to new bottom past old bottom")
+	})
+
+	t.Run("scrolled up", func(t *testing.T) {
+		m := newTestModel()
+		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
+		m.turns = []renderedTurn{
+			{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 200)}}},
+		}
+		m.viewport.SetContent(m.buildContent())
+		m.viewport.GotoBottom()
+		m.viewport.HalfPageUp()
+		oldBottom := m.viewport.YOffset()
+		require.False(t, m.viewport.AtBottom(), "should not be at bottom after scrolling up")
+
+		turn := state.Turn{
+			Role: state.RoleAssistant,
+			Artifacts: []artifact.Artifact{
+				artifact.Text{Content: strings.Repeat("more content ", 200)},
+			},
+		}
+		newM, _ := m.Update(turnMsg{turn: turn})
+		mm := newM.(*model)
+
+		assert.False(t, mm.viewport.AtBottom(), "turn should not auto-scroll viewport when user has scrolled up")
+		assert.Equal(t, oldBottom, mm.viewport.YOffset(), "viewport should stay at user's scroll position")
+	})
 }
 
 func TestModel_View_LongHistory_InputAtBottom(t *testing.T) {
@@ -878,6 +904,7 @@ func TestAutoScroll_MultipleTurns(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
 	for i := 0; i < 3; i++ {
+		m.viewport.GotoBottom() // Ensure viewport starts at bottom for each iteration
 		// Simulate incremental artifact event for each assistant turn.
 		newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: strings.Repeat("content ", 200)}})
 		m = *newM.(*model)
@@ -888,6 +915,58 @@ func TestAutoScroll_MultipleTurns(t *testing.T) {
 		m = *newM2.(*model)
 		assert.True(t, m.viewport.AtBottom(), "turn %d should auto-scroll viewport to bottom", i+1)
 	}
+}
+
+func TestModel_Update_TurnMsg_DoesNotScrollWhenNotAtBottom(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
+	m.turns = []renderedTurn{
+		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 200)}}},
+	}
+	m.viewport.SetContent(m.buildContent())
+	m.viewport.GotoBottom()
+	m.viewport.HalfPageUp()
+	oldYOffset := m.viewport.YOffset()
+	require.False(t, m.viewport.AtBottom(), "should not be at bottom after scrolling up")
+
+	turn := state.Turn{
+		Role: state.RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: strings.Repeat("more content ", 200)},
+		},
+	}
+	newM, _ := m.Update(turnMsg{turn: turn})
+	mm := newM.(*model)
+
+	assert.False(t, mm.viewport.AtBottom(), "turnMsg should not scroll when not at bottom")
+	assert.Equal(t, oldYOffset, mm.viewport.YOffset(), "viewport YOffset should not change")
+}
+
+func TestModel_Update_RenderTickMsg_DoesNotScrollWhenNotAtBottom(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
+	m.turns = []renderedTurn{
+		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 200)}}},
+	}
+	m.viewport.SetContent(m.buildContent())
+	m.viewport.GotoBottom()
+	require.True(t, m.viewport.AtBottom(), "should start at bottom")
+
+	// Send a text delta that schedules a render tick.
+	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "hello"}})
+	mm := newM.(*model)
+
+	// Scroll up before the tick fires.
+	mm.viewport.HalfPageUp()
+	oldYOffset := mm.viewport.YOffset()
+	require.False(t, mm.viewport.AtBottom(), "should not be at bottom after scrolling up")
+
+	// Fire the render tick.
+	newM2, _ := mm.Update(renderTickMsg{})
+	mm2 := newM2.(*model)
+
+	assert.False(t, mm2.viewport.AtBottom(), "renderTickMsg should not scroll when not at bottom")
+	assert.Equal(t, oldYOffset, mm2.viewport.YOffset(), "viewport YOffset should not change")
 }
 
 func TestUnknownArtifact_Ignored(t *testing.T) {

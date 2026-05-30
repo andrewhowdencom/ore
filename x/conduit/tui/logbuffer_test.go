@@ -24,9 +24,9 @@ func TestLogBuffer_SingleWriteAndFlush(t *testing.T) {
 
 func TestLogBuffer_MultipleWritesThenFlush(t *testing.T) {
 	buf := NewLogBuffer()
-	buf.Write([]byte("line1\n"))
-	buf.Write([]byte("line2\n"))
-	buf.Write([]byte("line3\n"))
+	_, _ = buf.Write([]byte("line1\n"))
+	_, _ = buf.Write([]byte("line2\n"))
+	_, _ = buf.Write([]byte("line3\n"))
 
 	var out bytes.Buffer
 	require.NoError(t, buf.FlushTo(&out))
@@ -35,7 +35,7 @@ func TestLogBuffer_MultipleWritesThenFlush(t *testing.T) {
 
 func TestLogBuffer_FlushClearsBuffer(t *testing.T) {
 	buf := NewLogBuffer()
-	buf.Write([]byte("data"))
+	_, _ = buf.Write([]byte("data"))
 
 	var out bytes.Buffer
 	require.NoError(t, buf.FlushTo(&out))
@@ -54,7 +54,7 @@ func TestLogBuffer_ConcurrentWrites(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			buf.Write([]byte("x"))
+			_, _ = buf.Write([]byte("x"))
 		}()
 	}
 	wg.Wait()
@@ -73,7 +73,7 @@ func (failWriter) Write([]byte) (int, error) {
 
 func TestLogBuffer_FlushToError(t *testing.T) {
 	buf := NewLogBuffer()
-	buf.Write([]byte("will fail"))
+	_, _ = buf.Write([]byte("will fail"))
 
 	err := buf.FlushTo(failWriter{})
 	require.Error(t, err)
