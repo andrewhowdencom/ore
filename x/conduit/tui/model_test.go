@@ -760,13 +760,45 @@ func TestModel_Update_RecalcLayout_MinimumViewportHeight(t *testing.T) {
 	assert.GreaterOrEqual(t, mm.viewport.Height(), 1, "viewport height should never be < 1")
 }
 
-func TestModel_Update_LifecycleSubmitted_SetsPending(t *testing.T) {
-	m := model{}
+func TestModel_WindowTitle_Submitted(t *testing.T) {
+	m := newTestModel()
+	m.name = "Ore"
+	m.status = map[string]string{"phase": "submitted"}
+	assert.Equal(t, "Ore [...]", m.windowTitle())
+}
 
-	newM, _ := m.Update(lifecycleMsg{phase: "submitted"})
-	mm := newM.(*model)
+func TestModel_WindowTitle_Streaming(t *testing.T) {
+	m := newTestModel()
+	m.name = "Ore"
+	m.status = map[string]string{"phase": "streaming"}
+	assert.Equal(t, "Ore [...]", m.windowTitle())
+}
 
-	assert.True(t, mm.pending, "lifecycle submitted should set pending=true")
+func TestModel_WindowTitle_Done(t *testing.T) {
+	m := newTestModel()
+	m.name = "Ore"
+	m.status = map[string]string{"phase": "done"}
+	assert.Equal(t, "Ore [ok]", m.windowTitle())
+}
+
+func TestModel_WindowTitle_Error(t *testing.T) {
+	m := newTestModel()
+	m.name = "Ore"
+	m.status = map[string]string{"phase": "error"}
+	assert.Equal(t, "Ore [err]", m.windowTitle())
+}
+
+func TestModel_WindowTitle_Initial(t *testing.T) {
+	m := newTestModel()
+	m.name = "Ore"
+	assert.Equal(t, "Ore [ok]", m.windowTitle())
+}
+
+func TestModel_WindowTitle_CustomName(t *testing.T) {
+	m := newTestModel()
+	m.name = "tui-chat"
+	m.status = map[string]string{"phase": "streaming"}
+	assert.Equal(t, "tui-chat [...]", m.windowTitle())
 }
 
 func TestModel_Update_LifecycleSubmittedThenDone(t *testing.T) {

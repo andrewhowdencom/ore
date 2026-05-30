@@ -411,6 +411,24 @@ func TestRenderReasoning_ErrorFallback(t *testing.T) {
 	assert.Contains(t, output, "let me think...")
 }
 
+func TestModel_View_WindowTitle(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.name = "TestApp"
+	m.status = map[string]string{"phase": "submitted"}
+	v := m.View()
+	assert.Equal(t, "TestApp [...]", v.WindowTitle)
+}
+
+func TestModel_View_WindowTitle_ErrorPhase(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.name = "TestApp"
+	m.status = map[string]string{"phase": "error"}
+	v := m.View()
+	assert.Equal(t, "TestApp [err]", v.WindowTitle)
+}
+
 func TestRenderer_SelectsDarkStyle(t *testing.T) {
 	r := newGlamourMarkdownRendererWithDetectors(
 		func() bool { return true },
