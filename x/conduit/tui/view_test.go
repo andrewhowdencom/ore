@@ -178,7 +178,7 @@ func TestBuildContent_Reasoning_Compact(t *testing.T) {
 	output := m.buildContent()
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "the answer")
-	assert.Contains(t, output, "Thinking...")
+	assert.Contains(t, output, "Thinking · 13 Chars")
 	assert.NotContains(t, output, "because 2+2=4")
 }
 
@@ -238,9 +238,9 @@ func TestModel_Update_KeyCtrlO_TogglesReasoningExpansion(t *testing.T) {
 	newM2, _ := mm.Update(turnMsg{turn: turn})
 	mm2 := newM2.(*model)
 
-	// Default: collapsed — active reasoning shows counter
+	// Default: collapsed — completed reasoning shows character count
 	output := mm2.buildContent()
-	assert.Contains(t, output, "Thinking...")
+	assert.Contains(t, output, "Thinking · 15 Chars")
 	assert.NotContains(t, output, "rendered-reasoning")
 
 	// Toggle open
@@ -255,7 +255,7 @@ func TestModel_Update_KeyCtrlO_TogglesReasoningExpansion(t *testing.T) {
 	newM4, _ := mm3.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	mm4 := newM4.(*model)
 	output3 := mm4.buildContent()
-	assert.Contains(t, output3, "Thinking...")
+	assert.Contains(t, output3, "Thinking · 15 Chars")
 	assert.NotContains(t, output3, "rendered-reasoning")
 }
 
@@ -771,7 +771,7 @@ func TestModel_View_MixedArtifacts_Rendered(t *testing.T) {
 	output := mm3.View().Content
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "rendered")   // text block
-	assert.Contains(t, output, "Thinking...") // reasoning is completed (not last block)
+	assert.Contains(t, output, "Thinking · 5 Chars") // reasoning is completed (not last block)
 	assert.Contains(t, output, "→")          // tool_call compact arrow
 }
 
@@ -851,7 +851,7 @@ func TestBuildContent_ActiveReasoning_UnicodeCounter(t *testing.T) {
 	assert.NotContains(t, output, "Thinking...")
 }
 
-func TestBuildContent_CompletedReasoning_RevertsToDots(t *testing.T) {
+func TestBuildContent_CompletedReasoning_CharCount(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	// Reasoning followed by text means reasoning is no longer the active (last) block.
@@ -860,8 +860,7 @@ func TestBuildContent_CompletedReasoning_RevertsToDots(t *testing.T) {
 		{kind: "text", source: "the answer"},
 	}
 	output := m.buildContent()
-	assert.Contains(t, output, "Thinking...")
-	assert.NotContains(t, output, "Thinking ·")
+	assert.Contains(t, output, "Thinking · 15 Chars")
 }
 
 func TestBuildContent_Reasoning_Expanded_NoCounter(t *testing.T) {
@@ -878,7 +877,7 @@ func TestBuildContent_Reasoning_Expanded_NoCounter(t *testing.T) {
 	assert.NotContains(t, output, "Thinking...")
 }
 
-func TestBuildContent_HistoricalReasoning_NoCounter(t *testing.T) {
+func TestBuildContent_HistoricalReasoning_CharCount(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
@@ -887,8 +886,7 @@ func TestBuildContent_HistoricalReasoning_NoCounter(t *testing.T) {
 		}},
 	}
 	output := m.buildContent()
-	assert.Contains(t, output, "Thinking...")
-	assert.NotContains(t, output, "Thinking ·")
+	assert.Contains(t, output, "Thinking · 20 Chars")
 }
 
 // mockMarkdownValue is a test double that implements artifact.MarkdownRenderer.

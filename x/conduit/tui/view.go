@@ -104,7 +104,7 @@ func (m *model) buildContent() string {
 				case "reasoning":
 					isExpanded := isLatestAssistant && m.expandLatestDetails
 					if !isExpanded {
-						b.WriteString(thinkingStyle.Render("Thinking..."))
+						b.WriteString(thinkingStyle.Render(thinkingCompact(block.source)))
 					} else {
 						if block.rendered != "" {
 							b.WriteString(renderBlock("Thinking: ", thinkingStyle, reasoningExpandedStyle.Render(block.rendered), 0))
@@ -178,7 +178,7 @@ func (m *model) buildContent() string {
 						// Use rune count for user-visible "chars" metric.
 						b.WriteString(thinkingStyle.Render(fmt.Sprintf("Thinking · %d Chars", utf8.RuneCountInString(block.source))))
 					} else {
-						b.WriteString(thinkingStyle.Render("Thinking..."))
+						b.WriteString(thinkingStyle.Render(thinkingCompact(block.source)))
 					}
 				} else {
 					if block.rendered != "" {
@@ -333,6 +333,13 @@ func truncateString(s string, maxWidth int) string {
 		return "…"
 	}
 	return string(runes[:maxWidth-1]) + "…"
+}
+
+// thinkingCompact returns the compact single-line representation for a
+// reasoning block, showing the rune count so users can gauge how much
+// reasoning was performed.
+func thinkingCompact(source string) string {
+	return fmt.Sprintf("Thinking · %d Chars", utf8.RuneCountInString(source))
 }
 
 // windowTitle returns a dynamic terminal window title based on the
