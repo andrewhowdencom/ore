@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io"
 	stdhttp "net/http"
 	"strings"
@@ -43,6 +44,13 @@ func WithAddr(addr string) Option {
 	}
 }
 
+// WithName sets the application name displayed in the web chat UI title and header.
+func WithName(name string) Option {
+	return func(h *Handler) {
+		h.name = name
+	}
+}
+
 // Descriptor enumerates the capabilities of the HTTP conduit.
 // CapAudioNotification is included because the embedded web UI
 // (chat.js) can play Web Audio API oscillator tones on assistant
@@ -65,6 +73,7 @@ type Handler struct {
 	mgr    *session.Manager
 	withUI bool
 	addr   string
+	name   string
 }
 
 // New creates a new HTTP conduit that implements conduit.Conduit.
@@ -75,7 +84,7 @@ func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
 	if mgr == nil {
 		return nil, fmt.Errorf("session manager is required")
 	}
-	h := &Handler{mgr: mgr, withUI: true}
+	h := &Handler{mgr: mgr, withUI: true, name: "ore chat"}
 	for _, opt := range opts {
 		opt(h)
 	}
@@ -373,8 +382,13 @@ func (h *Handler) serveUI(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 			w.WriteHeader(stdhttp.StatusInternalServerError)
 			return
 		}
+		tmpl, err := template.New("index").Parse(string(data))
+		if err != nil {
+			w.WriteHeader(stdhttp.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write(data)
+		_ = tmpl.Execute(w, struct{ Name string }{Name: h.name})
 	case "/chat.js":
 		data, err := staticFS.ReadFile("static/chat.js")
 		if err != nil {
