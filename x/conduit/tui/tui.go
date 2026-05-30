@@ -117,6 +117,8 @@ func (t *TUI) Start(ctx context.Context) error {
 	ta.ShowLineNumbers = false
 	ta.Prompt = "> "
 	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("shift+enter"))
+	ta.DynamicHeight = true
+	ta.MinHeight = 1
 	ta.Focus()
 
 	m := model{
