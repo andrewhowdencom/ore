@@ -90,8 +90,16 @@ func TestWithFilteredTools_MutatesSlice(t *testing.T) {
 		return nil, nil
 	}))
 
+	// Capture the order the registry returns so we can assert reversal
+	// regardless of non-deterministic map iteration order.
+	var inputOrder []string
+
 	// Filter that reorders without mutating the original.
 	filter := func(ctx context.Context, st state.State, tools []provider.Tool) []provider.Tool {
+		inputOrder = make([]string, len(tools))
+		for i, t := range tools {
+			inputOrder[i] = t.Name
+		}
 		result := make([]provider.Tool, len(tools))
 		for i, t := range tools {
 			result[len(tools)-1-i] = t
@@ -107,9 +115,10 @@ func TestWithFilteredTools_MutatesSlice(t *testing.T) {
 	mem := &state.Buffer{}
 	tools := to.Tools(ctx, mem)
 
-	assert.Len(t, tools, 2)
-	assert.Equal(t, "a", tools[0].Name)
-	assert.Equal(t, "b", tools[1].Name)
+	require.Len(t, tools, 2)
+	// Verify the filter reversed the input order.
+	assert.Equal(t, inputOrder[1], tools[0].Name)
+	assert.Equal(t, inputOrder[0], tools[1].Name)
 }
 
 func TestWithFilteredTools_Superset(t *testing.T) {
