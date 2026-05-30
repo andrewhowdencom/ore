@@ -17,16 +17,13 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"os/signal"
 	"sort"
-	"sync"
 	"text/tabwriter"
 	"time"
 
@@ -37,39 +34,12 @@ import (
 	"github.com/andrewhowdencom/ore/x/provider/openai"
 )
 
-// bufferedWriter captures log output in memory and flushes it on demand.
-type bufferedWriter struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (w *bufferedWriter) Write(p []byte) (int, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.buf.Write(p)
-}
-
-func (w *bufferedWriter) FlushTo(dst io.Writer) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.buf.Len() > 0 {
-		io.Copy(dst, &w.buf)
-	}
-}
-
 func main() {
-	bw := &bufferedWriter{}
-	logger := slog.New(slog.NewTextHandler(bw, nil))
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	slog.SetDefault(logger)
 
-	err := run()
-	if err != nil {
+	if err := run(); err != nil {
 		slog.Error("fatal error", "err", err)
-	}
-
-	bw.FlushTo(os.Stderr)
-
-	if err != nil {
 		os.Exit(1)
 	}
 }
@@ -116,7 +86,7 @@ func run() error {
 		}
 		w.Flush()
 
-		return nil
+		os.Exit(0)
 	}
 
 	// Environment configuration.
