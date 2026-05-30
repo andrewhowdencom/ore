@@ -3,18 +3,20 @@
 //
 // A skill is a knowledge artifact — a SKILL.md file with YAML frontmatter
 // (name, description, and optional metadata) followed by Markdown instructions.
-// Progressive disclosure has three stages:
+// Progressive disclosure has two stages:
 //
-//   1. Discovery: The LLM sees only name + description via list_skills or
-//      search_skills.
-//   2. Activation: The LLM reads the full SKILL.md content via read_skill.
-//   3. Execution: The LLM runs scripts from the skill's scripts/ directory
-//      using other tools or its own reasoning. This stage is outside the scope
-//      of this package.
+//   1. Discovery: The LLM sees the full skill catalog eagerly injected into
+//      the system prompt via SystemPromptFragment. This includes the name and
+//      description of every discovered skill, plus a behavioral directive.
+//   2. Activation: The LLM reads the full SKILL.md content via read_skill
+//      when it decides a skill is relevant.
+//
+// Execution (running scripts from a skill's scripts/ directory using other tools
+// or the LLM's own reasoning) is outside the scope of this package.
 //
 // The package provides two Discoverer implementations — FSDiscoverer for the
 // local filesystem and EmbeddedDiscoverer for an embed.FS — and a Catalog that
-// aggregates, deduplicates (first-wins), caches, and searches across them.
+// aggregates, deduplicates (first-wins), and caches them.
 //
 // Composition
 //
@@ -27,15 +29,16 @@
 //	    ...
 //	}
 //
-// The application is responsible for telling the LLM about the skills tool
-// (e.g., via system prompt) so the LLM knows to call list_skills. The skills
-// tool itself is a single provider tool with three callable functions;
-// individual skills are not registered as separate tools.
+// Register adds only the read_skill tool. Discovery happens automatically
+// through the system prompt when the application wires SystemPromptFragment()
+// into systemprompt.New(). Individual skills are not registered as separate
+// tools.
 //
 // System Prompt Integration
 //
-// To avoid an extra round-trip for discovery, applications can proactively
-// inject a formatted listing of all discovered skills into the system prompt:
+// Applications should proactively inject a formatted listing of all discovered
+// skills into the system prompt so the LLM knows what is available without
+// calling a discovery tool:
 //
 //	import "github.com/andrewhowdencom/ore/x/systemprompt"
 //
@@ -55,8 +58,7 @@
 //	tk.SetDirective("When you need domain expertise, load the relevant skill.")
 //
 // If no skills are discovered or discovery fails, the fragment returns an empty
-// string and the section is cleanly omitted. The LLM can still call
-// list_skills or search_skills for interactive browsing.
+// string and the section is omitted from the prompt.
 //
 // Deduplication and Overrides
 //
