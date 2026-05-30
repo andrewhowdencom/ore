@@ -170,6 +170,94 @@ func TestToolResult_MarkdownString(t *testing.T) {
 	}
 }
 
+func TestToolCall_ValueField(t *testing.T) {
+	tc := ToolCall{ID: "call_1", Name: "foo", Arguments: `{"x":1}`, Value: 42}
+	assert.Equal(t, "call_1", tc.ID)
+	assert.Equal(t, "foo", tc.Name)
+	assert.Equal(t, `{"x":1}`, tc.Arguments)
+	assert.Equal(t, 42, tc.Value)
+}
+
+func TestToolCall_LLMString(t *testing.T) {
+	tests := []struct {
+		name string
+		tc   ToolCall
+		want string
+	}{
+		{
+			name: "LLMRenderer takes precedence",
+			tc:   ToolCall{Value: &mockLLMRenderer{}, Arguments: "fallback"},
+			want: "llm",
+		},
+		{
+			name: "json.Marshal fallback for simple value",
+			tc:   ToolCall{Value: "hello", Arguments: "fallback"},
+			want: `"hello"`,
+		},
+		{
+			name: "nil Value falls back to Arguments",
+			tc:   ToolCall{Value: nil, Arguments: "fallback"},
+			want: "fallback",
+		},
+		{
+			name: "zero Value falls back to Arguments",
+			tc:   ToolCall{Arguments: "fallback"},
+			want: "fallback",
+		},
+		{
+			name: "unserializable Value falls back to Arguments",
+			tc:   ToolCall{Value: make(chan int), Arguments: "fallback"},
+			want: "fallback",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.tc.LLMString())
+		})
+	}
+}
+
+func TestToolCall_MarkdownString(t *testing.T) {
+	tests := []struct {
+		name string
+		tc   ToolCall
+		want string
+	}{
+		{
+			name: "MarkdownRenderer takes precedence",
+			tc:   ToolCall{Value: &mockMarkdownRenderer{}, Arguments: "fallback"},
+			want: "markdown",
+		},
+		{
+			name: "json.Marshal fallback for simple value",
+			tc:   ToolCall{Value: 42, Arguments: "fallback"},
+			want: `42`,
+		},
+		{
+			name: "nil Value falls back to Arguments",
+			tc:   ToolCall{Value: nil, Arguments: "fallback"},
+			want: "fallback",
+		},
+		{
+			name: "zero Value falls back to Arguments",
+			tc:   ToolCall{Arguments: "fallback"},
+			want: "fallback",
+		},
+		{
+			name: "unserializable Value falls back to Arguments",
+			tc:   ToolCall{Value: make(chan int), Arguments: "fallback"},
+			want: "fallback",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.tc.MarkdownString())
+		})
+	}
+}
+
 func TestAccumulable_MergeInto_EdgeCases(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -205,25 +293,25 @@ func TestAccumulable_MergeInto_EdgeCases(t *testing.T) {
 			name:     "ToolCallDelta seeds new ToolCall when acc is nil",
 			delta:    ToolCallDelta{Index: 0, ID: "call_1", Name: "search", Arguments: "q"},
 			acc:      nil,
-			expected: ToolCall{ID: "call_1", Name: "search", Arguments: "q"},
+			expected: ToolCall{ID: "call_1", Name: "search", Arguments: "q", Value: nil},
 		},
 		{
 			name:     "ToolCallDelta concatenates Name and Arguments",
 			delta:    ToolCallDelta{Index: 0, ID: "", Name: "calc", Arguments: "1+"},
-			acc:      ToolCall{ID: "call_1", Name: "search", Arguments: "q"},
-			expected: ToolCall{ID: "call_1", Name: "searchcalc", Arguments: "q1+"},
+			acc:      ToolCall{ID: "call_1", Name: "search", Arguments: "q", Value: nil},
+			expected: ToolCall{ID: "call_1", Name: "searchcalc", Arguments: "q1+", Value: nil},
 		},
 		{
 			name:     "ToolCallDelta latest-wins overwrites ID",
 			delta:    ToolCallDelta{Index: 0, ID: "call_2", Name: "", Arguments: ""},
-			acc:      ToolCall{ID: "call_1", Name: "search", Arguments: "q"},
-			expected: ToolCall{ID: "call_2", Name: "search", Arguments: "q"},
+			acc:      ToolCall{ID: "call_1", Name: "search", Arguments: "q", Value: nil},
+			expected: ToolCall{ID: "call_2", Name: "search", Arguments: "q", Value: nil},
 		},
 		{
 			name:     "ToolCallDelta empty ID preserves existing ID",
 			delta:    ToolCallDelta{Index: 0, ID: "", Name: "calc", Arguments: "1"},
-			acc:      ToolCall{ID: "call_1", Name: "search", Arguments: "q"},
-			expected: ToolCall{ID: "call_1", Name: "searchcalc", Arguments: "q1"},
+			acc:      ToolCall{ID: "call_1", Name: "search", Arguments: "q", Value: nil},
+			expected: ToolCall{ID: "call_1", Name: "searchcalc", Arguments: "q1", Value: nil},
 		},
 	}
 
