@@ -7,13 +7,15 @@ import (
 	"encoding/json"
 	"fmt"
 
-
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/openai/openai-go/packages/param"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
+	"github.com/openai/openai-go/packages/param"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Provider implements provider.Provider for OpenAI-compatible APIs using the
@@ -21,6 +23,7 @@ import (
 type Provider struct {
 	client openai.Client
 	model  string
+	tracer trace.Tracer
 }
 
 // WithTools returns an InvokeOption that configures the set of available tools
@@ -64,6 +67,7 @@ type config struct {
 	model      string
 	baseURL    string
 	httpClient option.HTTPClient
+	tracer     trace.Tracer
 }
 
 // Option configures a Provider via the functional options pattern.
@@ -98,6 +102,13 @@ func WithHTTPClient(client option.HTTPClient) Option {
 	}
 }
 
+// WithTracer configures an OpenTelemetry tracer for provider spans.
+func WithTracer(tracer trace.Tracer) Option {
+	return func(c *config) {
+		c.tracer = tracer
+	}
+}
+
 // New creates an OpenAI-compatible provider.
 func New(opts ...Option) (*Provider, error) {
 	cfg := &config{}
@@ -123,6 +134,7 @@ func New(opts ...Option) (*Provider, error) {
 	return &Provider{
 		client: openai.NewClient(sdkOpts...),
 		model:  cfg.model,
+		tracer: cfg.tracer,
 	}, nil
 }
 
@@ -227,7 +239,23 @@ func concatText(artifacts []artifact.Artifact) string {
 // Tool call fragments are assembled into complete ToolCall artifacts;
 // text and reasoning deltas are emitted directly without accumulation.
 func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+	if p.tracer != nil {
+		var span trace.Span
+		ctx, span = p.tracer.Start(ctx, "openai.chat.completions",
+			trace.WithSpanKind(trace.SpanKindClient),
+		)
+		defer span.End()
+	}
+
 	messages := p.serializeMessages(s)
+
+	if span := trace.SpanFromContext(ctx); span.IsRecording() {
+		span.SetAttributes(
+			attribute.String("gen_ai.system", "openai"),
+			attribute.String("gen_ai.request.model", p.model),
+			attribute.Int("gen_ai.request.message_count", len(messages)),
+		)
+	}
 
 	var tools []provider.Tool
 	var temperature float64
@@ -250,6 +278,9 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	}
 	if len(tools) > 0 {
 		params.Tools = p.serializeTools(tools)
+		if span := trace.SpanFromContext(ctx); span.IsRecording() {
+			span.SetAttributes(attribute.Int("gen_ai.request.tool_count", len(tools)))
+		}
 	}
 	if temperature != 0 {
 		params.Temperature = param.NewOpt(temperature)
@@ -301,6 +332,10 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	}
 
 	if err := stream.Err(); err != nil {
+		if span := trace.SpanFromContext(ctx); span.IsRecording() {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
 		return fmt.Errorf("streaming chat completion: %w", err)
 	}
 

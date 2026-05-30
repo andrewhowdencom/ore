@@ -8,6 +8,8 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Transform modifies the state view presented to the provider during
@@ -151,6 +153,7 @@ type Step struct {
 	onEmit       []OnEmit
 	invokeOpts   []provider.InvokeOption
 	eventContext EventContext
+	tracer       trace.Tracer
 }
 
 // New creates a Step with the given options.
@@ -253,6 +256,29 @@ func WithInvokeOptions(opts ...provider.InvokeOption) Option {
 	}
 }
 
+// WithTracer configures an OpenTelemetry tracer for loop-level spans.
+func WithTracer(tracer trace.Tracer) Option {
+	return func(s *Step) {
+		s.tracer = tracer
+	}
+}
+
+// startSpan starts a loop-level OTel span if a tracer is configured.
+// It returns the (possibly updated) context and a function that ends the span.
+func (s *Step) startSpan(ctx context.Context) (context.Context, func()) {
+	if s.tracer == nil {
+		return ctx, func() {}
+	}
+	ctx, span := s.tracer.Start(ctx, "loop.turn",
+		trace.WithSpanKind(trace.SpanKindInternal),
+	)
+	span.SetAttributes(
+		attribute.Int("loop.transform_count", len(s.transforms)),
+		attribute.Int("loop.handler_count", len(s.handlers)),
+	)
+	return ctx, func() { span.End() }
+}
+
 // Turn performs one inference turn with the given provider.
 // The provider emits artifacts to a channel; all artifacts are forwarded to
 // the Step's FanOut subscribers immediately as they arrive. Deltas implementing
@@ -264,6 +290,9 @@ func WithInvokeOptions(opts ...provider.InvokeOption) Option {
 // The operation is fully synchronous and blocking.
 func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, opts ...provider.InvokeOption) (state.State, error) {
 	defer s.clearEventContext()
+	ctx, endSpan := s.startSpan(ctx)
+	defer endSpan()
+
 	var err error
 
 	for _, tr := range s.transforms {
