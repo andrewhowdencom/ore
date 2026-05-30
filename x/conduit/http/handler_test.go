@@ -1003,5 +1003,5 @@ func TestHandler_SendMessage_LifecycleEventInNDJSON(t *testing.T) {
 	for _, ev := range lifecycleEvents {
 		phases = append(phases, ev["phase"].(string))
 	}
-	assert.Equal(t, []string{"submitted", "streaming", "done", "done"}, phases)
+	assert.Equal(t, []string{"submitted", "streaming", "done"}, phases)
 }
