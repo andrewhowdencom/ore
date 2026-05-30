@@ -20,51 +20,18 @@ type JSONStore struct {
 }
 
 // NewJSONStore creates a new JSONStore backed by the given directory.
-// The directory is created if it does not exist. Existing threads
-// are loaded from disk into the in-memory cache.
+// The directory is created if it does not exist. Thread data is loaded
+// lazily on first access via Get, List, or GetBy.
 //
-// Malformed or unreadable .json files are silently skipped during the
-// initial directory scan. This prevents a single corrupted file from
-// aborting startup, but means data loss for that specific thread
-// is not reported.
+// Malformed or unreadable .json files are silently skipped during access.
 func NewJSONStore(dir string) (*JSONStore, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("create store directory: %w", err)
 	}
 
-	cache := make(map[string]*Thread)
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, fmt.Errorf("read store directory: %w", err)
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if !strings.HasSuffix(name, ".json") {
-			continue
-		}
-		id := strings.TrimSuffix(name, ".json")
-
-		path := filepath.Join(dir, name)
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-
-		thread := &Thread{}
-		if err := json.Unmarshal(data, thread); err != nil {
-			continue
-		}
-		cache[id] = thread
-	}
-
 	return &JSONStore{
 		dir:   dir,
-		cache: cache,
+		cache: make(map[string]*Thread),
 	}, nil
 }
 
@@ -124,16 +91,18 @@ func (s *JSONStore) Get(id string) (*Thread, bool) {
 }
 
 // GetBy retrieves a thread by a metadata key-value pair.
-// It performs a linear scan over all cached threads and returns the first match.
+// It scans all thread files on disk and returns the first match.
 func (s *JSONStore) GetBy(key, value string) (*Thread, bool) {
-	s.mu.RLock()
-	candidates := make([]*Thread, 0, len(s.cache))
-	for _, thread := range s.cache {
-		candidates = append(candidates, thread)
+	ids, err := s.listThreadIDs()
+	if err != nil {
+		return nil, false
 	}
-	s.mu.RUnlock()
 
-	for _, thread := range candidates {
+	for _, id := range ids {
+		thread, ok := s.Get(id)
+		if !ok {
+			continue
+		}
 		thread.metaMu.RLock()
 		match := thread.Metadata[key] == value
 		thread.metaMu.RUnlock()
@@ -188,11 +157,38 @@ func (s *JSONStore) Delete(id string) bool {
 
 // List returns all threads in the store.
 func (s *JSONStore) List() ([]*Thread, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	result := make([]*Thread, 0, len(s.cache))
-	for _, thread := range s.cache {
-		result = append(result, thread)
+	ids, err := s.listThreadIDs()
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*Thread, 0, len(ids))
+	for _, id := range ids {
+		if thread, ok := s.Get(id); ok {
+			result = append(result, thread)
+		}
 	}
 	return result, nil
+}
+
+// listThreadIDs returns the IDs of all .json files in the store directory.
+func (s *JSONStore) listThreadIDs() ([]string, error) {
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var ids []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		id := strings.TrimSuffix(name, ".json")
+		ids = append(ids, id)
+	}
+	return ids, nil
 }
