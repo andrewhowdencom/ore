@@ -1403,14 +1403,14 @@ func TestTurn_LifecyclePhases(t *testing.T) {
 		wantPhases []string
 	}{
 		{
-			name:      "artifacts emit submitted streaming done",
+			name:      "artifacts emit submitted streaming",
 			artifacts: []artifact.Artifact{artifact.TextDelta{Content: "Hello"}},
-			wantPhases: []string{"submitted", "streaming", "done"},
+			wantPhases: []string{"submitted", "streaming"},
 		},
 		{
-			name:      "no artifacts emit submitted done without streaming",
+			name:      "no artifacts emit submitted only",
 			artifacts: nil,
-			wantPhases: []string{"submitted", "done"},
+			wantPhases: []string{"submitted"},
 		},
 		{
 			name:      "provider error emits submitted only",
