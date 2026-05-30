@@ -309,6 +309,10 @@ func (s *Stream) GetMetadata(key string) (string, bool) {
 // SetMetadata sets a metadata value on the underlying thread.
 func (s *Stream) SetMetadata(key, value string) {
 	s.thread.SetMetadata(key, value)
+	s.Emit(context.Background(), loop.PropertiesEvent{
+		Properties: map[string]string{key: value},
+		Ctx:        loop.EventContext{Provenance: "app"},
+	})
 }
 
 // Save persists the underlying thread to the store.
