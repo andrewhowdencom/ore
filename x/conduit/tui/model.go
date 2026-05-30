@@ -7,7 +7,6 @@ package tui
 import (
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
@@ -158,40 +157,14 @@ func (m *model) renderMarkdown(text string, width int) (string, error) {
 	return m.md.Render(text, width)
 }
 
-// recalcLayout adjusts the textarea height based on its current content
-// and resizes the viewport to fill the remaining terminal space above the
-// horizontal separator.
+// recalcLayout resizes the viewport to fill the remaining terminal space above
+// the horizontal separator, reading the textarea's current height. The textarea
+// manages its own height via DynamicHeight.
 func (m *model) recalcLayout() {
 	if m.height == 0 {
 		return
 	}
 
-	value := m.textarea.Value()
-	contentWidth := m.textarea.Width()
-	if contentWidth <= 0 {
-		contentWidth = m.width
-	}
-	if contentWidth <= 0 {
-		contentWidth = 80
-	}
-
-	logicalLines := strings.Split(value, "\n")
-	displayLines := 0
-	for _, line := range logicalLines {
-		if line == "" {
-			displayLines++
-		} else {
-			// Rough estimate of wrapped lines.
-			wrappedLineCount := len(line)/contentWidth + 1
-			displayLines += wrappedLineCount
-		}
-	}
-
-	maxHeight := max(3, m.height/3)
-	desiredHeight := min(displayLines, maxHeight)
-	desiredHeight = max(desiredHeight, 1)
-
-	m.textarea.SetHeight(desiredHeight)
 	// Reserve space for one or two separators plus the status bar when
 	// status has non-empty content.
 	_, statusLines := buildStatusLine(m.status, m.width)
@@ -495,6 +468,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.viewport.SetWidth(msg.Width)
 		m.textarea.SetWidth(msg.Width)
+		m.textarea.MaxHeight = max(3, msg.Height/3)
 		m.recalcLayout()
 		// Re-render assistant turn text blocks with the new terminal width
 		// so cached Markdown output remains correctly wrapped.
