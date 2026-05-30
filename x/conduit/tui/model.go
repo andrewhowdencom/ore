@@ -207,7 +207,7 @@ func (m *model) renderArtifact(art artifact.Artifact, shouldRenderMarkdown bool)
 		}
 		return block
 	case artifact.Reasoning:
-		block := renderedBlock{kind: "reasoning", source: a.Content, compact: "Thinking..."}
+		block := renderedBlock{kind: "reasoning", source: a.Content, compact: thinkingCompact(a.Content)}
 		if shouldRenderMarkdown {
 			rendered, err := m.renderMarkdown(a.Content, m.viewport.Width())
 			if err == nil {
@@ -272,7 +272,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			if !found {
-				m.currentTurn.blocks = append(m.currentTurn.blocks, renderedBlock{kind: "reasoning", source: a.Content, compact: "Thinking..."})
+				m.currentTurn.blocks = append(m.currentTurn.blocks, renderedBlock{kind: "reasoning", source: a.Content, compact: thinkingCompact(a.Content)})
 			}
 		default:
 			block := m.renderArtifact(msg.artifact, true)
@@ -327,9 +327,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.turns = append(m.turns, rt)
 		}
+		wasAtBottom := m.viewport.AtBottom()
 		m.contentDirty = true
 		m.syncViewport()
-		m.viewport.GotoBottom()
+		if wasAtBottom {
+			m.viewport.GotoBottom()
+		}
 	case statusMsg:
 		if m.status == nil {
 			m.status = make(map[string]string)
@@ -391,8 +394,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+		wasAtBottom := m.viewport.AtBottom()
 		m.syncViewport()
-		m.viewport.GotoBottom()
+		if wasAtBottom {
+			m.viewport.GotoBottom()
+		}
 		m.contentDirty = false
 		m.renderScheduled = false
 		if m.contentDirty {
