@@ -8,8 +8,8 @@ import (
 	"github.com/andrewhowdencom/ore/tool"
 )
 
-// Toolkit binds a Catalog to three tool.ToolFunc implementations that an LLM
-// can invoke to discover and load skill instructions on demand.
+// Toolkit binds a Catalog to a tool.ToolFunc implementation that an LLM
+// can invoke to load skill instructions on demand.
 type Toolkit struct {
 	catalog *Catalog
 }
@@ -22,12 +22,6 @@ func NewToolkit(discoverers ...Discoverer) *Toolkit {
 	}
 }
 
-// ListSkills lists all discovered skills by metadata (name + description).
-// Parameters: none.
-func (t *Toolkit) ListSkills(ctx context.Context, _ tool.Sandbox, args map[string]any) (any, error) {
-	return t.catalog.List(ctx)
-}
-
 // ReadSkill returns the full SKILL.md content for the named skill.
 // Parameters:
 //   - name (string, required): the skill name.
@@ -37,18 +31,6 @@ func (t *Toolkit) ReadSkill(ctx context.Context, _ tool.Sandbox, args map[string
 		return nil, fmt.Errorf("name is required")
 	}
 	return t.catalog.Read(ctx, name)
-}
-
-// SearchSkills searches skills by case-insensitive substring match on name
-// or description.
-// Parameters:
-//   - query (string, required): the search query.
-func (t *Toolkit) SearchSkills(ctx context.Context, _ tool.Sandbox, args map[string]any) (any, error) {
-	query := toString(args["query"])
-	if query == "" {
-		return nil, fmt.Errorf("query is required")
-	}
-	return t.catalog.Search(ctx, query)
 }
 
 // SystemPromptFragment returns a prompt fragment function suitable for
@@ -66,16 +48,8 @@ func (t *Toolkit) SetDirective(directive string) {
 	t.catalog.SetDirective(directive)
 }
 
-// Register adds all three skills tools to the registry.
+// Register adds the read_skill tool to the registry.
 func (t *Toolkit) Register(registry tool.Registry) error {
-	if err := registry.Register(
-		ListSkillsTool.Name,
-		ListSkillsTool.Description,
-		ListSkillsTool.Schema,
-		t.ListSkills,
-	); err != nil {
-		return fmt.Errorf("register list_skills: %w", err)
-	}
 	if err := registry.Register(
 		ReadSkillTool.Name,
 		ReadSkillTool.Description,
@@ -84,31 +58,13 @@ func (t *Toolkit) Register(registry tool.Registry) error {
 	); err != nil {
 		return fmt.Errorf("register read_skill: %w", err)
 	}
-	if err := registry.Register(
-		SearchSkillsTool.Name,
-		SearchSkillsTool.Description,
-		SearchSkillsTool.Schema,
-		t.SearchSkills,
-	); err != nil {
-		return fmt.Errorf("register search_skills: %w", err)
-	}
 	return nil
-}
-
-// ListSkillsTool is the provider.Tool descriptor for list_skills.
-var ListSkillsTool = provider.Tool{
-	Name:        "list_skills",
-	Description: "List all available skills. Returns an array of skill metadata (name and description) for every discovered SKILL.md file.",
-	Schema: map[string]any{
-		"type":       "object",
-		"properties": map[string]any{},
-	},
 }
 
 // ReadSkillTool is the provider.Tool descriptor for read_skill.
 var ReadSkillTool = provider.Tool{
 	Name:        "read_skill",
-	Description: "Read the full SKILL.md content for a named skill. Use this after list_skills or search_skills to load the detailed instructions for a skill.",
+	Description: "Read the full SKILL.md content for a named skill. Use this to load the detailed instructions for a skill.",
 	Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -121,21 +77,7 @@ var ReadSkillTool = provider.Tool{
 	},
 }
 
-// SearchSkillsTool is the provider.Tool descriptor for search_skills.
-var SearchSkillsTool = provider.Tool{
-	Name:        "search_skills",
-	Description: "Search skills by name or description. Returns an array of skill metadata matching the case-insensitive query.",
-	Schema: map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"query": map[string]any{
-				"type":        "string",
-				"description": "The case-insensitive substring to search for in skill names and descriptions.",
-			},
-		},
-		"required": []string{"query"},
-	},
-}
+
 
 // toString safely extracts a string value from a JSON-decoded argument.
 func toString(v any) string {
