@@ -23,13 +23,6 @@ type Provider struct {
 	model  string
 }
 
-// toolOption is a per-invocation option that configures available tools.
-type toolOption struct {
-	tools []provider.Tool
-}
-
-func (toolOption) IsInvokeOption() {}
-
 // WithTools returns an InvokeOption that configures the set of available tools
 // for a single provider invocation. It delegates to the provider-agnostic
 // provider.WithTools for cross-adapter compatibility.
@@ -240,11 +233,8 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	var temperature float64
 	var reasoningEffort string
 	for _, opt := range opts {
-		if to, ok := opt.(toolOption); ok {
-			tools = to.tools
-		}
 		if to, ok := opt.(provider.ToolsOption); ok {
-			tools = to.Tools
+			tools = to.Tools(ctx, s)
 		}
 		if temp, ok := opt.(temperatureOption); ok {
 			temperature = temp.t
