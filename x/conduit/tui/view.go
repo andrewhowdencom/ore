@@ -335,6 +335,22 @@ func truncateString(s string, maxWidth int) string {
 	return string(runes[:maxWidth-1]) + "…"
 }
 
+// windowTitle returns a dynamic terminal window title based on the
+// current lifecycle phase. It uses ASCII bracket indicators so users
+// can distinguish session state when multiple ore clients are open in
+// tmux or a terminal multiplexer.
+func (m *model) windowTitle() string {
+	phase := m.status["phase"]
+	switch phase {
+	case "submitted", "streaming":
+		return m.name + " [...]"
+	case "error":
+		return m.name + " [err]"
+	default:
+		return m.name + " [ok]"
+	}
+}
+
 // View renders the conversation history inside a scrollable viewport and
 // anchors the input prompt at the bottom of the terminal.
 func (m *model) View() tea.View {
@@ -356,9 +372,11 @@ func (m *model) View() tea.View {
 		}
 		v := tea.NewView(strings.Join(parts, "\n"))
 		v.AltScreen = true
+		v.WindowTitle = m.windowTitle()
 		return v
 	}
 	v := tea.NewView(m.textarea.View())
 	v.AltScreen = true
+	v.WindowTitle = m.windowTitle()
 	return v
 }
