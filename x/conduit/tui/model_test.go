@@ -26,6 +26,8 @@ func newTestModel() model {
 	ta.ShowLineNumbers = false
 	ta.Prompt = "> "
 	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("shift+enter"))
+	ta.DynamicHeight = true
+	ta.MinHeight = 1
 	ta.Focus()
 	return model{
 		textarea: ta,
