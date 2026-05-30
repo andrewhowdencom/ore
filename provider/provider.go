@@ -24,7 +24,8 @@ type InvokeOption interface {
 type ToolsOption struct {
 	// Tools returns the slice of tools available for the current invocation.
 	// The function receives the request context and the current state, enabling
-	// per-turn dynamic selection of tools.
+	// per-turn dynamic selection of tools. Returning nil is equivalent to an
+	// empty tool list (no tools are offered to the provider).
 	Tools func(ctx context.Context, st state.State) []Tool
 }
 
@@ -34,7 +35,8 @@ func (ToolsOption) IsInvokeOption() {}
 // WithTools returns an InvokeOption that configures the set of available tools
 // for a single provider invocation. It is a convenience wrapper for the common
 // case where the tool set is static; it creates a ToolsOption whose Tools
-// function simply returns the provided slice.
+// function simply returns the provided slice, ignoring the request context and
+// state.
 func WithTools(tools []Tool) InvokeOption {
 	return ToolsOption{Tools: func(context.Context, state.State) []Tool { return tools }}
 }

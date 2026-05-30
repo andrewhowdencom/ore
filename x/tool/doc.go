@@ -79,14 +79,23 @@
 // applications can register a filter function that is called automatically
 // on each invocation:
 //
+//	import (
+//	    "context"
+//	    "github.com/andrewhowdencom/ore/provider"
+//	    "github.com/andrewhowdencom/ore/state"
+//	    "github.com/andrewhowdencom/ore/x/provider/openai"
+//	    xtool "github.com/andrewhowdencom/ore/x/tool"
+//	)
+//
 //	filter := func(ctx context.Context, st state.State, tools []provider.Tool) []provider.Tool {
 //	    // Return only tools permitted for the current user/role.
 //	    return filterByRole(tools, st)
 //	}
-//	opt := WithFilteredTools(registry, filter)
+//	opt := xtool.WithFilteredTools(registry, filter)
 //	_, err := step.Turn(ctx, state, prov, opt)
 //
-// A nil filter returns all tools from the registry unmodified.
+// A nil filter is treated as an identity function — it returns the full
+// slice of tools obtained from the registry unchanged.
 //
 // Because tools are passed per-invocation through provider.InvokeOption, there
 // is no mutable provider state and no need for synchronization. The provider.Tool
