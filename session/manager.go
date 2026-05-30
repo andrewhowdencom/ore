@@ -20,6 +20,15 @@ type TurnProcessor func(ctx context.Context, step *loop.Step, st state.State, pr
 // ManagerOption configures a Manager.
 type ManagerOption func(*Manager)
 
+// WithDefaultMetadata sets a function that provides default metadata for
+// every stream at creation/attachment time. The function receives the
+// thread so it can include the thread ID or other thread-specific values.
+func WithDefaultMetadata(fn func(*Thread) map[string]string) ManagerOption {
+	return func(m *Manager) {
+		m.defaultMeta = fn
+	}
+}
+
 // SinkFunc receives OutputEvents from a specific stream, together with the
 // originating stream ID. It may be invoked concurrently for multiple streams.
 type SinkFunc func(streamID string, event loop.OutputEvent)
@@ -44,15 +53,16 @@ func makeKindsSet(kinds []string) map[string]struct{} {
 // Manager owns the Thread↔Step binding and acts as a factory/registry for
 // Stream handles.
 type Manager struct {
-	store     Store
-	provider  provider.Provider
-	newStep   func(*Thread) (*loop.Step, error)
-	processor TurnProcessor
-	sessions  map[string]*Stream
-	mu        sync.RWMutex
-	sinks     []sink
-	sinksMu   sync.RWMutex
-	sinkID    int64
+	store        Store
+	provider     provider.Provider
+	newStep      func(*Thread) (*loop.Step, error)
+	processor    TurnProcessor
+	sessions     map[string]*Stream
+	mu           sync.RWMutex
+	sinks        []sink
+	sinksMu      sync.RWMutex
+	sinkID       int64
+	defaultMeta  func(*Thread) map[string]string
 }
 
 // NewManager creates a new Manager with the given dependencies.
@@ -96,6 +106,7 @@ func (m *Manager) Create() (*Stream, error) {
 	m.mu.Unlock()
 
 	m.startSinkForwarding(stream)
+	m.applyDefaultMetadata(stream)
 
 	return stream, nil
 }
@@ -138,8 +149,18 @@ func (m *Manager) Attach(threadID string) (*Stream, error) {
 	m.mu.Unlock()
 
 	m.startSinkForwarding(stream)
+	m.applyDefaultMetadata(stream)
 
 	return stream, nil
+}
+
+func (m *Manager) applyDefaultMetadata(stream *Stream) {
+	if m.defaultMeta == nil {
+		return
+	}
+	for k, v := range m.defaultMeta(stream.thread) {
+		stream.SetMetadata(k, v)
+	}
 }
 
 // Close closes a stream and removes it from the active map.
@@ -200,6 +221,7 @@ func (m *Manager) CreateWithID(id string) (*Stream, error) {
 	m.mu.Unlock()
 
 	m.startSinkForwarding(stream)
+	m.applyDefaultMetadata(stream)
 
 	return stream, nil
 }
