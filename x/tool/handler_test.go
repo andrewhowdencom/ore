@@ -111,6 +111,40 @@ func TestHandler_InvalidArguments(t *testing.T) {
 	assert.Contains(t, tr.Content, "invalid tool arguments")
 }
 
+func TestHandler_ToolExecutionError_WithResult(t *testing.T) {
+	r := toolpkg.NewRegistry()
+	require.NoError(t, r.Register("fail", "", nil, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
+		return map[string]any{
+			"stdout":    "partial",
+			"stderr":    "something failed",
+			"exit_code": 1,
+		}, errors.New("exit 1")
+	}))
+	h := NewHandler(r)
+	emitter := &mockEmitter{}
+
+	err := h.Handle(context.Background(), artifact.ToolCall{
+		ID:        "call_1",
+		Name:      "fail",
+		Arguments: `{}`,
+	}, emitter)
+	require.NoError(t, err)
+
+	require.Len(t, emitter.events, 1)
+	tc, ok := emitter.events[0].(loop.TurnCompleteEvent)
+	require.True(t, ok)
+	require.Len(t, tc.Turn.Artifacts, 1)
+	tr, ok := tc.Turn.Artifacts[0].(artifact.ToolResult)
+	require.True(t, ok)
+	assert.True(t, tr.IsError)
+	assert.Equal(t, `{"exit_code":1,"stderr":"something failed","stdout":"partial"}`, tr.Content)
+	assert.Equal(t, map[string]any{
+		"stdout":    "partial",
+		"stderr":    "something failed",
+		"exit_code": 1,
+	}, tr.Value)
+}
+
 func TestHandler_ToolExecutionError(t *testing.T) {
 	r := toolpkg.NewRegistry()
 	require.NoError(t, r.Register("fail", "", nil, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
