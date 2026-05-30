@@ -10,7 +10,7 @@ import (
 // Registry is the interface for tool registration and lookup.
 type Registry interface {
 	// Register adds a tool to the registry.
-	Register(name, description string, schema map[string]any, fn ToolFunc) error
+	Register(name, description string, schema map[string]any, fn ToolFunc, opts ...RegisterOption) error
 	// Tools returns a merged list of all registered tools.
 	Tools() []provider.Tool
 	// Lookup returns the tool function and true if the tool is registered locally.
@@ -56,6 +56,7 @@ type localTool struct {
 	description string
 	schema      map[string]any
 	fn          ToolFunc
+	displayHint func(map[string]any) any
 }
 
 // registry is the default in-memory implementation of Registry.
@@ -86,7 +87,7 @@ func NewRegistry(opts ...Option) Registry {
 // Register adds a tool to the registry. If a tool with the same name already
 // exists, it is overwritten. The description and schema are captured so the
 // registry can produce a unified []provider.Tool list for provider adapters.
-func (r *registry) Register(name, description string, schema map[string]any, fn ToolFunc) error {
+func (r *registry) Register(name, description string, schema map[string]any, fn ToolFunc, opts ...RegisterOption) error {
 	if name == "" {
 		return fmt.Errorf("tool name cannot be empty")
 	}
@@ -102,12 +103,16 @@ func (r *registry) Register(name, description string, schema map[string]any, fn 
 	if r.localTools == nil {
 		r.localTools = make(map[string]*localTool)
 	}
-	r.localTools[name] = &localTool{
+	lt := &localTool{
 		name:        name,
 		description: description,
 		schema:      schema,
 		fn:          fn,
 	}
+	for _, opt := range opts {
+		opt(lt)
+	}
+	r.localTools[name] = lt
 	return nil
 }
 
@@ -126,6 +131,7 @@ func (r *registry) Tools() []provider.Tool {
 			Name:        lt.name,
 			Description: lt.description,
 			Schema:      lt.schema,
+			DisplayHint: lt.displayHint,
 		})
 	}
 
@@ -135,6 +141,7 @@ func (r *registry) Tools() []provider.Tool {
 				Name:        rs.Name() + "/" + rt.Name,
 				Description: rt.Description,
 				Schema:      rt.Schema,
+				DisplayHint: rt.DisplayHint,
 			})
 		}
 	}
