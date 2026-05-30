@@ -74,12 +74,21 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 
 		result, err := source.Call(ctx, name, args)
 		if err != nil {
+			content := fmt.Sprintf("tool execution error: %v", err)
+			var value any
+			if result != nil {
+				if b, marshalErr := json.Marshal(result); marshalErr == nil {
+					content = string(b)
+					value = result
+				}
+			}
 			e.Emit(ctx, loop.TurnCompleteEvent{
 				Turn: state.Turn{
 					Role: state.RoleTool,
 					Artifacts: []artifact.Artifact{artifact.ToolResult{
 						ToolCallID: tc.ID,
-						Content:    fmt.Sprintf("tool execution error: %v", err),
+						Content:    content,
+						Value:      value,
 						IsError:    true,
 					}},
 				},
@@ -148,12 +157,21 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 
 	result, err := fn(ctx, sb, args)
 	if err != nil {
+		content := fmt.Sprintf("tool execution error: %v", err)
+		var value any
+		if result != nil {
+			if b, marshalErr := json.Marshal(result); marshalErr == nil {
+				content = string(b)
+				value = result
+			}
+		}
 		e.Emit(ctx, loop.TurnCompleteEvent{
 			Turn: state.Turn{
 				Role: state.RoleTool,
 				Artifacts: []artifact.Artifact{artifact.ToolResult{
 					ToolCallID: tc.ID,
-					Content:    fmt.Sprintf("tool execution error: %v", err),
+					Content:    content,
+					Value:      value,
 					IsError:    true,
 				}},
 			},
