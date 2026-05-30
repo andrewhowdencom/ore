@@ -36,6 +36,19 @@ type ExecSandbox interface {
 // before being sent back to the LLM.
 type ToolFunc func(ctx context.Context, sb Sandbox, args map[string]any) (any, error)
 
+// RegisterOption is a functional option for tool registration.
+type RegisterOption func(*localTool)
+
+// WithDisplay attaches a display-hint formatter to a tool registration.
+// The formatter receives parsed JSON arguments and returns a displayable
+// value (implementing MarkdownRenderer / LLMRenderer) that conduits
+// will use when rendering the tool call to humans.
+func WithDisplay(fn func(map[string]any) any) RegisterOption {
+	return func(lt *localTool) {
+		lt.displayHint = fn
+	}
+}
+
 // RemoteSource represents an external source of tools (e.g., an MCP server).
 // The Registry consumes this interface without importing the concrete MCP
 // package, allowing clean extension without import cycles.
