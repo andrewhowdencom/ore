@@ -152,6 +152,19 @@ func TestNew_WithAddr(t *testing.T) {
 	}
 }
 
+func TestNew_WithName(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	c, err := New(mgr, WithName("my-app"))
+	require.NoError(t, err)
+	require.NotNil(t, c)
+
+	// Verify the name was stored by accessing it through the concrete type.
+	h := c.(*Handler)
+	assert.Equal(t, "my-app", h.name)
+}
+
 func TestStart_ContextCancel(t *testing.T) {
 	store := session.NewMemoryStore()
 	prov := &mockProvider{}
@@ -791,6 +804,17 @@ func TestHandler_WithUI_StaticFiles(t *testing.T) {
 		assert.Equal(t, 200, rr.Code)
 		assert.Equal(t, "text/html; charset=utf-8", rr.Header().Get("Content-Type"))
 		assert.Contains(t, rr.Body.String(), "ore chat")
+	})
+
+	t.Run("WithName overrides default branding", func(t *testing.T) {
+		h := newTestHandler(t, mgr, WithUI(), WithName("Custom App"))
+		req := httptest.NewRequest("GET", "/chat", nil)
+		rr := httptest.NewRecorder()
+		h.ServeMux().ServeHTTP(rr, req)
+		assert.Equal(t, 200, rr.Code)
+		assert.Equal(t, "text/html; charset=utf-8", rr.Header().Get("Content-Type"))
+		assert.Contains(t, rr.Body.String(), "Custom App")
+		assert.NotContains(t, rr.Body.String(), "ore chat")
 	})
 
 	t.Run("GET /chat.js returns application/javascript", func(t *testing.T) {
