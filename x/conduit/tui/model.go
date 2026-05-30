@@ -130,6 +130,9 @@ type model struct {
 	// production this is a glamourMarkdownRenderer; tests may inject a mock.
 	md markdownRenderer
 
+	// name is the application name shown in the terminal window title.
+	name string
+
 	// cachedContent holds the last computed viewport content string.
 	// It is invalidated by setting contentDirty = true.
 	cachedContent string
