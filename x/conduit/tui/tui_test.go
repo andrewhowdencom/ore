@@ -11,6 +11,7 @@ import (
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -72,6 +73,20 @@ func TestStart_AttachNotFound(t *testing.T) {
 	err = c.Start(ctx)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "nonexistent")
+}
+
+func TestNew_WithName(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+
+	c, err := New(mgr, WithName("my-app"))
+	require.NoError(t, err)
+	require.NotNil(t, c)
+
+	// Verify the name was stored by accessing it through the concrete type.
+	tui := c.(*TUI)
+	assert.Equal(t, "my-app", tui.name)
 }
 
 func TestTUI_ImplementsAudioNotifier(t *testing.T) {
