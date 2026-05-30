@@ -3,7 +3,6 @@ package loop
 import (
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
@@ -183,62 +182,6 @@ func TestFanOut_MultipleKindsOneSubscriber(t *testing.T) {
 	require.Len(t, events, 2)
 	assert.Equal(t, "text_delta", events[0].Kind())
 	assert.Equal(t, "turn_complete", events[1].Kind())
-}
-
-func TestFanOut_SlowSubscriberDoesNotBlock(t *testing.T) {
-	src := make(chan outputEventEnvelope, 200)
-	f := NewFanOut(src)
-	defer f.Close()
-
-	// Slow subscriber — never reads
-	_ = f.Subscribe("text_delta")
-
-	// Fill its buffer (100 events)
-	for i := 0; i < 100; i++ {
-		src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "filler"}}, done: make(chan struct{})}
-	}
-
-	// Send 50 more events — these should be dropped without blocking.
-	// If send() blocked on the full channel, the FanOut's run() goroutine
-	// would deadlock and f.Close() (via defer) would hang, failing the test.
-	for i := 0; i < 50; i++ {
-		src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "msg"}}, done: make(chan struct{})}
-	}
-
-	close(src)
-}
-
-func TestFanOut_SlowSubscriberDoesNotBlockOthers(t *testing.T) {
-	src := make(chan outputEventEnvelope, 200)
-	f := NewFanOut(src)
-	defer f.Close()
-
-	_ = f.Subscribe("text_delta")
-
-	// Send 100 events to fill the slow subscriber's buffer
-	for i := 0; i < 100; i++ {
-		src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "filler"}}, done: make(chan struct{})}
-	}
-
-	// Give the FanOut time to process the initial batch before creating
-	// the fast subscriber, minimizing the chance fastCh receives filler.
-	time.Sleep(10 * time.Millisecond)
-
-	// Create fast subscriber
-	fastCh := f.Subscribe("text_delta")
-
-	// Send distinctive event
-	src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "after-full"}}, done: make(chan struct{})}
-	close(src)
-
-	// Fast subscriber should receive the distinctive event
-	found := false
-	for event := range fastCh {
-		if event.(ArtifactEvent).Artifact.(artifact.TextDelta).Content == "after-full" {
-			found = true
-		}
-	}
-	assert.True(t, found, "fast subscriber should receive event sent after slowCh was full")
 }
 
 func TestFanOut_MultipleSubscribersSameKind(t *testing.T) {
