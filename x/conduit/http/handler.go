@@ -188,11 +188,6 @@ func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		}
 	}
 
-	_ = stream.Emit(r.Context(), loop.PropertiesEvent{
-		Properties: map[string]string{"thread_id": stream.ID()},
-		Ctx:        loop.EventContext{Provenance: "http"},
-	})
-
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(stdhttp.StatusCreated)
 	_ = json.NewEncoder(w).Encode(map[string]string{
