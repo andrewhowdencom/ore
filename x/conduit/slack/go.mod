@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/x/conduit/slack
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.2.0
+	github.com/andrewhowdencom/ore v0.2.1
 	github.com/andrewhowdencom/ore/x/conduit v0.1.2
 	github.com/slack-go/slack v0.23.1
 	github.com/stretchr/testify v1.11.1
