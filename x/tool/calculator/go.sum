@@ -1,7 +1,7 @@
-github.com/andrewhowdencom/ore v0.0.1 h1:l7nAetP35ujP/brMjlD2CFAFkYa328tSdSImHRUYbrA=
-github.com/andrewhowdencom/ore v0.0.1/go.mod h1:V+qqNhQDzkI+KNHnF7PHukNLtKInTLVcF95s+iHv+MQ=
-github.com/andrewhowdencom/ore/x/tool v0.0.0-20260525140602-4a5ad56e5a8a h1:msdS0Zs0KoemgoUBPlhd3edcJwRGFeGHeYpUEpIVgVk=
-github.com/andrewhowdencom/ore/x/tool v0.0.0-20260525140602-4a5ad56e5a8a/go.mod h1:BrU017utSyiwmSmHqvxswD7scr7sm3sd8N8JbQqmiTE=
+github.com/andrewhowdencom/ore v0.2.0 h1:KWW1Q1BtAEsPz6il4g/fTvq/4Rbv2lRpIoEV8SzStSc=
+github.com/andrewhowdencom/ore v0.2.0/go.mod h1:Q9646tT7WUc5TGVUcB1vOzTH6y7mdECzEMASVVMBkRc=
+github.com/andrewhowdencom/ore/x/tool v0.3.0 h1:QwcYC8JNrppL7MkVxa0bb054Kx+FCtfEcsmbEZ9D0a8=
+github.com/andrewhowdencom/ore/x/tool v0.3.0/go.mod h1:a0XT5NZDHbq3Cu6hyrH4MuGAAVkyeFBM10bjwZdjq+8=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
