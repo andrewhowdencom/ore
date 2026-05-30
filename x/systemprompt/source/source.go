@@ -52,3 +52,36 @@ func AgentsMD(startDir string) func() string {
 		return strings.Join(contents, "\n\n")
 	}
 }
+
+// Harness returns a content function that describes the agent harness.
+// If name is empty, it returns an empty string.
+func Harness(name string) func() string {
+	return func() string {
+		if name == "" {
+			return ""
+		}
+		return "You are the " + name + " agent."
+	}
+}
+
+// Model returns a content function that describes the model being used.
+// If name is empty, it returns an empty string.
+func Model(name string) func() string {
+	return func() string {
+		if name == "" {
+			return ""
+		}
+		return "You are running on model " + name + "."
+	}
+}
+
+// Provider returns a content function that describes the provider backend.
+// If name is empty, it returns an empty string.
+func Provider(name string) func() string {
+	return func() string {
+		if name == "" {
+			return ""
+		}
+		return "Provider backend: " + name
+	}
+}

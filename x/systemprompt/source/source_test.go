@@ -117,3 +117,51 @@ func TestAgentsMD_DynamicUpdate(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("second"), 0644))
 	assert.Equal(t, "second", fn())
 }
+
+func TestHarness(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "non-empty returns formatted string", input: "ideation", expected: "You are the ideation agent."},
+		{name: "empty returns empty string", input: "", expected: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, Harness(tt.input)())
+		})
+	}
+}
+
+func TestModel(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "non-empty returns formatted string", input: "gpt-4o", expected: "You are running on model gpt-4o."},
+		{name: "empty returns empty string", input: "", expected: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, Model(tt.input)())
+		})
+	}
+}
+
+func TestProvider(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "non-empty returns formatted string", input: "openai", expected: "Provider backend: openai"},
+		{name: "empty returns empty string", input: "", expected: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, Provider(tt.input)())
+		})
+	}
+}
