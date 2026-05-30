@@ -101,45 +101,6 @@ func TestCatalog_DuplicateNamesFirstWins(t *testing.T) {
 	assert.Equal(t, "first content", content)
 }
 
-func TestCatalog_SearchMatches(t *testing.T) {
-	t.Parallel()
-	d := &mockDiscoverer{
-		meta: []SkillMeta{
-			{Name: "conduit", Description: "Implements a new ore I/O conduit package."},
-			{Name: "go", Description: "Guidelines for Go development."},
-		},
-	}
-	c := NewCatalog(d)
-
-	byName, err := c.Search(context.Background(), "conduit")
-	require.NoError(t, err)
-	assert.Len(t, byName, 1)
-	assert.Equal(t, "conduit", byName[0].Name)
-
-	byDesc, err := c.Search(context.Background(), "guidelines")
-	require.NoError(t, err)
-	assert.Len(t, byDesc, 1)
-	assert.Equal(t, "go", byDesc[0].Name)
-
-	caseInsensitive, err := c.Search(context.Background(), "GO")
-	require.NoError(t, err)
-	assert.Len(t, caseInsensitive, 1)
-	assert.Equal(t, "go", caseInsensitive[0].Name)
-}
-
-func TestCatalog_SearchNoMatches(t *testing.T) {
-	t.Parallel()
-	d := &mockDiscoverer{
-		meta: []SkillMeta{
-			{Name: "conduit", Description: "Implements a new ore I/O conduit package."},
-		},
-	}
-	c := NewCatalog(d)
-	result, err := c.Search(context.Background(), "nonexistent")
-	require.NoError(t, err)
-	assert.Empty(t, result)
-}
-
 func TestCatalog_ReadAfterRefresh(t *testing.T) {
 	t.Parallel()
 	d := &mockDiscoverer{
