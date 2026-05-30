@@ -43,10 +43,43 @@ type ToolCall struct {
 	ID        string
 	Name      string
 	Arguments string
+	Value     any // NEW
 }
 
 // Kind returns the artifact kind identifier.
 func (t ToolCall) Kind() string { return "tool_call" }
+
+// LLMString returns a string representation of the tool call suitable
+// for consumption by an LLM provider. It prefers the custom LLMRenderer
+// on Value, falls back to json.Marshal of Value, and finally falls back
+// to the raw Arguments string.
+func (t ToolCall) LLMString() string {
+	if t.Value != nil {
+		if r, ok := t.Value.(LLMRenderer); ok {
+			return r.MarshalLLM()
+		}
+		if b, err := json.Marshal(t.Value); err == nil {
+			return string(b)
+		}
+	}
+	return t.Arguments
+}
+
+// MarkdownString returns a string representation of the tool call
+// suitable for human display. It prefers the custom MarkdownRenderer on
+// Value, falls back to json.Marshal of Value, and finally falls back
+// to the raw Arguments string.
+func (t ToolCall) MarkdownString() string {
+	if t.Value != nil {
+		if r, ok := t.Value.(MarkdownRenderer); ok {
+			return r.MarshalMarkdown()
+		}
+		if b, err := json.Marshal(t.Value); err == nil {
+			return string(b)
+		}
+	}
+	return t.Arguments
+}
 
 // LLMRenderer is implemented by tool result values that know how to
 // serialize themselves for consumption by an LLM provider.
@@ -208,6 +241,7 @@ func (d ToolCallDelta) AccumulatorKey() string {
 
 // MergeInto merges the delta into an existing ToolCall artifact or seeds a new one.
 // ID uses latest-wins semantics; Name and Arguments are concatenated.
+// Value is not present in deltas and is left nil on seeding.
 func (d ToolCallDelta) MergeInto(acc Artifact) Artifact {
 	if acc == nil {
 		return ToolCall{
