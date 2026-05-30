@@ -134,6 +134,25 @@ var BashTool = provider.Tool{
 		},
 		"required": []string{"command"},
 	},
+	DisplayHint: BashDisplayHint,
+}
+
+// bashDisplay renders a bash tool call as a Markdown code block.
+type bashDisplay struct {
+	Command string
+}
+
+func (b bashDisplay) MarshalMarkdown() string {
+	return "```bash\n$ " + b.Command + "\n```"
+}
+
+// BashDisplayHint is the display-hint formatter for the bash tool.
+func BashDisplayHint(args map[string]any) any {
+	cmd := toString(args["command"])
+	if cmd == "" {
+		return nil
+	}
+	return bashDisplay{Command: cmd}
 }
 
 func secondsToDuration(s int) time.Duration {

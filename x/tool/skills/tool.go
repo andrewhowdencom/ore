@@ -55,10 +55,16 @@ func (t *Toolkit) Register(registry tool.Registry) error {
 		ReadSkillTool.Description,
 		ReadSkillTool.Schema,
 		t.ReadSkill,
+		tool.WithDisplay(ReadSkillDisplayHint),
 	); err != nil {
 		return fmt.Errorf("register read_skill: %w", err)
 	}
 	return nil
+}
+
+// ReadSkillDisplayHint returns a human-readable display for read_skill calls.
+func ReadSkillDisplayHint(args map[string]any) any {
+	return fmt.Sprintf("📖 read_skill(%s)", toString(args["name"]))
 }
 
 // ReadSkillTool is the provider.Tool descriptor for read_skill.
@@ -75,6 +81,7 @@ var ReadSkillTool = provider.Tool{
 		},
 		"required": []string{"name"},
 	},
+	DisplayHint: ReadSkillDisplayHint,
 }
 
 

@@ -155,6 +155,9 @@ var ReadFileTool = provider.Tool{
 		},
 		"required": []string{"path"},
 	},
+	DisplayHint: func(args map[string]any) any {
+		return fmt.Sprintf("📄 read_file(%s)", toString(args["path"]))
+	},
 }
 
 // WriteFile creates a new file with the given content.
@@ -209,6 +212,9 @@ var WriteFileTool = provider.Tool{
 			},
 		},
 		"required": []string{"path", "content"},
+	},
+	DisplayHint: func(args map[string]any) any {
+		return fmt.Sprintf("📝 write_file(%s)", toString(args["path"]))
 	},
 }
 
@@ -277,6 +283,9 @@ var EditFileTool = provider.Tool{
 		},
 		"required": []string{"path", "old_string", "new_string"},
 	},
+	DisplayHint: func(args map[string]any) any {
+		return fmt.Sprintf("✏️ edit_file(%s)", toString(args["path"]))
+	},
 }
 
 // ListDirectory returns a shallow listing of non-hidden entries in a directory.
@@ -332,6 +341,9 @@ var ListDirectoryTool = provider.Tool{
 			},
 		},
 		"required": []string{"path"},
+	},
+	DisplayHint: func(args map[string]any) any {
+		return fmt.Sprintf("📁 list_directory(%s)", toString(args["path"]))
 	},
 }
 
@@ -459,6 +471,9 @@ var SearchFilesTool = provider.Tool{
 			},
 		},
 		"required": []string{"path", "query"},
+	},
+	DisplayHint: func(args map[string]any) any {
+		return fmt.Sprintf("🔍 search_files(%s, %s)", toString(args["path"]), toString(args["query"]))
 	},
 }
 
