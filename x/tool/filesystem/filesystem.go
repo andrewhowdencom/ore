@@ -26,8 +26,9 @@ var (
 
 // resolvePath resolves a path through a sandbox when available. If sb is nil
 // or does not implement FileSandbox, the path is returned as-is (allowing
-// absolute paths). If sb implements FileSandbox, the path is resolved
-// relative to the sandbox root and absolute paths are rejected.
+// absolute paths). If sb implements FileSandbox, all paths are delegated
+// to fsb.ResolvePath, letting the sandbox decide whether to reject,
+// rewrite, or pass through absolute paths.
 func resolvePath(sb tool.Sandbox, path string) (string, error) {
 	if sb == nil {
 		return path, nil
@@ -35,9 +36,6 @@ func resolvePath(sb tool.Sandbox, path string) (string, error) {
 	fsb, ok := sb.(tool.FileSandbox)
 	if !ok {
 		return path, nil
-	}
-	if filepath.IsAbs(path) {
-		return "", fmt.Errorf("absolute paths not allowed in sandbox %q", sb.Name())
 	}
 	return fsb.ResolvePath(path)
 }

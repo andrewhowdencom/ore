@@ -590,10 +590,15 @@ func TestReadFile_WithSandbox(t *testing.T) {
 
 func TestReadFile_AbsolutePathInSandbox(t *testing.T) {
 	t.Parallel()
-	sb := &mockFileSandbox{dir: t.TempDir()}
-	_, err := ReadFile(context.Background(), sb, map[string]any{"path": "/etc/passwd"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "absolute paths not allowed")
+	dir := t.TempDir()
+	p := filepath.Join(dir, "etc", "passwd")
+	require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+	require.NoError(t, os.WriteFile(p, []byte("hello"), 0o644))
+
+	sb := &mockFileSandbox{dir: dir}
+	result, err := ReadFile(context.Background(), sb, map[string]any{"path": "/etc/passwd"})
+	require.NoError(t, err)
+	assert.Equal(t, "1|hello\n", result)
 }
 
 func TestWriteFile_WithSandbox(t *testing.T) {
