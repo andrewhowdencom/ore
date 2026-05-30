@@ -40,6 +40,7 @@ type TUI struct {
 	threadID string
 	eventsCh chan session.Event
 	program  *tea.Program
+	name     string
 }
 
 // Option configures a TUI.
@@ -50,6 +51,13 @@ type Option func(*TUI)
 func WithThreadID(id string) Option {
 	return func(t *TUI) {
 		t.threadID = id
+	}
+}
+
+// WithName sets the application name displayed in the terminal window title.
+func WithName(name string) Option {
+	return func(t *TUI) {
+		t.name = name
 	}
 }
 
@@ -79,7 +87,7 @@ func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
 	if mgr == nil {
 		return nil, fmt.Errorf("session manager is required")
 	}
-	t := &TUI{mgr: mgr}
+	t := &TUI{mgr: mgr, name: "Ore"}
 	for _, opt := range opts {
 		opt(t)
 	}
@@ -126,6 +134,7 @@ func (t *TUI) Start(ctx context.Context) error {
 		viewport: viewport.New(),
 		textarea: ta,
 		md:       newGlamourMarkdownRenderer(),
+		name:     t.name,
 	}
 	p := tea.NewProgram(&m)
 	t.eventsCh = surfEventsCh
