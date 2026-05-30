@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/x/tool/filesystem
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.1.1
+	github.com/andrewhowdencom/ore v0.3.0
 	github.com/stretchr/testify v1.11.1
 )
 
