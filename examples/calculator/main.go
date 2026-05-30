@@ -75,10 +75,10 @@ func run() error {
 
 	// Create tool registry with calculator functions.
 	registry := tool.NewRegistry()
-	if err := registry.Register(calculator.AddTool.Name, calculator.AddTool.Description, calculator.AddTool.Schema, calculator.Add); err != nil {
+	if err := registry.Register(calculator.AddTool.Name, calculator.AddTool.Description, calculator.AddTool.Schema, calculator.Add, tool.WithDisplay(calculator.AddTool.DisplayHint)); err != nil {
 		return fmt.Errorf("register add tool: %w", err)
 	}
-	if err := registry.Register(calculator.MultiplyTool.Name, calculator.MultiplyTool.Description, calculator.MultiplyTool.Schema, calculator.Multiply); err != nil {
+	if err := registry.Register(calculator.MultiplyTool.Name, calculator.MultiplyTool.Description, calculator.MultiplyTool.Schema, calculator.Multiply, tool.WithDisplay(calculator.MultiplyTool.DisplayHint)); err != nil {
 		return fmt.Errorf("register multiply tool: %w", err)
 	}
 

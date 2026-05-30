@@ -39,6 +39,11 @@ var AddTool = provider.Tool{
 		},
 		"required": []string{"a", "b"},
 	},
+	DisplayHint: func(args map[string]any) any {
+		a := ToFloat64(args["a"])
+		b := ToFloat64(args["b"])
+		return fmt.Sprintf("%.0f + %.0f = ?", a, b)
+	},
 }
 
 // MultiplyTool is the provider.Tool descriptor (including JSON schema) for Multiply.
@@ -52,6 +57,11 @@ var MultiplyTool = provider.Tool{
 			"b": map[string]any{"type": "number", "description": "The second number"},
 		},
 		"required": []string{"a", "b"},
+	},
+	DisplayHint: func(args map[string]any) any {
+		a := ToFloat64(args["a"])
+		b := ToFloat64(args["b"])
+		return fmt.Sprintf("%.0f × %.0f = ?", a, b)
 	},
 }
 
