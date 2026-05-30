@@ -35,10 +35,16 @@ import (
 )
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	slog.SetDefault(logger)
+	buf := tui.NewLogBuffer()
+	slog.SetDefault(slog.New(slog.NewTextHandler(buf, nil)))
 
-	if err := run(); err != nil {
+	err := run()
+
+	if flushErr := buf.FlushTo(os.Stderr); flushErr != nil {
+		fmt.Fprintf(os.Stderr, "flush log buffer: %v\n", flushErr)
+	}
+
+	if err != nil {
 		slog.Error("fatal error", "err", err)
 		os.Exit(1)
 	}
@@ -86,7 +92,7 @@ func run() error {
 		}
 		w.Flush()
 
-		os.Exit(0)
+		return nil
 	}
 
 	// Environment configuration.
