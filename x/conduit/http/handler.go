@@ -85,10 +85,19 @@ func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
 	return h, nil
 }
 
+func (h *Handler) redirectRoot(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+	if r.URL.Path != "/" {
+		stdhttp.NotFound(w, r)
+		return
+	}
+	stdhttp.Redirect(w, r, "/chat", stdhttp.StatusTemporaryRedirect)
+}
+
 // ServeMux returns an http.ServeMux with all HTTP conduit routes registered.
 // Routes include POST /sessions, DELETE /sessions/{id}, POST /messages,
-// GET /events, and GET /threads. When WithUI() is enabled, GET / and
-// GET /chat.js are also registered for the embedded web client.
+// GET /events, and GET /threads. When WithUI() is enabled, GET /chat and
+// GET /chat.js are also registered for the embedded web client, and GET /
+// redirects to /chat.
 // This method is exported primarily for table-driven unit tests; most
 // callers should use Start(ctx) which creates and runs the server internally.
 func (h *Handler) ServeMux() *stdhttp.ServeMux {
@@ -99,7 +108,8 @@ func (h *Handler) ServeMux() *stdhttp.ServeMux {
 	mux.HandleFunc("GET /sessions/{id}/events", h.sessionEvents)
 	mux.HandleFunc("GET /threads", h.listThreads)
 	if h.withUI {
-		mux.HandleFunc("GET /", h.serveUI)
+		mux.HandleFunc("GET /", h.redirectRoot)
+		mux.HandleFunc("GET /chat", h.serveUI)
 		mux.HandleFunc("GET /chat.js", h.serveUI)
 	}
 	return mux
@@ -353,11 +363,11 @@ func (h *Handler) sessionEvents(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 
 // serveUI serves the embedded static files (index.html and chat.js) for the
 // web chat client. It reads the requested file from staticFS and returns 404
-// for unknown paths. It is registered at GET / and GET /chat.js when WithUI()
+// for unknown paths. It is registered at GET /chat and GET /chat.js when WithUI()
 // is enabled.
 func (h *Handler) serveUI(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	switch r.URL.Path {
-	case "/":
+	case "/chat":
 		data, err := staticFS.ReadFile("static/index.html")
 		if err != nil {
 			w.WriteHeader(stdhttp.StatusInternalServerError)
