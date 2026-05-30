@@ -60,6 +60,28 @@ function setStatus(text) {
     document.getElementById('status').textContent = text || '';
 }
 
+function attachToThread(threadId) {
+    setStatus('Attaching to thread...');
+    fetch('/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thread_id: threadId })
+    })
+        .then(r => {
+            if (r.status === 404) throw new Error('Thread not found');
+            if (!r.ok) throw new Error('Failed to attach (' + r.status + ')');
+            return r.json();
+        })
+        .then(data => {
+            sessionId = data.id;
+            setStatus('Ready');
+        })
+        .catch(err => {
+            setStatus('Error: ' + err.message);
+            console.error('Thread attach failed:', err);
+        });
+}
+
 function createSession() {
     setStatus('Creating session...');
     fetch('/sessions', { method: 'POST' })
@@ -290,7 +312,7 @@ async function readNDJSONStream(reader, decoder) {
 
 async function sendMessage(content) {
     ensureAudio();
-    if (!sessionId || isTurnInProgress) return;
+    if (isTurnInProgress) return;
 
     isTurnInProgress = true;
     updateSendButton();
@@ -298,6 +320,17 @@ async function sendMessage(content) {
     showTypingIndicator();
 
     try {
+        if (!sessionId) {
+            const createRes = await fetch('/sessions', { method: 'POST' });
+            if (!createRes.ok) {
+                throw new Error('Failed to create session (' + createRes.status + ')');
+            }
+            const createData = await createRes.json();
+            sessionId = createData.id;
+            history.pushState(null, '', '/chat?thread=' + sessionId);
+            setStatus('Ready');
+        }
+
         const response = await fetch('/sessions/' + sessionId + '/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -353,5 +386,10 @@ document.getElementById('message-input').addEventListener('input', function() {
     this.style.height = Math.min(this.scrollHeight, 128) + 'px';
 });
 
-// Create session on page load.
-createSession();
+// Boot: parse URL for ?thread= param and attach, or show ready state.
+const threadId = new URLSearchParams(window.location.search).get('thread');
+if (threadId) {
+    attachToThread(threadId);
+} else {
+    setStatus('Ready — type a message to start');
+}

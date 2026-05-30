@@ -3,7 +3,7 @@
 // streaming and an optional SSE ambient channel, backed by an OpenAI-compatible
 // provider.
 //
-// A built-in web chat UI is served at http://localhost:8080/ when the
+// A built-in web chat UI is served at http://localhost:8080/chat when the
 // application starts. Open a browser to interact without curl.
 //
 // Usage:
