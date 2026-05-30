@@ -76,11 +76,8 @@ func (e ErrorEvent) Context() EventContext { return e.Ctx }
 //   - "submitted": the user message has been accepted and the provider call
 //     is about to start (after transforms).
 //   - "streaming": the first artifact has arrived from the provider.
-//   - "done": the turn (including accumulation and handler execution) is
-//     complete. For tool-execution loops, the framework returns to
-//     "submitted" for each subsequent provider call.
 type LifecycleEvent struct {
-	Phase string // "submitted", "streaming", "done"
+	Phase string // "submitted", "streaming"
 
 	// Ctx carries routing metadata for the event, such as provenance
 	// information for echo suppression.
@@ -347,7 +344,6 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 	}
 
 	st, err = s.finalizeTurn(ctx, st, state.RoleAssistant, accumulatedArtifacts)
-	s.Emit(ctx, LifecycleEvent{Phase: "done", Ctx: s.eventContext})
 	return st, err
 }
 

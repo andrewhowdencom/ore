@@ -39,9 +39,10 @@
 //     accumulated, carrying the complete turn for state persistence
 //     and non-streaming delivery (e.g. Slack, Telegram).
 //   - LifecycleEvent signals phase transitions: "submitted" (message
-//     accepted, waiting for provider), "streaming" (first artifact
-//     arrived), and "done" (turn complete). Conduits observe this to
-//     drive UI state without inferring lifecycle from data events.
+//     accepted, waiting for provider) and "streaming" (first artifact
+//     arrived). Callers (e.g. session.Stream.Process) may emit "done" to
+//     signal pipeline completion. Conduits observe this to drive UI
+//     state without inferring lifecycle from data events.
 //   - ErrorEvent fires when an individual turn fails inside the provider
 //     or a registered handler.
 //   - PropertiesEvent carries ambient, persistent metadata as a map of
