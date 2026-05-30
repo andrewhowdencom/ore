@@ -153,3 +153,43 @@ func TestMarshalTurns_RoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func TestMarshalArtifacts_ToolCallWithValue(t *testing.T) {
+	// ToolCall with a custom Value should marshal successfully and
+	// preserve Arguments on round-trip. Value may become map[string]any
+	// because the concrete type is lost during JSON serialization.
+	artifacts := []artifact.Artifact{
+		&artifact.ToolCall{
+			ID:        "call_1",
+			Name:      "bash",
+			Arguments: `{"command":"go test ./..."}`,
+			Value:     struct{ Command string }{Command: "go test ./..."},
+		},
+	}
+
+	data, err := marshalArtifacts(artifacts)
+	require.NoError(t, err)
+
+	got, err := unmarshalArtifacts(data)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+
+	tc, ok := got[0].(*artifact.ToolCall)
+	require.True(t, ok)
+	assert.Equal(t, "call_1", tc.ID)
+	assert.Equal(t, "bash", tc.Name)
+	assert.Equal(t, `{"command":"go test ./..."}`, tc.Arguments)
+
+	// Value may be deserialized as map[string]any; it is not guaranteed to
+	// preserve the concrete type.
+	if tc.Value != nil {
+		switch v := tc.Value.(type) {
+		case map[string]any:
+			assert.Equal(t, "go test ./...", v["Command"])
+		case struct{ Command string }:
+			assert.Equal(t, "go test ./...", v.Command)
+		default:
+			assert.Fail(t, "unexpected Value type: %T", v)
+		}
+	}
+}
