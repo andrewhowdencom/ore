@@ -1472,3 +1472,76 @@ func TestStep_Turn_ErrorEvent_NoSubscriber(t *testing.T) {
 		t.Fatal("Turn() deadlocked with no subscribers and provider error")
 	}
 }
+
+func TestEnrichToolCalls_AttachesValue(t *testing.T) {
+	displayHint := func(args map[string]any) any {
+		cmd, _ := args["command"].(string)
+		return struct{ Command string }{Command: cmd}
+	}
+
+	toolsOpt := provider.ToolsOption{
+		Tools: func(_ context.Context, _ state.State) []provider.Tool {
+			return []provider.Tool{
+				{Name: "bash", DisplayHint: displayHint},
+			}
+		},
+	}
+
+	artifacts := []artifact.Artifact{
+		artifact.ToolCall{Name: "bash", Arguments: `{"command":"go test ./..."}`},
+		artifact.Text{Content: "hello"},
+	}
+
+	enrichToolCalls(context.Background(), artifacts, []provider.InvokeOption{toolsOpt})
+
+	tc, ok := artifacts[0].(artifact.ToolCall)
+	require.True(t, ok)
+	assert.NotNil(t, tc.Value)
+	assert.Equal(t, "go test ./...", tc.Value.(struct{ Command string }).Command)
+
+	// Non-ToolCall artifact untouched.
+	text, ok := artifacts[1].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "hello", text.Content)
+}
+
+func TestEnrichToolCalls_NoMatchingHint(t *testing.T) {
+	toolsOpt := provider.ToolsOption{
+		Tools: func(_ context.Context, _ state.State) []provider.Tool {
+			return []provider.Tool{
+				{Name: "other"},
+			}
+		},
+	}
+
+	artifacts := []artifact.Artifact{
+		artifact.ToolCall{Name: "bash", Arguments: `{"command":"go test"}`},
+	}
+
+	enrichToolCalls(context.Background(), artifacts, []provider.InvokeOption{toolsOpt})
+
+	tc, ok := artifacts[0].(artifact.ToolCall)
+	require.True(t, ok)
+	assert.Nil(t, tc.Value)
+}
+
+func TestEnrichToolCalls_InvalidJSON(t *testing.T) {
+	displayHint := func(args map[string]any) any { return args }
+	toolsOpt := provider.ToolsOption{
+		Tools: func(_ context.Context, _ state.State) []provider.Tool {
+			return []provider.Tool{
+				{Name: "bash", DisplayHint: displayHint},
+			}
+		},
+	}
+
+	artifacts := []artifact.Artifact{
+		artifact.ToolCall{Name: "bash", Arguments: `not-json`},
+	}
+
+	enrichToolCalls(context.Background(), artifacts, []provider.InvokeOption{toolsOpt})
+
+	tc, ok := artifacts[0].(artifact.ToolCall)
+	require.True(t, ok)
+	assert.Nil(t, tc.Value)
+}

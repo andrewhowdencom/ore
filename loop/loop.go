@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -335,6 +336,9 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 	close(provCh)
 	wg.Wait()
 
+	// Post-accumulation: enrich ToolCall artifacts with display hints.
+	enrichToolCalls(ctx, accumulatedArtifacts, allOpts)
+
 	if err != nil {
 		// Emit the error event with a background context so it is not
 		// dropped when the turn context has already been cancelled.
@@ -345,6 +349,45 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 
 	st, err = s.finalizeTurn(ctx, st, state.RoleAssistant, accumulatedArtifacts)
 	return st, err
+}
+
+// enrichToolCalls scans accumulated artifacts for ToolCall values and, when a
+// matching DisplayHint is found in the ToolsOption of the invocation options,
+// parses the JSON arguments, runs the hint, and attaches the result to
+// ToolCall.Value. It mutates the slice in-place.
+func enrichToolCalls(ctx context.Context, artifacts []artifact.Artifact, opts []provider.InvokeOption) {
+	hints := make(map[string]func(map[string]any) any)
+	for _, opt := range opts {
+		if to, ok := opt.(provider.ToolsOption); ok {
+			tools := to.Tools(ctx, nil)
+			for _, t := range tools {
+				if t.DisplayHint != nil {
+					hints[t.Name] = t.DisplayHint
+				}
+			}
+		}
+	}
+	if len(hints) == 0 {
+		return
+	}
+	for i, art := range artifacts {
+		tc, ok := art.(artifact.ToolCall)
+		if !ok {
+			continue
+		}
+		hint, ok := hints[tc.Name]
+		if !ok {
+			continue
+		}
+		var args map[string]any
+		if err := json.Unmarshal([]byte(tc.Arguments), &args); err != nil {
+			continue
+		}
+		if v := hint(args); v != nil {
+			tc.Value = v
+			artifacts[i] = tc
+		}
+	}
 }
 
 // Submit records a non-inference turn into state, runs registered handlers,
