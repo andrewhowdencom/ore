@@ -2,6 +2,7 @@ package state
 
 import (
 	"testing"
+	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/stretchr/testify/assert"
@@ -67,9 +68,28 @@ func TestBuffer_AppendAndTurns(t *testing.T) {
 			assert.Equal(t, tt.wantRole, last.Role)
 			require.NotEmpty(t, last.Artifacts, "last turn has no artifacts")
 			assert.Equal(t, tt.wantKind, last.Artifacts[0].Kind())
+			assert.False(t, last.Timestamp.IsZero(), "Timestamp should be set by default clock")
 		})
 	}
 }
+
+func TestBuffer_WithClock(t *testing.T) {
+	fixed := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	mock := &mockClock{now: fixed}
+
+	m := NewBuffer(WithClock(mock))
+	m.Append(RoleUser, artifact.Text{Content: "hello"})
+
+	turns := m.Turns()
+	require.Len(t, turns, 1)
+	assert.Equal(t, fixed, turns[0].Timestamp, "Timestamp should come from injected clock")
+}
+
+type mockClock struct {
+	now time.Time
+}
+
+func (m *mockClock) Now() time.Time { return m.now }
 
 func TestBuffer_TurnsDefensiveCopy(t *testing.T) {
 	m := &Buffer{}
