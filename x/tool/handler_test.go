@@ -84,6 +84,9 @@ func TestHandler_ExecutesRegisteredTool(t *testing.T) {
 	assert.False(t, tr.IsError)
 	assert.Equal(t, "8", tr.Content)
 	assert.Equal(t, 8.0, tr.Value)
+
+	// Result is a plain float64; no StatusContributor, so no extra event.
+	assert.Len(t, emitter.events, 1)
 }
 
 func TestHandler_InvalidArguments(t *testing.T) {
@@ -532,4 +535,40 @@ func TestHandler_PassesNilWhenNoSandboxRegistry(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Nil(t, calledWith)
+}
+
+type statusValue struct{ Foo string }
+
+func (s statusValue) Status() map[string]string { return map[string]string{"foo": s.Foo} }
+
+func TestHandler_StatusContributorEmitsPropertiesEvent(t *testing.T) {
+	r := toolpkg.NewRegistry()
+	require.NoError(t, r.Register("status", "", nil, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
+		return statusValue{Foo: "bar"}, nil
+	}))
+
+	h := NewHandler(r)
+	emitter := &mockEmitter{}
+
+	err := h.Handle(context.Background(), artifact.ToolCall{
+		ID:        "call_1",
+		Name:      "status",
+		Arguments: `{}`,
+	}, emitter)
+	require.NoError(t, err)
+
+	require.Len(t, emitter.events, 2)
+
+	// First event is the TurnCompleteEvent.
+	tc, ok := emitter.events[0].(loop.TurnCompleteEvent)
+	require.True(t, ok)
+	require.Len(t, tc.Turn.Artifacts, 1)
+	tr := tc.Turn.Artifacts[0].(artifact.ToolResult)
+	assert.False(t, tr.IsError)
+	assert.Equal(t, `{"Foo":"bar"}`, tr.Content)
+
+	// Second event is the PropertiesEvent from StatusContributor.
+	pe, ok := emitter.events[1].(loop.PropertiesEvent)
+	require.True(t, ok)
+	assert.Equal(t, map[string]string{"foo": "bar"}, pe.Properties)
 }

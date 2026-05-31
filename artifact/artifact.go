@@ -48,8 +48,11 @@ type ToolCall struct {
 // Kind returns the artifact kind identifier.
 func (t ToolCall) Kind() string { return "tool_call" }
 
-// LLMRenderer is implemented by tool result values that know how to
-// serialize themselves for consumption by an LLM provider.
+// StatusContributor is implemented by tool result values that carry
+// ambient metadata to be broadcast to all subscribers via PropertiesEvent.
+type StatusContributor interface {
+	Status() map[string]string
+}
 type LLMRenderer interface {
 	MarshalLLM() string
 }
