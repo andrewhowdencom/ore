@@ -3,6 +3,7 @@ package loop
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
@@ -228,4 +229,147 @@ func TestFanOut_SubscribeAllKinds(t *testing.T) {
 	assert.Equal(t, "text_delta", events[0].Kind())
 	assert.Equal(t, "turn_complete", events[1].Kind())
 	assert.Equal(t, "error", events[2].Kind())
+}
+
+func TestFanOut_ReplayBuffer_LateSubscriberGetsCompleteEvents(t *testing.T) {
+	src := make(chan outputEventEnvelope, 10)
+	f := NewFanOut(src)
+	defer f.Close()
+
+	// Emit complete events before any subscriber exists.
+	src <- outputEventEnvelope{event: PropertiesEvent{Properties: map[string]string{"role": "user"}}, done: make(chan struct{})}
+	src <- outputEventEnvelope{event: TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant}}, done: make(chan struct{})}
+	// Give run() time to process.
+	require.Eventually(t, func() bool {
+		f.mu.Lock()
+		l := len(f.buffer)
+		f.mu.Unlock()
+		return l == 2
+	}, time.Second, 10*time.Millisecond)
+
+	ch := f.Subscribe("properties", "turn_complete")
+	close(src)
+
+	var events []OutputEvent
+	for e := range ch {
+		events = append(events, e)
+	}
+
+	require.Len(t, events, 2)
+	assert.Equal(t, "properties", events[0].Kind())
+	assert.Equal(t, "turn_complete", events[1].Kind())
+}
+
+func TestFanOut_ReplayBuffer_DeltasNotBuffered(t *testing.T) {
+	src := make(chan outputEventEnvelope, 10)
+	f := NewFanOut(src)
+	defer f.Close()
+
+	// Emit a delta event before subscribing.
+	src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "partial"}}, done: make(chan struct{})}
+	require.Eventually(t, func() bool {
+		f.mu.Lock()
+		l := len(f.buffer)
+		f.mu.Unlock()
+		return l == 0
+	}, time.Second, 10*time.Millisecond)
+
+	ch := f.Subscribe("text_delta")
+	close(src)
+
+	var events []OutputEvent
+	for e := range ch {
+		events = append(events, e)
+	}
+
+	// Delta should not be replayed.
+	assert.Empty(t, events)
+}
+
+func TestFanOut_ReplayBuffer_KindFiltering(t *testing.T) {
+	src := make(chan outputEventEnvelope, 10)
+	f := NewFanOut(src)
+	defer f.Close()
+
+	src <- outputEventEnvelope{event: PropertiesEvent{Properties: map[string]string{"k": "v"}}, done: make(chan struct{})}
+	src <- outputEventEnvelope{event: TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant}}, done: make(chan struct{})}
+	require.Eventually(t, func() bool {
+		f.mu.Lock()
+		l := len(f.buffer)
+		f.mu.Unlock()
+		return l == 2
+	}, time.Second, 10*time.Millisecond)
+
+	// Subscribe to only one kind.
+	ch := f.Subscribe("properties")
+	close(src)
+
+	var events []OutputEvent
+	for e := range ch {
+		events = append(events, e)
+	}
+
+	require.Len(t, events, 1)
+	assert.Equal(t, "properties", events[0].Kind())
+}
+
+func TestFanOut_ReplayBuffer_Bounded(t *testing.T) {
+	src := make(chan outputEventEnvelope, 100)
+	f := NewFanOut(src)
+	defer f.Close()
+
+	// Emit more than default bufferCap (50) complete events.
+	for i := 0; i < 60; i++ {
+		src <- outputEventEnvelope{event: TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant}}, done: make(chan struct{})}
+	}
+	require.Eventually(t, func() bool {
+		f.mu.Lock()
+		l := len(f.buffer)
+		f.mu.Unlock()
+		return l == 50
+	}, time.Second, 10*time.Millisecond)
+
+	ch := f.Subscribe("turn_complete")
+	close(src)
+
+	var events []OutputEvent
+	for e := range ch {
+		events = append(events, e)
+	}
+
+	// Only the last 50 should be replayed.
+	require.Len(t, events, 50)
+}
+
+func TestFanOut_ReplayBuffer_ConcurrentSubscribeAndSend(t *testing.T) {
+	src := make(chan outputEventEnvelope, 100)
+	f := NewFanOut(src)
+	defer f.Close()
+
+	// Start sending replayable events concurrently.
+	var sendWg sync.WaitGroup
+	sendWg.Add(1)
+	go func() {
+		defer sendWg.Done()
+		for i := 0; i < 50; i++ {
+			src <- outputEventEnvelope{event: PropertiesEvent{Properties: map[string]string{"idx": "val"}}, done: make(chan struct{})}
+		}
+	}()
+
+	// Subscribe concurrently while events are being sent.
+	var subWg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		subWg.Add(1)
+		go func() {
+			defer subWg.Done()
+			ch := f.Subscribe("properties")
+			// Drain the channel.
+			for range ch {
+			}
+		}()
+	}
+
+	sendWg.Wait()
+	close(src)
+	subWg.Wait()
 }

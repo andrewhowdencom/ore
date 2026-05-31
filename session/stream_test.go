@@ -98,13 +98,16 @@ func TestStream_ContextClearedBetweenProcesses(t *testing.T) {
 	assert.Equal(t, "first-provenance", events1[0].(loop.TurnCompleteEvent).Ctx.Provenance)
 	assert.Equal(t, "first-provenance", events1[1].(loop.TurnCompleteEvent).Ctx.Provenance)
 
-	// Second process without provenance — context should be cleared
+	// Second process without provenance — context should be cleared.
+	// With the replay buffer, the new subscriber also receives the buffered
+	// TurnCompleteEvents from the first process (2 events) plus the live
+	// TurnCompleteEvents from the second process (2 events).
 	ch2 := stream.Subscribe("turn_complete")
 	err = stream.Process(context.Background(), UserMessageEvent{Content: "second"})
 	require.NoError(t, err)
 
 	var events2 []loop.OutputEvent
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 4; i++ {
 		select {
 		case event := <-ch2:
 			events2 = append(events2, event)
@@ -112,9 +115,13 @@ func TestStream_ContextClearedBetweenProcesses(t *testing.T) {
 			t.Fatalf("timeout waiting for event %d", i)
 		}
 	}
-	require.Len(t, events2, 2)
-	assert.Empty(t, events2[0].(loop.TurnCompleteEvent).Ctx.Provenance)
-	assert.Empty(t, events2[1].(loop.TurnCompleteEvent).Ctx.Provenance)
+	require.Len(t, events2, 4)
+	// First two are replayed from first process.
+	assert.Equal(t, "first-provenance", events2[0].(loop.TurnCompleteEvent).Ctx.Provenance)
+	assert.Equal(t, "first-provenance", events2[1].(loop.TurnCompleteEvent).Ctx.Provenance)
+	// Next two are live from second process.
+	assert.Empty(t, events2[2].(loop.TurnCompleteEvent).Ctx.Provenance)
+	assert.Empty(t, events2[3].(loop.TurnCompleteEvent).Ctx.Provenance)
 }
 
 func TestStream_InterruptEvent_ContextPropagation(t *testing.T) {
