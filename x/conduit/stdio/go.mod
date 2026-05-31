@@ -7,7 +7,7 @@ replace github.com/andrewhowdencom/ore => ../../..
 replace github.com/andrewhowdencom/ore/x/conduit => ..
 
 require (
-	github.com/andrewhowdencom/ore v0.2.1
+	github.com/andrewhowdencom/ore v0.3.1
 	github.com/andrewhowdencom/ore/x/conduit v0.1.2
 	github.com/stretchr/testify v1.11.1
 )
