@@ -439,6 +439,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.textarea, cmd = m.textarea.Update(msg)
 			m.recalcLayout()
 			return m, cmd
+		case tea.KeyEscape:
+			select {
+			case m.eventsCh <- session.InterruptEvent{}:
+			default:
+			}
+			return m, nil
 		}
 
 		// Ctrl+C
