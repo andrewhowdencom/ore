@@ -366,6 +366,8 @@ func (m *model) windowTitle() string {
 	switch phase {
 	case "submitted", "streaming":
 		return base + " [...]"
+	case "cancelled":
+		return base + " [cancelled]"
 	case "error":
 		return base + " [err]"
 	default:
