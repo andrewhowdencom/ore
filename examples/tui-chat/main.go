@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/cognitive"
-	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/x/conduit/tui"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
@@ -133,17 +132,9 @@ func run() error {
 		return fmt.Errorf("create openai provider: %w", err)
 	}
 
-	// Step factory for the manager.
-	stepFactory := func(thr *session.Thread) (*loop.Step, error) {
-		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
-			if tc, ok := event.(loop.TurnCompleteEvent); ok {
-				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
-			}
-		})), nil
-	}
-
-	// Create session manager with the ReAct cognitive pattern.
-	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())
+	// Manager now auto-persists state via a default OnEmit callback;
+	// no custom stepFactory needed for basic TUI usage.
+	mgr := session.NewManager(store, prov, nil, cognitive.NewTurnProcessor())
 
 	// Create the TUI conduit, passing the thread ID via functional option.
 	// The TUI creates or attaches to the session internally on Start.

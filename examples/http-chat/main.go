@@ -120,17 +120,13 @@ func run() error {
 	}
 
 	// Step factory: each session gets its own Step with tool handler
-	// and provider tool options bound.
-	stepFactory := func(thr *session.Thread) (*loop.Step, error) {
-		return loop.New(
+	// and provider tool options bound. State persistence is handled
+	// automatically by Manager; no custom OnEmit needed.
+	stepFactory := func(stream *session.Stream) ([]loop.Option, error) {
+		return []loop.Option{
 			loop.WithHandlers(xtool.NewHandler(registry)),
 			loop.WithInvokeOptions(openai.WithTools(registry.Tools())),
-			loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
-				if tc, ok := event.(loop.TurnCompleteEvent); ok {
-					thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
-				}
-			}),
-		), nil
+		}, nil
 	}
 
 	// Create the thread store.
