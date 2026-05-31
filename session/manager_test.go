@@ -116,6 +116,51 @@ func TestManager_Create(t *testing.T) {
 	assert.Equal(t, stream.ID(), active[0].ID())
 }
 
+func TestManager_Create_ReplayBuffer_PropertiesEventNotLost(t *testing.T) {
+	store := NewMemoryStore()
+	mgr := NewManager(store, &mockProvider{}, func(thr *Thread) (*loop.Step, error) {
+		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+			if tc, ok := event.(loop.TurnCompleteEvent); ok {
+				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+			}
+		})), nil
+	}, simpleProcessor(),
+		WithDefaultMetadata(func(thr *Thread) map[string]string {
+			return map[string]string{"role": "test-role", "cwd": "/tmp"}
+		}),
+	)
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+	require.NotNil(t, stream)
+
+	// Subscribe after Create() has already returned and applyDefaultMetadata
+	// has emitted PropertiesEvent(s). With the replay buffer, they should
+	// still be available.
+	ch := stream.Subscribe("properties")
+	defer stream.Close()
+
+	// The FanOut buffer replay delivers events synchronously inside Subscribe,
+	// so the buffered PropertiesEvent is already in the channel.
+	// Read all buffered events (one per metadata key) then confirm the channel
+	// is still open and will receive future events.
+	var events []loop.OutputEvent
+	events = append(events, <-ch)
+	events = append(events, <-ch)
+
+	// WithDefaultMetadata returns two keys, so two PropertiesEvents.
+	require.Len(t, events, 2)
+
+	var keys []string
+	for _, e := range events {
+		pe, ok := e.(loop.PropertiesEvent)
+		require.True(t, ok)
+		for k := range pe.Properties {
+			keys = append(keys, k)
+		}
+	}
+	assert.ElementsMatch(t, []string{"role", "cwd"}, keys)
+}
 func TestManager_Attach(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(thr *Thread) (*loop.Step, error) {
