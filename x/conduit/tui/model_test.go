@@ -84,6 +84,39 @@ func TestModel_Update_LifecycleDone_ClearsPending(t *testing.T) {
 	assert.False(t, mm.pending)
 }
 
+func TestModel_Update_KeyEscape_SendsInterrupt(t *testing.T) {
+	eventsCh := make(chan session.Event, 10)
+	m := newTestModel()
+	m.eventsCh = eventsCh
+
+	newM, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	mm := newM.(*model)
+
+	select {
+	case e := <-eventsCh:
+		require.Equal(t, "interrupt", e.Kind())
+	default:
+		t.Fatal("expected interrupt event on channel")
+	}
+
+	assert.Nil(t, cmd, "Escape should not quit the program")
+	_ = mm // suppress unused
+}
+
+func TestModel_Update_LifecycleCancelled_ClearsCurrentTurn(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.pending = true
+	m.currentTurn = renderedTurn{blocks: []renderedBlock{{kind: "text", source: "partial"}}}
+
+	newM, _ := m.Update(lifecycleMsg{phase: "cancelled"})
+	mm := newM.(*model)
+
+	assert.False(t, mm.pending, "pending should be reset")
+	assert.Empty(t, mm.currentTurn.blocks, "currentTurn should be cleared")
+	assert.Equal(t, "cancelled", mm.status["phase"])
+}
+
 func TestModel_Update_Turn_Interleaved(t *testing.T) {
 	m := model{}
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
@@ -826,6 +859,14 @@ func TestModel_WindowTitle_CustomName(t *testing.T) {
 	m.status = map[string]string{"phase": "streaming"}
 	assert.Equal(t, "tui-chat [...]", m.windowTitle())
 }
+
+func TestModel_WindowTitle_Cancelled(t *testing.T) {
+	m := newTestModel()
+	m.name = "Ore"
+	m.status = map[string]string{"phase": "cancelled"}
+	assert.Equal(t, "Ore [cancelled]", m.windowTitle())
+}
+
 
 func TestModel_Update_LifecycleSubmittedThenDone(t *testing.T) {
 	m := model{}

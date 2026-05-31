@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -185,7 +186,11 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 	}
 
 	if runErr != nil {
-		s.step.Emit(ctx, loop.ErrorEvent{Err: runErr, Ctx: eventCtx})
+		if errors.Is(runErr, context.Canceled) {
+			s.step.Emit(ctx, loop.LifecycleEvent{Phase: "cancelled", Ctx: eventCtx})
+		} else {
+			s.step.Emit(ctx, loop.ErrorEvent{Err: runErr, Ctx: eventCtx})
+		}
 	}
 
 	// Emit LifecycleEvent to signal pipeline completion.
