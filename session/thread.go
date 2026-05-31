@@ -3,7 +3,6 @@ package session
 import (
 	"encoding/json"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/andrewhowdencom/ore/state"
@@ -23,22 +22,6 @@ type Thread struct {
 	// Metadata holds arbitrary key-value pairs for conduit-specific
 	// thread mapping (e.g., external system identifiers).
 	Metadata map[string]string
-	metaMu   sync.RWMutex
-}
-
-// GetMetadata retrieves a metadata value by key.
-func (c *Thread) GetMetadata(key string) (string, bool) {
-	c.metaMu.RLock()
-	defer c.metaMu.RUnlock()
-	v, ok := c.Metadata[key]
-	return v, ok
-}
-
-// SetMetadata sets a metadata key-value pair.
-func (c *Thread) SetMetadata(key, value string) {
-	c.metaMu.Lock()
-	defer c.metaMu.Unlock()
-	c.Metadata[key] = value
 }
 
 // MarshalJSON serializes the thread to JSON.
