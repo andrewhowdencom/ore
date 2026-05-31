@@ -592,8 +592,8 @@ func TestStream_Submit_InterruptClearsQueue(t *testing.T) {
 	_ = stream.Close()
 	<-done
 
-	// We should get lifecycle for the cancelled blocking event and the interrupt.
-	// The queued events should have been dropped.
+	// We should get lifecycle events for the cancelled blocking turn
+	// (submitted → cancelled → done) plus done for the interrupt itself.
 	var pcEvents []loop.LifecycleEvent
 	var errEvents []loop.ErrorEvent
 	for _, e := range events {
@@ -604,9 +604,8 @@ func TestStream_Submit_InterruptClearsQueue(t *testing.T) {
 			errEvents = append(errEvents, ee)
 		}
 	}
-	require.Len(t, pcEvents, 3, "expected 3 lifecycle events (cancelled + interrupt)")
-	require.Len(t, errEvents, 2, "expected 2 error events (cancelled turn + process-level)")
-	require.NotNil(t, errEvents[0].Err)
+	require.Len(t, pcEvents, 4, "expected 4 lifecycle events (submitted, cancelled, done for turn, done for interrupt)")
+	require.Len(t, errEvents, 0, "expected 0 error events for context.Canceled")
 }
 
 func TestStream_ProcessAndSubmit_Mixed(t *testing.T) {
