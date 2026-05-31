@@ -22,8 +22,8 @@ type ManagerOption func(*Manager)
 
 // WithDefaultMetadata sets a function that provides default metadata for
 // every stream at creation/attachment time. The function receives the
-// thread so it can include the thread ID or other thread-specific values.
-func WithDefaultMetadata(fn func(*Thread) map[string]string) ManagerOption {
+// stream so it can include the thread ID or other stream-specific values.
+func WithDefaultMetadata(fn func(*Stream) map[string]string) ManagerOption {
 	return func(m *Manager) {
 		m.defaultMeta = fn
 	}
@@ -55,18 +55,18 @@ func makeKindsSet(kinds []string) map[string]struct{} {
 type Manager struct {
 	store        Store
 	provider     provider.Provider
-	newStep      func(*Thread) (*loop.Step, error)
+	newStep      func(*Stream) ([]loop.Option, error)
 	processor    TurnProcessor
 	sessions     map[string]*Stream
 	mu           sync.RWMutex
 	sinks        []sink
 	sinksMu      sync.RWMutex
 	sinkID       int64
-	defaultMeta  func(*Thread) map[string]string
+	defaultMeta  func(*Stream) map[string]string
 }
 
 // NewManager creates a new Manager with the given dependencies.
-func NewManager(store Store, prov provider.Provider, newStep func(*Thread) (*loop.Step, error), processor TurnProcessor, opts ...ManagerOption) *Manager {
+func NewManager(store Store, prov provider.Provider, newStep func(*Stream) ([]loop.Option, error), processor TurnProcessor, opts ...ManagerOption) *Manager {
 	m := &Manager{
 		store:     store,
 		provider:  prov,
@@ -88,18 +88,23 @@ func (m *Manager) Create() (*Stream, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create thread: %w", err)
 	}
-	step, err := m.newStep(thr)
-	if err != nil {
-		return nil, fmt.Errorf("create step: %w", err)
-	}
 	stream := &Stream{
 		id:        thr.ID,
 		thread:    thr,
-		step:      step,
 		provider:  m.provider,
 		processor: m.processor,
 		store:     m.store,
 	}
+	factoryOpts, err := m.newStep(stream)
+	if err != nil {
+		return nil, fmt.Errorf("create step: %w", err)
+	}
+	defaultOnEmit := loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+		if tc, ok := event.(loop.TurnCompleteEvent); ok {
+			stream.thread.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+		}
+	})
+	stream.step = loop.New(append([]loop.Option{defaultOnEmit}, factoryOpts...)...)
 
 	m.mu.Lock()
 	m.sessions[thr.ID] = stream
@@ -127,18 +132,23 @@ func (m *Manager) Attach(threadID string) (*Stream, error) {
 		return nil, fmt.Errorf("thread %s not found", threadID)
 	}
 
-	step, err := m.newStep(thr)
-	if err != nil {
-		return nil, fmt.Errorf("create step: %w", err)
-	}
 	stream = &Stream{
 		id:        threadID,
 		thread:    thr,
-		step:      step,
 		provider:  m.provider,
 		processor: m.processor,
 		store:     m.store,
 	}
+	factoryOpts, err := m.newStep(stream)
+	if err != nil {
+		return nil, fmt.Errorf("create step: %w", err)
+	}
+	defaultOnEmit := loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+		if tc, ok := event.(loop.TurnCompleteEvent); ok {
+			stream.thread.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+		}
+	})
+	stream.step = loop.New(append([]loop.Option{defaultOnEmit}, factoryOpts...)...)
 
 	m.mu.Lock()
 	if existing, ok := m.sessions[threadID]; ok {
@@ -158,7 +168,7 @@ func (m *Manager) applyDefaultMetadata(stream *Stream) {
 	if m.defaultMeta == nil {
 		return
 	}
-	for k, v := range m.defaultMeta(stream.thread) {
+	for k, v := range m.defaultMeta(stream) {
 		stream.SetMetadata(k, v)
 	}
 }
@@ -203,18 +213,23 @@ func (m *Manager) CreateWithID(id string) (*Stream, error) {
 	if err := m.store.Save(thr); err != nil {
 		return nil, fmt.Errorf("save thread: %w", err)
 	}
-	step, err := m.newStep(thr)
-	if err != nil {
-		return nil, fmt.Errorf("create step: %w", err)
-	}
 	stream := &Stream{
 		id:        thr.ID,
 		thread:    thr,
-		step:      step,
 		provider:  m.provider,
 		processor: m.processor,
 		store:     m.store,
 	}
+	factoryOpts, err := m.newStep(stream)
+	if err != nil {
+		return nil, fmt.Errorf("create step: %w", err)
+	}
+	defaultOnEmit := loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+		if tc, ok := event.(loop.TurnCompleteEvent); ok {
+			stream.thread.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+		}
+	})
+	stream.step = loop.New(append([]loop.Option{defaultOnEmit}, factoryOpts...)...)
 
 	m.mu.Lock()
 	m.sessions[thr.ID] = stream
