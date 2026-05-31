@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -336,9 +337,11 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 	wg.Wait()
 
 	if err != nil {
-		// Emit the error event with a background context so it is not
-		// dropped when the turn context has already been cancelled.
-		s.Emit(context.Background(), ErrorEvent{Err: err, Ctx: s.eventContext})
+		// Suppress ErrorEvent for context cancellation so upstream can
+		// emit a dedicated cancelled lifecycle phase instead.
+		if !errors.Is(err, context.Canceled) {
+			s.Emit(context.Background(), ErrorEvent{Err: err, Ctx: s.eventContext})
+		}
 
 		return st, fmt.Errorf("turn failed: %w", err)
 	}
