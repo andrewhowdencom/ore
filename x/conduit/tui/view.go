@@ -35,6 +35,8 @@ var (
 	compactToolResultStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#7EC699"))
 	// compactToolErrorStyle styles compact tool error lines in red.
 	compactToolErrorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
+	// errorStyle styles error turns from the harness in red.
+	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
 )
 
 // renderBlock renders a labeled content block with the label on its own line
@@ -152,6 +154,15 @@ func (m *model) buildContent() string {
 						}
 						b.WriteString(renderBlock("Tool: ", style, content, width))
 					}
+				}
+				if i < len(turn.blocks)-1 {
+					b.WriteString("\n\n")
+				}
+			}
+		case state.RoleSystem:
+			for i, block := range turn.blocks {
+				if block.kind == "error" {
+					b.WriteString(renderBlock("From: System, Message: ", errorStyle, block.source, width))
 				}
 				if i < len(turn.blocks)-1 {
 					b.WriteString("\n\n")

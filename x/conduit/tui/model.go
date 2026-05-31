@@ -376,7 +376,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = make(map[string]string)
 		}
 		m.status["phase"] = "error"
-		m.status["state"] = "Error: " + msg.err.Error()
+		m.turns = append(m.turns, renderedTurn{
+			role: state.RoleSystem,
+			blocks: []renderedBlock{
+				{kind: "error", source: msg.err.Error()},
+			},
+		})
 		m.contentDirty = true
 		m.recalcLayout()
 		m.syncViewport()
