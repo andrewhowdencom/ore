@@ -114,11 +114,6 @@ func (t *TUI) Start(ctx context.Context) error {
 		slog.Info("thread started", "id", stream.ID())
 	}
 
-	_ = stream.Emit(ctx, loop.PropertiesEvent{
-		Properties: map[string]string{"thread_id": stream.ID()},
-		Ctx:        loop.EventContext{Provenance: "tui"},
-	})
-
 	surfEventsCh := make(chan session.Event, 10)
 
 	ta := textarea.New()
