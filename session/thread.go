@@ -85,3 +85,14 @@ func (c *Thread) UnmarshalJSON(data []byte) error {
 
 	return nil
 }
+
+// GetMetadata retrieves a metadata value from the thread.
+func (c *Thread) GetMetadata(key string) (string, bool) {
+	v, ok := c.Metadata[key]
+	return v, ok
+}
+
+// SetMetadata sets a metadata value on the thread.
+func (c *Thread) SetMetadata(key, value string) {
+	c.Metadata[key] = value
+}
