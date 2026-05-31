@@ -382,7 +382,7 @@ func TestManager_Process_ContextCancel(t *testing.T) {
 	stream, err := mgr.Create()
 	require.NoError(t, err)
 
-	ch := stream.Subscribe("text_delta", "turn_complete", "error")
+	ch := stream.Subscribe("text_delta", "turn_complete", "error", "lifecycle")
 
 	// Start processing with a cancellable context.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -395,11 +395,24 @@ func TestManager_Process_ContextCancel(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 
-	// Drain the channel. An ErrorEvent may or may not be present because
-	// Turn() drops the event when the context is already cancelled.
-	// The primary assertion above (Process returns context.Canceled)
-	// is the behaviour under test.
-	_ = drainWithClose(t, ch, func() { _ = stream.Close() })
+	// Drain the channel and assert cancellation emits lifecycle events.
+	events := drainWithClose(t, ch, func() { _ = stream.Close() })
+
+	var lifecycleEvents []loop.LifecycleEvent
+	var errEvents []loop.ErrorEvent
+	for _, e := range events {
+		switch ev := e.(type) {
+		case loop.LifecycleEvent:
+			lifecycleEvents = append(lifecycleEvents, ev)
+		case loop.ErrorEvent:
+			errEvents = append(errEvents, ev)
+		}
+	}
+
+	require.Len(t, lifecycleEvents, 2, "expected submitted → cancelled → done lifecycle events")
+	assert.Equal(t, "submitted", lifecycleEvents[0].Phase)
+	assert.Equal(t, "cancelled", lifecycleEvents[1].Phase)
+	assert.Len(t, errEvents, 0, "expected 0 ErrorEvents for context.Canceled")
 }
 
 func TestManager_Process_SaveError(t *testing.T) {
@@ -423,7 +436,7 @@ func TestManager_Process_SaveError(t *testing.T) {
 
 func TestManager_Cancel(t *testing.T) {
 	// Provider that blocks until context is cancelled.
-	prov := &mockProvider{}
+	prov := &blockingProvider{}
 	store := NewMemoryStore()
 	mgr := NewManager(store, prov, func(thr *Thread) (*loop.Step, error) {
 		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
@@ -436,18 +449,43 @@ func TestManager_Cancel(t *testing.T) {
 	stream, err := mgr.Create()
 	require.NoError(t, err)
 
+	ch := stream.Subscribe("lifecycle", "error")
+
 	// Start a blocking turn.
 	ctx := context.Background()
 	go func() {
 		_ = stream.Process(ctx, UserMessageEvent{Content: "block"})
 	}()
 
-	// Wait for lock to be acquired.
+	// Wait for it to start processing.
 	time.Sleep(50 * time.Millisecond)
 
 	// Cancel should abort the ongoing turn.
 	err = stream.Cancel()
 	require.NoError(t, err)
+
+	// Wait for cancellation to propagate and drain events.
+	time.Sleep(100 * time.Millisecond)
+	_ = stream.Close()
+
+	events := drainWithClose(t, ch, func() {})
+
+	var lifecycleEvents []loop.LifecycleEvent
+	var errEvents []loop.ErrorEvent
+	for _, e := range events {
+		switch ev := e.(type) {
+		case loop.LifecycleEvent:
+			lifecycleEvents = append(lifecycleEvents, ev)
+		case loop.ErrorEvent:
+			errEvents = append(errEvents, ev)
+		}
+	}
+
+	require.Len(t, lifecycleEvents, 3, "expected submitted → cancelled → done lifecycle events")
+	assert.Equal(t, "submitted", lifecycleEvents[0].Phase)
+	assert.Equal(t, "cancelled", lifecycleEvents[1].Phase)
+	assert.Equal(t, "done", lifecycleEvents[2].Phase)
+	assert.Len(t, errEvents, 0, "expected 0 ErrorEvents for context.Canceled")
 }
 
 func TestStream_Cancel_Closed(t *testing.T) {
