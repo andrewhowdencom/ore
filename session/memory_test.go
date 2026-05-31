@@ -113,7 +113,7 @@ func TestMemoryStore_GetBy(t *testing.T) {
 	_, err = store.Create()
 	require.NoError(t, err)
 
-	thread1.SetMetadata("slack.thread_ts", "1234567890.123456")
+	thread1.Metadata["slack.thread_ts"] = "1234567890.123456"
 	err = store.Save(thread1)
 	require.NoError(t, err)
 
@@ -141,8 +141,8 @@ func TestMemoryStore_GetBy_Duplicate(t *testing.T) {
 	thread2, err := store.Create()
 	require.NoError(t, err)
 
-	thread1.SetMetadata("channel_id", "same")
-	thread2.SetMetadata("channel_id", "same")
+	thread1.Metadata["channel_id"] = "same"
+	thread2.Metadata["channel_id"] = "same"
 	require.NoError(t, store.Save(thread1))
 	require.NoError(t, store.Save(thread2))
 
@@ -156,7 +156,7 @@ func TestMemoryStore_GetBy_AfterDelete(t *testing.T) {
 	thread, err := store.Create()
 	require.NoError(t, err)
 
-	thread.SetMetadata("channel_id", "123")
+	thread.Metadata["channel_id"] = "123"
 	require.NoError(t, store.Save(thread))
 
 	ok := store.Delete(thread.ID)

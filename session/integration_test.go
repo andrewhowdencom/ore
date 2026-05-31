@@ -23,7 +23,7 @@ func TestJSONStore_CrossConduitContinuity(t *testing.T) {
 	createdAt := thread.CreatedAt
 
 	// Set metadata for conduit thread mapping.
-	thread.SetMetadata("slack.thread_ts", "1234567890.123456")
+	thread.Metadata["slack.thread_ts"] = "1234567890.123456"
 
 	// Step 2: Append user and assistant turns.
 	thread.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -59,7 +59,7 @@ func TestJSONStore_CrossConduitContinuity(t *testing.T) {
 	// Step 6: Verify timestamps and metadata.
 	assert.True(t, createdAt.Equal(got.CreatedAt), "CreatedAt should be preserved")
 	assert.True(t, got.UpdatedAt.After(createdAt), "UpdatedAt should reflect the save")
-	v, _ := got.GetMetadata("slack.thread_ts")
+	v, _ := got.Metadata["slack.thread_ts"]
 	assert.Equal(t, "1234567890.123456", v)
 }
 

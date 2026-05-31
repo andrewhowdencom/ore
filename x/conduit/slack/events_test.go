@@ -41,7 +41,7 @@ func TestIsAddressedToBot_ChannelNoMention(t *testing.T) {
 func TestHandleMessageEvent_BotEcho(t *testing.T) {
 	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -65,7 +65,7 @@ func TestHandleMessageEvent_BotEcho(t *testing.T) {
 func TestHandleMessageEvent_ChannelNotAddressed(t *testing.T) {
 	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -88,12 +88,8 @@ func TestHandleMessageEvent_ChannelNotAddressed(t *testing.T) {
 func TestHandleMessageEvent_DM(t *testing.T) {
 	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(thr *session.Thread) (*loop.Step, error) {
-		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
-			if tc, ok := event.(loop.TurnCompleteEvent); ok {
-				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
-			}
-		})), nil
+	mgr := session.NewManager(store, prov, func(stream *session.Stream) ([]loop.Option, error) {
+		return nil, nil
 	}, simpleProcessor())
 
 	c, err := New(mgr)
@@ -115,11 +111,11 @@ func TestHandleMessageEvent_DM(t *testing.T) {
 	require.Len(t, threads, 1)
 
 	thr := threads[0]
-	val, ok := thr.GetMetadata("slack_thread_id")
+	val, ok := thr.Metadata["slack_thread_id"]
 	require.True(t, ok)
 	assert.Equal(t, "D123", val)
 
-	channelID, ok := thr.GetMetadata("slack_channel_id")
+	channelID, ok := thr.Metadata["slack_channel_id"]
 	require.True(t, ok)
 	assert.Equal(t, "D123", channelID)
 
@@ -128,7 +124,7 @@ func TestHandleMessageEvent_DM(t *testing.T) {
 func TestHandleMessageEvent_ChannelMention(t *testing.T) {
 	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -148,11 +144,11 @@ func TestHandleMessageEvent_ChannelMention(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, threads, 1)
 
-	val, ok := threads[0].GetMetadata("slack_thread_id")
+	val, ok := threads[0].Metadata["slack_thread_id"]
 	require.True(t, ok)
 	assert.Equal(t, "1234567890.123456", val)
 
-	channelID, ok := threads[0].GetMetadata("slack_channel_id")
+	channelID, ok := threads[0].Metadata["slack_channel_id"]
 	require.True(t, ok)
 	assert.Equal(t, "C123", channelID)
 }
@@ -160,7 +156,7 @@ func TestHandleMessageEvent_ChannelMention(t *testing.T) {
 func TestHandleMessageEvent_Concurrent(t *testing.T) {
 	store := session.NewMemoryStore()
 	prov := &blockingProvider{}
-	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
