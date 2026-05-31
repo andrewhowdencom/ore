@@ -359,13 +359,17 @@ func thinkingCompact(source string) string {
 // tmux or a terminal multiplexer.
 func (m *model) windowTitle() string {
 	phase := m.status["phase"]
+	base := m.name
+	if t := m.status["title"]; t != "" {
+		base = t
+	}
 	switch phase {
 	case "submitted", "streaming":
-		return m.name + " [...]"
+		return base + " [...]"
 	case "error":
-		return m.name + " [err]"
+		return base + " [err]"
 	default:
-		return m.name + " [ok]"
+		return base + " [ok]"
 	}
 }
 
