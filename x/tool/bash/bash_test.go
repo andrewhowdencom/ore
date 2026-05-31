@@ -57,10 +57,10 @@ func TestBash_Echo(t *testing.T) {
 	result, err := Bash(context.Background(), sb, map[string]any{"command": "echo hello"})
 	require.NoError(t, err)
 
-	m := result.(map[string]any)
-	assert.Equal(t, "hello\n", m["stdout"])
-	assert.Equal(t, "", m["stderr"])
-	assert.Equal(t, 0, m["exit_code"])
+	r := result.(*Result)
+	assert.Equal(t, "hello\n", r.Stdout)
+	assert.Equal(t, "", r.Stderr)
+	assert.Equal(t, 0, r.ExitCode)
 }
 
 func TestBash_InvalidCommand(t *testing.T) {
@@ -70,10 +70,10 @@ func TestBash_InvalidCommand(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exited with code 42")
 
-	m := result.(map[string]any)
-	assert.Equal(t, "", m["stdout"])
-	assert.Equal(t, "", m["stderr"])
-	assert.Equal(t, 42, m["exit_code"])
+	r := result.(*Result)
+	assert.Equal(t, "", r.Stdout)
+	assert.Equal(t, "", r.Stderr)
+	assert.Equal(t, 42, r.ExitCode)
 }
 
 func TestBash_WorkingDirectory(t *testing.T) {
@@ -87,8 +87,8 @@ func TestBash_WorkingDirectory(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	m := result.(map[string]any)
-	assert.Contains(t, m["stdout"], filepath.Base(dir))
+	r := result.(*Result)
+	assert.Contains(t, r.Stdout, filepath.Base(dir))
 }
 
 func TestBash_Timeout(t *testing.T) {
@@ -125,10 +125,10 @@ func TestBash_StderrCapture(t *testing.T) {
 	result, err := Bash(context.Background(), sb, map[string]any{"command": "echo error >&2; exit 1"})
 	require.Error(t, err)
 
-	m := result.(map[string]any)
-	assert.Equal(t, "", m["stdout"])
-	assert.Equal(t, "error\n", m["stderr"])
-	assert.Equal(t, 1, m["exit_code"])
+	r := result.(*Result)
+	assert.Equal(t, "", r.Stdout)
+	assert.Equal(t, "error\n", r.Stderr)
+	assert.Equal(t, 1, r.ExitCode)
 }
 
 func TestBash_TimeoutFloat(t *testing.T) {
@@ -159,8 +159,8 @@ func TestBash_EchoWithTimeoutParam(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	m := result.(map[string]any)
-	assert.Equal(t, "hello\n", m["stdout"])
+	r := result.(*Result)
+	assert.Equal(t, "hello\n", r.Stdout)
 }
 
 func TestBash_ExecSandboxDelegation(t *testing.T) {
@@ -186,10 +186,10 @@ func TestBash_ExecSandboxDelegation(t *testing.T) {
 	assert.Equal(t, "/mock/dir", calledDir)
 	assert.Equal(t, 30*time.Second, calledTimeout)
 
-	m := result.(map[string]any)
-	assert.Equal(t, "out", m["stdout"])
-	assert.Equal(t, "err", m["stderr"])
-	assert.Equal(t, 0, m["exit_code"])
+	r := result.(*Result)
+	assert.Equal(t, "out", r.Stdout)
+	assert.Equal(t, "err", r.Stderr)
+	assert.Equal(t, 0, r.ExitCode)
 }
 
 func TestBash_ExecSandboxWithWorkingDir(t *testing.T) {
@@ -226,10 +226,10 @@ func TestBash_ExecSandboxError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exited with code 1")
 
-	m := result.(map[string]any)
-	assert.Equal(t, "partial output", m["stdout"])
-	assert.Equal(t, "error details", m["stderr"])
-	assert.Equal(t, 1, m["exit_code"])
+	r := result.(*Result)
+	assert.Equal(t, "partial output", r.Stdout)
+	assert.Equal(t, "error details", r.Stderr)
+	assert.Equal(t, 1, r.ExitCode)
 }
 
 func TestBash_FileSandboxFallback(t *testing.T) {
@@ -242,8 +242,8 @@ func TestBash_FileSandboxFallback(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	m := result.(map[string]any)
-	assert.Contains(t, m["stdout"], filepath.Base(dir))
+	r := result.(*Result)
+	assert.Contains(t, r.Stdout, filepath.Base(dir))
 }
 
 func TestBash_NonNumericTimeout(t *testing.T) {
