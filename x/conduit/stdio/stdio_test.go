@@ -64,7 +64,7 @@ func simpleProcessor() session.TurnProcessor {
 
 func newManager(prov provider.Provider) *session.Manager {
 	store := session.NewMemoryStore()
-	return session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	return session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 }
 
 func TestNew_NilManager(t *testing.T) {
@@ -204,7 +204,7 @@ func TestStart_WithThreadID(t *testing.T) {
 			artifact.TextDelta{Content: "attached"},
 		},
 	}
-	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	thr, err := store.Create()
 	require.NoError(t, err)
@@ -233,7 +233,7 @@ func TestStart_ProvenanceFiltering(t *testing.T) {
 			artifact.TextDelta{Content: "should be ignored"},
 		},
 	}
-	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, foreignProcessor)
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, foreignProcessor)
 
 	out := &bytes.Buffer{}
 	in := bytes.NewBufferString("test")
@@ -251,7 +251,7 @@ func TestStart_ProvenanceFiltering(t *testing.T) {
 func TestStart_ContextCancellation(t *testing.T) {
 	store := session.NewMemoryStore()
 	prov := &blockingProvider{}
-	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	out := &bytes.Buffer{}
 	in := bytes.NewBufferString("test")
@@ -272,7 +272,7 @@ func TestStart_ContextCancellation(t *testing.T) {
 func TestStart_MultiTurnCapture(t *testing.T) {
 	prov := &multiTurnProvider{}
 	store := session.NewMemoryStore()
-	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
 		st, err := step.Turn(ctx, st, prov)
 		if err != nil {
 			return st, err

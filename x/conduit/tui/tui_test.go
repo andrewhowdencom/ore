@@ -42,7 +42,7 @@ func simpleProcessor() session.TurnProcessor {
 func TestNew(t *testing.T) {
 	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -52,7 +52,7 @@ func TestNew(t *testing.T) {
 func TestNew_WithThreadID(t *testing.T) {
 	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	c, err := New(mgr, WithThreadID("test-thread-id"))
 	require.NoError(t, err)
@@ -62,7 +62,7 @@ func TestNew_WithThreadID(t *testing.T) {
 func TestStart_AttachNotFound(t *testing.T) {
 	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	c, err := New(mgr, WithThreadID("nonexistent"))
 	require.NoError(t, err)
@@ -78,7 +78,7 @@ func TestStart_AttachNotFound(t *testing.T) {
 func TestNew_WithName(t *testing.T) {
 	store := session.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*session.Thread) (*loop.Step, error) { return loop.New(), nil }, simpleProcessor())
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	c, err := New(mgr, WithName("my-app"))
 	require.NoError(t, err)
