@@ -204,6 +204,9 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 			}},
 		},
 	})
+	if sc, ok := result.(artifact.StatusContributor); ok {
+		e.Emit(ctx, loop.PropertiesEvent{Properties: sc.Status()})
+	}
 	return nil
 }
 
