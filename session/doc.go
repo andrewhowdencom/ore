@@ -45,31 +45,31 @@
 //	and "done" (turn or pipeline complete). Conduits should subscribe to
 //	it to drive UI state without inferring lifecycle from data events.
 //
-// To persist state across turns, wire an OnEmit callback that appends
-// TurnCompleteEvent to the thread's state buffer. Typical composition:
+// State persistence is handled automatically by the Manager. The default
+// OnEmit callback appends TurnCompleteEvent turns to the thread's state
+// buffer after every turn. Applications only need a stepFactory when
+// adding custom transforms, handlers, or other loop.Step options:
 //
 //	store := NewMemoryStore()
 //	prov, _ := openai.New(openai.WithAPIKey(apiKey), openai.WithModel(model))
-//	stepFactory := func(thr *Thread) (*loop.Step, error) {
-//		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
-//			if tc, ok := event.(loop.TurnCompleteEvent); ok {
-//				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
-//			}
-//		})), nil
+//	stepFactory := func(stream *Stream) ([]loop.Option, error) {
+//		// Build transforms that use stream.Metadata, stream.ID, etc.
+//		return nil, nil  // use default step with auto-persistence
 //	}
 //	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor())
 //
-// The factory receives *Thread so it can bind per-session state.
-// For example, a factory can close over the thread to inject a dynamic
-// system prompt that reads from thread.GetMetadata("persona"):
+// The factory receives *Stream so it can bind per-session runtime state.
+// For example, a factory can close over the stream to inject a dynamic
+// system prompt that reads from stream.GetMetadata("persona"):
 //
-//	stepFactory := func(thr *Thread) (*loop.Step, error) {
-//		// Build transforms that use thr.Metadata, thr.ID, etc.
-//		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
-//			if tc, ok := event.(loop.TurnCompleteEvent); ok {
-//				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+//	stepFactory := func(stream *Stream) ([]loop.Option, error) {
+//		sp, _ := systemprompt.New(systemprompt.WithContentFunc(func() string {
+//			if p, ok := stream.GetMetadata("persona"); ok {
+//				return "You are a " + p + "."
 //			}
-//		})), nil
+//			return "You are a helpful assistant."
+//		}))
+//		return []loop.Option{loop.WithTransforms(sp)}, nil
 //	}
 //
 //	// Obtain a *Stream from the manager.

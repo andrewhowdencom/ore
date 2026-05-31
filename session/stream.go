@@ -303,12 +303,17 @@ func (s *Stream) ID() string { return s.id }
 
 // GetMetadata retrieves a metadata value from the underlying thread.
 func (s *Stream) GetMetadata(key string) (string, bool) {
-	return s.thread.GetMetadata(key)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, ok := s.thread.Metadata[key]
+	return v, ok
 }
 
 // SetMetadata sets a metadata value on the underlying thread.
 func (s *Stream) SetMetadata(key, value string) {
-	s.thread.SetMetadata(key, value)
+	s.mu.Lock()
+	s.thread.Metadata[key] = value
+	s.mu.Unlock()
 	s.Emit(context.Background(), loop.PropertiesEvent{
 		Properties: map[string]string{key: value},
 		Ctx:        loop.EventContext{Provenance: "app"},

@@ -103,9 +103,7 @@ func (s *JSONStore) GetBy(key, value string) (*Thread, bool) {
 		if !ok {
 			continue
 		}
-		thread.metaMu.RLock()
 		match := thread.Metadata[key] == value
-		thread.metaMu.RUnlock()
 		if match {
 			return thread, true
 		}
