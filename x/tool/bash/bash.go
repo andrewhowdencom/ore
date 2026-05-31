@@ -48,18 +48,18 @@ func Bash(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error
 		stdout, stderr, exitCode, err := execSb.Run(ctx, command, dir, secondsToDuration(timeout))
 		if err != nil {
 			if exitCode != 0 {
-				return map[string]any{
-					"stdout":    stdout,
-					"stderr":    stderr,
-					"exit_code": exitCode,
+				return &Result{
+					Stdout:   stdout,
+					Stderr:   stderr,
+					ExitCode: exitCode,
 				}, fmt.Errorf("command exited with code %d", exitCode)
 			}
 			return nil, fmt.Errorf("command execution failed: %w", err)
 		}
-		return map[string]any{
-			"stdout":    stdout,
-			"stderr":    stderr,
-			"exit_code": 0,
+		return &Result{
+			Stdout:   stdout,
+			Stderr:   stderr,
+			ExitCode: 0,
 		}, nil
 	}
 
@@ -93,20 +93,20 @@ func Bash(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error
 
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return map[string]any{
-				"stdout":    stdout,
-				"stderr":    stderr,
-				"exit_code": exitErr.ExitCode(),
+			return &Result{
+				Stdout:   stdout,
+				Stderr:   stderr,
+				ExitCode: exitErr.ExitCode(),
 			}, fmt.Errorf("command exited with code %d", exitErr.ExitCode())
 		}
 
 		return nil, fmt.Errorf("command execution failed: %w", err)
 	}
 
-	return map[string]any{
-		"stdout":    stdout,
-		"stderr":    stderr,
-		"exit_code": 0,
+	return &Result{
+		Stdout:   stdout,
+		Stderr:   stderr,
+		ExitCode: 0,
 	}, nil
 }
 
