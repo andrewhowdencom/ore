@@ -25,6 +25,15 @@ func (s subscription) matches(kind string) bool {
 
 // FanOut distributes OutputEvent values from a source channel to multiple
 // subscribers, filtered by event kind.
+//
+// Complete, self-contained events (TurnCompleteEvent, PropertiesEvent,
+// LifecycleEvent, ErrorEvent, and non-delta ArtifactEvents) are retained in a
+// bounded replay buffer (default capacity 50). When a new subscriber registers
+// via Subscribe(), buffered events matching the subscriber's kind filter are
+// replayed before live events. Delta events (text_delta, reasoning_delta,
+// tool_call_delta) remain ephemeral and are not buffered — late subscribers do
+// not receive them. This makes the FanOut lossy for streaming chunks but
+// preserves complete event history for late-joining consumers.
 type FanOut struct {
 	src       <-chan outputEventEnvelope
 	subs      []subscription
