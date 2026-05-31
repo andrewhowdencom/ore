@@ -109,9 +109,9 @@ func TestModel_Update_Turn_Interleaved(t *testing.T) {
 
 func TestModel_Update_Status(t *testing.T) {
 	m := model{}
-	newM, _ := m.Update(statusMsg{status: map[string]string{"state": "thinking..."}})
+	newM, _ := m.Update(statusMsg{status: map[string]string{"phase": "thinking..."}})
 	mm := newM.(*model)
-	assert.Equal(t, "thinking...", mm.status["state"])
+	assert.Equal(t, "thinking...", mm.status["phase"])
 }
 
 func TestModel_Update_KeyRunes(t *testing.T) {
@@ -283,10 +283,10 @@ func TestModel_View_StatusBarFixedBelowInput(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.width = 80
-	m.status = map[string]string{"state": "thinking...", "model": "gpt-4o"}
+	m.status = map[string]string{"phase": "streaming", "model": "gpt-4o"}
 	output := m.View().Content
 	// Status should appear after the second separator, below the textarea.
-	assert.Contains(t, output, "state: thinking...")
+	assert.Contains(t, output, "phase: streaming")
 	assert.Contains(t, output, "model: gpt-4o")
 	// Verify there are two separators in the output.
 	sep := strings.Repeat("─", 80)
@@ -300,11 +300,11 @@ func TestModel_View_StatusBarHiddenWhenEmpty(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.width = 80
-	m.status = map[string]string{"state": ""}
+	m.status = map[string]string{"phase": ""}
 	output := m.View().Content
 	sep := strings.Repeat("─", 80)
 	assert.Equal(t, 1, strings.Count(output, sep), "only one separator when status is empty")
-	assert.NotContains(t, output, "state:")
+	assert.NotContains(t, output, "phase:")
 }
 
 func TestModel_View_StatusBarHiddenWhenNil(t *testing.T) {
@@ -322,13 +322,13 @@ func TestModel_View_StatusBarWraps(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(40), viewport.WithHeight(20))
 	m.width = 40
 	// A long status that will wrap at width 40.
-	m.status = map[string]string{"state": "thinking very deeply about the problem at hand"}
+	m.status = map[string]string{"phase": "thinking very deeply about the problem at hand"}
 	_, statusLines := buildStatusLine(m.status, 40)
 	require.Greater(t, statusLines, 1, "status should wrap to multiple lines")
 
 	// Verify the wrapped status appears in the output.
 	output := m.View().Content
-	assert.Contains(t, output, "state: thinking")
+	assert.Contains(t, output, "phase: thinking")
 
 	// Two separators should be present.
 	sep := strings.Repeat("─", 40)
@@ -747,7 +747,7 @@ func TestModel_View_SeparatorAdaptsToResize(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.width = 80
-	m.status = map[string]string{"state": "ready"} // ensure viewport has content so separator is rendered
+	m.status = map[string]string{"phase": "ready"} // ensure viewport has content so separator is rendered
 	m.syncViewport()
 	output := m.View().Content
 	assert.Contains(t, output, strings.Repeat("─", 80))
@@ -755,7 +755,7 @@ func TestModel_View_SeparatorAdaptsToResize(t *testing.T) {
 	// Resize to narrower width
 	newM, _ := m.Update(tea.WindowSizeMsg{Width: 50, Height: 20})
 	mm := newM.(*model)
-	mm.status = map[string]string{"state": "ready"}
+	mm.status = map[string]string{"phase": "ready"}
 	output = mm.View().Content
 	assert.Contains(t, output, strings.Repeat("─", 50))
 }
@@ -1084,7 +1084,7 @@ func TestModel_Update_KeyCtrlO_RapidToggles(t *testing.T) {
 func TestModel_Update_AudioMsg(t *testing.T) {
 	m := newTestModel()
 	m.pending = true
-	m.status = map[string]string{"state": "thinking..."}
+	m.status = map[string]string{"phase": "thinking..."}
 
 	// Capture stdout to verify the terminal bell is printed.
 	oldStdout := os.Stdout
@@ -1103,7 +1103,7 @@ func TestModel_Update_AudioMsg(t *testing.T) {
 
 	// audioMsg is a pure side-effect; model state should be unchanged.
 	assert.True(t, mm.pending, "audioMsg should not alter pending")
-	assert.Equal(t, "thinking...", mm.status["state"], "audioMsg should not alter status")
+	assert.Equal(t, "thinking...", mm.status["phase"], "audioMsg should not alter status")
 	assert.Nil(t, cmd)
 	assert.Equal(t, "\a", string(out), "audioMsg should print BEL to stdout")
 }
@@ -1116,7 +1116,11 @@ func TestModel_Update_ErrorMsg(t *testing.T) {
 	mm := newM.(*model)
 
 	assert.False(t, mm.pending, "errorMsg should clear pending")
-	assert.Equal(t, "Error: boom", mm.status["state"])
+	require.Len(t, mm.turns, 1, "errorMsg should append a system error turn")
+	assert.Equal(t, state.RoleSystem, mm.turns[0].role)
+	require.Len(t, mm.turns[0].blocks, 1)
+	assert.Equal(t, "error", mm.turns[0].blocks[0].kind)
+	assert.Equal(t, "boom", mm.turns[0].blocks[0].source)
 	assert.Nil(t, cmd)
 }
 
@@ -1128,22 +1132,26 @@ func TestModel_Update_ErrorMsg_Empty(t *testing.T) {
 	mm := newM.(*model)
 
 	assert.False(t, mm.pending, "errorMsg should clear pending")
-	assert.Equal(t, "Error: ", mm.status["state"])
+	require.Len(t, mm.turns, 1, "errorMsg should append a system error turn")
+	assert.Equal(t, state.RoleSystem, mm.turns[0].role)
+	require.Len(t, mm.turns[0].blocks, 1)
+	assert.Equal(t, "error", mm.turns[0].blocks[0].kind)
+	assert.Equal(t, "", mm.turns[0].blocks[0].source)
 	assert.Nil(t, cmd)
 }
 
 func TestModel_Update_Status_Merges(t *testing.T) {
 	m := model{}
-	newM, _ := m.Update(statusMsg{status: map[string]string{"thread_id": "abc", "state": "ready"}})
+	newM, _ := m.Update(statusMsg{status: map[string]string{"thread_id": "abc", "phase": "ready"}})
 	mm := newM.(*model)
 	assert.Equal(t, "abc", mm.status["thread_id"])
-	assert.Equal(t, "ready", mm.status["state"])
+	assert.Equal(t, "ready", mm.status["phase"])
 
 	// Second update should merge, overwriting present keys and leaving absent ones.
-	newM2, _ := mm.Update(statusMsg{status: map[string]string{"state": "thinking..."}})
+	newM2, _ := mm.Update(statusMsg{status: map[string]string{"phase": "thinking..."}})
 	mm2 := newM2.(*model)
 	assert.Equal(t, "abc", mm2.status["thread_id"], "thread_id should be preserved")
-	assert.Equal(t, "thinking...", mm2.status["state"], "state should be overwritten")
+	assert.Equal(t, "thinking...", mm2.status["phase"], "phase should be overwritten")
 }
 
 // --- Incremental artifact rendering tests (issue #217) ---
@@ -1195,6 +1203,10 @@ func TestModel_Update_ArtifactMsg_ClearedByError(t *testing.T) {
 	mm2 := newM2.(*model)
 	assert.Len(t, mm2.currentTurn.blocks, 0, "currentTurn should be cleared on error")
 	assert.False(t, mm2.pending)
+	require.Len(t, mm2.turns, 1, "errorMsg should append a system error turn")
+	assert.Equal(t, state.RoleSystem, mm2.turns[0].role)
+	assert.Equal(t, "error", mm2.turns[0].blocks[0].kind)
+	assert.Equal(t, "failed", mm2.turns[0].blocks[0].source)
 }
 
 func TestModel_View_ContainsCurrentTurn(t *testing.T) {
@@ -1321,8 +1333,12 @@ func TestModel_Update_ErrorMidStream_ClearsAndRecovers(t *testing.T) {
 	}
 	newM4, _ := mm3.Update(turnMsg{turn: turn})
 	mm4 := newM4.(*model)
-	require.Len(t, mm4.turns, 1)
-	assert.Equal(t, "new content", mm4.turns[0].blocks[0].source)
+	require.Len(t, mm4.turns, 2)
+	assert.Equal(t, state.RoleSystem, mm4.turns[0].role)
+	assert.Equal(t, "error", mm4.turns[0].blocks[0].kind)
+	assert.Equal(t, "network error", mm4.turns[0].blocks[0].source)
+	assert.Equal(t, state.RoleAssistant, mm4.turns[1].role)
+	assert.Equal(t, "new content", mm4.turns[1].blocks[0].source)
 	assert.False(t, mm4.pending)
 }
 
