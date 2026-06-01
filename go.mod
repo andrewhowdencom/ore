@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore/x/conduit v0.1.2
+	github.com/andrewhowdencom/ore/x/conduit v0.1.3
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/mod v0.36.0
 )
