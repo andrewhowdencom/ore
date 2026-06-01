@@ -79,9 +79,7 @@ func (c *Thread) UnmarshalJSON(data []byte) error {
 		c.Metadata = make(map[string]string)
 	}
 	c.State = &state.Buffer{}
-	for _, turn := range turns {
-		c.State.Append(turn.Role, turn.Artifacts...)
-	}
+	c.State.LoadTurns(turns)
 
 	return nil
 }
