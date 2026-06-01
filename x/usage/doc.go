@@ -23,7 +23,7 @@
 //	    "github.com/andrewhowdencom/ore/x/usage"
 //	)
 //
-//	handler := usage.NewHandler()
+//	handler := usage.New()
 //	step := loop.New(
 //	    loop.WithHandlers(handler),
 //	)

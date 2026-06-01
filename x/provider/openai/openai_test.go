@@ -153,6 +153,14 @@ func usageSSE(prompt, completion, total int64) string {
 	return fmt.Sprintf("data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-4\",\"choices\":[],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d}}\n\ndata: [DONE]\n\n", prompt, completion, total)
 }
 
+func textWithUsageSSE(content string, promptTokens, completionTokens, totalTokens int64) string {
+	return fmt.Sprintf(
+		"data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"content\":%q},\"finish_reason\":null}]}\n\n"+
+			"data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-4\",\"choices\":[],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d}}\n\ndata: [DONE]\n\n",
+		content, promptTokens, completionTokens, totalTokens,
+	)
+}
+
 func drainArtifacts(ch chan artifact.Artifact) []artifact.Artifact {
 	close(ch)
 	var artifacts []artifact.Artifact
