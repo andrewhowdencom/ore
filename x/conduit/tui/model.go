@@ -79,7 +79,7 @@ type renderedBlock struct {
 	kind     string // "text", "reasoning", "tool_call", or "tool_result"
 	source   string // original content
 	compact  string // compact single-line representation
-	rendered string // pre-rendered ANSI output (only for text blocks)
+	rendered string // pre-rendered ANSI output (for text, reasoning, tool_call and tool_result blocks)
 }
 
 // The TUI aims to keep the conversation view concise. Tool calls and their
@@ -261,14 +261,28 @@ func (m *model) renderArtifact(art artifact.Artifact, shouldRenderMarkdown bool)
 			source = fmt.Sprintf("Calling: %s(%s)", a.Name, a.Arguments)
 		}
 		compact := compactToolCall(a, m.viewport.Width())
-		return renderedBlock{kind: "tool_call", source: source, compact: compact}
+		block := renderedBlock{kind: "tool_call", source: source, compact: compact}
+		if shouldRenderMarkdown {
+			rendered, err := m.renderMarkdown(source, m.viewport.Width())
+			if err == nil {
+				block.rendered = rendered
+			}
+		}
+		return block
 	case artifact.ToolResult:
 		source := a.MarkdownString()
 		if a.IsError {
 			source = "Error: " + source
 		}
 		compact := compactToolResult(source, m.viewport.Width())
-		return renderedBlock{kind: "tool_result", source: source, compact: compact}
+		block := renderedBlock{kind: "tool_result", source: source, compact: compact}
+		if shouldRenderMarkdown {
+			rendered, err := m.renderMarkdown(source, m.viewport.Width())
+			if err == nil {
+				block.rendered = rendered
+			}
+		}
+		return block
 	}
 	return renderedBlock{}
 }
@@ -339,7 +353,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// moving them into the permanent conversation history.
 			for j := range m.currentTurn.blocks {
 				block := &m.currentTurn.blocks[j]
-				if (block.kind == "text" || block.kind == "reasoning") && block.source != "" {
+				if (block.kind == "text" || block.kind == "reasoning" || block.kind == "tool_call" || block.kind == "tool_result") && block.source != "" {
 					rendered, err := m.renderMarkdown(block.source, m.viewport.Width())
 					if err == nil {
 						block.rendered = rendered
@@ -441,7 +455,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		for j := range m.currentTurn.blocks {
 			block := &m.currentTurn.blocks[j]
-			if (block.kind == "text" || block.kind == "reasoning") && block.source != "" {
+			if (block.kind == "text" || block.kind == "reasoning" || block.kind == "tool_call" || block.kind == "tool_result") && block.source != "" {
 				rendered, err := m.renderMarkdown(block.source, m.viewport.Width())
 				if err == nil {
 					block.rendered = rendered
@@ -539,12 +553,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.textarea.SetWidth(msg.Width)
 		m.textarea.MaxHeight = max(3, msg.Height/3)
 		m.recalcLayout()
-		// Re-render assistant turn text blocks with the new terminal width
+		// Re-render assistant turn blocks with the new terminal width
 		// so cached Markdown output remains correctly wrapped.
 		for i, turn := range m.turns {
 			if turn.role == state.RoleAssistant {
 				for j, block := range turn.blocks {
-					if block.kind == "text" && block.source != "" {
+					if (block.kind == "text" || block.kind == "tool_call" || block.kind == "tool_result") && block.source != "" {
 						rendered, err := m.renderMarkdown(block.source, m.viewport.Width())
 						if err == nil {
 							m.turns[i].blocks[j].rendered = rendered
@@ -555,7 +569,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Also re-render the in-progress currentTurn blocks.
 		for j, block := range m.currentTurn.blocks {
-			if block.kind == "text" && block.source != "" {
+			if (block.kind == "text" || block.kind == "tool_call" || block.kind == "tool_result") && block.source != "" {
 				rendered, err := m.renderMarkdown(block.source, m.viewport.Width())
 				if err == nil {
 					m.currentTurn.blocks[j].rendered = rendered
