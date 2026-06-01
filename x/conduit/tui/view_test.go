@@ -515,8 +515,13 @@ func TestCompactToolResult_Normal(t *testing.T) {
 }
 
 func TestCompactToolResult_Multiline(t *testing.T) {
-	output := compactToolResult("line1\nline2", 80)
-	assert.Equal(t, "line1", output)
+	output := compactToolResult("line1\nline2\nline3", 80)
+	assert.Equal(t, "line1\nline2\nline3", output)
+}
+
+func TestCompactToolResult_MultilineOverflow(t *testing.T) {
+	output := compactToolResult("line1\nline2\nline3\nline4", 80)
+	assert.Equal(t, "line1\nline2\nline3…", output)
 }
 
 func TestCompactToolResult_Error(t *testing.T) {
