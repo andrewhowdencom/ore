@@ -7,6 +7,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/tool"
 )
 
 // InvokeOption is a marker interface for per-invocation configuration options.
@@ -26,7 +27,7 @@ type ToolsOption struct {
 	// The function receives the request context and the current state, enabling
 	// per-turn dynamic selection of tools. Returning nil is equivalent to an
 	// empty tool list (no tools are offered to the provider).
-	Tools func(ctx context.Context, st state.State) []Tool
+	Tools func(ctx context.Context, st state.State) []tool.Tool
 }
 
 // IsInvokeOption marks ToolsOption as a provider.InvokeOption.
@@ -37,8 +38,8 @@ func (ToolsOption) IsInvokeOption() {}
 // case where the tool set is static; it creates a ToolsOption whose Tools
 // function simply returns the provided slice, ignoring the request context and
 // state.
-func WithTools(tools []Tool) InvokeOption {
-	return ToolsOption{Tools: func(context.Context, state.State) []Tool { return tools }}
+func WithTools(tools []tool.Tool) InvokeOption {
+	return ToolsOption{Tools: func(context.Context, state.State) []tool.Tool { return tools }}
 }
 
 // Provider is the interface implemented by LLM provider adapters.
@@ -60,17 +61,5 @@ type Provider interface {
 	Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...InvokeOption) error
 }
 
-// Tool describes a callable tool exposed to an LLM provider.
-type Tool struct {
-	Name        string
-	Description string
-	// Schema defines the JSON Schema for the tool's parameters.
-	Schema map[string]any
-	// DisplayHint is an optional formatter that receives parsed JSON
-	// arguments and returns a displayable value (implementing
-	// MarkdownRenderer / LLMRenderer). When nil, conduits fall back to
-	// raw JSON Arguments.
-	DisplayHint func(map[string]any) any
-}
 
 

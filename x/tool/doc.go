@@ -40,7 +40,7 @@
 //	)
 //
 //	registry := tool.NewRegistry()
-//	if err := registry.Register("add", "Add two numbers", schema, func(ctx context.Context, _ tool.Sandbox, args map[string]any) (any, error) {
+//	if err := registry.Register(tool.Tool{Name: "add", Description: "Add two numbers", Schema: schema}, func(ctx context.Context, _ tool.Sandbox, args map[string]any) (any, error) {
 //	    a, _ := args["a"].(float64)
 //	    b, _ := args["b"].(float64)
 //	    return a + b, nil
@@ -87,7 +87,7 @@
 //	    xtool "github.com/andrewhowdencom/ore/x/tool"
 //	)
 //
-//	filter := func(ctx context.Context, st state.State, tools []provider.Tool) []provider.Tool {
+//	filter := func(ctx context.Context, st state.State, tools []tool.Tool) []tool.Tool {
 //	    // Return only tools permitted for the current user/role.
 //	    return filterByRole(tools, st)
 //	}
@@ -98,6 +98,6 @@
 // slice of tools obtained from the registry unchanged.
 //
 // Because tools are passed per-invocation through provider.InvokeOption, there
-// is no mutable provider state and no need for synchronization. The provider.Tool
+// is no mutable provider state and no need for synchronization. The tool.Tool
 // struct is provider-agnostic — each adapter maps it to its native API.
 package tool

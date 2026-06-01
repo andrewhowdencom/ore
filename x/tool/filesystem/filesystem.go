@@ -11,7 +11,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/tool"
 )
 
@@ -129,8 +128,8 @@ func ReadFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, e
 	return result.String(), nil
 }
 
-// ReadFileTool is the provider.Tool descriptor for ReadFile.
-var ReadFileTool = provider.Tool{
+// ReadFileTool is the tool.Tool descriptor for ReadFile.
+var ReadFileTool = tool.Tool{
 	Name:        "read_file",
 	Description: "Read the contents of a file. Returns the file contents with line-number prefixes. Optionally specify an offset (1-based starting line) and limit (maximum number of lines to return).",
 	Schema: map[string]any{
@@ -193,8 +192,8 @@ func WriteFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, 
 	return fmt.Sprintf("wrote %d bytes to %q", len(content), path), nil
 }
 
-// WriteFileTool is the provider.Tool descriptor for WriteFile.
-var WriteFileTool = provider.Tool{
+// WriteFileTool is the tool.Tool descriptor for WriteFile.
+var WriteFileTool = tool.Tool{
 	Name:        "write_file",
 	Description: "Create a new file with the specified content. Fails if the path already exists, forcing the use of edit_file for modifications.",
 	Schema: map[string]any{
@@ -259,8 +258,8 @@ func EditFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, e
 	return fmt.Sprintf("edited %q", path), nil
 }
 
-// EditFileTool is the provider.Tool descriptor for EditFile.
-var EditFileTool = provider.Tool{
+// EditFileTool is the tool.Tool descriptor for EditFile.
+var EditFileTool = tool.Tool{
 	Name:        "edit_file",
 	Description: "Edit an existing file by replacing the first exact occurrence of old_string with new_string. Fails if old_string is empty or not found.",
 	Schema: map[string]any{
@@ -326,8 +325,8 @@ func ListDirectory(ctx context.Context, sb tool.Sandbox, args map[string]any) (a
 	return result, nil
 }
 
-// ListDirectoryTool is the provider.Tool descriptor for ListDirectory.
-var ListDirectoryTool = provider.Tool{
+// ListDirectoryTool is the tool.Tool descriptor for ListDirectory.
+var ListDirectoryTool = tool.Tool{
 	Name:        "list_directory",
 	Description: "List the immediate non-hidden entries in a directory. Returns entry names. Hidden entries (names starting with '.') are excluded.",
 	Schema: map[string]any{
@@ -452,8 +451,8 @@ func searchFile(path string, re *regexp.Regexp) ([]SearchResult, error) {
 	return results, nil
 }
 
-// SearchFilesTool is the provider.Tool descriptor for SearchFiles.
-var SearchFilesTool = provider.Tool{
+// SearchFilesTool is the tool.Tool descriptor for SearchFiles.
+var SearchFilesTool = tool.Tool{
 	Name:        "search_files",
 	Description: "Search files for lines matching a regex query. Returns matches with file path, line number, and matching line content. If the path is a directory, searches recursively. Hidden files and directories are skipped.",
 	Schema: map[string]any{

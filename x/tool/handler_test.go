@@ -8,7 +8,6 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 	toolpkg "github.com/andrewhowdencom/ore/tool"
 	"github.com/stretchr/testify/assert"
@@ -58,7 +57,7 @@ func TestHandler_UnknownTool(t *testing.T) {
 
 func TestHandler_ExecutesRegisteredTool(t *testing.T) {
 	r := toolpkg.NewRegistry()
-	require.NoError(t, r.Register("add", "Add two numbers", map[string]any{"type": "object"}, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(toolpkg.Tool{Name: "add", Description: "Add two numbers", Schema: map[string]any{"type": "object"}}, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
 		a, _ := args["a"].(float64)
 		b, _ := args["b"].(float64)
 		return a + b, nil
@@ -91,7 +90,7 @@ func TestHandler_ExecutesRegisteredTool(t *testing.T) {
 
 func TestHandler_InvalidArguments(t *testing.T) {
 	r := toolpkg.NewRegistry()
-	require.NoError(t, r.Register("add", "", nil, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(toolpkg.Tool{Name: "add", Description: "", Schema: nil}, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
 		return nil, nil
 	}))
 	h := NewHandler(r)
@@ -116,7 +115,7 @@ func TestHandler_InvalidArguments(t *testing.T) {
 
 func TestHandler_ToolExecutionError_WithResult(t *testing.T) {
 	r := toolpkg.NewRegistry()
-	require.NoError(t, r.Register("fail", "", nil, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(toolpkg.Tool{Name: "fail", Description: "", Schema: nil}, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
 		return map[string]any{
 			"stdout":    "partial",
 			"stderr":    "something failed",
@@ -150,7 +149,7 @@ func TestHandler_ToolExecutionError_WithResult(t *testing.T) {
 
 func TestHandler_ToolExecutionError(t *testing.T) {
 	r := toolpkg.NewRegistry()
-	require.NoError(t, r.Register("fail", "", nil, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(toolpkg.Tool{Name: "fail", Description: "", Schema: nil}, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
 		return nil, errors.New("boom")
 	}))
 	h := NewHandler(r)
@@ -175,7 +174,7 @@ func TestHandler_ToolExecutionError(t *testing.T) {
 
 func TestHandler_SerializationError(t *testing.T) {
 	r := toolpkg.NewRegistry()
-	require.NoError(t, r.Register("bad", "", nil, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(toolpkg.Tool{Name: "bad", Description: "", Schema: nil}, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
 		// Return a channel, which cannot be JSON-serialized.
 		return make(chan int), nil
 	}))
@@ -201,7 +200,7 @@ func TestHandler_SerializationError(t *testing.T) {
 
 func TestHandler_EmptyArguments(t *testing.T) {
 	r := toolpkg.NewRegistry()
-	require.NoError(t, r.Register("noop", "", nil, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(toolpkg.Tool{Name: "noop", Description: "", Schema: nil}, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
 		return "done", nil
 	}))
 	h := NewHandler(r)
@@ -226,7 +225,7 @@ func TestHandler_EmptyArguments(t *testing.T) {
 
 func TestHandler_ArrayReturnValue(t *testing.T) {
 	r := toolpkg.NewRegistry()
-	require.NoError(t, r.Register("list", "", nil, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(toolpkg.Tool{Name: "list", Description: "", Schema: nil}, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
 		return []int{1, 2, 3}, nil
 	}))
 	h := NewHandler(r)
@@ -252,7 +251,7 @@ func TestHandler_ArrayReturnValue(t *testing.T) {
 func TestHandler_NamespacedTool(t *testing.T) {
 	remote := &mockRemoteSource{
 		name: "filesystem",
-		tools: []provider.Tool{
+		tools: []toolpkg.Tool{
 			{Name: "read_file", Description: "Read a file", Schema: map[string]any{"type": "object"}},
 		},
 	}
@@ -306,8 +305,8 @@ func TestHandler_NamespacedUnknownNamespace(t *testing.T) {
 type notFoundRemoteSource struct{}
 
 func (e *notFoundRemoteSource) Name() string { return "remote" }
-func (e *notFoundRemoteSource) Tools() []provider.Tool {
-	return []provider.Tool{{Name: "known", Description: "Known tool"}}
+func (e *notFoundRemoteSource) Tools() []toolpkg.Tool {
+	return []toolpkg.Tool{{Name: "known", Description: "Known tool"}}
 }
 func (e *notFoundRemoteSource) Call(ctx context.Context, name string, args map[string]any) (any, error) {
 	return nil, fmt.Errorf("tool %q not found", name)
@@ -316,8 +315,8 @@ func (e *notFoundRemoteSource) Call(ctx context.Context, name string, args map[s
 type errorRemoteSource struct{}
 
 func (e *errorRemoteSource) Name() string { return "remote" }
-func (e *errorRemoteSource) Tools() []provider.Tool {
-	return []provider.Tool{{Name: "fail", Description: "Always fails"}}
+func (e *errorRemoteSource) Tools() []toolpkg.Tool {
+	return []toolpkg.Tool{{Name: "fail", Description: "Always fails"}}
 }
 func (e *errorRemoteSource) Call(ctx context.Context, name string, args map[string]any) (any, error) {
 	return nil, errors.New("remote tool failed")
@@ -399,12 +398,12 @@ func TestSplitNamespace(t *testing.T) {
 
 type mockRemoteSource struct {
 	name  string
-	tools []provider.Tool
+	tools []toolpkg.Tool
 }
 
 func (m *mockRemoteSource) Name() string { return m.name }
-func (m *mockRemoteSource) Tools() []provider.Tool {
-	t := make([]provider.Tool, len(m.tools))
+func (m *mockRemoteSource) Tools() []toolpkg.Tool {
+	t := make([]toolpkg.Tool, len(m.tools))
 	copy(t, m.tools)
 	return t
 }
@@ -421,7 +420,7 @@ func (m *mockSandbox) Name() string { return m.name }
 func TestHandler_ResolvesSandboxFromArgs(t *testing.T) {
 	r := toolpkg.NewRegistry().(toolpkg.SandboxRegistry)
 	var calledWith toolpkg.Sandbox
-	require.NoError(t, r.Register("check", "", nil, func(ctx context.Context, sb toolpkg.Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(toolpkg.Tool{Name: "check", Description: "", Schema: nil}, func(ctx context.Context, sb toolpkg.Sandbox, args map[string]any) (any, error) {
 		calledWith = sb
 		return "ok", nil
 	}))
@@ -445,7 +444,7 @@ func TestHandler_ResolvesSandboxFromArgs(t *testing.T) {
 func TestHandler_UsesDefaultSandbox(t *testing.T) {
 	r := toolpkg.NewRegistry().(toolpkg.SandboxRegistry)
 	var calledWith toolpkg.Sandbox
-	require.NoError(t, r.Register("check", "", nil, func(ctx context.Context, sb toolpkg.Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(toolpkg.Tool{Name: "check", Description: "", Schema: nil}, func(ctx context.Context, sb toolpkg.Sandbox, args map[string]any) (any, error) {
 		calledWith = sb
 		return "ok", nil
 	}))
@@ -469,7 +468,7 @@ func TestHandler_UsesDefaultSandbox(t *testing.T) {
 func TestHandler_StripsSandboxArg(t *testing.T) {
 	r := toolpkg.NewRegistry().(toolpkg.SandboxRegistry)
 	var receivedArgs map[string]any
-	require.NoError(t, r.Register("echo", "", nil, func(ctx context.Context, sb toolpkg.Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(toolpkg.Tool{Name: "echo", Description: "", Schema: nil}, func(ctx context.Context, sb toolpkg.Sandbox, args map[string]any) (any, error) {
 		receivedArgs = args
 		return "ok", nil
 	}))
@@ -495,7 +494,7 @@ func TestHandler_StripsSandboxArg(t *testing.T) {
 func TestHandler_MissingSandboxName(t *testing.T) {
 	r := toolpkg.NewRegistry().(toolpkg.SandboxRegistry)
 	var calledWith toolpkg.Sandbox
-	require.NoError(t, r.Register("check", "", nil, func(ctx context.Context, sb toolpkg.Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(toolpkg.Tool{Name: "check", Description: "", Schema: nil}, func(ctx context.Context, sb toolpkg.Sandbox, args map[string]any) (any, error) {
 		calledWith = sb
 		return "ok", nil
 	}))
@@ -519,7 +518,7 @@ func TestHandler_MissingSandboxName(t *testing.T) {
 func TestHandler_PassesNilWhenNoSandboxRegistry(t *testing.T) {
 	var calledWith toolpkg.Sandbox
 	r := toolpkg.NewRegistry()
-	require.NoError(t, r.Register("check", "", nil, func(ctx context.Context, sb toolpkg.Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(toolpkg.Tool{Name: "check", Description: "", Schema: nil}, func(ctx context.Context, sb toolpkg.Sandbox, args map[string]any) (any, error) {
 		calledWith = sb
 		return "ok", nil
 	}))

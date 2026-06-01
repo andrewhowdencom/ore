@@ -6,17 +6,16 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/andrewhowdencom/ore/provider"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRegistry_Register_Overwrite(t *testing.T) {
 	r := &registry{localTools: make(map[string]*localTool)}
-	require.NoError(t, r.Register("test", "", nil, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(Tool{Name: "test", Description: "", Schema: nil}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
 		return "first", nil
 	}))
-	require.NoError(t, r.Register("test", "", nil, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(Tool{Name: "test", Description: "", Schema: nil}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
 		return "second", nil
 	}))
 
@@ -28,10 +27,10 @@ func TestRegistry_Register_Overwrite(t *testing.T) {
 
 func TestRegistry_Register_Overwrite_Tools(t *testing.T) {
 	r := NewRegistry()
-	require.NoError(t, r.Register("test", "first desc", map[string]any{"type": "object", "title": "first"}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(Tool{Name: "test", Description: "first desc", Schema: map[string]any{"type": "object", "title": "first"}}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
 		return "first", nil
 	}))
-	require.NoError(t, r.Register("test", "second desc", map[string]any{"type": "object", "title": "second"}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(Tool{Name: "test", Description: "second desc", Schema: map[string]any{"type": "object", "title": "second"}}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
 		return "second", nil
 	}))
 
@@ -44,7 +43,7 @@ func TestRegistry_Register_Overwrite_Tools(t *testing.T) {
 
 func TestRegistry_Register_InvalidSchema(t *testing.T) {
 	r := &registry{localTools: make(map[string]*localTool)}
-	err := r.Register("bad", "Bad schema", map[string]any{"type": "string"}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
+	err := r.Register(Tool{Name: "bad", Description: "Bad schema", Schema: map[string]any{"type": "string"}}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
 		return nil, nil
 	})
 	require.Error(t, err)
@@ -54,10 +53,10 @@ func TestRegistry_Register_InvalidSchema(t *testing.T) {
 
 func TestRegistry_Register_UnknownTopLevelKey(t *testing.T) {
 	r := &registry{localTools: make(map[string]*localTool)}
-	err := r.Register("bad", "Bad schema", map[string]any{
+	err := r.Register(Tool{Name: "bad", Description: "Bad schema", Schema: map[string]any{
 		"type": "object",
 		"foo":  map[string]any{},
-	}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
+	}}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
 		return nil, nil
 	})
 	require.Error(t, err)
@@ -67,12 +66,12 @@ func TestRegistry_Register_UnknownTopLevelKey(t *testing.T) {
 
 func TestRegistry_Register_NestedNonSerializable(t *testing.T) {
 	r := &registry{localTools: make(map[string]*localTool)}
-	err := r.Register("bad", "Bad schema", map[string]any{
+	err := r.Register(Tool{Name: "bad", Description: "Bad schema", Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"bad": map[string]any{"type": make(chan int)},
 		},
-	}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
+	}}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
 		return nil, nil
 	})
 	require.Error(t, err)
@@ -90,7 +89,7 @@ func TestRegistry_ConcurrentRegistration(t *testing.T) {
 		go func(n int) {
 			defer wg.Done()
 			name := fmt.Sprintf("tool-%d", n)
-			if err := r.Register(name, "", nil, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
+			if err := r.Register(Tool{Name: name, Description: "", Schema: nil}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
 				return n, nil
 			}); err != nil {
 				errCh <- err
@@ -119,7 +118,7 @@ func TestRegistry_ConcurrentRegistration(t *testing.T) {
 
 func TestRegistry_Tools_LocalOnly(t *testing.T) {
 	r := NewRegistry()
-	require.NoError(t, r.Register("add", "Add two numbers", map[string]any{"type": "object"}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(Tool{Name: "add", Description: "Add two numbers", Schema: map[string]any{"type": "object"}}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
 		return 0, nil
 	}))
 
@@ -141,7 +140,7 @@ func TestRegistry_ConcurrentToolsReads(t *testing.T) {
 		go func(n int) {
 			defer wg.Done()
 			name := fmt.Sprintf("tool-%d", n)
-			if err := r.Register(name, "", nil, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
+			if err := r.Register(Tool{Name: name, Description: "", Schema: nil}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
 				return n, nil
 			}); err != nil {
 				errCh <- err
@@ -181,7 +180,7 @@ func TestRegistry_ConcurrentOverwrite(t *testing.T) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			_ = r.Register("test", "", nil, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
+			_ = r.Register(Tool{Name: "test", Description: "", Schema: nil}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
 				return n, nil
 			})
 		}(i)
@@ -201,12 +200,12 @@ func TestRegistry_ConcurrentOverwrite(t *testing.T) {
 
 type mockRemoteSource struct {
 	name  string
-	tools []provider.Tool
+	tools []Tool
 }
 
 func (m *mockRemoteSource) Name() string { return m.name }
-func (m *mockRemoteSource) Tools() []provider.Tool {
-	t := make([]provider.Tool, len(m.tools))
+func (m *mockRemoteSource) Tools() []Tool {
+	t := make([]Tool, len(m.tools))
 	copy(t, m.tools)
 	return t
 }
@@ -222,7 +221,7 @@ func (m *mockSandbox) Name() string { return m.name }
 
 func TestRegistry_Register_EmptyName(t *testing.T) {
 	r := NewRegistry()
-	err := r.Register("", "empty", nil, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
+	err := r.Register(Tool{Name: "", Description: "empty", Schema: nil}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
 		return nil, nil
 	})
 	require.Error(t, err)
@@ -231,7 +230,7 @@ func TestRegistry_Register_EmptyName(t *testing.T) {
 
 func TestRegistry_Register_NilFunc(t *testing.T) {
 	r := NewRegistry()
-	err := r.Register("test", "test", nil, nil)
+	err := r.Register(Tool{Name: "test", Description: "test", Schema: nil}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "tool function cannot be nil")
 }
@@ -314,13 +313,13 @@ func TestRegistry_ConcurrentSandboxRegistration(t *testing.T) {
 func TestRegistry_Tools_WithRemoteSource(t *testing.T) {
 	remote := &mockRemoteSource{
 		name: "filesystem",
-		tools: []provider.Tool{
+		tools: []Tool{
 			{Name: "read_file", Description: "Read a file", Schema: map[string]any{"type": "object"}},
 		},
 	}
 
 	r := NewRegistry(WithMCPServer(remote))
-	require.NoError(t, r.Register("add", "Add two numbers", nil, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(Tool{Name: "add", Description: "Add two numbers", Schema: nil}, func(ctx context.Context, _ Sandbox, args map[string]any) (any, error) {
 		return 0, nil
 	}))
 

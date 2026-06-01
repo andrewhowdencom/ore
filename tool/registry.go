@@ -3,16 +3,14 @@ package tool
 import (
 	"fmt"
 	"sync"
-
-	"github.com/andrewhowdencom/ore/provider"
 )
 
 // Registry is the interface for tool registration and lookup.
 type Registry interface {
 	// Register adds a tool to the registry.
-	Register(name, description string, schema map[string]any, fn ToolFunc, opts ...RegisterOption) error
+	Register(t Tool, fn ToolFunc) error
 	// Tools returns a merged list of all registered tools.
-	Tools() []provider.Tool
+	Tools() []Tool
 	// Lookup returns the tool function and true if the tool is registered locally.
 	Lookup(name string) (ToolFunc, bool)
 	// LookupRemoteSource finds a remote source by its namespace prefix.
@@ -52,11 +50,8 @@ func WithMCPServer(source RemoteSource) Option {
 }
 
 type localTool struct {
-	name        string
-	description string
-	schema      map[string]any
-	fn          ToolFunc
-	displayHint func(map[string]any) any
+	tool Tool
+	fn   ToolFunc
 }
 
 // registry is the default in-memory implementation of Registry.
@@ -85,17 +80,16 @@ func NewRegistry(opts ...Option) Registry {
 }
 
 // Register adds a tool to the registry. If a tool with the same name already
-// exists, it is overwritten. The description and schema are captured so the
-// registry can produce a unified []provider.Tool list for provider adapters.
-func (r *registry) Register(name, description string, schema map[string]any, fn ToolFunc, opts ...RegisterOption) error {
-	if name == "" {
+// exists, it is overwritten.
+func (r *registry) Register(t Tool, fn ToolFunc) error {
+	if t.Name == "" {
 		return fmt.Errorf("tool name cannot be empty")
 	}
 	if fn == nil {
 		return fmt.Errorf("tool function cannot be nil")
 	}
-	if err := ValidateSchema(schema); err != nil {
-		return fmt.Errorf("register tool %q: %w", name, err)
+	if err := ValidateSchema(t.Schema); err != nil {
+		return fmt.Errorf("register tool %q: %w", t.Name, err)
 	}
 
 	r.mu.Lock()
@@ -103,16 +97,10 @@ func (r *registry) Register(name, description string, schema map[string]any, fn 
 	if r.localTools == nil {
 		r.localTools = make(map[string]*localTool)
 	}
-	lt := &localTool{
-		name:        name,
-		description: description,
-		schema:      schema,
-		fn:          fn,
+	r.localTools[t.Name] = &localTool{
+		tool: t,
+		fn:   fn,
 	}
-	for _, opt := range opts {
-		opt(lt)
-	}
-	r.localTools[name] = lt
 	return nil
 }
 
@@ -120,24 +108,19 @@ func (r *registry) Register(name, description string, schema map[string]any, fn 
 // and remote tools from all registered MCP servers. Local tools are returned
 // without a prefix. Remote tools are namespaced with their source prefix
 // (e.g., "filesystem/read_file").
-func (r *registry) Tools() []provider.Tool {
+func (r *registry) Tools() []Tool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	tools := make([]provider.Tool, 0, len(r.localTools))
+	tools := make([]Tool, 0, len(r.localTools))
 
 	for _, lt := range r.localTools {
-		tools = append(tools, provider.Tool{
-			Name:        lt.name,
-			Description: lt.description,
-			Schema:      lt.schema,
-			DisplayHint: lt.displayHint,
-		})
+		tools = append(tools, lt.tool)
 	}
 
 	for _, rs := range r.remoteSources {
 		for _, rt := range rs.Tools() {
-			tools = append(tools, provider.Tool{
+			tools = append(tools, Tool{
 				Name:        rs.Name() + "/" + rt.Name,
 				Description: rt.Description,
 				Schema:      rt.Schema,

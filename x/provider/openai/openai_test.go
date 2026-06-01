@@ -521,7 +521,7 @@ func TestProviderInvoke_ConcurrentOptions(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			tools := []provider.Tool{{Name: fmt.Sprintf("tool-%d", idx), Description: "test", Schema: map[string]any{"type": "object"}}}
+			tools := []toolpkg.Tool{{Name: fmt.Sprintf("tool-%d", idx), Description: "test", Schema: map[string]any{"type": "object"}}}
 			ch := make(chan artifact.Artifact, 10)
 			_ = p.Invoke(t.Context(), mem, ch, WithTools(tools))
 			close(ch)
@@ -670,7 +670,7 @@ func TestProviderInvoke_ToolsWithDescription(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	tools := []provider.Tool{
+	tools := []toolpkg.Tool{
 		{
 			Name:        "add",
 			Description: "Add two numbers together",
@@ -939,7 +939,7 @@ func TestProviderInvoke_EmptyToolsOmitted(t *testing.T) {
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch, WithTools([]provider.Tool{}))
+	_ = p.Invoke(t.Context(), mem, ch, WithTools([]toolpkg.Tool{}))
 	close(ch)
 	for range ch {
 	}
@@ -965,13 +965,13 @@ func TestProviderInvoke_DynamicToolsOption(t *testing.T) {
 
 	// Dynamic ToolsOption whose function inspects context and state.
 	dynamicOpt := provider.ToolsOption{
-		Tools: func(ctx context.Context, st state.State) []provider.Tool {
+		Tools: func(ctx context.Context, st state.State) []toolpkg.Tool {
 			assert.NotNil(t, ctx)
 			turns := st.Turns()
 			assert.Len(t, turns, 1)
 			assert.Equal(t, state.RoleUser, turns[0].Role)
 
-			return []provider.Tool{
+			return []toolpkg.Tool{
 				{
 					Name:        "dynamic_tool",
 					Description: "a dynamic tool",
@@ -1017,9 +1017,9 @@ func TestProviderInvoke_ToolsOptionPrecedence(t *testing.T) {
 	ch := make(chan artifact.Artifact, 10)
 	// Later ToolsOption should override the earlier one.
 	_ = p.Invoke(t.Context(), mem, ch,
-		provider.WithTools([]provider.Tool{{Name: "first", Description: "first tool"}}),
-		provider.ToolsOption{Tools: func(context.Context, state.State) []provider.Tool {
-			return []provider.Tool{
+		provider.WithTools([]toolpkg.Tool{{Name: "first", Description: "first tool"}}),
+		provider.ToolsOption{Tools: func(context.Context, state.State) []toolpkg.Tool {
+			return []toolpkg.Tool{
 				{
 					Name:        "second",
 					Description: "second tool",
@@ -1060,7 +1060,7 @@ func TestProviderInvoke_DynamicTools_EmptyResult(t *testing.T) {
 
 	ch := make(chan artifact.Artifact, 10)
 	_ = p.Invoke(t.Context(), mem, ch, provider.ToolsOption{
-		Tools: func(context.Context, state.State) []provider.Tool {
+		Tools: func(context.Context, state.State) []toolpkg.Tool {
 			return nil
 		},
 	})
@@ -1092,7 +1092,7 @@ func TestProviderInvoke_DynamicTools_Concurrency(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			tools := []provider.Tool{
+			tools := []toolpkg.Tool{
 				{
 					Name:        fmt.Sprintf("tool-%d", idx),
 					Description: "test",
@@ -1101,7 +1101,7 @@ func TestProviderInvoke_DynamicTools_Concurrency(t *testing.T) {
 			}
 			ch := make(chan artifact.Artifact, 10)
 			_ = p.Invoke(t.Context(), mem, ch, provider.ToolsOption{
-				Tools: func(context.Context, state.State) []provider.Tool {
+				Tools: func(context.Context, state.State) []toolpkg.Tool {
 					return tools
 				},
 			})
@@ -1150,15 +1150,15 @@ func TestProviderInvoke_WithFilteredTools(t *testing.T) {
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	registry := toolpkg.NewRegistry()
-	require.NoError(t, registry.Register("allowed", "Allowed tool", map[string]any{"type": "object"}, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
+	require.NoError(t, registry.Register(toolpkg.Tool{Name: "allowed", Description: "Allowed tool", Schema: map[string]any{"type": "object"}}, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
 		return nil, nil
 	}))
-	require.NoError(t, registry.Register("denied", "Denied tool", map[string]any{"type": "object"}, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
+	require.NoError(t, registry.Register(toolpkg.Tool{Name: "denied", Description: "Denied tool", Schema: map[string]any{"type": "object"}}, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
 		return nil, nil
 	}))
 
-	filter := func(ctx context.Context, st state.State, tools []provider.Tool) []provider.Tool {
-		var result []provider.Tool
+	filter := func(ctx context.Context, st state.State, tools []toolpkg.Tool) []toolpkg.Tool {
+		var result []toolpkg.Tool
 		for _, tool := range tools {
 			if tool.Name == "allowed" {
 				result = append(result, tool)
