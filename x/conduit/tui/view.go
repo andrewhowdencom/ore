@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/andrewhowdencom/ore/artifact"
@@ -39,6 +40,15 @@ var (
 	// errorStyle styles error turns from the harness in red.
 	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
 )
+
+// formatTurnLabel builds a label string "hh:mm:ss Role: " for a rendered turn.
+// If the timestamp is zero, it falls back to just "Role: ".
+func formatTurnLabel(role string, ts time.Time) string {
+	if ts.IsZero() {
+		return role + ": "
+	}
+	return ts.Format("15:04:05") + " " + role + ": "
+}
 
 // renderBlock renders a labeled content block with the label on its own line
 // and content starting at column 0. If width > 0, content is wrapped to fit.
@@ -87,7 +97,7 @@ func (m *model) buildContent() string {
 		case state.RoleUser:
 			for i, block := range turn.blocks {
 				if block.kind == "text" {
-					b.WriteString(renderBlock("You: ", lipgloss.NewStyle(), block.source, width))
+					b.WriteString(renderBlock(formatTurnLabel("You", turn.timestamp), lipgloss.NewStyle(), block.source, width))
 				}
 				if i < len(turn.blocks)-1 {
 					b.WriteString("\n\n")
@@ -98,9 +108,9 @@ func (m *model) buildContent() string {
 				switch block.kind {
 				case "text":
 					if block.rendered != "" {
-						b.WriteString(renderBlock("Assistant: ", assistantStyle, block.rendered, 0))
+						b.WriteString(renderBlock(formatTurnLabel("Assistant", turn.timestamp), assistantStyle, block.rendered, 0))
 					} else {
-						b.WriteString(renderBlock("Assistant: ", assistantStyle, block.source, width))
+						b.WriteString(renderBlock(formatTurnLabel("Assistant", turn.timestamp), assistantStyle, block.source, width))
 					}
 				// Reasoning blocks are rendered through the same Markdown pipeline
 				// as text blocks; the rendered ANSI is cached in renderedBlock.rendered.
@@ -110,9 +120,9 @@ func (m *model) buildContent() string {
 						b.WriteString(thinkingStyle.Render(thinkingCompact(block.source)))
 					} else {
 						if block.rendered != "" {
-							b.WriteString(renderBlock("Thinking: ", thinkingStyle, reasoningExpandedStyle.Render(block.rendered), 0))
+							b.WriteString(renderBlock(formatTurnLabel("Thinking", turn.timestamp), thinkingStyle, reasoningExpandedStyle.Render(block.rendered), 0))
 						} else {
-							b.WriteString(renderBlock("Thinking: ", thinkingStyle, reasoningExpandedStyle.Render(block.source), width))
+							b.WriteString(renderBlock(formatTurnLabel("Thinking", turn.timestamp), thinkingStyle, reasoningExpandedStyle.Render(block.source), width))
 						}
 					}
 				case "tool_call":
@@ -124,7 +134,7 @@ func (m *model) buildContent() string {
 					if block.compact != "" && !isExpanded {
 						b.WriteString(compactToolCallStyle.Render("→ " + content))
 					} else {
-						b.WriteString(renderBlock("Assistant: ", toolCallStyle, content, width))
+						b.WriteString(renderBlock(formatTurnLabel("Assistant", turn.timestamp), toolCallStyle, content, width))
 					}
 				}
 				if i < len(turn.blocks)-1 {
@@ -135,7 +145,7 @@ func (m *model) buildContent() string {
 			for i, block := range turn.blocks {
 				switch block.kind {
 				case "text":
-					b.WriteString(renderBlock("Tool: ", lipgloss.NewStyle(), block.source, width))
+					b.WriteString(renderBlock(formatTurnLabel("Tool", turn.timestamp), lipgloss.NewStyle(), block.source, width))
 				case "tool_result":
 					isExpanded := isAfterLatestAssistant && m.expandLatestDetails
 					content := block.compact
@@ -153,7 +163,7 @@ func (m *model) buildContent() string {
 						if strings.HasPrefix(block.source, "Error: ") {
 							style = toolErrorStyle
 						}
-						b.WriteString(renderBlock("Tool: ", style, content, width))
+						b.WriteString(renderBlock(formatTurnLabel("Tool", turn.timestamp), style, content, width))
 					}
 				}
 				if i < len(turn.blocks)-1 {

@@ -6,6 +6,7 @@ package http
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
@@ -32,6 +33,7 @@ type artifactJSON struct {
 type turnJSON struct {
 	Role      string         `json:"role"`
 	Artifacts []artifactJSON `json:"artifacts"`
+	Timestamp string         `json:"timestamp,omitempty"`
 }
 
 // eventContextJSON is the JSON representation of an EventContext.
@@ -203,9 +205,14 @@ func turnToJSON(t state.Turn) (turnJSON, error) {
 		}
 		artifacts = append(artifacts, *dto)
 	}
+	ts := ""
+	if !t.Timestamp.IsZero() {
+		ts = t.Timestamp.Format(time.RFC3339Nano)
+	}
 	return turnJSON{
 		Role:      string(t.Role),
 		Artifacts: artifacts,
+		Timestamp: ts,
 	}, nil
 }
 
@@ -315,8 +322,16 @@ func turnFromJSON(dto turnJSON) (state.Turn, error) {
 		}
 		artifacts[i] = art
 	}
-	return state.Turn{
+	turn := state.Turn{
 		Role:      state.Role(dto.Role),
 		Artifacts: artifacts,
-	}, nil
+	}
+	if dto.Timestamp != "" {
+		ts, err := time.Parse(time.RFC3339Nano, dto.Timestamp)
+		if err != nil {
+			return state.Turn{}, fmt.Errorf("parse turn timestamp: %w", err)
+		}
+		turn.Timestamp = ts
+	}
+	return turn, nil
 }

@@ -2,7 +2,11 @@
 // conversation history model.
 package state
 
-import "github.com/andrewhowdencom/ore/artifact"
+import (
+	"time"
+
+	"github.com/andrewhowdencom/ore/artifact"
+)
 
 // Role represents the role of a participant in a conversation turn.
 type Role string
@@ -18,6 +22,7 @@ const (
 type Turn struct {
 	Role      Role
 	Artifacts []artifact.Artifact
+	Timestamp time.Time
 }
 
 // State is a mutable conversation state that the core loop appends to.
