@@ -10,7 +10,12 @@ require (
 	github.com/andrewhowdencom/ore/x/tool v0.4.0
 	github.com/andrewhowdencom/ore/x/tool/calculator v0.1.1
 	github.com/andrewhowdencom/ore/x/tool/filesystem v0.2.2
+	github.com/andrewhowdencom/ore/x/usage v0.0.0
 )
+
+replace github.com/andrewhowdencom/ore v0.0.0 => ..
+
+replace github.com/andrewhowdencom/ore/x/usage v0.0.0 => ../x/usage
 
 require (
 	charm.land/bubbles/v2 v2.1.0 // indirect

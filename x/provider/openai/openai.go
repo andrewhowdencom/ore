@@ -245,8 +245,9 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	}
 
 	params := openai.ChatCompletionNewParams{
-		Model:    openai.ChatModel(p.model),
-		Messages: messages,
+		Model:         openai.ChatModel(p.model),
+		Messages:      messages,
+		StreamOptions: openai.ChatCompletionStreamOptionsParam{IncludeUsage: param.NewOpt(true)},
 	}
 	if len(tools) > 0 {
 		params.Tools = p.serializeTools(tools)
@@ -263,6 +264,17 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	for stream.Next() {
 		chunk := stream.Current()
 		if len(chunk.Choices) == 0 {
+			if chunk.Usage.TotalTokens > 0 {
+				select {
+				case ch <- artifact.Usage{
+					PromptTokens:     int(chunk.Usage.PromptTokens),
+					CompletionTokens: int(chunk.Usage.CompletionTokens),
+					TotalTokens:      int(chunk.Usage.TotalTokens),
+				}:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
 			continue
 		}
 
