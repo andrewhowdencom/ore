@@ -10,6 +10,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1486,8 +1487,8 @@ func TestEnrichToolCalls_AttachesValue(t *testing.T) {
 	}
 
 	toolsOpt := provider.ToolsOption{
-		Tools: func(_ context.Context, _ state.State) []provider.Tool {
-			return []provider.Tool{
+		Tools: func(_ context.Context, _ state.State) []tool.Tool {
+			return []tool.Tool{
 				{Name: "bash", DisplayHint: displayHint},
 			}
 		},
@@ -1513,8 +1514,8 @@ func TestEnrichToolCalls_AttachesValue(t *testing.T) {
 
 func TestEnrichToolCalls_NoMatchingHint(t *testing.T) {
 	toolsOpt := provider.ToolsOption{
-		Tools: func(_ context.Context, _ state.State) []provider.Tool {
-			return []provider.Tool{
+		Tools: func(_ context.Context, _ state.State) []tool.Tool {
+			return []tool.Tool{
 				{Name: "other"},
 			}
 		},
@@ -1534,8 +1535,8 @@ func TestEnrichToolCalls_NoMatchingHint(t *testing.T) {
 func TestEnrichToolCalls_InvalidJSON(t *testing.T) {
 	displayHint := func(args map[string]any) any { return args }
 	toolsOpt := provider.ToolsOption{
-		Tools: func(_ context.Context, _ state.State) []provider.Tool {
-			return []provider.Tool{
+		Tools: func(_ context.Context, _ state.State) []tool.Tool {
+			return []tool.Tool{
 				{Name: "bash", DisplayHint: displayHint},
 			}
 		},

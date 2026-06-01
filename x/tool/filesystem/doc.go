@@ -2,7 +2,7 @@
 // ore tool extension.
 //
 // It exports pre-built ReadFile, WriteFile, EditFile, ListDirectory and
-// SearchFiles tool functions together with their provider.Tool JSON-schema
+// SearchFiles tool functions together with their tool.Tool JSON-schema
 // descriptors, so applications can register them in a tool.Registry without
 // defining the logic inline.
 //

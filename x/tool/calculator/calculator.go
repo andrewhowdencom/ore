@@ -2,10 +2,10 @@ package calculator
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/tool"
 )
 
@@ -27,8 +27,8 @@ func Multiply(ctx context.Context, _ tool.Sandbox, args map[string]any) (any, er
 	return a * b, nil
 }
 
-// AddTool is the provider.Tool descriptor (including JSON schema) for Add.
-var AddTool = provider.Tool{
+// AddTool is the tool.Tool descriptor (including JSON schema) for Add.
+var AddTool = tool.Tool{
 	Name:        "add",
 	Description: "Add two numbers together",
 	Schema: map[string]any{
@@ -46,8 +46,8 @@ var AddTool = provider.Tool{
 	},
 }
 
-// MultiplyTool is the provider.Tool descriptor (including JSON schema) for Multiply.
-var MultiplyTool = provider.Tool{
+// MultiplyTool is the tool.Tool descriptor (including JSON schema) for Multiply.
+var MultiplyTool = tool.Tool{
 	Name:        "multiply",
 	Description: "Multiply two numbers together",
 	Schema: map[string]any{

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/tool"
 )
 
@@ -50,13 +49,7 @@ func (t *Toolkit) SetDirective(directive string) {
 
 // Register adds the read_skill tool to the registry.
 func (t *Toolkit) Register(registry tool.Registry) error {
-	if err := registry.Register(
-		ReadSkillTool.Name,
-		ReadSkillTool.Description,
-		ReadSkillTool.Schema,
-		t.ReadSkill,
-		tool.WithDisplay(ReadSkillDisplayHint),
-	); err != nil {
+	if err := registry.Register(ReadSkillTool, t.ReadSkill); err != nil {
 		return fmt.Errorf("register read_skill: %w", err)
 	}
 	return nil
@@ -67,8 +60,8 @@ func ReadSkillDisplayHint(args map[string]any) any {
 	return fmt.Sprintf("📖 read_skill(%s)", toString(args["name"]))
 }
 
-// ReadSkillTool is the provider.Tool descriptor for read_skill.
-var ReadSkillTool = provider.Tool{
+// ReadSkillTool is the tool.Tool descriptor for read_skill.
+var ReadSkillTool = tool.Tool{
 	Name:        "read_skill",
 	Description: "Read the full SKILL.md content for a named skill. Use this to load the detailed instructions for a skill.",
 	Schema: map[string]any{

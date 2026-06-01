@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	mcptypes "github.com/mark3labs/mcp-go/mcp"
-	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -137,7 +136,7 @@ func TestClient_Name(t *testing.T) {
 func TestClient_Tools_DefensiveCopy(t *testing.T) {
 	c := &Client{
 		name:  "filesystem",
-		tools: []provider.Tool{{Name: "read_file", Description: "Read"}},
+		tools: []tool.Tool{{Name: "read_file", Description: "Read"}},
 	}
 
 	t1 := c.Tools()

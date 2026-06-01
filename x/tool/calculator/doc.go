@@ -2,7 +2,7 @@
 // ore tool extension.
 //
 // It exports pre-built Add and Multiply tool functions together with their
-// provider.Tool JSON-schema descriptors, so applications can register them in a
+// tool.Tool JSON-schema descriptors, so applications can register them in a
 // tool.Registry without defining the logic inline.
 //
 // Usage:

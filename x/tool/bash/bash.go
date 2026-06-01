@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/tool"
 )
 
@@ -110,8 +109,8 @@ func Bash(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error
 	}, nil
 }
 
-// BashTool is the provider.Tool descriptor for Bash.
-var BashTool = provider.Tool{
+// BashTool is the tool.Tool descriptor for Bash.
+var BashTool = tool.Tool{
 	Name: "bash",
 	Description: "Execute a shell command. Returns stdout, stderr, and exit code. " +
 		"Use this to run builds, tests, package managers, git operations, and other shell tasks.",
