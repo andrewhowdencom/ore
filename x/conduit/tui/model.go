@@ -154,8 +154,9 @@ type model struct {
 
 // renderedTurn represents a single turn in the conversation history.
 type renderedTurn struct {
-	role   state.Role
-	blocks []renderedBlock
+	role      state.Role
+	blocks    []renderedBlock
+	timestamp time.Time
 }
 
 // renderMarkdown delegates to the model's markdown renderer, falling back
@@ -345,6 +346,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// ArtifactEvents. If no ArtifactEvents arrived (empty response),
 			// currentTurn may be empty; we still record the turn boundary.
 			m.currentTurn.role = msg.turn.Role
+			m.currentTurn.timestamp = msg.turn.Timestamp
 			m.turns = append(m.turns, m.currentTurn)
 			m.currentTurn = renderedTurn{}
 			m.expandLatestDetails = false
@@ -359,8 +361,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			rt := renderedTurn{
-				role:   msg.turn.Role,
-				blocks: blocks,
+				role:      msg.turn.Role,
+				blocks:    blocks,
+				timestamp: msg.turn.Timestamp,
 			}
 			m.turns = append(m.turns, rt)
 		}
