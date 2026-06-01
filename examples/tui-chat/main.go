@@ -28,9 +28,11 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/cognitive"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/x/conduit/tui"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
+	"github.com/andrewhowdencom/ore/x/usage"
 )
 
 func main() {
@@ -133,8 +135,11 @@ func run() error {
 	}
 
 	// Manager now auto-persists state via a default OnEmit callback;
-	// no custom stepFactory needed for basic TUI usage.
-	mgr := session.NewManager(store, prov, nil, cognitive.NewTurnProcessor())
+	// no custom stepFactory needed for basic TUI usage, but we wire the
+	// usage handler so token counts are broadcast via PropertiesEvent.
+	mgr := session.NewManager(store, prov, func(_ *session.Stream) ([]loop.Option, error) {
+		return []loop.Option{loop.WithHandlers(usage.New())}, nil
+	}, cognitive.NewTurnProcessor())
 
 	// Create the TUI conduit, passing the thread ID via functional option.
 	// The TUI creates or attaches to the session internally on Start.
