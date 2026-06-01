@@ -187,14 +187,14 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 
 	if runErr != nil {
 		if errors.Is(runErr, context.Canceled) {
-			s.step.Emit(ctx, loop.LifecycleEvent{Phase: "cancelled", Ctx: eventCtx})
+			s.step.Emit(context.Background(), loop.LifecycleEvent{Phase: "cancelled", Ctx: eventCtx})
 		} else {
-			s.step.Emit(ctx, loop.ErrorEvent{Err: runErr, Ctx: eventCtx})
+			s.step.Emit(context.Background(), loop.ErrorEvent{Err: runErr, Ctx: eventCtx})
 		}
 	}
 
 	// Emit LifecycleEvent to signal pipeline completion.
-	s.step.Emit(ctx, loop.LifecycleEvent{Phase: "done", Ctx: eventCtx})
+	s.step.Emit(context.Background(), loop.LifecycleEvent{Phase: "done", Ctx: eventCtx})
 
 	// Cleanup.
 	s.mu.Lock()
@@ -319,7 +319,7 @@ func (s *Stream) SetMetadata(key, value string) {
 	s.mu.Lock()
 	s.thread.Metadata[key] = value
 	s.mu.Unlock()
-	s.Emit(context.Background(), loop.PropertiesEvent{
+	_ = s.Emit(context.Background(), loop.PropertiesEvent{
 		Properties: map[string]string{key: value},
 		Ctx:        loop.EventContext{Provenance: "app"},
 	})
