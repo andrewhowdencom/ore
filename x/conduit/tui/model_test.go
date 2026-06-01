@@ -10,6 +10,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/x/conduit"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
@@ -333,6 +334,28 @@ func TestModel_View_StatusBarWraps(t *testing.T) {
 	// Two separators should be present.
 	sep := strings.Repeat("─", 40)
 	assert.Equal(t, 2, strings.Count(output, sep), "two separators when status is present")
+}
+
+func TestModel_RecalcLayout_StatusLines(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(40), viewport.WithHeight(20))
+	m.width = 40
+	m.height = 24
+
+	// Without status: separatorCount=1, statusLines=0
+	m.recalcLayout()
+	heightWithoutStatus := m.viewport.Height()
+
+	// With long status that wraps to multiple lines.
+	m.status = map[string]string{"phase": "thinking very deeply about the problem at hand"}
+	m.recalcLayout()
+	heightWithStatus := m.viewport.Height()
+
+	_, statusLines := m.statusLine()
+	require.Greater(t, statusLines, 1, "status should wrap to multiple lines")
+	// Viewport shrinks by extra separator (1) plus statusLines.
+	assert.Equal(t, heightWithoutStatus-1-statusLines, heightWithStatus,
+		"viewport should shrink by separatorCount delta and statusLines")
 }
 
 func TestModel_View_ContainsPrompt(t *testing.T) {
@@ -1152,6 +1175,45 @@ func TestModel_Update_Status_Merges(t *testing.T) {
 	mm2 := newM2.(*model)
 	assert.Equal(t, "abc", mm2.status["thread_id"], "thread_id should be preserved")
 	assert.Equal(t, "thinking...", mm2.status["phase"], "phase should be overwritten")
+}
+
+func TestModel_Update_Status_ZoneFormatter(t *testing.T) {
+	m := newTestModel()
+	m.width = 80
+	m.zoneFormatter = func(status map[string]string) []conduit.StatusSegment {
+		var segments []conduit.StatusSegment
+		for k, v := range status {
+			zone := "default"
+			if k == "phase" || k == "title" {
+				zone = "lifecycle"
+			} else if k == "thread_id" || k == "model" {
+				zone = "context"
+			}
+			segments = append(segments, conduit.StatusSegment{
+				Label: k,
+				Value: v,
+				Zone:  zone,
+			})
+		}
+		return segments
+	}
+	m.zonePriorities = map[string]int{
+		"lifecycle": 0,
+		"context":   1,
+		"default":   99,
+	}
+
+	newM, _ := m.Update(statusMsg{status: map[string]string{
+		"phase":     "streaming",
+		"thread_id": "abc-123",
+	}})
+	mm := newM.(*model)
+
+	str, _ := mm.statusLine()
+	assert.Contains(t, str, "[lifecycle]")
+	assert.Contains(t, str, "phase: streaming")
+	assert.Contains(t, str, "[context]")
+	assert.Contains(t, str, "thread_id: abc-123")
 }
 
 // --- Incremental artifact rendering tests (issue #217) ---
