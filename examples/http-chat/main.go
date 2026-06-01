@@ -62,6 +62,7 @@ import (
 	"github.com/andrewhowdencom/ore/x/provider/openai"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
 	"github.com/andrewhowdencom/ore/x/tool/calculator"
+	"github.com/andrewhowdencom/ore/x/usage"
 
 	httpc "github.com/andrewhowdencom/ore/x/conduit/http"
 )
@@ -119,12 +120,12 @@ func run() error {
 		return fmt.Errorf("register multiply tool: %w", err)
 	}
 
-	// Step factory: each session gets its own Step with tool handler
-	// and provider tool options bound. State persistence is handled
-	// automatically by Manager; no custom OnEmit needed.
+	// Step factory: each session gets its own Step with tool handler,
+	// usage handler, and provider tool options bound. State persistence
+	// is handled automatically by Manager; no custom OnEmit needed.
 	stepFactory := func(stream *session.Stream) ([]loop.Option, error) {
 		return []loop.Option{
-			loop.WithHandlers(xtool.NewHandler(registry)),
+			loop.WithHandlers(xtool.NewHandler(registry), usage.New()),
 			loop.WithInvokeOptions(openai.WithTools(registry.Tools())),
 		}, nil
 	}
