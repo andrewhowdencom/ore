@@ -50,16 +50,17 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 	h.prompt += u.PromptTokens
 	h.completion += u.CompletionTokens
 	h.total += u.TotalTokens
-
-	props := map[string]string{
-		"prompt_tokens":     strconv.Itoa(h.prompt),
-		"completion_tokens": strconv.Itoa(h.completion),
-		"total_tokens":      strconv.Itoa(h.total),
-	}
+	prompt := h.prompt
+	completion := h.completion
+	total := h.total
 	h.mu.Unlock()
 
 	e.Emit(ctx, loop.PropertiesEvent{
-		Properties: props,
+		Properties: map[string]string{
+			"prompt_tokens":     strconv.Itoa(prompt),
+			"completion_tokens": strconv.Itoa(completion),
+			"total_tokens":      strconv.Itoa(total),
+		},
 	})
 	return nil
 }

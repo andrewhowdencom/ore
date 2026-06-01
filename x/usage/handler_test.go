@@ -2,6 +2,7 @@ package usage
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
@@ -99,4 +100,37 @@ func TestHandler_ZeroUsage(t *testing.T) {
 	assert.Equal(t, "0", pe.Properties["prompt_tokens"])
 	assert.Equal(t, "0", pe.Properties["completion_tokens"])
 	assert.Equal(t, "0", pe.Properties["total_tokens"])
+}
+
+func TestHandler_ConcurrentAccumulation(t *testing.T) {
+	h := NewHandler()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = h.Handle(context.Background(), artifact.Usage{
+				PromptTokens:     1,
+				CompletionTokens: 1,
+				TotalTokens:      2,
+			}, &mockEmitter{})
+		}()
+	}
+	wg.Wait()
+
+	// Read final accumulated totals via a zero-usage call.
+	e := &mockEmitter{}
+	err := h.Handle(context.Background(), artifact.Usage{
+		PromptTokens:     0,
+		CompletionTokens: 0,
+		TotalTokens:      0,
+	}, e)
+	require.NoError(t, err)
+	require.Len(t, e.events, 1)
+
+	props := e.events[0].(loop.PropertiesEvent)
+	assert.Equal(t, "100", props.Properties["prompt_tokens"])
+	assert.Equal(t, "100", props.Properties["completion_tokens"])
+	assert.Equal(t, "200", props.Properties["total_tokens"])
 }
