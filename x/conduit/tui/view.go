@@ -230,23 +230,46 @@ func (m *model) buildContent() string {
 // buildStatusLine renders the status map into a single wrapped line using
 // "key: value · key: value" format with ANSI styling.
 //
+// Token-usage keys (prompt_tokens, completion_tokens, total_tokens) are
+// grouped into a single compact segment so the status bar is not flooded
+// with three separate entries.
+//
 // It returns the rendered string and the number of display lines it
 // occupies at the given width. Returns 0 lines when all values are empty.
 func buildStatusLine(status map[string]string, width int) (string, int) {
 	if len(status) == 0 {
 		return "", 0
 	}
+
+	var parts []string
+
+	// Group token-usage keys into one segment.
+	var tokens []string
+	for _, key := range []string{"prompt_tokens", "completion_tokens", "total_tokens"} {
+		if v, ok := status[key]; ok && v != "" {
+			label := strings.TrimSuffix(key, "_tokens")
+			tokens = append(tokens, fmt.Sprintf("%s: %s", label, v))
+		}
+	}
+	if len(tokens) > 0 {
+		parts = append(parts, strings.Join(tokens, " · "))
+	}
+
+	// Render remaining keys alphabetically.
 	var keys []string
 	for k := range status {
+		if k == "prompt_tokens" || k == "completion_tokens" || k == "total_tokens" {
+			continue
+		}
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	var parts []string
 	for _, k := range keys {
 		if v := status[k]; v != "" {
 			parts = append(parts, fmt.Sprintf("%s: %s", k, v))
 		}
 	}
+
 	if len(parts) == 0 {
 		return "", 0
 	}
