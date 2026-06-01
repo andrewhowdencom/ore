@@ -18,6 +18,7 @@ use (
 	./x/tool/settitle
 	./x/tool/skills
 	./x/tool/sandbox/unsafe
+	./x/usage
 )
 
 replace github.com/andrewhowdencom/ore v0.0.0 => .
