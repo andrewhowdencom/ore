@@ -952,3 +952,19 @@ func TestRenderArtifact_ToolResult_ContentFallback(t *testing.T) {
 	assert.Equal(t, "plain content", block.source)
 	assert.Equal(t, "plain content", block.compact)
 }
+
+func TestBuildStatusLine_WrapsAtWidth(t *testing.T) {
+	status := map[string]string{
+		"phase": "thinking very deeply about the problem at hand and considering all possibilities",
+	}
+	width := 30
+	str, lines := buildStatusLine(status, width)
+	assert.Greater(t, lines, 1, "long status should wrap to multiple lines")
+	assert.Contains(t, str, "\n", "wrapped string should contain newlines")
+
+	// Verify ANSI escape sequences are not split across line boundaries by
+	// checking that no line ends with a partial escape sequence.
+	for _, line := range strings.Split(str, "\n") {
+		assert.False(t, strings.HasSuffix(line, "\x1b["), "line should not end with partial ANSI escape: %q", line)
+	}
+}
