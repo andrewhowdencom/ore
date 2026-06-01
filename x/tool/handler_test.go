@@ -542,7 +542,9 @@ func (s statusValue) Status() map[string]string { return map[string]string{"foo"
 
 func TestHandler_StatusContributorEmitsPropertiesEvent(t *testing.T) {
 	r := toolpkg.NewRegistry()
-	require.NoError(t, r.Register("status", "", nil, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
+	require.NoError(t, r.Register(toolpkg.Tool{
+		Name: "status",
+	}, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
 		return statusValue{Foo: "bar"}, nil
 	}))
 
