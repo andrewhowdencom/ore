@@ -298,6 +298,33 @@ func buildStatusLine(status map[string]string, width int) (string, int) {
 	return wrapped, lines
 }
 
+// compactTokenSegments collapses prompt_tokens, completion_tokens, and
+// total_tokens into a single segment named "tokens" with a compact
+// "prompt: X · completion: Y · total: Z" value. Segments are sorted by
+// label for deterministic output.
+func compactTokenSegments(segs []conduit.StatusSegment) []conduit.StatusSegment {
+	var values []string
+	var filtered []conduit.StatusSegment
+	for _, seg := range segs {
+		switch seg.Label {
+		case "prompt_tokens", "completion_tokens", "total_tokens":
+			label := strings.TrimSuffix(seg.Label, "_tokens")
+			values = append(values, fmt.Sprintf("%s: %s", label, seg.Value))
+		default:
+			filtered = append(filtered, seg)
+		}
+	}
+	if len(values) > 0 {
+		sort.Strings(values)
+		filtered = append(filtered, conduit.StatusSegment{
+			Label: "tokens",
+			Value: strings.Join(values, " · "),
+			Zone:  segs[0].Zone,
+		})
+	}
+	return filtered
+}
+
 // buildStatusLineFromSegments renders zone-grouped status segments into a
 // wrapped status string. Segments are grouped by zone, zones are sorted by
 // priority (lower value = higher priority), and lower-priority zones are
@@ -317,6 +344,10 @@ func buildStatusLineFromSegments(segments []conduit.StatusSegment, zonePrioritie
 			continue
 		}
 		zones[seg.Zone] = append(zones[seg.Zone], seg)
+	}
+	// Compact token-usage segments per zone so they consume one slot.
+	for z, segs := range zones {
+		zones[z] = compactTokenSegments(segs)
 	}
 	if len(zones) == 0 {
 		return "", 0
