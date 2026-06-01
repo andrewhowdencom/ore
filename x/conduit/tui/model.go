@@ -379,6 +379,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.GotoBottom()
 		}
 	case statusMsg:
+		wasAtBottom := m.viewport.AtBottom()
 		if m.status == nil {
 			m.status = make(map[string]string)
 		}
@@ -387,7 +388,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.recalcLayout()
 		m.syncViewport()
+		if wasAtBottom {
+			m.viewport.GotoBottom()
+		}
 	case lifecycleMsg:
+		wasAtBottom := m.viewport.AtBottom()
 		switch msg.phase {
 		case "submitted":
 			m.pending = true
@@ -405,16 +410,24 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.contentDirty = true
 		m.recalcLayout()
 		m.syncViewport()
+		if wasAtBottom {
+			m.viewport.GotoBottom()
+		}
 	case clearPendingMsg:
+		wasAtBottom := m.viewport.AtBottom()
 		m.pending = false
 		m.contentDirty = true
 		m.syncViewport()
+		if wasAtBottom {
+			m.viewport.GotoBottom()
+		}
 	case audioMsg:
 		// Emit the terminal bell as an audible cue. The bell is the
 		// same for done and error because \a cannot vary pitch.
 		fmt.Print("\a")
 		return m, nil
 	case errorMsg:
+		wasAtBottom := m.viewport.AtBottom()
 		// Surface the error to the user and reset UI state so the
 		// input area is usable again. Discard any partial assistant
 		// output accumulated in currentTurn.
@@ -434,6 +447,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.contentDirty = true
 		m.recalcLayout()
 		m.syncViewport()
+		if wasAtBottom {
+			m.viewport.GotoBottom()
+		}
 		return m, nil
 	case renderTickMsg:
 		if !m.renderScheduled {
@@ -469,6 +485,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		case tea.KeyEnter:
 			if !msg.Key().Mod.Contains(tea.ModShift) {
+				wasAtBottom := m.viewport.AtBottom()
 				if m.textarea.Value() != "" {
 					content := m.textarea.Value()
 					m.textarea.Reset()
@@ -480,6 +497,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.contentDirty = true
 					m.syncViewport()
+				}
+				if wasAtBottom {
+					m.viewport.GotoBottom()
 				}
 				return m, nil
 			}
@@ -528,11 +548,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.recalcLayout()
 		return m, cmd
 	case tea.PasteMsg:
+		wasAtBottom := m.viewport.AtBottom()
 		var cmd tea.Cmd
 		m.textarea, cmd = m.textarea.Update(msg)
 		m.recalcLayout()
+		if wasAtBottom {
+			m.viewport.GotoBottom()
+		}
 		return m, cmd
 	case tea.WindowSizeMsg:
+		wasAtBottom := m.viewport.AtBottom()
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport.SetWidth(msg.Width)
@@ -565,6 +590,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.renderScheduled = false
 		m.contentDirty = true
 		m.syncViewport()
+		if wasAtBottom {
+			m.viewport.GotoBottom()
+		}
 	}
 	return m, nil
 }
