@@ -87,7 +87,7 @@ func (s *stdio) Start(ctx context.Context) error {
 		return fmt.Errorf("start session: %w", err)
 	}
 
-	outputCh := stream.Subscribe("text_delta", "reasoning_delta", "tool_call_delta", "turn_complete", "error", "lifecycle")
+	outputCh := stream.Subscribe("text_delta", "reasoning_delta", "tool_call_delta", "tool_call", "turn_complete", "error", "lifecycle")
 
 	done := make(chan struct{})
 	stop := make(chan struct{})
@@ -131,6 +131,9 @@ func (s *stdio) Start(ctx context.Context) error {
 							fmt.Fprintf(s.out, "%s: ", art.Name)
 						}
 						fmt.Fprint(s.out, art.Arguments)
+					case artifact.ToolCall:
+						// Complete tool_call after accumulation; prefer display string.
+						fmt.Fprintf(s.out, "```tool-call\n%s\n```\n", art.MarkdownString())
 					}
 
 				case loop.TurnCompleteEvent:

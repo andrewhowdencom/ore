@@ -113,10 +113,10 @@ func run() error {
 	// Create a tool registry with calculator functions.
 	// These are optional — remove them for a simple chat server.
 	registry := tool.NewRegistry()
-	if err := registry.Register(calculator.AddTool.Name, calculator.AddTool.Description, calculator.AddTool.Schema, calculator.Add); err != nil {
+	if err := registry.Register(calculator.AddTool, calculator.Add); err != nil {
 		return fmt.Errorf("register add tool: %w", err)
 	}
-	if err := registry.Register(calculator.MultiplyTool.Name, calculator.MultiplyTool.Description, calculator.MultiplyTool.Schema, calculator.Multiply); err != nil {
+	if err := registry.Register(calculator.MultiplyTool, calculator.Multiply); err != nil {
 		return fmt.Errorf("register multiply tool: %w", err)
 	}
 

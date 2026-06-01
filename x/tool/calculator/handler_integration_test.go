@@ -27,7 +27,7 @@ func (e *testEmitter) Emit(ctx context.Context, event loop.OutputEvent) {
 
 func TestHandler_Add(t *testing.T) {
 	registry := tool.NewRegistry()
-	require.NoError(t, registry.Register(AddTool.Name, AddTool.Description, AddTool.Schema, Add))
+	require.NoError(t, registry.Register(AddTool, Add))
 	handler := xtool.NewHandler(registry)
 
 	mem := &state.Buffer{}
@@ -54,7 +54,7 @@ func TestHandler_Add(t *testing.T) {
 
 func TestHandler_Multiply(t *testing.T) {
 	registry := tool.NewRegistry()
-	require.NoError(t, registry.Register(MultiplyTool.Name, MultiplyTool.Description, MultiplyTool.Schema, Multiply))
+	require.NoError(t, registry.Register(MultiplyTool, Multiply))
 	handler := xtool.NewHandler(registry)
 
 	mem := &state.Buffer{}
@@ -81,7 +81,7 @@ func TestHandler_Multiply(t *testing.T) {
 
 func TestHandler_UnknownTool(t *testing.T) {
 	registry := tool.NewRegistry()
-	require.NoError(t, registry.Register(AddTool.Name, AddTool.Description, AddTool.Schema, Add))
+	require.NoError(t, registry.Register(AddTool, Add))
 	handler := xtool.NewHandler(registry)
 
 	mem := &state.Buffer{}

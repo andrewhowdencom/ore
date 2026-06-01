@@ -75,19 +75,19 @@ func run() error {
 
 	// Create tool registry with filesystem functions.
 	registry := tool.NewRegistry()
-	if err := registry.Register(filesystem.ReadFileTool.Name, filesystem.ReadFileTool.Description, filesystem.ReadFileTool.Schema, filesystem.ReadFile); err != nil {
+	if err := registry.Register(filesystem.ReadFileTool, filesystem.ReadFile); err != nil {
 		return fmt.Errorf("register read_file tool: %w", err)
 	}
-	if err := registry.Register(filesystem.WriteFileTool.Name, filesystem.WriteFileTool.Description, filesystem.WriteFileTool.Schema, filesystem.WriteFile); err != nil {
+	if err := registry.Register(filesystem.WriteFileTool, filesystem.WriteFile); err != nil {
 		return fmt.Errorf("register write_file tool: %w", err)
 	}
-	if err := registry.Register(filesystem.EditFileTool.Name, filesystem.EditFileTool.Description, filesystem.EditFileTool.Schema, filesystem.EditFile); err != nil {
+	if err := registry.Register(filesystem.EditFileTool, filesystem.EditFile); err != nil {
 		return fmt.Errorf("register edit_file tool: %w", err)
 	}
-	if err := registry.Register(filesystem.ListDirectoryTool.Name, filesystem.ListDirectoryTool.Description, filesystem.ListDirectoryTool.Schema, filesystem.ListDirectory); err != nil {
+	if err := registry.Register(filesystem.ListDirectoryTool, filesystem.ListDirectory); err != nil {
 		return fmt.Errorf("register list_directory tool: %w", err)
 	}
-	if err := registry.Register(filesystem.SearchFilesTool.Name, filesystem.SearchFilesTool.Description, filesystem.SearchFilesTool.Schema, filesystem.SearchFiles); err != nil {
+	if err := registry.Register(filesystem.SearchFilesTool, filesystem.SearchFiles); err != nil {
 		return fmt.Errorf("register search_files tool: %w", err)
 	}
 
