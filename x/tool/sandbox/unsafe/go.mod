@@ -3,9 +3,9 @@ module github.com/andrewhowdencom/ore/x/tool/sandbox/unsafe
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.1.0
-	github.com/andrewhowdencom/ore/x/tool/bash v0.2.0
-	github.com/andrewhowdencom/ore/x/tool/filesystem v0.2.0
+	github.com/andrewhowdencom/ore v0.4.0
+	github.com/andrewhowdencom/ore/x/tool/bash v0.3.0
+	github.com/andrewhowdencom/ore/x/tool/filesystem v0.3.0
 	github.com/stretchr/testify v1.11.1
 )
 
