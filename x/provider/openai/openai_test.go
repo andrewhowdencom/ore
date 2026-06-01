@@ -132,6 +132,10 @@ func emptyChoicesSSE() string {
 	return "data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"choices\":[]}\n\ndata: [DONE]\n\n"
 }
 
+func usageSSE(prompt, completion, total int64) string {
+	return fmt.Sprintf("data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-4\",\"choices\":[],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d}}\n\ndata: [DONE]\n\n", prompt, completion, total)
+}
+
 func drainArtifacts(ch chan artifact.Artifact) []artifact.Artifact {
 	close(ch)
 	var artifacts []artifact.Artifact
@@ -193,6 +197,30 @@ func TestProviderInvoke_EmptyChoices(t *testing.T) {
 
 	artifacts := drainArtifacts(ch)
 	assert.Empty(t, artifacts)
+}
+
+func TestProviderInvoke_UsageChunk(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(usageSSE(10, 5, 15)),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	err = p.Invoke(t.Context(), mem, ch)
+	require.NoError(t, err)
+
+	artifacts := drainArtifacts(ch)
+	require.Len(t, artifacts, 1)
+	assert.Equal(t, "usage", artifacts[0].Kind())
+	u, ok := artifacts[0].(artifact.Usage)
+	require.True(t, ok)
+	assert.Equal(t, 10, u.PromptTokens)
+	assert.Equal(t, 5, u.CompletionTokens)
+	assert.Equal(t, 15, u.TotalTokens)
 }
 
 func TestProviderInvoke_MultipleTextArtifacts(t *testing.T) {
