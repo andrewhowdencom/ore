@@ -1065,3 +1065,12 @@ func TestBuildStatusLine_WrapsAtWidth(t *testing.T) {
 		assert.False(t, strings.HasSuffix(line, "\x1b["), "line should not end with partial ANSI escape: %q", line)
 	}
 }
+
+func TestBuildStatusLine_NegativeWidth(t *testing.T) {
+	status := map[string]string{
+		"phase": "submitted",
+	}
+	rendered, lines := buildStatusLine(status, -1)
+	assert.NotEmpty(t, rendered)
+	assert.Equal(t, 1, lines)
+}
