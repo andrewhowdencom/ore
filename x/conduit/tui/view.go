@@ -443,13 +443,14 @@ func compactToolCall(tc artifact.ToolCall, maxWidth int) string {
 }
 
 // compactToolResult formats a pre-rendered tool result string into a compact
-// single-line representation, keeping the TUI concise by truncating at the
-// first newline or maxWidth characters. The caller is responsible for
-// pre-rendering (e.g. via MarkdownString) and adding an "Error: " prefix
-// when appropriate. maxWidth is normally the current viewport width.
+// representation, keeping the TUI concise by limiting to the first 3 lines
+// or maxWidth characters. The caller is responsible for pre-rendering
+// (e.g. via MarkdownString) and adding an "Error: " prefix when appropriate.
+// maxWidth is normally the current viewport width.
 func compactToolResult(content string, maxWidth int) string {
-	if idx := strings.Index(content, "\n"); idx != -1 {
-		content = content[:idx]
+	lines := strings.Split(content, "\n")
+	if len(lines) > 3 {
+		content = strings.Join(lines[:3], "\n") + "…"
 	}
 	return truncateString(content, maxWidth)
 }
