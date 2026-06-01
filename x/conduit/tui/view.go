@@ -254,19 +254,9 @@ func buildStatusLine(status map[string]string, width int) (string, int) {
 	if width <= 0 {
 		return rendered, 1
 	}
-	// Count wrapped display lines using lipgloss width.
-	lines := 1
-	lineWidth := 0
-	for _, r := range rendered {
-		w := lipgloss.Width(string(r))
-		if lineWidth+w > width {
-			lines++
-			lineWidth = w
-		} else {
-			lineWidth += w
-		}
-	}
-	return rendered, lines
+	wrapped := cellbuf.Wrap(rendered, width, " ")
+	lines := strings.Count(wrapped, "\n") + 1
+	return wrapped, lines
 }
 
 // compactToolCall formats a tool call into a compact single-line string.
