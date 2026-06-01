@@ -111,6 +111,23 @@ func mockResponseSSE(body string) *http.Response {
 	}
 }
 
+// errorReader is an io.Reader that returns preloaded data followed by a fixed
+// error, simulating a network failure mid-stream.
+type errorReader struct {
+	data []byte
+	pos  int
+	err  error
+}
+
+func (r *errorReader) Read(p []byte) (int, error) {
+	if r.pos >= len(r.data) {
+		return 0, r.err
+	}
+	n := copy(p, r.data[r.pos:])
+	r.pos += n
+	return n, nil
+}
+
 func simpleSSE(content string) string {
 	return fmt.Sprintf("data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"content\":%q},\"finish_reason\":null}]}\n\ndata: [DONE]\n\n", content)
 }
@@ -134,6 +151,14 @@ func emptyChoicesSSE() string {
 
 func usageSSE(prompt, completion, total int64) string {
 	return fmt.Sprintf("data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-4\",\"choices\":[],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d}}\n\ndata: [DONE]\n\n", prompt, completion, total)
+}
+
+func textWithUsageSSE(content string, promptTokens, completionTokens, totalTokens int64) string {
+	return fmt.Sprintf(
+		"data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"content\":%q},\"finish_reason\":null}]}\n\n"+
+			"data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-4\",\"choices\":[],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d}}\n\ndata: [DONE]\n\n",
+		content, promptTokens, completionTokens, totalTokens,
+	)
 }
 
 func drainArtifacts(ch chan artifact.Artifact) []artifact.Artifact {
@@ -1163,4 +1188,112 @@ func TestProviderInvoke_WithFilteredTools(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "allowed", fn1["name"])
 	assert.Equal(t, "Allowed tool", fn1["description"])
+}
+
+func TestProviderInvoke_WithUsage(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(textWithUsageSSE("Hello, world!", 10, 5, 15)),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	err = p.Invoke(t.Context(), mem, ch)
+	require.NoError(t, err)
+
+	artifacts := drainArtifacts(ch)
+	require.Len(t, artifacts, 2)
+	assert.Equal(t, "text_delta", artifacts[0].Kind())
+	assert.Equal(t, "Hello, world!", artifacts[0].(artifact.TextDelta).Content)
+
+	usage, ok := artifacts[1].(artifact.Usage)
+	require.True(t, ok, "second artifact should be Usage")
+	assert.Equal(t, 10, usage.PromptTokens)
+	assert.Equal(t, 5, usage.CompletionTokens)
+	assert.Equal(t, 15, usage.TotalTokens)
+}
+
+func TestProviderInvoke_WithoutUsage(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(simpleSSE("Hello, world!")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	err = p.Invoke(t.Context(), mem, ch)
+	require.NoError(t, err)
+
+	artifacts := drainArtifacts(ch)
+	// Only text_delta; no usage artifact because the SSE does not contain a usage chunk.
+	require.Len(t, artifacts, 1)
+	assert.Equal(t, "text_delta", artifacts[0].Kind())
+}
+
+func TestProviderInvoke_IncludeUsageFlag(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(simpleSSE("ok")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	_ = p.Invoke(t.Context(), mem, ch)
+	close(ch)
+	for range ch {
+	}
+
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+
+	streamOptions, ok := reqBody["stream_options"].(map[string]any)
+	require.True(t, ok, "stream_options should be present in request body")
+	assert.Equal(t, true, streamOptions["include_usage"])
+}
+
+func TestProviderInvoke_PartialStreamError(t *testing.T) {
+	wantErr := errors.New("connection reset")
+
+	// One valid SSE chunk followed by a read error.
+	body := "data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"},\"finish_reason\":null}]}\n\n"
+	transport := &mockTransport{
+		response: &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(&errorReader{data: []byte(body), err: wantErr}),
+		},
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	err = p.Invoke(t.Context(), mem, ch)
+
+	// The channel should contain the partial artifact emitted before the error.
+	close(ch)
+	var artifacts []artifact.Artifact
+	for art := range ch {
+		artifacts = append(artifacts, art)
+	}
+
+	require.Len(t, artifacts, 1)
+	assert.Equal(t, "text_delta", artifacts[0].Kind())
+	assert.Equal(t, "partial", artifacts[0].(artifact.TextDelta).Content)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), wantErr.Error())
 }
