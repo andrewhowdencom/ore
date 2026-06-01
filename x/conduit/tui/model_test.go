@@ -1251,9 +1251,9 @@ func TestModel_Update_Status_ZoneFormatter(t *testing.T) {
 	mm := newM.(*model)
 
 	str, _ := mm.statusLine()
-	assert.Contains(t, str, "[lifecycle]")
+	assert.Contains(t, str, "Lifecycle:")
 	assert.Contains(t, str, "phase: streaming")
-	assert.Contains(t, str, "[context]")
+	assert.Contains(t, str, "Context:")
 	assert.Contains(t, str, "thread_id: abc-123")
 }
 

@@ -1036,12 +1036,12 @@ func TestBuildStatusLine_ZoneGrouping(t *testing.T) {
 		"default":   99,
 	}
 	str, lines := buildStatusLineFromSegments(segments, priorities, 80)
-	assert.Equal(t, 1, lines, "should fit on one line at width 80")
+	assert.Equal(t, 2, lines, "zones render on separate lines")
 	// Lifecycle zone comes first (priority 0), then context (priority 1).
-	assert.Contains(t, str, "[lifecycle]")
+	assert.Contains(t, str, "Lifecycle:")
 	assert.Contains(t, str, "phase: streaming")
 	assert.Contains(t, str, "title: chat")
-	assert.Contains(t, str, "[context]")
+	assert.Contains(t, str, "Context:")
 	assert.Contains(t, str, "model: gpt-4o")
 }
 
@@ -1072,11 +1072,11 @@ func TestBuildStatusLine_UnmappedKeysDefaultZone(t *testing.T) {
 		"default":   99,
 	}
 	str, _ := buildStatusLineFromSegments(segments, priorities, 80)
-	// Lifecycle zone should have brackets.
-	assert.Contains(t, str, "[lifecycle]")
-	// Default zone should NOT have brackets (backward compatibility).
+	// Lifecycle zone label is bold and capitalized.
+	assert.Contains(t, str, "Lifecycle:")
+	// Default zone should NOT have a zone label (backward compatibility).
 	assert.Contains(t, str, "unmapped: value")
-	assert.NotContains(t, str, "[default]")
+	assert.NotContains(t, str, "Default:")
 }
 
 func TestBuildStatusLine_WrapsAtWidth(t *testing.T) {
