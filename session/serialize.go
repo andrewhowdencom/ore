@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
@@ -30,6 +31,7 @@ type artifactWrapper struct {
 type turnWrapper struct {
 	Role      string          `json:"role"`
 	Artifacts json.RawMessage `json:"artifacts"`
+	Timestamp time.Time       `json:"timestamp,omitempty"`
 }
 
 // isDelta reports whether the artifact implements artifact.Delta,
@@ -93,6 +95,7 @@ func marshalTurns(turns []state.Turn) ([]byte, error) {
 		wrappers[i] = turnWrapper{
 			Role:      string(turn.Role),
 			Artifacts: artifactsJSON,
+			Timestamp: turn.Timestamp,
 		}
 	}
 	return json.Marshal(wrappers)
@@ -114,6 +117,7 @@ func unmarshalTurns(data []byte) ([]state.Turn, error) {
 		turns[i] = state.Turn{
 			Role:      state.Role(w.Role),
 			Artifacts: artifacts,
+			Timestamp: w.Timestamp,
 		}
 	}
 	return turns, nil

@@ -2,6 +2,7 @@ package session
 
 import (
 	"testing"
+	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
@@ -131,6 +132,13 @@ func TestMarshalTurns_RoundTrip(t *testing.T) {
 				{Role: state.RoleSystem},
 			},
 		},
+		{
+			name: "turns with timestamps",
+			turns: []state.Turn{
+				{Role: state.RoleUser, Artifacts: []artifact.Artifact{&artifact.Text{Content: "hello"}}, Timestamp: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)},
+				{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{&artifact.Text{Content: "hi"}}, Timestamp: time.Date(2026, 1, 1, 12, 0, 5, 0, time.UTC)},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -144,6 +152,7 @@ func TestMarshalTurns_RoundTrip(t *testing.T) {
 
 			for i, want := range tt.turns {
 				assert.Equal(t, want.Role, got[i].Role)
+				assert.Equal(t, want.Timestamp, got[i].Timestamp)
 				require.Len(t, got[i].Artifacts, len(want.Artifacts))
 				for j, wantArtifact := range want.Artifacts {
 					assert.Equal(t, wantArtifact.Kind(), got[i].Artifacts[j].Kind())

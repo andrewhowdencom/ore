@@ -8,6 +8,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/x/conduit"
 	"charm.land/bubbles/v2/viewport"
 	"charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -994,3 +995,73 @@ func TestBuildStatusLine_NoTokenKeys(t *testing.T) {
 	assert.NotContains(t, rendered, "tokens")
 }
 
+func TestBuildStatusLine_ZoneGrouping(t *testing.T) {
+	segments := []conduit.StatusSegment{
+		{Label: "phase", Value: "streaming", Zone: "lifecycle"},
+		{Label: "title", Value: "chat", Zone: "lifecycle"},
+		{Label: "model", Value: "gpt-4o", Zone: "context"},
+	}
+	priorities := map[string]int{
+		"lifecycle": 0,
+		"context":   1,
+		"default":   99,
+	}
+	str, lines := buildStatusLineFromSegments(segments, priorities, 80)
+	assert.Equal(t, 1, lines, "should fit on one line at width 80")
+	// Lifecycle zone comes first (priority 0), then context (priority 1).
+	assert.Contains(t, str, "[lifecycle]")
+	assert.Contains(t, str, "phase: streaming")
+	assert.Contains(t, str, "title: chat")
+	assert.Contains(t, str, "[context]")
+	assert.Contains(t, str, "model: gpt-4o")
+}
+
+func TestBuildStatusLine_PriorityTruncation(t *testing.T) {
+	segments := []conduit.StatusSegment{
+		{Label: "phase", Value: "streaming very deeply and considering all possibilities", Zone: "lifecycle"},
+		{Label: "model", Value: "gpt-4o-really-long-model-name", Zone: "context"},
+	}
+	priorities := map[string]int{
+		"lifecycle": 0,
+		"context":   1,
+	}
+	// At width 40, both zones together exceed maxStatusLines. The lower-
+	// priority "context" zone should be dropped.
+	str, _ := buildStatusLineFromSegments(segments, priorities, 40)
+	assert.Contains(t, str, "phase: streaming")
+	// Context zone should be dropped due to lower priority.
+	assert.NotContains(t, str, "model:")
+}
+
+func TestBuildStatusLine_UnmappedKeysDefaultZone(t *testing.T) {
+	segments := []conduit.StatusSegment{
+		{Label: "phase", Value: "streaming", Zone: "lifecycle"},
+		{Label: "unmapped", Value: "value", Zone: "default"},
+	}
+	priorities := map[string]int{
+		"lifecycle": 0,
+		"default":   99,
+	}
+	str, _ := buildStatusLineFromSegments(segments, priorities, 80)
+	// Lifecycle zone should have brackets.
+	assert.Contains(t, str, "[lifecycle]")
+	// Default zone should NOT have brackets (backward compatibility).
+	assert.Contains(t, str, "unmapped: value")
+	assert.NotContains(t, str, "[default]")
+}
+
+func TestBuildStatusLine_WrapsAtWidth(t *testing.T) {
+	status := map[string]string{
+		"phase": "thinking very deeply about the problem at hand and considering all possibilities",
+	}
+	width := 30
+	str, lines := buildStatusLine(status, width)
+	assert.Greater(t, lines, 1, "long status should wrap to multiple lines")
+	assert.Contains(t, str, "\n", "wrapped string should contain newlines")
+
+	// Verify ANSI escape sequences are not split across line boundaries by
+	// checking that no line ends with a partial escape sequence.
+	for _, line := range strings.Split(str, "\n") {
+		assert.False(t, strings.HasSuffix(line, "\x1b["), "line should not end with partial ANSI escape: %q", line)
+	}
+}
