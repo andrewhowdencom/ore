@@ -876,8 +876,14 @@ func TestStep_Turn_ContextCancellationMidAccumulation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	prov := &contextCancellingProvider{cancel: cancel}
 
+	ch := s.Subscribe("error")
+
 	_, err := s.Turn(ctx, mem, prov)
 	require.ErrorIs(t, err, context.Canceled)
+
+	// No ErrorEvent should be emitted for context cancellation.
+	events := collectEvents(ch, 100*time.Millisecond)
+	assert.Len(t, events, 0, "ErrorEvent should not be emitted for context.Canceled")
 
 	// State should not be mutated.
 	assert.Len(t, mem.Turns(), 1)

@@ -143,7 +143,16 @@ func run() error {
 
 	// Create the TUI conduit, passing the thread ID via functional option.
 	// The TUI creates or attaches to the session internally on Start.
-	c, err := tui.New(mgr, tui.WithName("tui-chat"), tui.WithThreadID(threadID))
+	c, err := tui.New(mgr,
+		tui.WithName("tui-chat"),
+		tui.WithThreadID(threadID),
+		tui.WithStatusZones(map[string]string{
+			"phase":     "lifecycle",
+			"title":     "lifecycle",
+			"thread_id": "context",
+			"model":     "context",
+		}),
+	)
 	if err != nil {
 		return fmt.Errorf("create TUI conduit: %w", err)
 	}

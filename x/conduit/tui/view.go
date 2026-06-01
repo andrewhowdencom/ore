@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/x/conduit"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/cellbuf"
@@ -38,6 +40,15 @@ var (
 	// errorStyle styles error turns from the harness in red.
 	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
 )
+
+// formatTurnLabel builds a label string "hh:mm:ss Role: " for a rendered turn.
+// If the timestamp is zero, it falls back to just "Role: ".
+func formatTurnLabel(role string, ts time.Time) string {
+	if ts.IsZero() {
+		return role + ": "
+	}
+	return ts.Format("15:04:05") + " " + role + ": "
+}
 
 // renderBlock renders a labeled content block with the label on its own line
 // and content starting at column 0. If width > 0, content is wrapped to fit.
@@ -86,7 +97,7 @@ func (m *model) buildContent() string {
 		case state.RoleUser:
 			for i, block := range turn.blocks {
 				if block.kind == "text" {
-					b.WriteString(renderBlock("You: ", lipgloss.NewStyle(), block.source, width))
+					b.WriteString(renderBlock(formatTurnLabel("You", turn.timestamp), lipgloss.NewStyle(), block.source, width))
 				}
 				if i < len(turn.blocks)-1 {
 					b.WriteString("\n\n")
@@ -97,9 +108,9 @@ func (m *model) buildContent() string {
 				switch block.kind {
 				case "text":
 					if block.rendered != "" {
-						b.WriteString(renderBlock("Assistant: ", assistantStyle, block.rendered, 0))
+						b.WriteString(renderBlock(formatTurnLabel("Assistant", turn.timestamp), assistantStyle, block.rendered, 0))
 					} else {
-						b.WriteString(renderBlock("Assistant: ", assistantStyle, block.source, width))
+						b.WriteString(renderBlock(formatTurnLabel("Assistant", turn.timestamp), assistantStyle, block.source, width))
 					}
 				// Reasoning blocks are rendered through the same Markdown pipeline
 				// as text blocks; the rendered ANSI is cached in renderedBlock.rendered.
@@ -109,9 +120,9 @@ func (m *model) buildContent() string {
 						b.WriteString(thinkingStyle.Render(thinkingCompact(block.source)))
 					} else {
 						if block.rendered != "" {
-							b.WriteString(renderBlock("Thinking: ", thinkingStyle, reasoningExpandedStyle.Render(block.rendered), 0))
+							b.WriteString(renderBlock(formatTurnLabel("Thinking", turn.timestamp), thinkingStyle, reasoningExpandedStyle.Render(block.rendered), 0))
 						} else {
-							b.WriteString(renderBlock("Thinking: ", thinkingStyle, reasoningExpandedStyle.Render(block.source), width))
+							b.WriteString(renderBlock(formatTurnLabel("Thinking", turn.timestamp), thinkingStyle, reasoningExpandedStyle.Render(block.source), width))
 						}
 					}
 				case "tool_call":
@@ -123,7 +134,7 @@ func (m *model) buildContent() string {
 					if block.compact != "" && !isExpanded {
 						b.WriteString(compactToolCallStyle.Render("→ " + content))
 					} else {
-						b.WriteString(renderBlock("Assistant: ", toolCallStyle, content, width))
+						b.WriteString(renderBlock(formatTurnLabel("Assistant", turn.timestamp), toolCallStyle, content, width))
 					}
 				}
 				if i < len(turn.blocks)-1 {
@@ -134,7 +145,7 @@ func (m *model) buildContent() string {
 			for i, block := range turn.blocks {
 				switch block.kind {
 				case "text":
-					b.WriteString(renderBlock("Tool: ", lipgloss.NewStyle(), block.source, width))
+					b.WriteString(renderBlock(formatTurnLabel("Tool", turn.timestamp), lipgloss.NewStyle(), block.source, width))
 				case "tool_result":
 					isExpanded := isAfterLatestAssistant && m.expandLatestDetails
 					content := block.compact
@@ -152,7 +163,7 @@ func (m *model) buildContent() string {
 						if strings.HasPrefix(block.source, "Error: ") {
 							style = toolErrorStyle
 						}
-						b.WriteString(renderBlock("Tool: ", style, content, width))
+						b.WriteString(renderBlock(formatTurnLabel("Tool", turn.timestamp), style, content, width))
 					}
 				}
 				if i < len(turn.blocks)-1 {
@@ -277,19 +288,104 @@ func buildStatusLine(status map[string]string, width int) (string, int) {
 	if width <= 0 {
 		return rendered, 1
 	}
-	// Count wrapped display lines using lipgloss width.
-	lines := 1
-	lineWidth := 0
-	for _, r := range rendered {
-		w := lipgloss.Width(string(r))
-		if lineWidth+w > width {
-			lines++
-			lineWidth = w
-		} else {
-			lineWidth += w
+	wrapped := cellbuf.Wrap(rendered, width, " ")
+	lines := strings.Count(wrapped, "\n") + 1
+	return wrapped, lines
+}
+
+// buildStatusLineFromSegments renders zone-grouped status segments into a
+// wrapped status string. Segments are grouped by zone, zones are sorted by
+// priority (lower value = higher priority), and lower-priority zones are
+// dropped entirely if the result exceeds maxStatusLines (2). The "default"
+// zone renders without brackets for backward compatibility.
+func buildStatusLineFromSegments(segments []conduit.StatusSegment, zonePriorities map[string]int, width int) (string, int) {
+	if len(segments) == 0 {
+		return "", 0
+	}
+
+	const maxStatusLines = 2
+
+	// Group segments by zone, filtering out empty values.
+	zones := make(map[string][]conduit.StatusSegment)
+	for _, seg := range segments {
+		if seg.Value == "" {
+			continue
+		}
+		zones[seg.Zone] = append(zones[seg.Zone], seg)
+	}
+	if len(zones) == 0 {
+		return "", 0
+	}
+
+	// Sort zone names by priority ascending.
+	zoneNames := make([]string, 0, len(zones))
+	for z := range zones {
+		zoneNames = append(zoneNames, z)
+	}
+	sort.Slice(zoneNames, func(i, j int) bool {
+		pi, ok := zonePriorities[zoneNames[i]]
+		if !ok {
+			pi = 99
+		}
+		pj, ok := zonePriorities[zoneNames[j]]
+		if !ok {
+			pj = 99
+		}
+		return pi < pj
+	})
+
+	var wrapped string
+	var lines int
+
+	// Try progressively fewer zones (dropping lowest-priority first) until
+	// the wrapped output fits within maxStatusLines.
+	for numZones := len(zoneNames); numZones > 0; numZones-- {
+		var zoneParts []string
+		for i := 0; i < numZones; i++ {
+			zone := zoneNames[i]
+			parts := zones[zone]
+			// Sort segments by label for deterministic output.
+			sort.Slice(parts, func(a, b int) bool {
+				return parts[a].Label < parts[b].Label
+			})
+			var kvParts []string
+			for _, seg := range parts {
+				kvParts = append(kvParts, fmt.Sprintf("%s: %s", seg.Label, seg.Value))
+			}
+			if len(kvParts) == 0 {
+				continue
+			}
+			zoneStr := strings.Join(kvParts, " · ")
+			if zone != "default" {
+				zoneStr = fmt.Sprintf("[%s] %s", zone, zoneStr)
+			}
+			zoneParts = append(zoneParts, zoneStr)
+		}
+
+		if len(zoneParts) == 0 {
+			continue
+		}
+
+		rendered := statusStyle.Render(strings.Join(zoneParts, " · "))
+		if width <= 0 {
+			return rendered, 1
+		}
+
+		wrapped = cellbuf.Wrap(rendered, width, " ")
+		lines = strings.Count(wrapped, "\n") + 1
+
+		if lines <= maxStatusLines {
+			return wrapped, lines
 		}
 	}
-	return rendered, lines
+
+	// Even the highest-priority zone alone exceeds maxStatusLines.
+	// Return it anyway so status is never fully hidden.
+	if wrapped != "" {
+		return wrapped, lines
+	}
+
+	return "", 0
 }
 
 // compactToolCall formats a tool call into a compact single-line string.
@@ -389,6 +485,8 @@ func (m *model) windowTitle() string {
 	switch phase {
 	case "submitted", "streaming":
 		return base + " [...]"
+	case "cancelled":
+		return base + " [cancelled]"
 	case "error":
 		return base + " [err]"
 	default:
@@ -406,7 +504,7 @@ func (m *model) View() tea.View {
 		separator = strings.Repeat("─", m.width)
 	}
 
-	statusStr, statusLines := buildStatusLine(m.status, m.width)
+	statusStr, statusLines := m.statusLine()
 
 	view := m.viewport.View()
 	if view != "" {

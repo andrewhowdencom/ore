@@ -12,6 +12,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/x/conduit"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -115,6 +116,14 @@ type model struct {
 	// PropertiesEvent output events (e.g. thread_id, state).
 	status map[string]string
 
+	// zoneFormatter converts the flat status map into structured segments
+	// for zone-aware rendering. If nil, a default formatter is used.
+	zoneFormatter conduit.StatusFormatter
+
+	// zonePriorities maps zone names to priority values (lower = higher
+	// priority). Zones not in this map get a default priority.
+	zonePriorities map[string]int
+
 	// User input widget.
 	textarea textarea.Model
 
@@ -145,8 +154,9 @@ type model struct {
 
 // renderedTurn represents a single turn in the conversation history.
 type renderedTurn struct {
-	role   state.Role
-	blocks []renderedBlock
+	role      state.Role
+	blocks    []renderedBlock
+	timestamp time.Time
 }
 
 // renderMarkdown delegates to the model's markdown renderer, falling back
@@ -170,7 +180,7 @@ func (m *model) recalcLayout() {
 
 	// Reserve space for one or two separators plus the status bar when
 	// status has non-empty content.
-	_, statusLines := buildStatusLine(m.status, m.width)
+	_, statusLines := m.statusLine()
 	separatorCount := 1
 	if statusLines > 0 {
 		separatorCount = 2
@@ -180,6 +190,34 @@ func (m *model) recalcLayout() {
 	if m.viewport.Height() < 1 {
 		m.viewport.SetHeight(1)
 	}
+}
+
+// statusLine renders the status bar, using zone-aware grouping if a
+// formatter is configured, or falling back to the legacy flat format.
+func (m *model) statusLine() (string, int) {
+	if len(m.status) == 0 {
+		return "", 0
+	}
+	var formatter conduit.StatusFormatter
+	if m.zoneFormatter != nil {
+		formatter = m.zoneFormatter
+	} else {
+		// Default: put everything in the "default" zone for backward
+		// compatibility (renders without zone brackets).
+		formatter = func(status map[string]string) []conduit.StatusSegment {
+			var segments []conduit.StatusSegment
+			for k, v := range status {
+				segments = append(segments, conduit.StatusSegment{
+					Label: k,
+					Value: v,
+					Zone:  "default",
+				})
+			}
+			return segments
+		}
+	}
+	segments := formatter(m.status)
+	return buildStatusLineFromSegments(segments, m.zonePriorities, m.width)
 }
 
 // syncViewport rebuilds the cached content string if stale and pushes it to
@@ -308,6 +346,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// ArtifactEvents. If no ArtifactEvents arrived (empty response),
 			// currentTurn may be empty; we still record the turn boundary.
 			m.currentTurn.role = msg.turn.Role
+			m.currentTurn.timestamp = msg.turn.Timestamp
 			m.turns = append(m.turns, m.currentTurn)
 			m.currentTurn = renderedTurn{}
 			m.expandLatestDetails = false
@@ -322,8 +361,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			rt := renderedTurn{
-				role:   msg.turn.Role,
-				blocks: blocks,
+				role:      msg.turn.Role,
+				blocks:    blocks,
+				timestamp: msg.turn.Timestamp,
 			}
 			m.turns = append(m.turns, rt)
 		}
@@ -346,6 +386,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.phase {
 		case "submitted":
 			m.pending = true
+		case "cancelled":
+			m.currentTurn = renderedTurn{}
+			m.pending = false
+			m.renderScheduled = false
 		case "done":
 			m.pending = false
 		}
@@ -439,6 +483,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.textarea, cmd = m.textarea.Update(msg)
 			m.recalcLayout()
 			return m, cmd
+		case tea.KeyEscape:
+			select {
+			case m.eventsCh <- session.InterruptEvent{}:
+			default:
+			}
+			return m, nil
 		}
 
 		// Ctrl+C
