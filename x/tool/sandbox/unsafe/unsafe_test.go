@@ -91,10 +91,10 @@ func TestSandbox_BashIntegration(t *testing.T) {
 	result, err := bash.Bash(ctx, sb, map[string]any{"command": "echo hello"})
 	require.NoError(t, err, "bash.Bash should not fail with unsafe sandbox")
 
-	m := result.(map[string]any)
-	assert.Equal(t, "hello\n", m["stdout"])
-	assert.Equal(t, "", m["stderr"])
-	assert.Equal(t, 0, m["exit_code"])
+	r := result.(*bash.Result)
+	assert.Equal(t, "hello\n", r.Stdout)
+	assert.Equal(t, "", r.Stderr)
+	assert.Equal(t, 0, r.ExitCode)
 }
 
 func TestSandbox_BashIntegration_WorkingDirectory(t *testing.T) {
@@ -110,8 +110,8 @@ func TestSandbox_BashIntegration_WorkingDirectory(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	m := result.(map[string]any)
-	assert.Contains(t, m["stdout"], filepath.Base(dir))
+	r := result.(*bash.Result)
+	assert.Contains(t, r.Stdout, filepath.Base(dir))
 }
 
 func TestSandbox_FilesystemIntegration(t *testing.T) {

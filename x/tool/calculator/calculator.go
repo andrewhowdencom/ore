@@ -2,10 +2,10 @@ package calculator
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/tool"
 )
 
@@ -27,8 +27,8 @@ func Multiply(ctx context.Context, _ tool.Sandbox, args map[string]any) (any, er
 	return a * b, nil
 }
 
-// AddTool is the provider.Tool descriptor (including JSON schema) for Add.
-var AddTool = provider.Tool{
+// AddTool is the tool.Tool descriptor (including JSON schema) for Add.
+var AddTool = tool.Tool{
 	Name:        "add",
 	Description: "Add two numbers together",
 	Schema: map[string]any{
@@ -39,10 +39,15 @@ var AddTool = provider.Tool{
 		},
 		"required": []string{"a", "b"},
 	},
+	DisplayHint: func(args map[string]any) any {
+		a := ToFloat64(args["a"])
+		b := ToFloat64(args["b"])
+		return fmt.Sprintf("%.0f + %.0f = ?", a, b)
+	},
 }
 
-// MultiplyTool is the provider.Tool descriptor (including JSON schema) for Multiply.
-var MultiplyTool = provider.Tool{
+// MultiplyTool is the tool.Tool descriptor (including JSON schema) for Multiply.
+var MultiplyTool = tool.Tool{
 	Name:        "multiply",
 	Description: "Multiply two numbers together",
 	Schema: map[string]any{
@@ -52,6 +57,11 @@ var MultiplyTool = provider.Tool{
 			"b": map[string]any{"type": "number", "description": "The second number"},
 		},
 		"required": []string{"a", "b"},
+	},
+	DisplayHint: func(args map[string]any) any {
+		a := ToFloat64(args["a"])
+		b := ToFloat64(args["b"])
+		return fmt.Sprintf("%.0f × %.0f = ?", a, b)
 	},
 }
 

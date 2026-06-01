@@ -59,6 +59,12 @@ func TestArtifactToJSON(t *testing.T) {
 			wantDTO:  artifactJSON{Kind: "tool_call", ID: "1", Name: "calc", Arguments: `{"a":1}`},
 		},
 		{
+			name:     "tool_call with custom display",
+			art:      artifact.ToolCall{ID: "1", Name: "bash", Arguments: `{"command":"go test"}`, Value: mockHTTPMarkdownValue{output: "```bash\n$ go test\n```"}},
+			wantKind: "tool_call",
+			wantDTO:  artifactJSON{Kind: "tool_call", ID: "1", Name: "bash", Arguments: `{"command":"go test"}`, Display: "```bash\n$ go test\n```"},
+		},
+		{
 			name:     "tool_call_delta",
 			art:      artifact.ToolCallDelta{ID: "1", Name: "calc", Arguments: `{"`},
 			wantKind: "tool_call_delta",

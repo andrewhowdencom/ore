@@ -10,9 +10,10 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/openai/openai-go/packages/param"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/tool"
 	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/option"
 )
 
@@ -26,7 +27,7 @@ type Provider struct {
 // WithTools returns an InvokeOption that configures the set of available tools
 // for a single provider invocation. It delegates to the provider-agnostic
 // provider.WithTools for cross-adapter compatibility.
-func WithTools(tools []provider.Tool) provider.InvokeOption {
+func WithTools(tools []tool.Tool) provider.InvokeOption {
 	return provider.WithTools(tools)
 }
 
@@ -229,7 +230,7 @@ func concatText(artifacts []artifact.Artifact) string {
 func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	messages := p.serializeMessages(s)
 
-	var tools []provider.Tool
+	var tools []tool.Tool
 	var temperature float64
 	var reasoningEffort string
 	for _, opt := range opts {
@@ -323,7 +324,7 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 
 // serializeTools converts provider-agnostic tool definitions into OpenAI SDK
 // tool parameters.
-func (p *Provider) serializeTools(tools []provider.Tool) []openai.ChatCompletionToolParam {
+func (p *Provider) serializeTools(tools []tool.Tool) []openai.ChatCompletionToolParam {
 	toolParams := make([]openai.ChatCompletionToolParam, len(tools))
 	for i, t := range tools {
 		fnDef := openai.FunctionDefinitionParam{

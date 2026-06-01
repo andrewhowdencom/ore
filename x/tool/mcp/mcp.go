@@ -10,7 +10,6 @@ import (
 	"github.com/mark3labs/mcp-go/client/transport"
 	mcptypes "github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/tool"
 )
 
@@ -28,7 +27,7 @@ type caller interface {
 type Client struct {
 	name   string
 	caller caller
-	tools  []provider.Tool
+	tools  []tool.Tool
 }
 
 // NewClient creates an MCP client with the given options, performs the
@@ -82,13 +81,13 @@ func NewClient(opts ...Option) (*Client, error) {
 		return nil, fmt.Errorf("list MCP tools: %w", err)
 	}
 
-	tools := make([]provider.Tool, len(toolsResult.Tools))
+	tools := make([]tool.Tool, len(toolsResult.Tools))
 	for i, t := range toolsResult.Tools {
 		schema, err := toolInputSchemaToMap(t.InputSchema)
 		if err != nil {
 			return nil, fmt.Errorf("convert schema for tool %q: %w", t.Name, err)
 		}
-		tools[i] = provider.Tool{
+		tools[i] = tool.Tool{
 			Name:        t.Name,
 			Description: t.Description,
 			Schema:      schema,
@@ -106,8 +105,8 @@ func NewClient(opts ...Option) (*Client, error) {
 func (c *Client) Name() string { return c.name }
 
 // Tools returns the list of tools available from the MCP server.
-func (c *Client) Tools() []provider.Tool {
-	t := make([]provider.Tool, len(c.tools))
+func (c *Client) Tools() []tool.Tool {
+	t := make([]tool.Tool, len(c.tools))
 	copy(t, c.tools)
 	return t
 }
@@ -154,7 +153,7 @@ func (c *Client) Call(ctx context.Context, name string, args map[string]any) (an
 }
 
 // toolInputSchemaToMap converts an MCP ToolInputSchema to a
-// map[string]any for use with provider.Tool.Schema.
+// map[string]any for use with tool.Tool.Schema.
 func toolInputSchemaToMap(schema mcptypes.ToolInputSchema) (map[string]any, error) {
 	data, err := json.Marshal(schema)
 	if err != nil {

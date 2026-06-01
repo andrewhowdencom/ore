@@ -13,7 +13,7 @@ import (
 
 func TestWithFilteredTools_NoFilter(t *testing.T) {
 	registry := toolpkg.NewRegistry()
-	require.NoError(t, registry.Register("add", "Add two numbers", nil, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
+	require.NoError(t, registry.Register(toolpkg.Tool{Name: "add", Description: "Add two numbers", Schema: nil}, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
 		return nil, nil
 	}))
 
@@ -31,15 +31,15 @@ func TestWithFilteredTools_NoFilter(t *testing.T) {
 
 func TestWithFilteredTools_WithFilter(t *testing.T) {
 	registry := toolpkg.NewRegistry()
-	require.NoError(t, registry.Register("add", "Add two numbers", nil, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
+	require.NoError(t, registry.Register(toolpkg.Tool{Name: "add", Description: "Add two numbers", Schema: nil}, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
 		return nil, nil
 	}))
-	require.NoError(t, registry.Register("multiply", "Multiply two numbers", nil, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
+	require.NoError(t, registry.Register(toolpkg.Tool{Name: "multiply", Description: "Multiply two numbers", Schema: nil}, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
 		return nil, nil
 	}))
 
-	filter := func(ctx context.Context, st state.State, tools []provider.Tool) []provider.Tool {
-		var result []provider.Tool
+	filter := func(ctx context.Context, st state.State, tools []toolpkg.Tool) []toolpkg.Tool {
+		var result []toolpkg.Tool
 		for _, t := range tools {
 			if t.Name == "add" {
 				result = append(result, t)
@@ -62,11 +62,11 @@ func TestWithFilteredTools_WithFilter(t *testing.T) {
 
 func TestWithFilteredTools_EmptyResult(t *testing.T) {
 	registry := toolpkg.NewRegistry()
-	require.NoError(t, registry.Register("add", "Add two numbers", nil, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
+	require.NoError(t, registry.Register(toolpkg.Tool{Name: "add", Description: "Add two numbers", Schema: nil}, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
 		return nil, nil
 	}))
 
-	filter := func(ctx context.Context, st state.State, tools []provider.Tool) []provider.Tool {
+	filter := func(ctx context.Context, st state.State, tools []toolpkg.Tool) []toolpkg.Tool {
 		return nil
 	}
 
@@ -83,10 +83,10 @@ func TestWithFilteredTools_EmptyResult(t *testing.T) {
 
 func TestWithFilteredTools_MutatesSlice(t *testing.T) {
 	registry := toolpkg.NewRegistry()
-	require.NoError(t, registry.Register("b", "Tool B", nil, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
+	require.NoError(t, registry.Register(toolpkg.Tool{Name: "b", Description: "Tool B", Schema: nil}, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
 		return nil, nil
 	}))
-	require.NoError(t, registry.Register("a", "Tool A", nil, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
+	require.NoError(t, registry.Register(toolpkg.Tool{Name: "a", Description: "Tool A", Schema: nil}, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
 		return nil, nil
 	}))
 
@@ -95,12 +95,12 @@ func TestWithFilteredTools_MutatesSlice(t *testing.T) {
 	var inputOrder []string
 
 	// Filter that reorders without mutating the original.
-	filter := func(ctx context.Context, st state.State, tools []provider.Tool) []provider.Tool {
+	filter := func(ctx context.Context, st state.State, tools []toolpkg.Tool) []toolpkg.Tool {
 		inputOrder = make([]string, len(tools))
 		for i, t := range tools {
 			inputOrder[i] = t.Name
 		}
-		result := make([]provider.Tool, len(tools))
+		result := make([]toolpkg.Tool, len(tools))
 		for i, t := range tools {
 			result[len(tools)-1-i] = t
 		}
@@ -123,13 +123,13 @@ func TestWithFilteredTools_MutatesSlice(t *testing.T) {
 
 func TestWithFilteredTools_Superset(t *testing.T) {
 	registry := toolpkg.NewRegistry()
-	require.NoError(t, registry.Register("original", "Original tool", nil, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
+	require.NoError(t, registry.Register(toolpkg.Tool{Name: "original", Description: "Original tool", Schema: nil}, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
 		return nil, nil
 	}))
 
 	// Filter that adds a tool not present in the registry.
-	filter := func(ctx context.Context, st state.State, tools []provider.Tool) []provider.Tool {
-		return append(tools, provider.Tool{
+	filter := func(ctx context.Context, st state.State, tools []toolpkg.Tool) []toolpkg.Tool {
+		return append(tools, toolpkg.Tool{
 			Name:        "injected",
 			Description: "Injected tool",
 			Schema:      map[string]any{"type": "object"},
@@ -151,11 +151,11 @@ func TestWithFilteredTools_Superset(t *testing.T) {
 
 func TestWithFilteredTools_Panic(t *testing.T) {
 	registry := toolpkg.NewRegistry()
-	require.NoError(t, registry.Register("panic", "Panic tool", nil, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
+	require.NoError(t, registry.Register(toolpkg.Tool{Name: "panic", Description: "Panic tool", Schema: nil}, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
 		return nil, nil
 	}))
 
-	filter := func(ctx context.Context, st state.State, tools []provider.Tool) []provider.Tool {
+	filter := func(ctx context.Context, st state.State, tools []toolpkg.Tool) []toolpkg.Tool {
 		panic("filter panic")
 	}
 

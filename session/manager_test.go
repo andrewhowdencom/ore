@@ -110,14 +110,10 @@ func TestManager_Create(t *testing.T) {
 
 func TestManager_Create_ReplayBuffer_PropertiesEventNotLost(t *testing.T) {
 	store := NewMemoryStore()
-	mgr := NewManager(store, &mockProvider{}, func(thr *Thread) (*loop.Step, error) {
-		return loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
-			if tc, ok := event.(loop.TurnCompleteEvent); ok {
-				thr.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
-			}
-		})), nil
+	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
+		return nil, nil
 	}, simpleProcessor(),
-		WithDefaultMetadata(func(thr *Thread) map[string]string {
+		WithDefaultMetadata(func(stream *Stream) map[string]string {
 			return map[string]string{"role": "test-role", "cwd": "/tmp"}
 		}),
 	)
@@ -414,9 +410,10 @@ func TestManager_Process_ContextCancel(t *testing.T) {
 		}
 	}
 
-	require.Len(t, lifecycleEvents, 2, "expected submitted → cancelled → done lifecycle events")
+	require.Len(t, lifecycleEvents, 3, "expected submitted → cancelled → done lifecycle events")
 	assert.Equal(t, "submitted", lifecycleEvents[0].Phase)
 	assert.Equal(t, "cancelled", lifecycleEvents[1].Phase)
+	assert.Equal(t, "done", lifecycleEvents[2].Phase)
 	assert.Len(t, errEvents, 0, "expected 0 ErrorEvents for context.Canceled")
 }
 
