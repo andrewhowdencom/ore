@@ -39,6 +39,8 @@ var (
 	compactToolErrorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
 	// errorStyle styles error turns from the harness in red.
 	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
+	// zoneLabelStyle styles zone names (Lifecycle, Context) bold in the status bar.
+	zoneLabelStyle = lipgloss.NewStyle().Bold(true)
 )
 
 // formatTurnLabel builds a label string "hh:mm:ss Role: " for a rendered turn.
@@ -357,7 +359,8 @@ func buildStatusLineFromSegments(segments []conduit.StatusSegment, zonePrioritie
 			}
 			zoneStr := strings.Join(kvParts, " · ")
 			if zone != "default" {
-				zoneStr = fmt.Sprintf("[%s] %s", zone, zoneStr)
+				zoneLabel := strings.ToUpper(zone[:1]) + zone[1:] + ":"
+				zoneStr = zoneLabelStyle.Render(zoneLabel) + " " + zoneStr
 			}
 			zoneParts = append(zoneParts, zoneStr)
 		}
@@ -366,7 +369,7 @@ func buildStatusLineFromSegments(segments []conduit.StatusSegment, zonePrioritie
 			continue
 		}
 
-		rendered := statusStyle.Render(strings.Join(zoneParts, " · "))
+		rendered := statusStyle.Render(strings.Join(zoneParts, "\n"))
 		if width <= 0 {
 			return rendered, 1
 		}
