@@ -6,8 +6,8 @@ require (
 	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.6
 	charm.land/lipgloss/v2 v2.0.3
-	github.com/andrewhowdencom/ore v0.3.1
-	github.com/andrewhowdencom/ore/x/conduit v0.1.2
+	github.com/andrewhowdencom/ore v0.3.2
+	github.com/andrewhowdencom/ore/x/conduit v0.1.3
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/charmbracelet/x/cellbuf v0.0.15
 	github.com/muesli/termenv v0.16.0
