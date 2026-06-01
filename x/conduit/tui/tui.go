@@ -36,11 +36,13 @@ import (
 // TUI is a terminal user interface conduit. It hides all Bubble Tea internals
 // from callers.
 type TUI struct {
-	mgr      *session.Manager
-	threadID string
-	eventsCh chan session.Event
-	program  *tea.Program
-	name     string
+	mgr            *session.Manager
+	threadID       string
+	eventsCh       chan session.Event
+	program        *tea.Program
+	name           string
+	zoneFormatter  conduit.StatusFormatter
+	zonePriorities map[string]int
 }
 
 // Option configures a TUI.
@@ -58,6 +60,34 @@ func WithThreadID(id string) Option {
 func WithName(name string) Option {
 	return func(t *TUI) {
 		t.name = name
+	}
+}
+
+// WithStatusZones configures the TUI to group status metadata into
+// semantic zones for priority-based rendering. Unmapped keys fall into
+// the "default" zone. Lifecycle zones render first, then context.
+func WithStatusZones(mapping map[string]string) Option {
+	return func(t *TUI) {
+		t.zoneFormatter = func(status map[string]string) []conduit.StatusSegment {
+			var segments []conduit.StatusSegment
+			for k, v := range status {
+				zone := mapping[k]
+				if zone == "" {
+					zone = "default"
+				}
+				segments = append(segments, conduit.StatusSegment{
+					Label: k,
+					Value: v,
+					Zone:  zone,
+				})
+			}
+			return segments
+		}
+		t.zonePriorities = map[string]int{
+			"lifecycle": 0,
+			"context":   1,
+			"default":   99,
+		}
 	}
 }
 
@@ -125,11 +155,13 @@ func (t *TUI) Start(ctx context.Context) error {
 	ta.Focus()
 
 	m := model{
-		eventsCh: surfEventsCh,
-		viewport: viewport.New(),
-		textarea: ta,
-		md:       newGlamourMarkdownRenderer(),
-		name:     t.name,
+		eventsCh:       surfEventsCh,
+		viewport:       viewport.New(),
+		textarea:       ta,
+		md:             newGlamourMarkdownRenderer(),
+		name:           t.name,
+		zoneFormatter:  t.zoneFormatter,
+		zonePriorities: t.zonePriorities,
 	}
 	p := tea.NewProgram(&m)
 	t.eventsCh = surfEventsCh

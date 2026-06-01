@@ -56,3 +56,22 @@ type Descriptor struct {
 	// Capabilities lists the well-known capabilities this conduit supports.
 	Capabilities []Capability
 }
+
+// StatusSegment represents a single key-value pair in a conduit's status
+// line, grouped by an opaque Zone string. Conduits define their own
+// rendering for zones; well-known zone names like "lifecycle" and
+// "context" are conventions, not enforced constants.
+type StatusSegment struct {
+	// Label is the property key, e.g. "phase" or "model".
+	Label string
+	// Value is the property value, e.g. "streaming" or "gpt-4o".
+	Value string
+	// Zone is an opaque grouping identifier, e.g. "lifecycle" or
+	// "context". The conduit interprets this string for rendering.
+	Zone string
+}
+
+// StatusFormatter maps a flat map[string]string status into structured
+// StatusSegment values. Each conduit (or application) provides a formatter
+// that assigns keys to semantic zones for priority-based rendering.
+type StatusFormatter func(map[string]string) []StatusSegment
