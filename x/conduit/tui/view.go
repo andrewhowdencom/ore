@@ -62,6 +62,9 @@ func renderBlock(label string, labelStyle lipgloss.Style, content string, width 
 	if width > 0 {
 		content = cellbuf.Wrap(content, width, " ")
 	}
+	if strings.HasPrefix(content, "\n") {
+		return styledLabel + content
+	}
 	return styledLabel + "\n" + content
 }
 
