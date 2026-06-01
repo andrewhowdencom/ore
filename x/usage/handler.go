@@ -8,7 +8,7 @@
 //
 // Example:
 //
-//	step := loop.New(loop.WithHandlers(usage.NewHandler(), otherHandler))
+//	step := loop.New(loop.WithHandlers(usage.New(), otherHandler))
 package usage
 
 import (

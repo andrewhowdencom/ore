@@ -103,7 +103,7 @@ func TestHandler_ZeroUsage(t *testing.T) {
 }
 
 func TestHandler_ConcurrentAccumulation(t *testing.T) {
-	h := NewHandler()
+	h := New()
 
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
