@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/provider"
@@ -365,7 +366,7 @@ func (s *Step) Submit(ctx context.Context, st state.State, role state.Role, arti
 // completes, registered handlers run on each artifact. It is the
 // shared post-processing pipeline used by both Turn() and Submit().
 func (s *Step) finalizeTurn(ctx context.Context, st state.State, role state.Role, artifacts []artifact.Artifact) (state.State, error) {
-	turn := state.Turn{Role: role, Artifacts: artifacts}
+	turn := state.Turn{Role: role, Artifacts: artifacts, Timestamp: time.Now()}
 	s.Emit(ctx, TurnCompleteEvent{Turn: turn, Ctx: s.eventContext})
 
 	for _, art := range artifacts {
