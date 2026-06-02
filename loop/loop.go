@@ -11,6 +11,8 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Transform modifies the state view presented to the provider during
@@ -147,6 +149,20 @@ func ProvenanceFrom(ctx context.Context) (string, bool) {
 	return name, ok
 }
 
+// threadIDKey is the typed context key for thread identity.
+type threadIDKey struct{}
+
+// WithThreadID attaches a thread ID to the context.
+func WithThreadID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, threadIDKey{}, id)
+}
+
+// ThreadIDFrom extracts the thread ID from a context, if present.
+func ThreadIDFrom(ctx context.Context) (string, bool) {
+	id, ok := ctx.Value(threadIDKey{}).(string)
+	return id, ok
+}
+
 // OnEmit is a synchronous callback invoked by Emit before the event is
 // forwarded to the async FanOut. OnEmit callbacks are blocking, ordered,
 // and zero-drop. They replace previous direct state.Append calls,
@@ -166,6 +182,7 @@ type Step struct {
 	onEmit       []OnEmit
 	invokeOpts   []provider.InvokeOption
 	eventContext context.Context
+	tracer       trace.Tracer
 }
 
 // New creates a Step with the given options.
@@ -272,6 +289,29 @@ func WithInvokeOptions(opts ...provider.InvokeOption) Option {
 	}
 }
 
+// WithTracer configures an OpenTelemetry tracer for the Step.
+// When configured, Turn and Submit create spans for each inference turn.
+func WithTracer(tracer trace.Tracer) Option {
+	return func(s *Step) {
+		s.tracer = tracer
+	}
+}
+
+// startSpan creates a "loop.turn" internal span when a tracer is configured.
+// It reads thread_id from the context and adds it as a span attribute.
+// Returns the span-attached context and a function that must be called to end
+// the span. If no tracer is configured, returns the input context and a no-op.
+func (s *Step) startSpan(ctx context.Context) (context.Context, func()) {
+	if s.tracer == nil {
+		return ctx, func() {}
+	}
+	ctx, span := s.tracer.Start(ctx, "loop.turn", trace.WithSpanKind(trace.SpanKindInternal))
+	if id, ok := ThreadIDFrom(ctx); ok {
+		span.SetAttributes(attribute.String("thread_id", id))
+	}
+	return ctx, func() { span.End() }
+}
+
 // Turn performs one inference turn with the given provider.
 // The provider emits artifacts to a channel; all artifacts are forwarded to
 // the Step's FanOut subscribers immediately as they arrive. Deltas implementing
@@ -283,6 +323,8 @@ func WithInvokeOptions(opts ...provider.InvokeOption) Option {
 // The operation is fully synchronous and blocking.
 func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, opts ...provider.InvokeOption) (state.State, error) {
 	defer s.clearEventContext()
+	ctx, endSpan := s.startSpan(ctx)
+	defer endSpan()
 	var err error
 
 	for _, tr := range s.transforms {
@@ -415,6 +457,8 @@ func enrichToolCalls(ctx context.Context, artifacts []artifact.Artifact, opts []
 // mechanism for user, system, or tool turns to enter the same artifact stream
 // as assistant responses from Turn().
 func (s *Step) Submit(ctx context.Context, st state.State, role state.Role, artifacts ...artifact.Artifact) (state.State, error) {
+	ctx, endSpan := s.startSpan(ctx)
+	defer endSpan()
 	return s.finalizeTurn(ctx, st, role, artifacts)
 }
 
