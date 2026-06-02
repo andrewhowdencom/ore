@@ -155,6 +155,7 @@ func run() error {
 	c, err := tui.New(mgr,
 		tui.WithName("tui-chat"),
 		tui.WithThreadID(threadID),
+		tui.WithTracer(tracer),
 		tui.WithStatusZones(map[string]string{
 			"phase":     "lifecycle",
 			"title":     "lifecycle",
