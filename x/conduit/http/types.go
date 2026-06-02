@@ -12,6 +12,8 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/state"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // artifactJSON is the JSON representation of any artifact type.
@@ -40,7 +42,8 @@ type turnJSON struct {
 
 // eventContextJSON is the JSON representation of an event context.Context.
 type eventContextJSON struct {
-	Provenance string `json:"provenance,omitempty"`
+	Provenance  string `json:"provenance,omitempty"`
+	Traceparent string `json:"traceparent,omitempty"`
 }
 
 // turnCompleteEventJSON is the JSON representation of a TurnCompleteEvent.
@@ -81,22 +84,42 @@ type lifecycleEventJSON struct {
 
 // eventContextToJSON converts a context.Context to a JSON DTO pointer.
 // Returns nil when the context carries no provenance so omitempty removes
-// it from JSON.
+// it from JSON. If the context carries an active span, the traceparent is
+// extracted via W3C TraceContext propagation and included in the DTO.
 func eventContextToJSON(ctx context.Context) *eventContextJSON {
 	p, ok := loop.ProvenanceFrom(ctx)
 	if !ok || p == "" {
 		return nil
 	}
-	return &eventContextJSON{Provenance: p}
+	dto := &eventContextJSON{Provenance: p}
+
+	if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
+		carrier := propagation.MapCarrier{}
+		propagator := propagation.TraceContext{}
+		propagator.Inject(ctx, carrier)
+		if tp := carrier.Get("traceparent"); tp != "" {
+			dto.Traceparent = tp
+		}
+	}
+
+	return dto
 }
 
 // eventContextFromJSON converts a JSON DTO pointer to a context.Context.
-// Returns nil when the pointer is nil.
+// Returns nil when the pointer is nil. If the DTO carries a traceparent,
+// it is injected into the returned context via W3C TraceContext propagation.
 func eventContextFromJSON(ctx *eventContextJSON) context.Context {
 	if ctx == nil {
 		return nil
 	}
-	return loop.WithProvenance(context.Background(), ctx.Provenance)
+	result := loop.WithProvenance(context.Background(), ctx.Provenance)
+	if ctx.Traceparent != "" {
+		carrier := propagation.MapCarrier{}
+		carrier.Set("traceparent", ctx.Traceparent)
+		propagator := propagation.TraceContext{}
+		result = propagator.Extract(result, carrier)
+	}
+	return result
 }
 
 // --- Marshal functions ---
