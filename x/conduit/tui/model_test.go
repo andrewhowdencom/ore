@@ -1588,3 +1588,76 @@ func TestModel_Update_MultipleDeltas_SingleTick(t *testing.T) {
 	require.Len(t, mm3.currentTurn.blocks, 1)
 	assert.Equal(t, "hello world!", mm3.currentTurn.blocks[0].source)
 }
+
+// TestModel_Update_AutoScrollLock_PreservesBottom tests that the viewport
+// auto-scroll lock (GotoBottom when AtBottom) is preserved across all
+// viewport-mutating handlers, not just turnMsg and renderTickMsg.
+// Regression test for ore#306.
+func TestModel_Update_AutoScrollLock_PreservesBottom(t *testing.T) {
+	// Helper: create a model with content tall enough to require scrolling.
+	mkModel := func() model {
+		m := newTestModel()
+		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
+		m.turns = []renderedTurn{
+			{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 200)}}},
+		}
+		m.viewport.SetContent(m.buildContent())
+		m.viewport.GotoBottom()
+		m.recalcLayout()
+		require.True(t, m.viewport.AtBottom(), "model should start at bottom")
+		return m
+	}
+
+	t.Run("lifecycleMsg submitted", func(t *testing.T) {
+		m := mkModel()
+		newM, _ := m.Update(lifecycleMsg{phase: "submitted"})
+		mm := newM.(*model)
+		assert.True(t, mm.viewport.AtBottom(), "lifecycleMsg submitted should preserve bottom lock")
+	})
+
+	t.Run("statusMsg", func(t *testing.T) {
+		m := mkModel()
+		newM, _ := m.Update(statusMsg{status: map[string]string{"foo": "bar"}})
+		mm := newM.(*model)
+		assert.True(t, mm.viewport.AtBottom(), "statusMsg should preserve bottom lock")
+	})
+
+	t.Run("errorMsg", func(t *testing.T) {
+		m := mkModel()
+		newM, _ := m.Update(errorMsg{err: errors.New("boom")})
+		mm := newM.(*model)
+		assert.True(t, mm.viewport.AtBottom(), "errorMsg should preserve bottom lock")
+	})
+
+	t.Run("clearPendingMsg", func(t *testing.T) {
+		m := mkModel()
+		m.pending = true // Simulate an in-flight assistant turn.
+		newM, _ := m.Update(clearPendingMsg{})
+		mm := newM.(*model)
+		assert.True(t, mm.viewport.AtBottom(), "clearPendingMsg should preserve bottom lock")
+	})
+
+	t.Run("KeyPressMsg Enter with input", func(t *testing.T) {
+		m := mkModel()
+		m.eventsCh = make(chan session.Event, 10)
+		m.textarea.SetValue("hello")
+		newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		mm := newM.(*model)
+		assert.True(t, mm.viewport.AtBottom(), "KeyEnter with input should preserve bottom lock")
+	})
+
+	t.Run("PasteMsg", func(t *testing.T) {
+		m := mkModel()
+		newM, _ := m.Update(tea.PasteMsg{Content: "pasted text"})
+		mm := newM.(*model)
+		assert.True(t, mm.viewport.AtBottom(), "PasteMsg should preserve bottom lock")
+	})
+
+	t.Run("WindowSizeMsg", func(t *testing.T) {
+		m := mkModel()
+		newM, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+		mm := newM.(*model)
+		assert.True(t, mm.viewport.AtBottom(), "WindowSizeMsg should preserve bottom lock")
+	})
+}
+
