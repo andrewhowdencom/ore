@@ -59,6 +59,21 @@ func WithReasoningEffort(effort string) provider.InvokeOption {
 	return reasoningEffortOption{effort: effort}
 }
 
+// maxTokensOption is a per-invocation option that sets the maximum number of
+// tokens the model may generate in the response.
+type maxTokensOption struct {
+	n int64
+}
+
+func (maxTokensOption) IsInvokeOption() {}
+
+// WithMaxTokens returns an InvokeOption that sets the max_tokens parameter for
+// a single provider invocation. This controls the maximum number of tokens the
+// model will generate in its response, independent of the context window size.
+func WithMaxTokens(n int64) provider.InvokeOption {
+	return maxTokensOption{n: n}
+}
+
 // config holds the build-time configuration for the Provider.
 type config struct {
 	apiKey     string
@@ -233,6 +248,7 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	var tools []tool.Tool
 	var temperature float64
 	var reasoningEffort string
+	var maxTokens int64
 	for _, opt := range opts {
 		if to, ok := opt.(provider.ToolsOption); ok {
 			tools = to.Tools(ctx, s)
@@ -242,6 +258,9 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		}
 		if re, ok := opt.(reasoningEffortOption); ok {
 			reasoningEffort = re.effort
+		}
+		if mto, ok := opt.(maxTokensOption); ok {
+			maxTokens = mto.n
 		}
 	}
 
@@ -258,6 +277,9 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	}
 	if reasoningEffort != "" {
 		params.ReasoningEffort = openai.ReasoningEffort(reasoningEffort)
+	}
+	if maxTokens > 0 {
+		params.MaxTokens = param.NewOpt(maxTokens)
 	}
 
 	stream := p.client.Chat.Completions.NewStreaming(ctx, params)

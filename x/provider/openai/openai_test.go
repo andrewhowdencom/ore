@@ -555,6 +555,52 @@ func TestProviderInvoke_WithTemperature(t *testing.T) {
 	assert.InDelta(t, 0.7, reqBody["temperature"], 0.001)
 }
 
+func TestProviderInvoke_WithMaxTokens(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(simpleSSE("ok")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	_ = p.Invoke(t.Context(), mem, ch, WithMaxTokens(12345))
+	close(ch)
+	for range ch {
+	}
+
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+	assert.Equal(t, float64(12345), reqBody["max_tokens"])
+}
+
+func TestProviderInvoke_WithoutMaxTokens(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(simpleSSE("ok")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	_ = p.Invoke(t.Context(), mem, ch)
+	close(ch)
+	for range ch {
+	}
+
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+	assert.NotContains(t, reqBody, "max_tokens")
+}
+
 func TestProviderInvoke_WithReasoningEffort(t *testing.T) {
 	tests := []struct {
 		name       string
