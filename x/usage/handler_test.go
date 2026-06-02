@@ -52,9 +52,9 @@ func TestHandler_AggregatesUsageAndEmitsProperties(t *testing.T) {
 	require.Len(t, e.events, 1)
 	pe, ok := e.events[0].(loop.PropertiesEvent)
 	require.True(t, ok)
-	assert.Equal(t, "100", pe.Properties["prompt_tokens"])
-	assert.Equal(t, "50", pe.Properties["completion_tokens"])
-	assert.Equal(t, "150", pe.Properties["total_tokens"])
+	assert.Equal(t, "100", pe.Properties["sent"])
+	assert.Equal(t, "50", pe.Properties["received"])
+	assert.Equal(t, "150", pe.Properties["total"])
 }
 
 func TestHandler_AccumulatesAcrossMultipleUsages(t *testing.T) {
@@ -75,9 +75,9 @@ func TestHandler_AccumulatesAcrossMultipleUsages(t *testing.T) {
 	require.Len(t, e.events, 3)
 
 	expected := []map[string]string{
-		{"prompt_tokens": "10", "completion_tokens": "5", "total_tokens": "15"},
-		{"prompt_tokens": "30", "completion_tokens": "15", "total_tokens": "45"},
-		{"prompt_tokens": "60", "completion_tokens": "30", "total_tokens": "90"},
+		{"sent": "10", "received": "5", "total": "15"},
+		{"sent": "30", "received": "15", "total": "45"},
+		{"sent": "60", "received": "30", "total": "90"},
 	}
 
 	for i, exp := range expected {
@@ -97,9 +97,9 @@ func TestHandler_ZeroUsage(t *testing.T) {
 	require.Len(t, e.events, 1)
 	pe, ok := e.events[0].(loop.PropertiesEvent)
 	require.True(t, ok)
-	assert.Equal(t, "0", pe.Properties["prompt_tokens"])
-	assert.Equal(t, "0", pe.Properties["completion_tokens"])
-	assert.Equal(t, "0", pe.Properties["total_tokens"])
+	assert.Equal(t, "0", pe.Properties["sent"])
+	assert.Equal(t, "0", pe.Properties["received"])
+	assert.Equal(t, "0", pe.Properties["total"])
 }
 
 func TestHandler_ConcurrentAccumulation(t *testing.T) {
@@ -130,7 +130,7 @@ func TestHandler_ConcurrentAccumulation(t *testing.T) {
 	require.Len(t, e.events, 1)
 
 	props := e.events[0].(loop.PropertiesEvent)
-	assert.Equal(t, "100", props.Properties["prompt_tokens"])
-	assert.Equal(t, "100", props.Properties["completion_tokens"])
-	assert.Equal(t, "200", props.Properties["total_tokens"])
+	assert.Equal(t, "100", props.Properties["sent"])
+	assert.Equal(t, "100", props.Properties["received"])
+	assert.Equal(t, "200", props.Properties["total"])
 }
