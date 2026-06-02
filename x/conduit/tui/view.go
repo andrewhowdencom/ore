@@ -242,8 +242,8 @@ func (m *model) buildContent() string {
 // buildStatusLine renders the status map into a single wrapped line using
 // "key: value · key: value" format with ANSI styling.
 //
-// Token-usage keys (prompt_tokens, completion_tokens, total_tokens) are
-// grouped into a single compact segment so the status bar is not flooded
+// Token-usage keys (sent, received, total) are grouped into a single compact
+// segment with display symbols (↑, ↓, Σ) so the status bar is not flooded
 // with three separate entries.
 //
 // It returns the rendered string and the number of display lines it
@@ -255,12 +255,20 @@ func buildStatusLine(status map[string]string, width int) (string, int) {
 
 	var parts []string
 
-	// Group token-usage keys into one segment.
+	// Group token-usage keys into one segment with display symbols.
 	var tokens []string
-	for _, key := range []string{"prompt_tokens", "completion_tokens", "total_tokens"} {
+	for _, key := range []string{"sent", "received", "total"} {
 		if v, ok := status[key]; ok && v != "" {
-			label := strings.TrimSuffix(key, "_tokens")
-			tokens = append(tokens, fmt.Sprintf("%s: %s", label, v))
+			var sym string
+			switch key {
+			case "sent":
+				sym = "↑"
+			case "received":
+				sym = "↓"
+			case "total":
+				sym = "Σ"
+			}
+			tokens = append(tokens, fmt.Sprintf("%s %s", sym, v))
 		}
 	}
 	if len(tokens) > 0 {
@@ -270,7 +278,7 @@ func buildStatusLine(status map[string]string, width int) (string, int) {
 	// Render remaining keys alphabetically.
 	var keys []string
 	for k := range status {
-		if k == "prompt_tokens" || k == "completion_tokens" || k == "total_tokens" {
+		if k == "sent" || k == "received" || k == "total" {
 			continue
 		}
 		keys = append(keys, k)
@@ -294,21 +302,26 @@ func buildStatusLine(status map[string]string, width int) (string, int) {
 	return wrapped, lines
 }
 
-// compactTokenSegments collapses prompt_tokens, completion_tokens, and
-// total_tokens into a single segment named "tokens" with a compact
-// "prompt: X · completion: Y · total: Z" value. Segments are sorted by
-// label for deterministic output.
+// compactTokenSegments collapses sent, received, and total into a single
+// segment named "tokens" with a compact "↑ X · ↓ Y · Σ Z" value.
+// Segments are sorted by label for deterministic output.
 func compactTokenSegments(segs []conduit.StatusSegment) []conduit.StatusSegment {
 	var values []string
 	var filtered []conduit.StatusSegment
 	for _, seg := range segs {
+		var sym string
 		switch seg.Label {
-		case "prompt_tokens", "completion_tokens", "total_tokens":
-			label := strings.TrimSuffix(seg.Label, "_tokens")
-			values = append(values, fmt.Sprintf("%s: %s", label, seg.Value))
+		case "sent":
+			sym = "↑"
+		case "received":
+			sym = "↓"
+		case "total":
+			sym = "Σ"
 		default:
 			filtered = append(filtered, seg)
+			continue
 		}
+		values = append(values, fmt.Sprintf("%s %s", sym, seg.Value))
 	}
 	if len(values) > 0 {
 		sort.Strings(values)
