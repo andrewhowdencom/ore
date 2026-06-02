@@ -19,6 +19,7 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type transportMode int
@@ -62,6 +63,7 @@ type SlackConduit struct {
 	socketModeClient socketModeClient
 	activeStreams    map[string]*session.Stream
 	streamsMu        sync.Mutex
+	tracer           trace.Tracer
 }
 
 // Option configures a SlackConduit.
@@ -86,6 +88,13 @@ func WithAppToken(token string) Option {
 func WithEventsAPI() Option {
 	return func(c *SlackConduit) {
 		c.mode = modeEventsAPI
+	}
+}
+
+// WithTracer configures an OpenTelemetry tracer for the Slack conduit.
+func WithTracer(tracer trace.Tracer) Option {
+	return func(c *SlackConduit) {
+		c.tracer = tracer
 	}
 }
 
