@@ -149,7 +149,7 @@ func (t *TUI) Start(ctx context.Context) error {
 	ta := textarea.New()
 	ta.ShowLineNumbers = false
 	ta.Prompt = "> "
-	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("shift+enter"))
+	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("shift+enter", "ctrl+j"))
 	ta.DynamicHeight = true
 	ta.MinHeight = 1
 	ta.Focus()

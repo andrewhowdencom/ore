@@ -539,6 +539,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
+		// Ctrl+J — alternative newline insertion for terminals where Shift+Enter
+		// is not available or not passed through.
+		if msg.Key().Code == 'j' && msg.Key().Mod.Contains(tea.ModCtrl) {
+			var cmd tea.Cmd
+			m.textarea, cmd = m.textarea.Update(msg)
+			m.recalcLayout()
+			return m, cmd
+		}
+
 		// Space
 		if msg.Key().Code == tea.KeySpace {
 			var cmd tea.Cmd
