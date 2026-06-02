@@ -26,7 +26,7 @@ func newTestModel() model {
 	ta := textarea.New()
 	ta.ShowLineNumbers = false
 	ta.Prompt = "> "
-	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("shift+enter"))
+	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("shift+enter", "ctrl+j"))
 	ta.DynamicHeight = true
 	ta.MinHeight = 1
 	ta.Focus()
@@ -771,6 +771,53 @@ func TestModel_Update_ShiftEnter_DoesNotEmitEvent(t *testing.T) {
 	select {
 	case <-eventsCh:
 		t.Fatal("Shift+Enter should not emit a UserMessageEvent")
+	default:
+	}
+}
+
+func TestModel_Update_CtrlJ_InsertsNewline(t *testing.T) {
+	m := newTestModel()
+	m.textarea.SetValue("hello")
+	m.recalcLayout()
+
+	newM, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
+	mm := newM.(*model)
+
+	assert.Contains(t, mm.textarea.Value(), "\n")
+}
+
+func TestModel_Update_CtrlJ_DoesNotEmitEvent(t *testing.T) {
+	eventsCh := make(chan session.Event, 10)
+	m := newTestModel()
+	m.eventsCh = eventsCh
+	m.textarea.SetValue("hello")
+	m.recalcLayout()
+
+	newM, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
+	mm := newM.(*model)
+
+	assert.Contains(t, mm.textarea.Value(), "\n")
+
+	select {
+	case <-eventsCh:
+		t.Fatal("Ctrl+J should not emit a UserMessageEvent")
+	default:
+	}
+}
+
+func TestModel_Update_CtrlJ_EmptyTextarea(t *testing.T) {
+	eventsCh := make(chan session.Event, 10)
+	m := newTestModel()
+	m.eventsCh = eventsCh
+
+	newM, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
+	mm := newM.(*model)
+
+	assert.Equal(t, "\n", mm.textarea.Value())
+
+	select {
+	case <-eventsCh:
+		t.Fatal("Ctrl+J on empty textarea should not emit event")
 	default:
 	}
 }

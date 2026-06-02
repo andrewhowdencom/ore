@@ -37,6 +37,7 @@ a terminal multiplexer.
 | `Ctrl+O` | Toggle expansion of the latest assistant turn's details — tool calls and reasoning (compact by default; resets after each new turn) |
 | `Ctrl+C` | Quit |
 | `Shift+Enter` | Insert newline in the input box |
+| `Ctrl+J`      | Insert newline (alternative for terminals that don't pass Shift+Enter) |
 
 ## Design
 
