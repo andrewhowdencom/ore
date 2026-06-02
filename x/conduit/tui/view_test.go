@@ -568,21 +568,22 @@ func TestBuildContent_ExpandLatestTools_Toggle(t *testing.T) {
 		},
 	}
 
-	// Compact mode (default): single-line with arrow indicator.
+	// Compact mode (default): blocks wrapped in toolBlockStyle, no arrows.
 	m.expandLatestDetails = false
 	compactOutput := m.buildContent()
-	assert.Contains(t, compactOutput, "→ search_files")
-	assert.NotContains(t, compactOutput, "Calling: search_files")
-	assert.Contains(t, compactOutput, "← result data")
+	assert.Contains(t, compactOutput, "search_files")
+	assert.NotContains(t, compactOutput, "→")
+	assert.Contains(t, compactOutput, "result data")
+	assert.NotContains(t, compactOutput, "←")
 
-	// Expanded mode: two-line label+content layout.
+	// Expanded mode: shows full source content.
 	m.expandLatestDetails = true
 	m.contentDirty = true
 	expandedOutput := m.buildContent()
 	assert.Contains(t, expandedOutput, "Calling: search_files")
-	assert.NotContains(t, expandedOutput, "→ search_files")
-	assert.Contains(t, expandedOutput, "Tool: ")
+	assert.NotContains(t, expandedOutput, "→")
 	assert.Contains(t, expandedOutput, "result data")
+	assert.NotContains(t, expandedOutput, "←")
 }
 
 func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
@@ -608,18 +609,18 @@ func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
 		},
 	}
 
-	// Compact mode: red styling for errors via compactToolErrorStyle.
+	// Compact mode: error block should be wrapped in toolErrorBlockStyle.
 	m.expandLatestDetails = false
 	output := m.buildContent()
-	expectedCompact := compactToolErrorStyle.Render("← Error: failed")
-	assert.Contains(t, output, expectedCompact)
+	assert.Contains(t, output, "Error: failed")
+	assert.NotContains(t, output, "←")
 
-	// Expanded mode: red label styling for errors via toolErrorStyle.
+	// Expanded mode: error block should be wrapped in toolErrorBlockStyle.
 	m.expandLatestDetails = true
 	m.contentDirty = true
 	output = m.buildContent()
-	assert.Contains(t, output, toolErrorStyle.Render("Tool: "))
 	assert.Contains(t, output, "Error: failed")
+	assert.NotContains(t, output, "Tool: ") // no old label prefix
 }
 
 func TestBuildContent_MultipleToolCalls(t *testing.T) {
@@ -643,23 +644,27 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 		},
 	}
 
-	// Compact mode
+	// Compact mode: blocks wrapped in toolBlockStyle, no arrows.
 	m.expandLatestDetails = false
 	output := m.buildContent()
-	assert.Contains(t, output, "→ foo")
-	assert.Contains(t, output, "→ bar")
-	assert.Contains(t, output, "← result1")
-	assert.Contains(t, output, "← result2")
+	assert.Contains(t, output, "foo")
+	assert.Contains(t, output, "bar")
+	assert.Contains(t, output, "result1")
+	assert.Contains(t, output, "result2")
+	assert.NotContains(t, output, "→")
+	assert.NotContains(t, output, "←")
 
-	// Expanded mode
+	// Expanded mode: shows full source content.
 	m.expandLatestDetails = true
 	m.contentDirty = true
 	output = m.buildContent()
 	assert.Contains(t, output, "Calling: foo({})")
 	assert.Contains(t, output, "Calling: bar({})")
-	assert.Contains(t, output, "Tool: ")
 	assert.Contains(t, output, "result1")
 	assert.Contains(t, output, "result2")
+	assert.NotContains(t, output, "→")
+	assert.NotContains(t, output, "←")
+	assert.NotContains(t, output, "Tool: ")
 }
 
 func TestBuildContent_MixedBlocks(t *testing.T) {
@@ -696,7 +701,7 @@ func TestBuildContent_MixedBlocks(t *testing.T) {
 	idxFoo := strings.Index(output, "Calling: foo({})")
 	idxThink := strings.Index(output, "Thinking: ")
 	idxOutro := strings.Index(output, "outro")
-	idxResult := strings.Index(output, "Tool: ")
+	idxResult := strings.Index(output, "result")
 
 	require.GreaterOrEqual(t, idxIntro, 0, "intro should be found")
 	require.GreaterOrEqual(t, idxFoo, 0, "foo should be found")
@@ -738,7 +743,7 @@ func TestBuildContent_ToggleNoToolBlocks(t *testing.T) {
 	assert.NotContains(t, output, "←")
 }
 
-func TestBuildContent_CompactToolCall_AmberStyling(t *testing.T) {
+func TestBuildContent_CompactToolCall_BlockStyling(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 
@@ -753,8 +758,8 @@ func TestBuildContent_CompactToolCall_AmberStyling(t *testing.T) {
 
 	m.expandLatestDetails = false
 	output := m.buildContent()
-	expected := compactToolCallStyle.Render("→ foo")
-	assert.Contains(t, output, expected)
+	assert.Contains(t, output, "foo")
+	assert.NotContains(t, output, "→") // arrow prefix removed
 }
 
 func TestModel_View_MixedArtifacts_Rendered(t *testing.T) {
@@ -778,28 +783,29 @@ func TestModel_View_MixedArtifacts_Rendered(t *testing.T) {
 	assert.Contains(t, output, "Assistant: ")
 	assert.Contains(t, output, "rendered")   // text block
 	assert.Contains(t, output, "Thinking · 5 Chars") // reasoning is completed (not last block)
-	assert.Contains(t, output, "→")          // tool_call compact arrow
+	assert.NotContains(t, output, "→")          // arrow prefix removed
 }
 
 func TestModel_View_IncrementalToolCall_CompactAndExpanded(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.md = mockMarkdownRenderer{output: "rendered"}
 
 	// Simulate incremental artifact event arriving before TurnCompleteEvent.
 	newM, _ := m.Update(artifactMsg{artifact: artifact.ToolCall{Name: "foo", Arguments: "{}"}})
 	mm := newM.(*model)
 	mm.syncViewport()
 	output1 := mm.View().Content
-	assert.Contains(t, output1, "→")               // compact arrow
-	assert.NotContains(t, output1, "Calling: foo({})") // full source hidden
+	assert.Contains(t, output1, "foo")  // compact content shown in styled block
+	assert.NotContains(t, output1, "→") // no arrow prefix
 
 	// Toggle expanded.
 	mm.expandLatestDetails = true
 	mm.contentDirty = true
 	mm.syncViewport()
 	output2 := mm.View().Content
-	assert.Contains(t, output2, "Calling: foo({})") // full source visible
-	assert.NotContains(t, output2, "→")               // compact arrow gone
+	assert.Contains(t, output2, "rendered") // rendered content shown in styled block
+	assert.NotContains(t, output2, "→")       // no arrow prefix
 }
 
 func TestModel_View_IncrementalReasoning_ExpandCollapse(t *testing.T) {
