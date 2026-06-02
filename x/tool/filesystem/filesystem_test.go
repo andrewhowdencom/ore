@@ -154,21 +154,25 @@ func TestWriteFile_NestedPath(t *testing.T) {
 	assert.Equal(t, "nested content", string(data))
 }
 
-func TestWriteFile_AlreadyExists(t *testing.T) {
+func TestWriteFile_Overwrites(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	p := filepath.Join(dir, "exists.txt")
 	require.NoError(t, os.WriteFile(p, []byte("existing"), 0o644))
 
-	_, err := WriteFile(context.Background(), nil, map[string]any{
+	result, err := WriteFile(context.Background(), nil, map[string]any{
 		"path":    p,
 		"content": "new content",
 	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "already exists")
+	require.NoError(t, err)
+	assert.Contains(t, result.(string), "wrote")
+
+	data, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "new content", string(data))
 }
 
-func TestWriteFile_DirectoryExists(t *testing.T) {
+func TestWriteFile_DirectoryAtPath(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	p := filepath.Join(dir, "subdir")
@@ -178,8 +182,7 @@ func TestWriteFile_DirectoryExists(t *testing.T) {
 		"path":    p,
 		"content": "should fail",
 	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "already exists")
+	require.Error(t, err) // os.WriteFile on a directory returns an error
 }
 
 func TestWriteFile_EmptyPath(t *testing.T) {
