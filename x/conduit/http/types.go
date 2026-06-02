@@ -4,6 +4,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -37,7 +38,7 @@ type turnJSON struct {
 	Timestamp string         `json:"timestamp,omitempty"`
 }
 
-// eventContextJSON is the JSON representation of an EventContext.
+// eventContextJSON is the JSON representation of an event context.Context.
 type eventContextJSON struct {
 	Provenance string `json:"provenance,omitempty"`
 }
@@ -78,22 +79,24 @@ type lifecycleEventJSON struct {
 	Context *eventContextJSON `json:"context,omitempty"`
 }
 
-// eventContextToJSON converts a loop.EventContext to a JSON DTO pointer.
-// Returns nil when the context is empty so omitempty removes it from JSON.
-func eventContextToJSON(ctx loop.EventContext) *eventContextJSON {
-	if ctx.Provenance == "" {
+// eventContextToJSON converts a context.Context to a JSON DTO pointer.
+// Returns nil when the context carries no provenance so omitempty removes
+// it from JSON.
+func eventContextToJSON(ctx context.Context) *eventContextJSON {
+	p, ok := loop.ProvenanceFrom(ctx)
+	if !ok || p == "" {
 		return nil
 	}
-	return &eventContextJSON{Provenance: ctx.Provenance}
+	return &eventContextJSON{Provenance: p}
 }
 
-// eventContextFromJSON converts a JSON DTO pointer to a loop.EventContext.
-// Returns an empty EventContext when the pointer is nil.
-func eventContextFromJSON(ctx *eventContextJSON) loop.EventContext {
+// eventContextFromJSON converts a JSON DTO pointer to a context.Context.
+// Returns nil when the pointer is nil.
+func eventContextFromJSON(ctx *eventContextJSON) context.Context {
 	if ctx == nil {
-		return loop.EventContext{}
+		return nil
 	}
-	return loop.EventContext{Provenance: ctx.Provenance}
+	return loop.WithProvenance(context.Background(), ctx.Provenance)
 }
 
 // --- Marshal functions ---

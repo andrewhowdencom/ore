@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -316,7 +317,7 @@ func TestMarshalOutputEvent(t *testing.T) {
 		},
 		{
 			name:  "lifecycle_with_context",
-			event: loop.LifecycleEvent{Phase: "done", Ctx: loop.EventContext{Provenance: "http"}},
+			event: loop.LifecycleEvent{Phase: "done", Ctx: loop.WithProvenance(context.Background(), "http")},
 			want:  `{"kind":"lifecycle","phase":"done","context":{"provenance":"http"}}`,
 		},
 	}
@@ -405,7 +406,7 @@ func TestUnmarshalOutputEvent(t *testing.T) {
 		{
 			name:  "lifecycle_with_context",
 			input: `{"kind":"lifecycle","phase":"done","context":{"provenance":"http"}}`,
-			want:  loop.LifecycleEvent{Phase: "done", Ctx: loop.EventContext{Provenance: "http"}},
+			want:  loop.LifecycleEvent{Phase: "done", Ctx: loop.WithProvenance(context.Background(), "http")},
 		},
 		{
 			name:    "unknown_kind",
@@ -437,7 +438,7 @@ func TestRoundTrip_OutputEvent(t *testing.T) {
 		loop.ArtifactEvent{Artifact: artifact.ToolCall{ID: "1", Name: "calc", Arguments: `{"a":1}`}},
 		loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc", "state": "ready"}},
 		loop.LifecycleEvent{Phase: "submitted"},
-		loop.LifecycleEvent{Phase: "done", Ctx: loop.EventContext{Provenance: "http"}},
+		loop.LifecycleEvent{Phase: "done", Ctx: loop.WithProvenance(context.Background(), "http")},
 	}
 
 	for _, event := range events {
@@ -460,27 +461,27 @@ func TestMarshalOutputEvent_WithContext(t *testing.T) {
 	}{
 		{
 			name:  "turn_complete_with_context",
-			event: loop.TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}, Ctx: loop.EventContext{Provenance: "http"}},
+			event: loop.TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}, Ctx: loop.WithProvenance(context.Background(), "http")},
 			want:  `{"kind":"turn_complete","turn":{"role":"assistant","artifacts":[{"kind":"text","content":"hello"}]},"context":{"provenance":"http"}}`,
 		},
 		{
 			name:  "error_with_context",
-			event: loop.ErrorEvent{Err: errors.New("boom"), Ctx: loop.EventContext{Provenance: "tui"}},
+			event: loop.ErrorEvent{Err: errors.New("boom"), Ctx: loop.WithProvenance(context.Background(), "tui")},
 			want:  `{"kind":"error","message":"boom","context":{"provenance":"tui"}}`,
 		},
 		{
 			name:  "lifecycle_done_with_context",
-			event: loop.LifecycleEvent{Phase: "done", Ctx: loop.EventContext{Provenance: "http"}},
+			event: loop.LifecycleEvent{Phase: "done", Ctx: loop.WithProvenance(context.Background(), "http")},
 			want:  `{"kind":"lifecycle","phase":"done","context":{"provenance":"http"}}`,
 		},
 		{
 			name:  "text_artifact_with_context",
-			event: loop.ArtifactEvent{Artifact: artifact.Text{Content: "hello"}, Ctx: loop.EventContext{Provenance: "http"}},
+			event: loop.ArtifactEvent{Artifact: artifact.Text{Content: "hello"}, Ctx: loop.WithProvenance(context.Background(), "http")},
 			want:  `{"kind":"text","content":"hello","context":{"provenance":"http"}}`,
 		},
 		{
 			name:  "status_with_context",
-			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}, Ctx: loop.EventContext{Provenance: "http"}},
+			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}, Ctx: loop.WithProvenance(context.Background(), "http")},
 			want:  `{"kind":"properties","properties":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
 		},
 	}
@@ -507,27 +508,27 @@ func TestUnmarshalOutputEvent_WithContext(t *testing.T) {
 		{
 			name:  "turn_complete_with_context",
 			input: `{"kind":"turn_complete","turn":{"role":"assistant","artifacts":[{"kind":"text","content":"hello"}]},"context":{"provenance":"http"}}`,
-			want:  loop.TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}, Ctx: loop.EventContext{Provenance: "http"}},
+			want:  loop.TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}, Ctx: loop.WithProvenance(context.Background(), "http")},
 		},
 		{
 			name:  "error_with_context",
 			input: `{"kind":"error","message":"boom","context":{"provenance":"tui"}}`,
-			want:  loop.ErrorEvent{Err: errors.New("boom"), Ctx: loop.EventContext{Provenance: "tui"}},
+			want:  loop.ErrorEvent{Err: errors.New("boom"), Ctx: loop.WithProvenance(context.Background(), "tui")},
 		},
 		{
 			name:  "lifecycle_done_with_context",
 			input: `{"kind":"lifecycle","phase":"done","context":{"provenance":"http"}}`,
-			want:  loop.LifecycleEvent{Phase: "done", Ctx: loop.EventContext{Provenance: "http"}},
+			want:  loop.LifecycleEvent{Phase: "done", Ctx: loop.WithProvenance(context.Background(), "http")},
 		},
 		{
 			name:  "text_artifact_with_context",
 			input: `{"kind":"text","content":"hello","context":{"provenance":"http"}}`,
-			want:  loop.ArtifactEvent{Artifact: artifact.Text{Content: "hello"}, Ctx: loop.EventContext{Provenance: "http"}},
+			want:  loop.ArtifactEvent{Artifact: artifact.Text{Content: "hello"}, Ctx: loop.WithProvenance(context.Background(), "http")},
 		},
 		{
 			name:  "status_with_context",
 			input: `{"kind":"properties","properties":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
-			want:  loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}, Ctx: loop.EventContext{Provenance: "http"}},
+			want:  loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}, Ctx: loop.WithProvenance(context.Background(), "http")},
 		},
 	}
 
@@ -549,7 +550,7 @@ func TestMarshalOutputEvent_UnsupportedKind(t *testing.T) {
 type bogusOutputEvent struct{}
 
 func (b *bogusOutputEvent) Kind() string              { return "bogus" }
-func (b *bogusOutputEvent) Context() loop.EventContext { return loop.EventContext{} }
+func (b *bogusOutputEvent) Context() context.Context { return context.Background() }
 
 func TestMarshalOutputEvent_OmitEmptyContext(t *testing.T) {
 	data, err := MarshalOutputEvent(loop.TurnCompleteEvent{
@@ -566,11 +567,11 @@ func TestMarshalOutputEvent_OmitEmptyContext(t *testing.T) {
 // json.Marshaler, verifying the MarshalOutputEvent fallback path.
 type customMarshalerEvent struct {
 	Value string
-	Ctx   loop.EventContext
+	Ctx   context.Context
 }
 
 func (c *customMarshalerEvent) Kind() string              { return "custom_marshaler" }
-func (c *customMarshalerEvent) Context() loop.EventContext { return c.Ctx }
+func (c *customMarshalerEvent) Context() context.Context { return c.Ctx }
 func (c *customMarshalerEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]interface{}{
 		"kind":  c.Kind(),
@@ -623,7 +624,7 @@ func TestRoundTrip_PropertiesEvent(t *testing.T) {
 		},
 		{
 			name:  "with_context",
-			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}, Ctx: loop.EventContext{Provenance: "http"}},
+			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}, Ctx: loop.WithProvenance(context.Background(), "http")},
 			want:  `{"kind":"properties","properties":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
 		},
 	}
@@ -664,7 +665,7 @@ func TestRoundTrip_LifecycleEvent(t *testing.T) {
 		},
 		{
 			name:  "with_context",
-			event: loop.LifecycleEvent{Phase: "done", Ctx: loop.EventContext{Provenance: "http"}},
+			event: loop.LifecycleEvent{Phase: "done", Ctx: loop.WithProvenance(context.Background(), "http")},
 			want:  `{"kind":"lifecycle","phase":"done","context":{"provenance":"http"}}`,
 		},
 	}
