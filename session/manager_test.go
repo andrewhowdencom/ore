@@ -18,6 +18,11 @@ import (
 // drainWithClose starts a goroutine that reads all events from ch, then calls
 // closeFn to close the source channel, and waits up to 2s for the drain to
 // complete. It fails the test if the drain times out.
+func provenance(ctx context.Context) string {
+	p, _ := loop.ProvenanceFrom(ctx)
+	return p
+}
+
 func drainWithClose(t *testing.T, ch <-chan loop.OutputEvent, closeFn func()) []loop.OutputEvent {
 	t.Helper()
 	var events []loop.OutputEvent
@@ -358,7 +363,7 @@ type unsupportedEvent struct{}
 
 func (e *unsupportedEvent) Kind() string { return "unsupported" }
 
-func (e *unsupportedEvent) Context() loop.EventContext { return loop.EventContext{} }
+func (e *unsupportedEvent) Context() context.Context { return context.Background() }
 
 func TestManager_Process_UnsupportedEvent(t *testing.T) {
 	store := NewMemoryStore()
@@ -1235,7 +1240,7 @@ func TestManager_RegisterSink_ContextEchoSuppression(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 		if tc, ok := event.(loop.TurnCompleteEvent); ok {
-			provenances = append(provenances, tc.Ctx.Provenance)
+			provenances = append(provenances, provenance(tc.Ctx))
 		}
 	})
 	defer unregister()
@@ -1243,7 +1248,7 @@ func TestManager_RegisterSink_ContextEchoSuppression(t *testing.T) {
 	stream, err := mgr.Create()
 	require.NoError(t, err)
 
-	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi", Ctx: loop.EventContext{Provenance: "test-provenance"}})
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi", Ctx: loop.WithProvenance(context.Background(), "test-provenance")})
 	require.NoError(t, err)
 
 	// Wait for events to propagate through the forwarding goroutine.

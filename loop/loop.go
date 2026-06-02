@@ -24,21 +24,16 @@ type Transform interface {
 	Transform(ctx context.Context, st state.State) (state.State, error)
 }
 
-// EventContext carries metadata for an event, analogous to context.Context.
-// It travels with an event through the event stream so subscribers can
-// access routing metadata (provenance, trace IDs, etc.) uniformly.
-type EventContext struct {
-	Provenance string
-}
+
 
 // OutputEvent represents any event emitted by a Step.
-// All output events carry an EventContext so subscribers can access
+// All output events carry a context.Context so subscribers can access
 // routing metadata uniformly. Events include wrapped artifacts
 // (ArtifactEvent), turn completions (TurnCompleteEvent), and errors
 // (ErrorEvent).
 type OutputEvent interface {
 	Kind() string
-	Context() EventContext
+	Context() context.Context
 }
 
 // TurnCompleteEvent is emitted when a turn (assistant, user, system, or
@@ -50,14 +45,14 @@ type TurnCompleteEvent struct {
 
 	// Ctx carries routing metadata for the event, such as provenance
 	// information for echo suppression.
-	Ctx EventContext
+	Ctx context.Context
 }
 
 // Kind returns the event kind identifier.
 func (e TurnCompleteEvent) Kind() string { return "turn_complete" }
 
 // Context returns the event context.
-func (e TurnCompleteEvent) Context() EventContext { return e.Ctx }
+func (e TurnCompleteEvent) Context() context.Context { return e.Ctx }
 
 // ErrorEvent is emitted when a turn fails due to a provider or handler error.
 type ErrorEvent struct {
@@ -65,14 +60,14 @@ type ErrorEvent struct {
 
 	// Ctx carries routing metadata for the event, such as provenance
 	// information for echo suppression.
-	Ctx EventContext
+	Ctx context.Context
 }
 
 // Kind returns the event kind identifier.
 func (e ErrorEvent) Kind() string { return "error" }
 
 // Context returns the event context.
-func (e ErrorEvent) Context() EventContext { return e.Ctx }
+func (e ErrorEvent) Context() context.Context { return e.Ctx }
 
 // LifecycleEvent is emitted at structural boundaries of a single inference
 // turn to signal phase transitions. Phases are linear per-pipeline:
@@ -84,16 +79,16 @@ type LifecycleEvent struct {
 
 	// Ctx carries routing metadata for the event, such as provenance
 	// information for echo suppression.
-	Ctx EventContext
+	Ctx context.Context
 }
 
 // Kind returns the event kind identifier.
 func (e LifecycleEvent) Kind() string { return "lifecycle" }
 
 // Context returns the event context.
-func (e LifecycleEvent) Context() EventContext { return e.Ctx }
+func (e LifecycleEvent) Context() context.Context { return e.Ctx }
 
-// ArtifactEvent wraps an artifact.Artifact with an EventContext so it
+// ArtifactEvent wraps an artifact.Artifact with a context.Context so it
 // can be emitted as an OutputEvent without polluting the artifact type
 // with routing metadata.
 type ArtifactEvent struct {
@@ -101,14 +96,14 @@ type ArtifactEvent struct {
 
 	// Ctx carries routing metadata for the event, such as provenance
 	// information for echo suppression.
-	Ctx EventContext
+	Ctx context.Context
 }
 
 // Kind returns the underlying artifact's kind.
 func (e ArtifactEvent) Kind() string { return e.Artifact.Kind() }
 
 // Context returns the event context.
-func (e ArtifactEvent) Context() EventContext { return e.Ctx }
+func (e ArtifactEvent) Context() context.Context { return e.Ctx }
 
 // PropertiesEvent carries ambient, persistent metadata as a map of
 // key-value pairs. It is emitted by any producer holding a
@@ -119,20 +114,37 @@ type PropertiesEvent struct {
 
 	// Ctx carries routing metadata for the event, such as provenance
 	// information for echo suppression.
-	Ctx EventContext
+	Ctx context.Context
 }
 
 // Kind returns the event kind identifier.
 func (e PropertiesEvent) Kind() string { return "properties" }
 
 // Context returns the event context.
-func (e PropertiesEvent) Context() EventContext { return e.Ctx }
+func (e PropertiesEvent) Context() context.Context { return e.Ctx }
 
 // outputEventEnvelope wraps an OutputEvent with an acknowledgment channel.
 // The producer blocks until the FanOut closes done after delivering the event.
 type outputEventEnvelope struct {
 	event OutputEvent
 	done  chan struct{}
+}
+
+// provenanceKey is the typed context key for provenance metadata.
+type provenanceKey struct{}
+
+// WithProvenance attaches a provenance name to the context.
+func WithProvenance(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, provenanceKey{}, name)
+}
+
+// ProvenanceFrom extracts the provenance name from a context, if present.
+func ProvenanceFrom(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
+	}
+	name, ok := ctx.Value(provenanceKey{}).(string)
+	return name, ok
 }
 
 // OnEmit is a synchronous callback invoked by Emit before the event is
@@ -153,7 +165,7 @@ type Step struct {
 	handlers     []Handler
 	onEmit       []OnEmit
 	invokeOpts   []provider.InvokeOption
-	eventContext EventContext
+	eventContext context.Context
 }
 
 // New creates a Step with the given options.
@@ -195,20 +207,24 @@ func (s *Step) Subscribe(kinds ...string) <-chan OutputEvent {
 	return s.fanOut.Subscribe(kinds...)
 }
 
-// SetEventContext sets the EventContext that will be attached to all
+// SetEventContext sets the context.Context that will be attached to all
 // subsequent output events emitted by this Step. It is used by
 // Stream.Process to thread context from the input event through the
 // turn pipeline. Callers must ensure this is called before Turn or
 // Submit and cleared after (typically via defer).
-func (s *Step) SetEventContext(ctx EventContext) {
-	s.eventContext = ctx
+func (s *Step) SetEventContext(ctx context.Context) {
+	if ctx != nil {
+		s.eventContext = context.WithoutCancel(ctx)
+	} else {
+		s.eventContext = nil
+	}
 }
 
-// clearEventContext resets the EventContext on the Step to its zero
-// value. It is the counterpart to SetEventContext and is invoked via
+// clearEventContext resets the context.Context on the Step to nil.
+// It is the counterpart to SetEventContext and is invoked via
 // defer in Turn and Submit to prevent context leakage between calls.
 func (s *Step) clearEventContext() {
-	s.eventContext = EventContext{}
+	s.eventContext = nil
 }
 
 // Close stops the Step's FanOut and closes all subscriber channels.
