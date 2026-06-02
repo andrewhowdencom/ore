@@ -167,7 +167,11 @@ func (c *SlackConduit) Start(ctx context.Context) error {
 	// Register sink for turn_complete events from Slack-originated threads.
 	sink := func(streamID string, event loop.OutputEvent) {
 		tc, ok := event.(loop.TurnCompleteEvent)
-		if !ok || tc.Turn.Role != state.RoleAssistant || tc.Ctx.Provenance != "slack" {
+		if !ok || tc.Turn.Role != state.RoleAssistant {
+			return
+		}
+		p, _ := loop.ProvenanceFrom(tc.Ctx)
+		if p != "slack" {
 			return
 		}
 		stream, err := c.mgr.Get(streamID)

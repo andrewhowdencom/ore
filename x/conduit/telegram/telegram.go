@@ -103,7 +103,7 @@ func (c *telegramConduit) Start(ctx context.Context) error {
 
 	// Register sink for turn_complete events from all streams.
 	cleanup := c.mgr.RegisterSink([]string{"turn_complete"}, func(streamID string, event loop.OutputEvent) {
-		if event.Context().Provenance != "telegram" {
+		if p, _ := loop.ProvenanceFrom(event.Context()); p != "telegram" {
 			return
 		}
 
@@ -190,7 +190,7 @@ func (c *telegramConduit) poll(ctx context.Context, botUserID int64) {
 
 			event := session.UserMessageEvent{
 				Content: update.Message.Text,
-				Ctx:     loop.EventContext{Provenance: "telegram"},
+				Ctx:     loop.WithProvenance(context.Background(), "telegram"),
 			}
 			if err := stream.Submit(event); err != nil {
 				slog.Error("telegram: submit event failed", "chat_id", chatIDStr, "err", err)
