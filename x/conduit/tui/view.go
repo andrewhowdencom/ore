@@ -27,20 +27,19 @@ var (
 	// expanded, making it visually subdued so it does not look like normal
 	// assistant text.
 	reasoningExpandedStyle = lipgloss.NewStyle().Faint(true)
-	// toolCallStyle styles tool call notifications faint and italic.
-	toolCallStyle = lipgloss.NewStyle().Faint(true).Italic(true)
-	// toolErrorStyle styles tool error output in red.
-	toolErrorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
-	// compactToolCallStyle styles compact tool call lines in amber.
-	compactToolCallStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#D19A66"))
-	// compactToolResultStyle styles compact tool result lines in muted green.
-	compactToolResultStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#7EC699"))
-	// compactToolErrorStyle styles compact tool error lines in red.
-	compactToolErrorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
 	// errorStyle styles error turns from the harness in red.
 	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
 	// zoneLabelStyle styles zone names (Lifecycle, Context) bold in the status bar.
 	zoneLabelStyle = lipgloss.NewStyle().Bold(true)
+	// toolBlockStyle wraps tool execution blocks with a subtle background to
+	// visually delimit them from assistant prose.
+	toolBlockStyle = lipgloss.NewStyle().Background(lipgloss.Color("#2C2C2C")).Padding(0, 1)
+	// toolErrorBlockStyle signals a failed tool execution with a red left border.
+	toolErrorBlockStyle = lipgloss.NewStyle().
+				Background(lipgloss.Color("#2C2C2C")).
+				Border(lipgloss.NormalBorder(), false, false, false, true).
+				BorderForeground(lipgloss.Color("#FF5555")).
+				Padding(0, 1)
 )
 
 // formatTurnLabel builds a label string "hh:mm:ss Role: " for a rendered turn.
@@ -134,13 +133,13 @@ func (m *model) buildContent() string {
 					isExpanded := isLatestAssistant && m.expandLatestDetails
 					content := block.compact
 					if content == "" || isExpanded {
-						content = block.source
+						if block.rendered != "" {
+							content = block.rendered
+						} else {
+							content = block.source
+						}
 					}
-					if block.compact != "" && !isExpanded {
-						b.WriteString(compactToolCallStyle.Render("→ " + content))
-					} else {
-						b.WriteString(renderBlock(formatTurnLabel("Assistant", turn.timestamp), toolCallStyle, content, width))
-					}
+					b.WriteString(toolBlockStyle.Render(content))
 				}
 				if i < len(turn.blocks)-1 {
 					b.WriteString("\n\n")
@@ -155,20 +154,17 @@ func (m *model) buildContent() string {
 					isExpanded := isAfterLatestAssistant && m.expandLatestDetails
 					content := block.compact
 					if content == "" || isExpanded {
-						content = block.source
-					}
-					if block.compact != "" && !isExpanded {
-						if strings.HasPrefix(block.source, "Error: ") {
-							b.WriteString(compactToolErrorStyle.Render("← " + content))
+						if block.rendered != "" {
+							content = block.rendered
 						} else {
-							b.WriteString(compactToolResultStyle.Render("← " + content))
+							content = block.source
 						}
+					}
+					isError := strings.HasPrefix(block.source, "Error: ")
+					if isError {
+						b.WriteString(toolErrorBlockStyle.Render(content))
 					} else {
-						style := lipgloss.NewStyle()
-						if strings.HasPrefix(block.source, "Error: ") {
-							style = toolErrorStyle
-						}
-						b.WriteString(renderBlock(formatTurnLabel("Tool", turn.timestamp), style, content, width))
+						b.WriteString(toolBlockStyle.Render(content))
 					}
 				}
 				if i < len(turn.blocks)-1 {
@@ -217,13 +213,13 @@ func (m *model) buildContent() string {
 			case "tool_call":
 				content := block.compact
 				if content == "" || m.expandLatestDetails {
-					content = block.source
+					if block.rendered != "" {
+						content = block.rendered
+					} else {
+						content = block.source
+					}
 				}
-				if block.compact != "" && !m.expandLatestDetails {
-					b.WriteString(compactToolCallStyle.Render("→ " + content))
-				} else {
-					b.WriteString(renderBlock("Assistant: ", toolCallStyle, content, width))
-				}
+				b.WriteString(toolBlockStyle.Render(content))
 			}
 			if i < len(m.currentTurn.blocks)-1 {
 				b.WriteString("\n\n")
