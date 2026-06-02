@@ -996,33 +996,33 @@ func TestRenderArtifact_ToolResult_ContentFallback(t *testing.T) {
 
 func TestBuildStatusLine_TokenKeysGrouped(t *testing.T) {
 	status := map[string]string{
-		"phase":           "done",
-		"prompt_tokens":   "100",
-		"completion_tokens": "50",
-		"total_tokens":    "150",
-		"thread_id":       "abc-123",
+		"phase":     "done",
+		"sent":      "100",
+		"received":  "50",
+		"total":     "150",
+		"thread_id": "abc-123",
 	}
 	rendered, lines := buildStatusLine(status, 200)
 	assert.Equal(t, 1, lines)
-	// Token keys should appear grouped as a single segment.
-	assert.Contains(t, rendered, "prompt: 100")
-	assert.Contains(t, rendered, "completion: 50")
-	assert.Contains(t, rendered, "total: 150")
+	// Token keys should appear grouped as a single segment with display symbols.
+	assert.Contains(t, rendered, "↑ 100")
+	assert.Contains(t, rendered, "↓ 50")
+	assert.Contains(t, rendered, "Σ 150")
 	// Other keys should still appear.
 	assert.Contains(t, rendered, "phase: done")
 	assert.Contains(t, rendered, "thread_id: abc-123")
 }
 
 func TestBuildStatusLine_TokenKeysPartial(t *testing.T) {
-	// Only total_tokens present; the others should not appear.
+	// Only total present; the others should not appear.
 	status := map[string]string{
-		"total_tokens": "42",
+		"total": "42",
 	}
 	rendered, lines := buildStatusLine(status, 200)
 	assert.Equal(t, 1, lines)
-	assert.Contains(t, rendered, "total: 42")
-	assert.NotContains(t, rendered, "prompt:")
-	assert.NotContains(t, rendered, "completion:")
+	assert.Contains(t, rendered, "Σ 42")
+	assert.NotContains(t, rendered, "↑")
+	assert.NotContains(t, rendered, "↓")
 }
 
 func TestBuildStatusLine_NoTokenKeys(t *testing.T) {

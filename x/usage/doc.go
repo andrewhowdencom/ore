@@ -12,9 +12,9 @@
 //
 // The emitted PropertiesEvent contains the following string key/value pairs:
 //
-//   - "prompt_tokens":     cumulative prompt token count
-//   - "completion_tokens": cumulative completion token count
-//   - "total_tokens":      cumulative total token count
+//   - "sent":     cumulative prompt token count
+//   - "received": cumulative completion token count
+//   - "total":    cumulative total token count
 //
 // # Usage
 //

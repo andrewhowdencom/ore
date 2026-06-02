@@ -57,9 +57,9 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 
 	e.Emit(ctx, loop.PropertiesEvent{
 		Properties: map[string]string{
-			"prompt_tokens":     strconv.Itoa(prompt),
-			"completion_tokens": strconv.Itoa(completion),
-			"total_tokens":      strconv.Itoa(total),
+			"sent":     strconv.Itoa(prompt),
+			"received": strconv.Itoa(completion),
+			"total":    strconv.Itoa(total),
 		},
 	})
 	return nil
