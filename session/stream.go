@@ -155,6 +155,7 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 		return fmt.Errorf("session %s is closed", s.id)
 	}
 	turnCtx, cancel := context.WithCancel(ctx)
+	turnCtx = loop.WithThreadID(turnCtx, s.id)
 	s.cancel = cancel
 	s.mu.Unlock()
 
