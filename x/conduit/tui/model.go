@@ -275,13 +275,19 @@ func (m *model) renderArtifact(art artifact.Artifact, shouldRenderMarkdown bool)
 		if a.IsError {
 			source = "Error: " + source
 		}
-		compact := compactToolResult(source, m.viewport.Width())
-		block := renderedBlock{kind: "tool_result", source: source, compact: compact, toolCallID: a.ToolCallID}
+		block := renderedBlock{kind: "tool_result", source: source, toolCallID: a.ToolCallID}
 		if shouldRenderMarkdown {
 			rendered, err := m.renderMarkdown(source, m.viewport.Width())
 			if err == nil {
 				block.rendered = rendered
 			}
+		}
+		// Derive compact from rendered Markdown output, falling back to raw
+		// source when rendering is unavailable (e.g. user turns or errors).
+		if block.rendered != "" {
+			block.compact = compactToolResult(block.rendered, m.viewport.Width())
+		} else {
+			block.compact = compactToolResult(source, m.viewport.Width())
 		}
 		return block
 	}
