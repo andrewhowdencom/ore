@@ -102,5 +102,5 @@ func (t *Transform) Transform(ctx context.Context, st state.State) (state.State,
 			Artifacts: []artifact.Artifact{artifact.Text{Content: strings.Join(parts, "\n\n")}},
 		},
 	}
-	return state.NewVirtualTurnState(st, virtual), nil
+	return state.Prepend(st, virtual), nil
 }

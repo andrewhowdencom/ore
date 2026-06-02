@@ -7,15 +7,15 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestVirtualTurnState_Turns_PrependsVirtual(t *testing.T) {
+func TestPrepend_Turns_PrependsVirtual(t *testing.T) {
 	base := &Buffer{}
 	base.Append(RoleUser, artifact.Text{Content: "user"})
 
-	vts := NewVirtualTurnState(base, []Turn{
+	v := Prepend(base, []Turn{
 		{Role: RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "system"}}},
 	})
 
-	turns := vts.Turns()
+	turns := v.Turns()
 	assert.Len(t, turns, 2)
 	assert.Equal(t, RoleSystem, turns[0].Role)
 	assert.Equal(t, RoleUser, turns[1].Role)
@@ -25,62 +25,62 @@ func TestVirtualTurnState_Turns_PrependsVirtual(t *testing.T) {
 	assert.Equal(t, "system", text.Content)
 }
 
-func TestVirtualTurnState_Turns_MultipleVirtual(t *testing.T) {
+func TestPrepend_Turns_MultipleVirtual(t *testing.T) {
 	base := &Buffer{}
 	base.Append(RoleUser, artifact.Text{Content: "user"})
 
-	vts := NewVirtualTurnState(base, []Turn{
+	v := Prepend(base, []Turn{
 		{Role: RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "system1"}}},
 		{Role: RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "system2"}}},
 	})
 
-	turns := vts.Turns()
+	turns := v.Turns()
 	assert.Len(t, turns, 3)
 	assert.Equal(t, RoleSystem, turns[0].Role)
 	assert.Equal(t, RoleSystem, turns[1].Role)
 	assert.Equal(t, RoleUser, turns[2].Role)
 }
 
-func TestVirtualTurnState_Turns_EmptyVirtual(t *testing.T) {
+func TestPrepend_Turns_EmptyVirtual(t *testing.T) {
 	base := &Buffer{}
 	base.Append(RoleUser, artifact.Text{Content: "user"})
 
-	vts := NewVirtualTurnState(base, []Turn{})
+	v := Prepend(base, []Turn{})
 
 	// Identity optimization: should return the base state directly
-	assert.Equal(t, base, vts)
+	assert.Equal(t, base, v)
 
-	turns := vts.Turns()
+	turns := v.Turns()
 	assert.Len(t, turns, 1)
 	assert.Equal(t, RoleUser, turns[0].Role)
 }
 
-func TestVirtualTurnState_Turns_DefensiveCopy(t *testing.T) {
+func TestPrepend_Turns_DefensiveCopy(t *testing.T) {
 	base := &Buffer{}
 	base.Append(RoleUser, artifact.Text{Content: "user"})
 
 	virtual := []Turn{
 		{Role: RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "system"}}},
 	}
-	vts := NewVirtualTurnState(base, virtual).(*VirtualTurnState)
+	v := Prepend(base, virtual).(*prependView)
 
-	turns1 := vts.Turns()
-	turns2 := vts.Turns()
+	turns1 := v.Turns()
+	turns2 := v.Turns()
 
 	// Modifying one should not affect the other
 	turns1[0].Role = RoleUser
 	assert.Equal(t, RoleSystem, turns2[0].Role)
 }
 
-func TestVirtualTurnState_Append_DelegatesToBase(t *testing.T) {
+func TestPrepend_Append_DelegatesToBase(t *testing.T) {
 	base := &Buffer{}
 	base.Append(RoleUser, artifact.Text{Content: "user"})
 
-	vts := NewVirtualTurnState(base, []Turn{
+	v := Prepend(base, []Turn{
 		{Role: RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "system"}}},
 	})
 
-	vts.Append(RoleAssistant, artifact.Text{Content: "assistant"})
+	v.Append(RoleAssistant, artifact.Text{Content: "assistant"})
 
 	// Base state should have the appended turn
 	baseTurns := base.Turns()
@@ -89,21 +89,139 @@ func TestVirtualTurnState_Append_DelegatesToBase(t *testing.T) {
 	assert.Equal(t, RoleAssistant, baseTurns[1].Role)
 
 	// Wrapped view should include virtual + base + appended
-	turns := vts.Turns()
+	turns := v.Turns()
 	assert.Len(t, turns, 3)
 	assert.Equal(t, RoleSystem, turns[0].Role)
 	assert.Equal(t, RoleUser, turns[1].Role)
 	assert.Equal(t, RoleAssistant, turns[2].Role)
 }
 
-func TestVirtualTurnState_Turns_EmptyBase(t *testing.T) {
+func TestPrepend_Turns_EmptyBase(t *testing.T) {
 	base := &Buffer{}
 
-	vts := NewVirtualTurnState(base, []Turn{
+	v := Prepend(base, []Turn{
 		{Role: RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "system"}}},
 	})
 
-	turns := vts.Turns()
+	turns := v.Turns()
 	assert.Len(t, turns, 1)
 	assert.Equal(t, RoleSystem, turns[0].Role)
+}
+
+func TestPrepend_Turns_DynamicBase(t *testing.T) {
+	base := &Buffer{}
+	base.Append(RoleUser, artifact.Text{Content: "user"})
+
+	v := Prepend(base, []Turn{
+		{Role: RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "system"}}},
+	})
+
+	// Mutate base after view creation
+	base.Append(RoleAssistant, artifact.Text{Content: "assistant"})
+
+	// Prepend view should reflect the mutation (dynamic)
+	turns := v.Turns()
+	assert.Len(t, turns, 3)
+	assert.Equal(t, RoleSystem, turns[0].Role)
+	assert.Equal(t, RoleUser, turns[1].Role)
+	assert.Equal(t, RoleAssistant, turns[2].Role)
+}
+
+func TestNewView_Turns_ReturnsProjected(t *testing.T) {
+	base := &Buffer{}
+	base.Append(RoleUser, artifact.Text{Content: "user"})
+
+	projected := []Turn{
+		{Role: RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "assistant"}}},
+	}
+	v := NewView(base, projected)
+
+	turns := v.Turns()
+	assert.Len(t, turns, 1)
+	assert.Equal(t, RoleAssistant, turns[0].Role)
+}
+
+func TestNewView_Turns_DefensiveCopy(t *testing.T) {
+	base := &Buffer{}
+	base.Append(RoleUser, artifact.Text{Content: "user"})
+
+	projected := []Turn{
+		{Role: RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "system"}}},
+	}
+	v := NewView(base, projected).(*View)
+
+	turns1 := v.Turns()
+	turns2 := v.Turns()
+
+	turns1[0].Role = RoleUser
+	assert.Equal(t, RoleSystem, turns2[0].Role)
+}
+
+func TestNewView_Append_DelegatesToBase(t *testing.T) {
+	base := &Buffer{}
+	base.Append(RoleUser, artifact.Text{Content: "user"})
+
+	projected := []Turn{
+		{Role: RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "system"}}},
+	}
+	v := NewView(base, projected)
+
+	v.Append(RoleAssistant, artifact.Text{Content: "assistant"})
+
+	// Base state should have the appended turn
+	baseTurns := base.Turns()
+	assert.Len(t, baseTurns, 2)
+	assert.Equal(t, RoleUser, baseTurns[0].Role)
+	assert.Equal(t, RoleAssistant, baseTurns[1].Role)
+
+	// View projection unchanged (static snapshot)
+	turns := v.Turns()
+	assert.Len(t, turns, 1)
+	assert.Equal(t, RoleSystem, turns[0].Role)
+}
+
+func TestNewView_Turns_EmptyTurns(t *testing.T) {
+	base := &Buffer{}
+	base.Append(RoleUser, artifact.Text{Content: "user"})
+
+	v := NewView(base, []Turn{})
+
+	// Identity optimization: should return the base state directly
+	assert.Equal(t, base, v)
+
+	turns := v.Turns()
+	assert.Len(t, turns, 1)
+	assert.Equal(t, RoleUser, turns[0].Role)
+}
+
+func TestNewView_Turns_Identity_NilTurns(t *testing.T) {
+	base := &Buffer{}
+	base.Append(RoleUser, artifact.Text{Content: "user"})
+
+	v := NewView(base, nil)
+
+	// Identity optimization: should return the base state directly
+	assert.Equal(t, base, v)
+}
+
+func TestNewView_Turns_Filtering(t *testing.T) {
+	base := &Buffer{}
+	base.Append(RoleSystem, artifact.Text{Content: "system"})
+	base.Append(RoleUser, artifact.Text{Content: "user"})
+	base.Append(RoleAssistant, artifact.Text{Content: "assistant"})
+
+	// Projection: filter out system turns (compaction use case)
+	all := base.Turns()
+	var projected []Turn
+	for _, turn := range all {
+		if turn.Role != RoleSystem {
+			projected = append(projected, turn)
+		}
+	}
+	v := NewView(base, projected)
+
+	turns := v.Turns()
+	assert.Len(t, turns, 2)
+	assert.Equal(t, RoleUser, turns[0].Role)
+	assert.Equal(t, RoleAssistant, turns[1].Role)
 }
