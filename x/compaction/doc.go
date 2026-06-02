@@ -12,8 +12,32 @@
 //   - Strategy decides how to reduce the turn slice.
 //
 // Default implementations are provider-agnostic and have zero external
-// dependencies. Token-aware triggers and LLM summarization strategies can
-// be plugged in by implementing the Trigger and Strategy interfaces.
+// dependencies. Token-aware triggers and LLM summarization strategies are
+// also provided.
+//
+// # Built-in Triggers
+//
+// TurnCountTrigger fires when the number of turns exceeds a threshold.
+// TokenUsageTrigger inspects the most recent artifact.Usage in the turn
+// slice and fires when Usage.TotalTokens exceeds MaxTokens. If no Usage
+// artifact is found, it returns false (graceful degradation). This trigger
+// is provider-specific because not all providers emit Usage artifacts.
+//
+// # Built-in Strategies
+//
+// KeepLastN drops all but the last N turns. It is provider-agnostic and
+// fast, making it suitable as a safety margin before more expensive
+// strategies.
+//
+// SummarizeStrategy calls an LLM provider to summarize conversation history,
+// replacing dropped turns with a single synthetic system summary turn.
+// The summary turn uses RoleSystem because it is injected context about
+// prior conversation, not a real assistant response.
+//
+// SummarizeStrategy only collects artifact.Text responses from the provider.
+// Other artifact types (Usage, Reasoning, ToolCall, etc.) are silently
+// ignored. This is an MVP limitation; future work may add custom formatters
+// or multi-modal support.
 //
 // # Application wiring
 //
@@ -39,6 +63,13 @@
 // The compactor does not emit events. If an application needs to log
 // compaction events, it should do so at the call site based on the bool
 // return value of MaybeCompact.
+//
+// # Defensive composition
+//
+// Applications should protect against provider failures and context overflow
+// by chaining strategies or setting trigger thresholds with safety margins.
+// For example, keep the last N turns before summarizing, or set MaxTokens
+// well below the provider's hard limit.
 //
 // Compaction must be called from the same goroutine as step.Turn().
 // state.Buffer is not safe for concurrent use.
