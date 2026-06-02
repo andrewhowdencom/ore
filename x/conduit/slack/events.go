@@ -8,6 +8,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/slack-go/slack/slackevents"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // handleMessageEvent processes a Slack message event: it filters, resolves
@@ -29,9 +30,16 @@ func (c *SlackConduit) handleMessageEvent(ctx context.Context, event *slackevent
 		return err
 	}
 
+	turnCtx := ctx
+	var span trace.Span
+	if c.tracer != nil {
+		turnCtx, span = c.tracer.Start(turnCtx, "slack.turn", trace.WithSpanKind(trace.SpanKindServer))
+		defer span.End()
+	}
+
 	userEvent := session.UserMessageEvent{
 		Content: event.Text,
-		Ctx:     loop.WithProvenance(context.Background(), "slack"),
+		Ctx:     loop.WithProvenance(turnCtx, "slack"),
 	}
 
 	if err := stream.Submit(userEvent); err != nil {
