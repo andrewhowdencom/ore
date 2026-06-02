@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"testing"
 
 	"github.com/andrewhowdencom/ore/loop"
@@ -13,8 +14,9 @@ func TestUserMessageEvent_Kind(t *testing.T) {
 }
 
 func TestUserMessageEvent_Context(t *testing.T) {
-	e := UserMessageEvent{Content: "hello", Ctx: loop.EventContext{Provenance: "test-id"}}
-	assert.Equal(t, "test-id", e.Context().Provenance)
+	e := UserMessageEvent{Content: "hello", Ctx: loop.WithProvenance(context.Background(), "test-id")}
+	prov, _ := loop.ProvenanceFrom(e.Context())
+	assert.Equal(t, "test-id", prov)
 }
 
 func TestInterruptEvent_Kind(t *testing.T) {
@@ -23,8 +25,9 @@ func TestInterruptEvent_Kind(t *testing.T) {
 }
 
 func TestInterruptEvent_Context(t *testing.T) {
-	e := InterruptEvent{Ctx: loop.EventContext{Provenance: "test-id"}}
-	assert.Equal(t, "test-id", e.Context().Provenance)
+	e := InterruptEvent{Ctx: loop.WithProvenance(context.Background(), "test-id")}
+	prov, _ := loop.ProvenanceFrom(e.Context())
+	assert.Equal(t, "test-id", prov)
 }
 
 func TestEventInterface(t *testing.T) {

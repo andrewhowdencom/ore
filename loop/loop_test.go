@@ -1124,7 +1124,7 @@ func TestStep_SetEventContext_PropagatesToSubmit(t *testing.T) {
 
 	s := stepWithState(mem)
 	ch := s.Subscribe("turn_complete")
-	s.SetEventContext(EventContext{Provenance: "test-provenance"})
+	s.SetEventContext(WithProvenance(context.Background(), "test-provenance"))
 	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
 	require.NoError(t, err)
 
@@ -1133,7 +1133,8 @@ func TestStep_SetEventContext_PropagatesToSubmit(t *testing.T) {
 	require.Len(t, events, 1)
 	tc, ok := events[0].(TurnCompleteEvent)
 	require.True(t, ok)
-	assert.Equal(t, "test-provenance", tc.Ctx.Provenance)
+	name, _ := ProvenanceFrom(tc.Ctx)
+	assert.Equal(t, "test-provenance", name)
 }
 
 func TestStep_SetEventContext_PropagatesToTurn(t *testing.T) {
@@ -1150,7 +1151,7 @@ func TestStep_SetEventContext_PropagatesToTurn(t *testing.T) {
 		},
 	}
 
-	s.SetEventContext(EventContext{Provenance: "test-provenance"})
+	s.SetEventContext(WithProvenance(context.Background(), "test-provenance"))
 	_, err := s.Turn(context.Background(), mem, prov)
 	require.NoError(t, err)
 
@@ -1159,17 +1160,21 @@ func TestStep_SetEventContext_PropagatesToTurn(t *testing.T) {
 	require.Len(t, events, 4)
 	ae, ok := events[0].(ArtifactEvent)
 	require.True(t, ok)
-	assert.Equal(t, "test-provenance", ae.Ctx.Provenance)
+	name, _ := ProvenanceFrom(ae.Ctx)
+	assert.Equal(t, "test-provenance", name)
 	ae, ok = events[1].(ArtifactEvent)
 	require.True(t, ok)
-	assert.Equal(t, "test-provenance", ae.Ctx.Provenance)
+	name, _ = ProvenanceFrom(ae.Ctx)
+	assert.Equal(t, "test-provenance", name)
 	ae, ok = events[2].(ArtifactEvent)
 	require.True(t, ok)
-	assert.Equal(t, "test-provenance", ae.Ctx.Provenance)
+	name, _ = ProvenanceFrom(ae.Ctx)
+	assert.Equal(t, "test-provenance", name)
 
 	tc, ok := events[3].(TurnCompleteEvent)
 	require.True(t, ok)
-	assert.Equal(t, "test-provenance", tc.Ctx.Provenance)
+	name, _ = ProvenanceFrom(tc.Ctx)
+	assert.Equal(t, "test-provenance", name)
 }
 
 func TestStep_SetEventContext_PropagatesToError(t *testing.T) {
@@ -1181,7 +1186,7 @@ func TestStep_SetEventContext_PropagatesToError(t *testing.T) {
 	wantErr := errors.New("provider failed")
 	prov := &mockProvider{err: wantErr}
 
-	s.SetEventContext(EventContext{Provenance: "test-provenance"})
+	s.SetEventContext(WithProvenance(context.Background(), "test-provenance"))
 	_, err := s.Turn(context.Background(), mem, prov)
 	require.ErrorIs(t, err, wantErr)
 
@@ -1190,7 +1195,8 @@ func TestStep_SetEventContext_PropagatesToError(t *testing.T) {
 	require.Len(t, events, 1)
 	ee, ok := events[0].(ErrorEvent)
 	require.True(t, ok)
-	assert.Equal(t, "test-provenance", ee.Ctx.Provenance)
+	name, _ := ProvenanceFrom(ee.Ctx)
+	assert.Equal(t, "test-provenance", name)
 }
 
 func TestStep_SetEventContext_Cleared(t *testing.T) {
@@ -1198,7 +1204,7 @@ func TestStep_SetEventContext_Cleared(t *testing.T) {
 
 	s := stepWithState(mem)
 	ch := s.Subscribe("turn_complete")
-	s.SetEventContext(EventContext{Provenance: "first"})
+	s.SetEventContext(WithProvenance(context.Background(), "first"))
 	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
 	require.NoError(t, err)
 
@@ -1206,10 +1212,11 @@ func TestStep_SetEventContext_Cleared(t *testing.T) {
 	require.Len(t, events, 1)
 	tc, ok := events[0].(TurnCompleteEvent)
 	require.True(t, ok)
-	assert.Equal(t, "first", tc.Ctx.Provenance)
+	name, _ := ProvenanceFrom(tc.Ctx)
+	assert.Equal(t, "first", name)
 
 	// Second submit with cleared context should have empty provenance
-	s.SetEventContext(EventContext{})
+	s.SetEventContext(context.Background())
 	_, err = s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "again"})
 	require.NoError(t, err)
 
@@ -1217,7 +1224,8 @@ func TestStep_SetEventContext_Cleared(t *testing.T) {
 	require.Len(t, events, 1)
 	tc, ok = events[0].(TurnCompleteEvent)
 	require.True(t, ok)
-	assert.Empty(t, tc.Ctx.Provenance)
+	name, _ = ProvenanceFrom(tc.Ctx)
+	assert.Empty(t, name)
 }
 
 func TestStep_ContextClearedOnError(t *testing.T) {
@@ -1229,7 +1237,7 @@ func TestStep_ContextClearedOnError(t *testing.T) {
 	wantErr := errors.New("provider failed")
 	prov := &mockProvider{err: wantErr}
 
-	s.SetEventContext(EventContext{Provenance: "first"})
+	s.SetEventContext(WithProvenance(context.Background(), "first"))
 	_, err := s.Turn(context.Background(), mem, prov)
 	require.ErrorIs(t, err, wantErr)
 
@@ -1237,7 +1245,8 @@ func TestStep_ContextClearedOnError(t *testing.T) {
 	require.Len(t, events, 1)
 	ee, ok := events[0].(ErrorEvent)
 	require.True(t, ok)
-	assert.Equal(t, "first", ee.Ctx.Provenance)
+	name, _ := ProvenanceFrom(ee.Ctx)
+	assert.Equal(t, "first", name)
 
 	// Subsequent submit without setting context should have empty provenance
 	_, err = s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "again"})
@@ -1247,30 +1256,32 @@ func TestStep_ContextClearedOnError(t *testing.T) {
 	require.Len(t, events, 1)
 	tc, ok := events[0].(TurnCompleteEvent)
 	require.True(t, ok)
-	assert.Empty(t, tc.Ctx.Provenance)
+	name, _ = ProvenanceFrom(tc.Ctx)
+	assert.Empty(t, name)
 }
 
 // testCustomEvent is a test-only OutputEvent for verifying Emit() with custom events.
 type testCustomEvent struct {
 	Value string
-	Ctx   EventContext
+	Ctx   context.Context
 }
 
 func (e testCustomEvent) Kind() string          { return "test_custom" }
-func (e testCustomEvent) Context() EventContext { return e.Ctx }
+func (e testCustomEvent) Context() context.Context { return e.Ctx }
 
 func TestStep_Emit_DeliversCustomEvents(t *testing.T) {
 	s := New()
 	ch := s.Subscribe("test_custom")
 
-	s.Emit(context.Background(), testCustomEvent{Value: "hello", Ctx: EventContext{Provenance: "test"}})
+	s.Emit(context.Background(), testCustomEvent{Value: "hello", Ctx: WithProvenance(context.Background(), "test")})
 
 	events := collectEvents(ch, 100*time.Millisecond)
 	require.Len(t, events, 1)
 	custom, ok := events[0].(testCustomEvent)
 	require.True(t, ok)
 	assert.Equal(t, "hello", custom.Value)
-	assert.Equal(t, "test", custom.Ctx.Provenance)
+	name, _ := ProvenanceFrom(custom.Ctx)
+	assert.Equal(t, "test", name)
 }
 
 func TestOnEmit_MultipleCallbacks_Order(t *testing.T) {
@@ -1341,7 +1352,7 @@ func TestEmit_NoCallbacks(t *testing.T) {
 }
 
 func TestOnEmit_ErrorEvent_ContextPropagation(t *testing.T) {
-	var receivedCtx EventContext
+	var receivedCtx context.Context
 	cb := func(ctx context.Context, event OutputEvent) {
 		receivedCtx = event.Context()
 	}
@@ -1353,11 +1364,12 @@ func TestOnEmit_ErrorEvent_ContextPropagation(t *testing.T) {
 	wantErr := errors.New("provider failed")
 	prov := &mockProvider{err: wantErr}
 
-	s.SetEventContext(EventContext{Provenance: "test-provenance"})
+	s.SetEventContext(WithProvenance(context.Background(), "test-provenance"))
 	_, err := s.Turn(context.Background(), mem, prov)
 	require.ErrorIs(t, err, wantErr)
 
-	assert.Equal(t, "test-provenance", receivedCtx.Provenance)
+	name, _ := ProvenanceFrom(receivedCtx)
+	assert.Equal(t, "test-provenance", name)
 }
 
 func TestPropertiesEvent_Kind(t *testing.T) {
@@ -1368,9 +1380,10 @@ func TestPropertiesEvent_Kind(t *testing.T) {
 func TestPropertiesEvent_Context(t *testing.T) {
 	event := PropertiesEvent{
 		Properties: map[string]string{"key": "val"},
-		Ctx:    EventContext{Provenance: "test"},
+		Ctx:    WithProvenance(context.Background(), "test"),
 	}
-	assert.Equal(t, EventContext{Provenance: "test"}, event.Context())
+	name, _ := ProvenanceFrom(event.Context())
+	assert.Equal(t, "test", name)
 }
 
 func TestPropertiesEvent_EmitAndReceive(t *testing.T) {
@@ -1379,7 +1392,7 @@ func TestPropertiesEvent_EmitAndReceive(t *testing.T) {
 
 	s.Emit(context.Background(), PropertiesEvent{
 		Properties: map[string]string{"thread_id": "abc-123", "state": "thinking..."},
-		Ctx:    EventContext{Provenance: "test"},
+		Ctx:    WithProvenance(context.Background(), "test"),
 	})
 
 	events := collectEvents(ch, 100*time.Millisecond)
@@ -1388,16 +1401,17 @@ func TestPropertiesEvent_EmitAndReceive(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "abc-123", status.Properties["thread_id"])
 	assert.Equal(t, "thinking...", status.Properties["state"])
-	assert.Equal(t, "test", status.Ctx.Provenance)
+	name, _ := ProvenanceFrom(status.Ctx)
+	assert.Equal(t, "test", name)
 }
 
 func TestLifecycleEvent_Kind(t *testing.T) {
-	event := LifecycleEvent{Phase: "submitted", Ctx: EventContext{Provenance: "test"}}
+	event := LifecycleEvent{Phase: "submitted", Ctx: WithProvenance(context.Background(), "test")}
 	assert.Equal(t, "lifecycle", event.Kind())
 }
 
 func TestLifecycleEvent_Context(t *testing.T) {
-	ctx := EventContext{Provenance: "http"}
+	ctx := WithProvenance(context.Background(), "http")
 	event := LifecycleEvent{Phase: "done", Ctx: ctx}
 	assert.Equal(t, ctx, event.Context())
 }
