@@ -3,6 +3,7 @@ go 1.26.2
 use (
 	.
 	./examples
+	./x/compaction
 	./x/conduit
 	./x/conduit/http
 	./x/conduit/slack
@@ -15,9 +16,9 @@ use (
 	./x/tool/calculator
 	./x/tool/filesystem
 	./x/tool/mcp
+	./x/tool/sandbox/unsafe
 	./x/tool/settitle
 	./x/tool/skills
-	./x/tool/sandbox/unsafe
 	./x/usage
 )
 
