@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
 )
 
@@ -98,4 +99,24 @@ func (k KeepLastN) Compact(_ context.Context, turns []state.Turn) ([]state.Turn,
 	result := make([]state.Turn, k.N)
 	copy(result, turns[start:])
 	return result, nil
+}
+
+// TokenUsageTrigger fires when the most recent artifact.Usage in the turn
+// slice indicates total tokens exceed MaxTokens.
+type TokenUsageTrigger struct {
+	MaxTokens int
+}
+
+// ShouldCompact scans the turn slice from the end for the most recent
+// artifact.Usage. If found and Usage.TotalTokens > MaxTokens, it returns true.
+// If no Usage artifact is present, it returns false (graceful degradation).
+func (t TokenUsageTrigger) ShouldCompact(turns []state.Turn) bool {
+	for i := len(turns) - 1; i >= 0; i-- {
+		for _, art := range turns[i].Artifacts {
+			if u, ok := art.(artifact.Usage); ok {
+				return u.TotalTokens > t.MaxTokens
+			}
+		}
+	}
+	return false
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -172,4 +173,59 @@ func TestKeepLastN_ReturnsDefensiveCopyWhenNoCompactionNeeded(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, turns, result)
 	assert.NotSame(t, &turns[0], &result[0])
+}
+
+func TestTokenUsageTrigger(t *testing.T) {
+	tests := []struct {
+		name      string
+		maxTokens int
+		turns     []state.Turn
+		want      bool
+	}{
+		{
+			name:      "fires when Usage exceeds MaxTokens",
+			maxTokens: 10000,
+			turns: []state.Turn{
+				{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Usage{TotalTokens: 10001}}},
+			},
+			want: true,
+		},
+		{
+			name:      "does not fire when Usage under MaxTokens",
+			maxTokens: 10000,
+			turns: []state.Turn{
+				{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Usage{TotalTokens: 9999}}},
+			},
+			want: false,
+		},
+		{
+			name:      "does not fire when no Usage artifact",
+			maxTokens: 10000,
+			turns: []state.Turn{
+				{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}},
+			},
+			want: false,
+		},
+		{
+			name:      "inspects most recent Usage only",
+			maxTokens: 10000,
+			turns: []state.Turn{
+				{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Usage{TotalTokens: 10001}}},
+				{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Usage{TotalTokens: 9999}}},
+			},
+			want: false,
+		},
+		{
+			name:      "empty turns",
+			maxTokens: 10000,
+			turns:     []state.Turn{},
+			want:      false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tr := TokenUsageTrigger{MaxTokens: tt.maxTokens}
+			assert.Equal(t, tt.want, tr.ShouldCompact(tt.turns))
+		})
+	}
 }
