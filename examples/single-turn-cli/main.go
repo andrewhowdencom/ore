@@ -26,7 +26,7 @@ import (
 type systemPromptTransform struct{ content string }
 
 func (t *systemPromptTransform) Transform(ctx context.Context, st state.State) (state.State, error) {
-	return state.NewVirtualTurnState(st, []state.Turn{{
+	return state.Prepend(st, []state.Turn{{
 		Role:      state.RoleSystem,
 		Artifacts: []artifact.Artifact{artifact.Text{Content: t.content}},
 	}}), nil

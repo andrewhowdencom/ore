@@ -57,7 +57,7 @@ func (t *Transform) Transform(ctx context.Context, st state.State) (state.State,
 			Artifacts: []artifact.Artifact{artifact.Text{Content: rule}},
 		})
 	}
-	return state.NewVirtualTurnState(st, virtual), nil
+	return state.Prepend(st, virtual), nil
 }
 
 // Rules returns the configured guardrail rules.
