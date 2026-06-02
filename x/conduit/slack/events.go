@@ -31,7 +31,7 @@ func (c *SlackConduit) handleMessageEvent(ctx context.Context, event *slackevent
 
 	userEvent := session.UserMessageEvent{
 		Content: event.Text,
-		Ctx:     loop.EventContext{Provenance: "slack"},
+		Ctx:     loop.WithProvenance(context.Background(), "slack"),
 	}
 
 	if err := stream.Submit(userEvent); err != nil {

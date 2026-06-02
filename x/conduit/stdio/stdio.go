@@ -102,7 +102,7 @@ func (s *stdio) Start(ctx context.Context) error {
 				if !ok {
 					return
 				}
-				if p := event.Context().Provenance; p != "stdio" && p != "" {
+				if p, _ := loop.ProvenanceFrom(event.Context()); p != "stdio" && p != "" {
 					continue
 				}
 
@@ -188,7 +188,7 @@ func (s *stdio) Start(ctx context.Context) error {
 
 	event := session.UserMessageEvent{
 		Content: string(data),
-		Ctx:     loop.EventContext{Provenance: "stdio"},
+		Ctx:     loop.WithProvenance(context.Background(), "stdio"),
 	}
 	processErr := stream.Process(ctx, event)
 
