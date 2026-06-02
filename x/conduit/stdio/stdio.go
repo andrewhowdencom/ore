@@ -11,6 +11,7 @@ import (
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Descriptor enumerates the capabilities of the stdio conduit.
@@ -29,6 +30,7 @@ type stdio struct {
 	in       io.Reader
 	out      io.Writer
 	threadID string
+	tracer   trace.Tracer
 }
 
 // Option configures the stdio conduit.
@@ -52,6 +54,13 @@ func WithOutput(w io.Writer) Option {
 func WithThreadID(id string) Option {
 	return func(s *stdio) {
 		s.threadID = id
+	}
+}
+
+// WithTracer configures an OpenTelemetry tracer for the stdio conduit.
+func WithTracer(tracer trace.Tracer) Option {
+	return func(s *stdio) {
+		s.tracer = tracer
 	}
 }
 
@@ -186,11 +195,18 @@ func (s *stdio) Start(ctx context.Context) error {
 		return fmt.Errorf("no input provided")
 	}
 
+	turnCtx := ctx
+	var span trace.Span
+	if s.tracer != nil {
+		turnCtx, span = s.tracer.Start(turnCtx, "stdio.turn", trace.WithSpanKind(trace.SpanKindServer))
+		defer span.End()
+	}
+
 	event := session.UserMessageEvent{
 		Content: string(data),
-		Ctx:     loop.WithProvenance(context.Background(), "stdio"),
+		Ctx:     loop.WithProvenance(turnCtx, "stdio"),
 	}
-	processErr := stream.Process(ctx, event)
+	processErr := stream.Process(turnCtx, event)
 
 	// Close the stream to signal completion and let the goroutine drain
 	// any remaining events (including ErrorEvent on failure) before the
