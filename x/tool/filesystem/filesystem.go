@@ -157,9 +157,7 @@ var ReadFileTool = tool.Tool{
 	},
 }
 
-// WriteFile creates a new file with the given content.
-// It fails if the path already exists (file or directory), forcing the
-// agent to use edit_file for modifications.
+// WriteFile creates a new file with the given content, overwriting if it exists.
 // Parameters:
 //   - path    (string, required): relative or absolute file path.
 //   - content (string, required): file contents to write.
@@ -177,10 +175,6 @@ func WriteFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, 
 
 	content := toString(args["content"])
 
-	if _, err := os.Stat(path); err == nil {
-		return nil, fmt.Errorf("path %q already exists", path)
-	}
-
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create parent directories: %w", err)
 	}
@@ -195,7 +189,7 @@ func WriteFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, 
 // WriteFileTool is the tool.Tool descriptor for WriteFile.
 var WriteFileTool = tool.Tool{
 	Name:        "write_file",
-	Description: "Create a new file with the specified content. Fails if the path already exists, forcing the use of edit_file for modifications.",
+	Description: "Create or overwrite a file with the specified content.",
 	Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
