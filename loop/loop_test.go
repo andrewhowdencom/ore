@@ -295,11 +295,11 @@ func TestStep_Submit_DoesNotRunTransforms(t *testing.T) {
 	assert.True(t, transformCalled, "transforms must run during Turn")
 }
 
-func TestStep_Turn_Transform_VirtualTurnStateChaining(t *testing.T) {
+func TestStep_Turn_Transform_ViewChaining(t *testing.T) {
 	var seenTurns []state.Turn
 	tr1 := &mockTransform{
 		fn: func(ctx context.Context, s state.State) (state.State, error) {
-			return state.NewVirtualTurnState(s, []state.Turn{
+			return state.Prepend(s, []state.Turn{
 				{Role: state.RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "system"}}},
 			}), nil
 		},

@@ -15,7 +15,7 @@
 //   - WithTransforms — modify the state view presented to the provider
 //     during inference. Transforms run before each provider call in Turn(),
 //     composing in registration order. They must not mutate the underlying
-//     persistent buffer; use state.NewVirtualTurnState to create derived
+//     persistent buffer; use state.Prepend or state.NewView to create derived
 //     views that prepend virtual turns. See x/systemprompt for a reusable
 //     transform that injects a system prompt without touching history.
 //   - WithHandlers — run artifact handlers on the complete response.
