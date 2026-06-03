@@ -109,6 +109,33 @@ Use the functional options pattern for constructors with optional parameters
 Common options include `WithTransforms`, `WithHandlers`, `WithOnEmit`,
 and `WithInvokeOptions`.
 
+### Observability and Tracing
+
+OpenTelemetry tracing is woven through the framework as a **build-time
+opt-in** via functional options. Every instrumented component accepts a
+`trace.Tracer` through a `WithTracer(...)` option; when no tracer is
+configured the instrumentation is a no-op.
+
+**Span hierarchy:**
+- Conduit server spans (e.g. `http.send_message`, `tui.turn`, `slack.turn`,
+  `telegram.turn`, `stdio.turn`) — `SpanKindServer`
+- `cognitive.ReAct.Run()` — `react.run` — `SpanKindInternal`
+- `loop.Step.Turn()` / `Submit()` — `loop.turn` — `SpanKindInternal`
+- `x/provider/openai.Provider.Invoke()` — `provider.invoke` — `SpanKindClient`
+- `x/tool.Handler.Handle()` — `tool.execute` — `SpanKindInternal`
+
+All spans carry `thread_id` as a `go.opentelemetry.io/otel/attribute.String`
+attribute, extracted from the context via `loop.ThreadIDFrom(ctx)`.
+
+Context propagation:
+- Conduits inject/extract W3C `traceparent` via
+  `go.opentelemetry.io/otel/propagation.TraceContext`
+- The HTTP conduit serializes the active span's traceparent into NDJSON/SSE
+  responses (field `traceparent` on `eventContextJSON`) so web clients can
+  link client-side spans.
+- `context.WithoutCancel` is used at the `loop.Step` event-envelope
+  boundary so async FanOut subscribers do not inherit request cancellation.
+
 ## Application Boundaries
 
 - **Examples** (`examples/`) are reference implementations demonstrating how to compose the framework. They may be minimal, hardcoded, or environment-variable-driven.

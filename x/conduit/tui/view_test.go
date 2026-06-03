@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/state"
-	"github.com/andrewhowdencom/ore/x/conduit"
 	"charm.land/bubbles/v2/viewport"
 	"charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -550,9 +550,10 @@ func TestBuildContent_ExpandLatestTools_Toggle(t *testing.T) {
 			role: state.RoleAssistant,
 			blocks: []renderedBlock{
 				{
-					kind:    "tool_call",
-					source:  "Calling: search_files({\"path\": \".\", \"query\": \"hello\"})",
-					compact: "search_files · path=\".\" · query=\"hello\"",
+					kind:       "tool_call",
+					source:     "Calling: search_files({\"path\": \".\", \"query\": \"hello\"})",
+					compact:    "search_files · path=\".\" · query=\"hello\"",
+					toolCallID: "call_1",
 				},
 			},
 		},
@@ -560,9 +561,10 @@ func TestBuildContent_ExpandLatestTools_Toggle(t *testing.T) {
 			role: state.RoleTool,
 			blocks: []renderedBlock{
 				{
-					kind:    "tool_result",
-					source:  "result data",
-					compact: "result data",
+					kind:       "tool_result",
+					source:     "result data",
+					compact:    "result data",
+					toolCallID: "call_1",
 				},
 			},
 		},
@@ -571,6 +573,7 @@ func TestBuildContent_ExpandLatestTools_Toggle(t *testing.T) {
 	// Compact mode (default): blocks wrapped in toolBlockStyle, no arrows.
 	m.expandLatestDetails = false
 	compactOutput := m.buildContent()
+	assert.Contains(t, compactOutput, "[call_1]")
 	assert.Contains(t, compactOutput, "search_files")
 	assert.NotContains(t, compactOutput, "→")
 	assert.Contains(t, compactOutput, "result data")
@@ -580,6 +583,7 @@ func TestBuildContent_ExpandLatestTools_Toggle(t *testing.T) {
 	m.expandLatestDetails = true
 	m.contentDirty = true
 	expandedOutput := m.buildContent()
+	assert.Contains(t, expandedOutput, "[call_1]")
 	assert.Contains(t, expandedOutput, "Calling: search_files")
 	assert.NotContains(t, expandedOutput, "→")
 	assert.Contains(t, expandedOutput, "result data")
@@ -594,16 +598,17 @@ func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
 		{
 			role: state.RoleAssistant,
 			blocks: []renderedBlock{
-				{kind: "tool_call", source: "Calling: foo({})", compact: "foo"},
+				{kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
 			},
 		},
 		{
 			role: state.RoleTool,
 			blocks: []renderedBlock{
 				{
-					kind:    "tool_result",
-					source:  "Error: failed",
-					compact: "Error: failed",
+					kind:       "tool_result",
+					source:     "Error: failed",
+					compact:    "Error: failed",
+					toolCallID: "call_1",
 				},
 			},
 		},
@@ -612,6 +617,7 @@ func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
 	// Compact mode: error block should be wrapped in toolErrorBlockStyle.
 	m.expandLatestDetails = false
 	output := m.buildContent()
+	assert.Contains(t, output, "[call_1]")
 	assert.Contains(t, output, "Error: failed")
 	assert.NotContains(t, output, "←")
 
@@ -619,6 +625,7 @@ func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
 	m.expandLatestDetails = true
 	m.contentDirty = true
 	output = m.buildContent()
+	assert.Contains(t, output, "[call_1]")
 	assert.Contains(t, output, "Error: failed")
 	assert.NotContains(t, output, "Tool: ") // no old label prefix
 }
@@ -631,15 +638,15 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 		{
 			role: state.RoleAssistant,
 			blocks: []renderedBlock{
-				{kind: "tool_call", source: "Calling: foo({})", compact: "foo"},
-				{kind: "tool_call", source: "Calling: bar({})", compact: "bar"},
+				{kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
+				{kind: "tool_call", source: "Calling: bar({})", compact: "bar", toolCallID: "call_2"},
 			},
 		},
 		{
 			role: state.RoleTool,
 			blocks: []renderedBlock{
-				{kind: "tool_result", source: "result1", compact: "result1"},
-				{kind: "tool_result", source: "result2", compact: "result2"},
+				{kind: "tool_result", source: "result1", compact: "result1", toolCallID: "call_1"},
+				{kind: "tool_result", source: "result2", compact: "result2", toolCallID: "call_2"},
 			},
 		},
 	}
@@ -647,6 +654,8 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 	// Compact mode: blocks wrapped in toolBlockStyle, no arrows.
 	m.expandLatestDetails = false
 	output := m.buildContent()
+	assert.Contains(t, output, "[call_2]")
+	assert.Contains(t, output, "[call_1]")
 	assert.Contains(t, output, "foo")
 	assert.Contains(t, output, "bar")
 	assert.Contains(t, output, "result1")
@@ -658,6 +667,8 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 	m.expandLatestDetails = true
 	m.contentDirty = true
 	output = m.buildContent()
+	assert.Contains(t, output, "[call_2]")
+	assert.Contains(t, output, "[call_1]")
 	assert.Contains(t, output, "Calling: foo({})")
 	assert.Contains(t, output, "Calling: bar({})")
 	assert.Contains(t, output, "result1")
@@ -679,7 +690,7 @@ func TestBuildContent_MixedBlocks(t *testing.T) {
 			role: state.RoleAssistant,
 			blocks: []renderedBlock{
 				{kind: "text", source: "intro", rendered: "intro"},
-				{kind: "tool_call", source: "Calling: foo({})", compact: "foo"},
+				{kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
 				{kind: "reasoning", source: "think", rendered: "think"},
 				{kind: "text", source: "outro", rendered: "outro"},
 			},
@@ -687,7 +698,7 @@ func TestBuildContent_MixedBlocks(t *testing.T) {
 		{
 			role: state.RoleTool,
 			blocks: []renderedBlock{
-				{kind: "tool_result", source: "result", compact: "result"},
+				{kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"},
 			},
 		},
 	}
@@ -751,13 +762,14 @@ func TestBuildContent_CompactToolCall_BlockStyling(t *testing.T) {
 		{
 			role: state.RoleAssistant,
 			blocks: []renderedBlock{
-				{kind: "tool_call", source: "Calling: foo({})", compact: "foo"},
+				{kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
 			},
 		},
 	}
 
 	m.expandLatestDetails = false
 	output := m.buildContent()
+	assert.Contains(t, output, "[call_1]")
 	assert.Contains(t, output, "foo")
 	assert.NotContains(t, output, "→") // arrow prefix removed
 }
@@ -772,7 +784,7 @@ func TestModel_View_MixedArtifacts_Rendered(t *testing.T) {
 	mm := newM.(*model)
 	newM2, _ := mm.Update(artifactMsg{artifact: artifact.ReasoningDelta{Content: "think"}})
 	mm2 := newM2.(*model)
-	newM3, _ := mm2.Update(artifactMsg{artifact: artifact.ToolCall{Name: "foo", Arguments: "{}"}})
+	newM3, _ := mm2.Update(artifactMsg{artifact: artifact.ToolCall{ID: "call_1", Name: "foo", Arguments: "{}"}})
 	mm3 := newM3.(*model)
 
 	newM3, _ = mm3.Update(renderTickMsg{})
@@ -781,9 +793,9 @@ func TestModel_View_MixedArtifacts_Rendered(t *testing.T) {
 	mm3.syncViewport()
 	output := mm3.View().Content
 	assert.Contains(t, output, "Assistant: ")
-	assert.Contains(t, output, "rendered")   // text block
+	assert.Contains(t, output, "rendered")           // text block
 	assert.Contains(t, output, "Thinking · 5 Chars") // reasoning is completed (not last block)
-	assert.NotContains(t, output, "→")          // arrow prefix removed
+	assert.NotContains(t, output, "→")               // arrow prefix removed
 }
 
 func TestModel_View_IncrementalToolCall_CompactAndExpanded(t *testing.T) {
@@ -792,7 +804,7 @@ func TestModel_View_IncrementalToolCall_CompactAndExpanded(t *testing.T) {
 	m.md = mockMarkdownRenderer{output: "rendered"}
 
 	// Simulate incremental artifact event arriving before TurnCompleteEvent.
-	newM, _ := m.Update(artifactMsg{artifact: artifact.ToolCall{Name: "foo", Arguments: "{}"}})
+	newM, _ := m.Update(artifactMsg{artifact: artifact.ToolCall{ID: "call_1", Name: "foo", Arguments: "{}"}})
 	mm := newM.(*model)
 	mm.syncViewport()
 	output1 := mm.View().Content
@@ -805,7 +817,7 @@ func TestModel_View_IncrementalToolCall_CompactAndExpanded(t *testing.T) {
 	mm.syncViewport()
 	output2 := mm.View().Content
 	assert.Contains(t, output2, "rendered") // rendered content shown in styled block
-	assert.NotContains(t, output2, "→")       // no arrow prefix
+	assert.NotContains(t, output2, "→")     // no arrow prefix
 }
 
 func TestModel_View_IncrementalReasoning_ExpandCollapse(t *testing.T) {
@@ -921,6 +933,7 @@ func TestRenderArtifact_ToolCall_MarkdownRenderer(t *testing.T) {
 	}
 	block := m.renderArtifact(tc, false)
 	assert.Equal(t, "tool_call", block.kind)
+	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "```bash\n$ go test ./...\n```", block.source)
 	// compact should still use compactToolCall (which ignores Value for compact view)
 	assert.NotEmpty(t, block.compact)
@@ -936,6 +949,7 @@ func TestRenderArtifact_ToolCall_FallbackToArguments(t *testing.T) {
 	}
 	block := m.renderArtifact(tc, false)
 	assert.Equal(t, "tool_call", block.kind)
+	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "Calling: search({\"q\":\"hello\"})", block.source)
 }
 
@@ -949,6 +963,7 @@ func TestRenderArtifact_ToolResult_MarkdownRenderer(t *testing.T) {
 	}
 	block := m.renderArtifact(tr, false)
 	assert.Equal(t, "tool_result", block.kind)
+	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "# Custom Markdown", block.source)
 	assert.Equal(t, "# Custom Markdown", block.compact)
 }
@@ -963,6 +978,7 @@ func TestRenderArtifact_ToolResult_JSONFallback(t *testing.T) {
 	}
 	block := m.renderArtifact(tr, false)
 	assert.Equal(t, "tool_result", block.kind)
+	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, `"json value"`, block.source)
 	assert.Equal(t, `"json value"`, block.compact)
 }
@@ -977,6 +993,7 @@ func TestRenderArtifact_ToolResult_Error(t *testing.T) {
 	}
 	block := m.renderArtifact(tr, false)
 	assert.Equal(t, "tool_result", block.kind)
+	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "Error: failed", block.source)
 	assert.Equal(t, "Error: failed", block.compact)
 }
@@ -990,10 +1007,26 @@ func TestRenderArtifact_ToolResult_ContentFallback(t *testing.T) {
 	}
 	block := m.renderArtifact(tr, false)
 	assert.Equal(t, "tool_result", block.kind)
+	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "plain content", block.source)
 	assert.Equal(t, "plain content", block.compact)
 }
 
+func TestRenderArtifact_ToolResult_CompactFromRendered(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.md = mockMarkdownRenderer{output: "**styled result**"}
+	tr := artifact.ToolResult{
+		ToolCallID: "call_1",
+		Content:    "raw result",
+	}
+	block := m.renderArtifact(tr, true)
+	assert.Equal(t, "tool_result", block.kind)
+	assert.Equal(t, "call_1", block.toolCallID)
+	assert.Equal(t, "raw result", block.source)
+	assert.Equal(t, "**styled result**", block.rendered)
+	assert.Equal(t, "**styled result**", block.compact)
+}
 func TestBuildStatusLine_TokenKeysGrouped(t *testing.T) {
 	status := map[string]string{
 		"phase":     "done",
