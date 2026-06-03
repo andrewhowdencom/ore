@@ -2,6 +2,7 @@ package compaction
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
@@ -228,4 +229,101 @@ func TestTokenUsageTrigger(t *testing.T) {
 			assert.Equal(t, tt.want, tr.ShouldCompact(tt.turns))
 		})
 	}
+}
+
+// errorStrategy is a test double that always returns an error.
+type errorStrategy struct {
+	msg string
+}
+
+func (e errorStrategy) Compact(_ context.Context, _ []state.Turn) ([]state.Turn, error) {
+	return nil, errors.New(e.msg)
+}
+
+func TestChainStrategy_Empty(t *testing.T) {
+	chain := NewChainStrategy()
+	turns := []state.Turn{{Role: state.RoleUser}}
+	result, err := chain.Compact(context.Background(), turns)
+	require.NoError(t, err)
+	assert.Equal(t, turns, result)
+}
+
+func TestChainStrategy_Single(t *testing.T) {
+	chain := NewChainStrategy(KeepLastN{N: 2})
+	turns := []state.Turn{
+		{Role: state.RoleSystem},
+		{Role: state.RoleUser},
+		{Role: state.RoleAssistant},
+	}
+	result, err := chain.Compact(context.Background(), turns)
+	require.NoError(t, err)
+	require.Len(t, result, 2)
+	assert.Equal(t, state.RoleUser, result[0].Role)
+	assert.Equal(t, state.RoleAssistant, result[1].Role)
+}
+
+func TestChainStrategy_Multiple(t *testing.T) {
+	// First KeepLastN reduces 5 -> 3, second reduces 3 -> 1.
+	chain := NewChainStrategy(KeepLastN{N: 3}, KeepLastN{N: 1})
+	turns := []state.Turn{
+		{Role: state.RoleSystem},
+		{Role: state.RoleUser},
+		{Role: state.RoleAssistant},
+		{Role: state.RoleUser},
+		{Role: state.RoleAssistant},
+	}
+	result, err := chain.Compact(context.Background(), turns)
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	assert.Equal(t, state.RoleAssistant, result[0].Role)
+}
+
+func TestChainStrategy_ErrorPropagation(t *testing.T) {
+	errStrat := errorStrategy{msg: "middle strategy failed"}
+	chain := NewChainStrategy(KeepLastN{N: 3}, errStrat, KeepLastN{N: 1})
+	turns := []state.Turn{
+		{Role: state.RoleSystem},
+		{Role: state.RoleUser},
+		{Role: state.RoleAssistant},
+	}
+	_, err := chain.Compact(context.Background(), turns)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "middle strategy failed")
+}
+
+func TestMaybeCompact_MultipleStrategies(t *testing.T) {
+	c := New(
+		WithTrigger(TurnCountTrigger{N: 3}),
+		WithStrategy(KeepLastN{N: 3}),
+		WithStrategy(KeepLastN{N: 1}),
+	)
+	turns := []state.Turn{
+		{Role: state.RoleSystem},
+		{Role: state.RoleUser},
+		{Role: state.RoleAssistant},
+		{Role: state.RoleUser},
+		{Role: state.RoleAssistant},
+	}
+	result, didCompact, err := c.MaybeCompact(context.Background(), turns)
+	require.NoError(t, err)
+	assert.True(t, didCompact)
+	assert.Len(t, result, 1)
+	assert.Equal(t, state.RoleAssistant, result[0].Role)
+}
+
+func TestMaybeCompact_MultipleStrategies_ErrorPropagation(t *testing.T) {
+	c := New(
+		WithTrigger(TurnCountTrigger{N: 0}),
+		WithStrategy(KeepLastN{N: 3}),
+		WithStrategy(errorStrategy{msg: "second strategy failed"}),
+	)
+	turns := []state.Turn{
+		{Role: state.RoleSystem},
+		{Role: state.RoleUser},
+		{Role: state.RoleAssistant},
+	}
+	_, _, err := c.MaybeCompact(context.Background(), turns)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "compaction strategy failed")
+	assert.Contains(t, err.Error(), "second strategy failed")
 }

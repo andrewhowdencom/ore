@@ -39,6 +39,12 @@
 // ignored. This is an MVP limitation; future work may add custom formatters
 // or multi-modal support.
 //
+// ChainStrategy composes multiple strategies into a single strategy that
+// runs them in sequence, piping the output of each strategy into the input
+// of the next. It is used automatically by Compactor when WithStrategy is
+// called multiple times, and can also be constructed explicitly via
+// NewChainStrategy for programmatic composition.
+//
 // # Application wiring
 //
 // The compactor is called by the application before step.Turn(). If
@@ -47,7 +53,11 @@
 //	compactor := compaction.New(
 //	    compaction.WithTrigger(compaction.TurnCountTrigger{N: 20}),
 //	    compaction.WithStrategy(compaction.KeepLastN{N: 10}),
+//	    compaction.WithStrategy(compaction.SummarizeStrategy{Provider: prov, PreserveLastN: 2}),
 //	)
+//
+// WithStrategy accumulates; each call appends another strategy to the
+// pipeline. Strategies execute in registration order.
 //
 //	for {
 //	    turns, didCompact, err := compactor.MaybeCompact(ctx, buf.Turns())

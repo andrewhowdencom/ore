@@ -18,10 +18,35 @@ type Strategy interface {
 	Compact(ctx context.Context, turns []state.Turn) ([]state.Turn, error)
 }
 
+// ChainStrategy runs multiple strategies in sequence, piping the output of
+// each strategy into the input of the next.
+type ChainStrategy struct {
+	strategies []Strategy
+}
+
+// NewChainStrategy creates a ChainStrategy from the provided strategies.
+func NewChainStrategy(strategies ...Strategy) ChainStrategy {
+	return ChainStrategy{strategies: strategies}
+}
+
+// Compact runs each strategy in order, passing the output of strategy N as
+// the input to strategy N+1. If any strategy fails, the chain stops and
+// returns the error.
+func (c ChainStrategy) Compact(ctx context.Context, turns []state.Turn) ([]state.Turn, error) {
+	var err error
+	for _, s := range c.strategies {
+		turns, err = s.Compact(ctx, turns)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return turns, nil
+}
+
 // Compactor coordinates a Trigger and a Strategy to optionally reduce state.
 type Compactor struct {
-	trigger  Trigger
-	strategy Strategy
+	trigger    Trigger
+	strategies []Strategy
 }
 
 // Option configures a Compactor.
@@ -35,9 +60,10 @@ func WithTrigger(t Trigger) Option {
 }
 
 // WithStrategy sets the strategy that reduces the turn slice.
+// Multiple calls accumulate; strategies are run in sequence.
 func WithStrategy(s Strategy) Option {
 	return func(c *Compactor) {
-		c.strategy = s
+		c.strategies = append(c.strategies, s)
 	}
 }
 
@@ -55,17 +81,20 @@ func New(opts ...Option) *Compactor {
 // Strategy and returns the compacted turns along with true. If the Trigger
 // does not fire, it returns the original turns and false.
 func (c *Compactor) MaybeCompact(ctx context.Context, turns []state.Turn) ([]state.Turn, bool, error) {
-	if c.trigger == nil || c.strategy == nil {
+	if c.trigger == nil || len(c.strategies) == 0 {
 		return turns, false, nil
 	}
 	if !c.trigger.ShouldCompact(turns) {
 		return turns, false, nil
 	}
-	compact, err := c.strategy.Compact(ctx, turns)
-	if err != nil {
-		return nil, false, fmt.Errorf("compaction strategy failed: %w", err)
+	var err error
+	for _, s := range c.strategies {
+		turns, err = s.Compact(ctx, turns)
+		if err != nil {
+			return nil, false, fmt.Errorf("compaction strategy failed: %w", err)
+		}
 	}
-	return compact, true, nil
+	return turns, true, nil
 }
 
 // TurnCountTrigger fires when the number of turns exceeds a threshold.
