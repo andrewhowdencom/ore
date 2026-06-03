@@ -855,7 +855,35 @@ func TestHandler_WithUI_StaticFiles_ErrorPath(t *testing.T) {
 	}
 }
 
-func TestHandler_WithUI_RedirectRoot(t *testing.T) {
+func TestHandler_WithUI_LandingPage(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	h := newTestHandler(t, mgr, WithUI())
+
+	// Seed a thread with a user message so we can verify snippet extraction.
+	thr, err := store.Create()
+	require.NoError(t, err)
+	thr.State.Append(state.RoleUser, artifact.Text{Content: "Hello world this is a test message for preview"})
+	thr.UpdatedAt = time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+	require.NoError(t, store.Save(thr))
+
+	req := httptest.NewRequest("GET", "/", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	assert.Equal(t, 200, rr.Code)
+	assert.Equal(t, "text/html; charset=utf-8", rr.Header().Get("Content-Type"))
+	body := rr.Body.String()
+	assert.Contains(t, body, "Start new chat")
+	assert.Contains(t, body, "/chat")
+	assert.Contains(t, body, thr.ID)
+	assert.Contains(t, body, "/chat?thread="+thr.ID)
+	assert.Contains(t, body, "Hello world this is a test message for preview")
+	assert.Contains(t, body, "Updated")
+}
+
+func TestHandler_WithUI_LandingPage_Empty(t *testing.T) {
 	store := session.NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
@@ -865,8 +893,50 @@ func TestHandler_WithUI_RedirectRoot(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ServeMux().ServeHTTP(rr, req)
 
-	assert.Equal(t, 307, rr.Code)
-	assert.Equal(t, "/chat", rr.Header().Get("Location"))
+	assert.Equal(t, 200, rr.Code)
+	body := rr.Body.String()
+	assert.Contains(t, body, "No conversations yet")
+	assert.Contains(t, body, "Start new chat")
+}
+
+func TestHandler_WithUI_LandingPage_TruncatedPreview(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	h := newTestHandler(t, mgr, WithUI())
+
+	thr, err := store.Create()
+	require.NoError(t, err)
+	longMsg := strings.Repeat("a", 200)
+	thr.State.Append(state.RoleUser, artifact.Text{Content: longMsg})
+	require.NoError(t, store.Save(thr))
+
+	req := httptest.NewRequest("GET", "/", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	assert.Equal(t, 200, rr.Code)
+	body := rr.Body.String()
+	assert.Contains(t, body, strings.Repeat("a", 120)+"...")
+	assert.NotContains(t, body, strings.Repeat("a", 121)+"...")
+}
+
+func TestHandler_WithUI_LandingPage_ErrorPath(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	h := newTestHandler(t, mgr, WithUI())
+
+	// Swap staticFS with a mock that always errors.
+	oldFS := staticFS
+	staticFS = &errorFS{}
+	defer func() { staticFS = oldFS }()
+
+	req := httptest.NewRequest("GET", "/", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	assert.Equal(t, 500, rr.Code)
 }
 
 func TestHandler_WithoutUI_Root404(t *testing.T) {
