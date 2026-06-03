@@ -140,8 +140,8 @@ func (t ToolResult) MarkdownString() string {
 		if r, ok := t.Value.(MarkdownRenderer); ok {
 			return r.MarshalMarkdown()
 		}
-		if b, err := json.Marshal(t.Value); err == nil {
-			return string(b)
+		if b, err := json.MarshalIndent(t.Value, "", "  "); err == nil {
+			return "```json\n" + string(b) + "\n```"
 		}
 	}
 	return t.Content

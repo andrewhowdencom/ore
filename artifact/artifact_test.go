@@ -144,7 +144,7 @@ func TestToolResult_MarkdownString(t *testing.T) {
 		{
 			name: "json.Marshal fallback for simple value",
 			tr:   ToolResult{Value: 42, Content: "fallback"},
-			want: `42`,
+			want: "```json\n42\n```",
 		},
 		{
 			name: "nil Value falls back to Content",
