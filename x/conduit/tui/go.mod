@@ -6,12 +6,13 @@ require (
 	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.6
 	charm.land/lipgloss/v2 v2.0.3
-	github.com/andrewhowdencom/ore v0.5.0
+	github.com/andrewhowdencom/ore v0.5.1
 	github.com/andrewhowdencom/ore/x/conduit v0.1.3
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/charmbracelet/x/cellbuf v0.0.15
 	github.com/muesli/termenv v0.16.0
 	github.com/stretchr/testify v1.11.1
+	go.opentelemetry.io/otel/trace v1.44.0
 	golang.org/x/term v0.36.0
 )
 
@@ -20,6 +21,7 @@ require (
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20260416155717-489999b90468 // indirect
@@ -44,6 +46,7 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yuin/goldmark v1.7.13 // indirect
 	github.com/yuin/goldmark-emoji v1.0.6 // indirect
+	go.opentelemetry.io/otel v1.44.0 // indirect
 	golang.org/x/net v0.44.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect

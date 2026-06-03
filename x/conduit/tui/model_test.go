@@ -7,14 +7,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/session"
-	"github.com/andrewhowdencom/ore/state"
-	"github.com/andrewhowdencom/ore/x/conduit"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -937,7 +937,6 @@ func TestModel_WindowTitle_Cancelled(t *testing.T) {
 	assert.Equal(t, "Ore [cancelled]", m.windowTitle())
 }
 
-
 func TestModel_Update_LifecycleSubmittedThenDone(t *testing.T) {
 	m := model{}
 
@@ -1132,12 +1131,12 @@ func TestModel_Update_UserAfterTool_DoesNotResetExpand(t *testing.T) {
 	// Simulate an assistant turn with a tool call
 	m.turns = append(m.turns, renderedTurn{
 		role:   state.RoleAssistant,
-		blocks: []renderedBlock{{kind: "tool_call", source: "Calling: foo({})", compact: "foo"}},
+		blocks: []renderedBlock{{kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"}},
 	})
 	// Simulate a tool result turn
 	m.turns = append(m.turns, renderedTurn{
 		role:   state.RoleTool,
-		blocks: []renderedBlock{{kind: "tool_result", source: "result", compact: "result"}},
+		blocks: []renderedBlock{{kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"}},
 	})
 	m.expandLatestDetails = true
 
@@ -1155,6 +1154,7 @@ func TestModel_Update_UserAfterTool_DoesNotResetExpand(t *testing.T) {
 
 	// Previous assistant turn's tool blocks remain expanded
 	output := mm.buildContent()
+	assert.Contains(t, output, "[call_1]")
 	assert.Contains(t, output, "Calling: foo({})")
 }
 
@@ -1410,7 +1410,7 @@ func TestModel_Update_MixedArtifacts_AccumulateInOrder(t *testing.T) {
 	mm := newM.(*model)
 	newM2, _ := mm.Update(artifactMsg{artifact: artifact.ReasoningDelta{Content: "think"}})
 	mm2 := newM2.(*model)
-	newM3, _ := mm2.Update(artifactMsg{artifact: artifact.ToolCall{Name: "foo", Arguments: "{}"}})
+	newM3, _ := mm2.Update(artifactMsg{artifact: artifact.ToolCall{ID: "call_1", Name: "foo", Arguments: "{}"}})
 	mm3 := newM3.(*model)
 
 	require.Len(t, mm3.currentTurn.blocks, 3)
@@ -1419,13 +1419,14 @@ func TestModel_Update_MixedArtifacts_AccumulateInOrder(t *testing.T) {
 	assert.Equal(t, "reasoning", mm3.currentTurn.blocks[1].kind)
 	assert.Equal(t, "think", mm3.currentTurn.blocks[1].source)
 	assert.Equal(t, "tool_call", mm3.currentTurn.blocks[2].kind)
+	assert.Equal(t, "call_1", mm3.currentTurn.blocks[2].toolCallID)
 
 	turn := state.Turn{
 		Role: state.RoleAssistant,
 		Artifacts: []artifact.Artifact{
 			artifact.Text{Content: "hello"},
 			artifact.Reasoning{Content: "think"},
-			artifact.ToolCall{Name: "foo", Arguments: "{}"},
+			artifact.ToolCall{ID: "call_1", Name: "foo", Arguments: "{}"},
 		},
 	}
 	newM4, _ := mm3.Update(turnMsg{turn: turn})
@@ -1434,6 +1435,7 @@ func TestModel_Update_MixedArtifacts_AccumulateInOrder(t *testing.T) {
 	require.Len(t, mm4.turns[0].blocks, 3)
 	assert.Equal(t, "text", mm4.turns[0].blocks[0].kind)
 	assert.Equal(t, "reasoning", mm4.turns[0].blocks[1].kind)
+	assert.Equal(t, "call_1", mm4.turns[0].blocks[2].toolCallID)
 	assert.Equal(t, "tool_call", mm4.turns[0].blocks[2].kind)
 }
 
@@ -1707,4 +1709,3 @@ func TestModel_Update_AutoScrollLock_PreservesBottom(t *testing.T) {
 		assert.True(t, mm.viewport.AtBottom(), "WindowSizeMsg should preserve bottom lock")
 	})
 }
-

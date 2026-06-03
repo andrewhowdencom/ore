@@ -31,6 +31,7 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // TUI is a terminal user interface conduit. It hides all Bubble Tea internals
@@ -43,6 +44,7 @@ type TUI struct {
 	name           string
 	zoneFormatter  conduit.StatusFormatter
 	zonePriorities map[string]int
+	tracer         trace.Tracer
 }
 
 // Option configures a TUI.
@@ -88,6 +90,15 @@ func WithStatusZones(mapping map[string]string) Option {
 			"context":   1,
 			"default":   99,
 		}
+	}
+}
+
+// WithTracer configures an OpenTelemetry tracer for the TUI.
+// When configured, user input events start a "tui.turn" server span
+// that is propagated through the event stream for downstream linking.
+func WithTracer(tracer trace.Tracer) Option {
+	return func(t *TUI) {
+		t.tracer = tracer
 	}
 }
 
@@ -199,8 +210,20 @@ func (t *TUI) Start(ctx context.Context) error {
 		for event := range t.eventsCh {
 			switch e := event.(type) {
 			case session.UserMessageEvent:
-				if err := stream.Submit(e); err != nil {
+				ctx := context.Background()
+				var span trace.Span
+				if t.tracer != nil {
+					ctx, span = t.tracer.Start(ctx, "tui.turn", trace.WithSpanKind(trace.SpanKindServer))
+				}
+				msg := session.UserMessageEvent{
+					Content: e.Content,
+					Ctx:     loop.WithProvenance(ctx, "tui"),
+				}
+				if err := stream.Submit(msg); err != nil {
 					slog.Error("submit failed", "err", err)
+				}
+				if span != nil {
+					span.End()
 				}
 			case session.InterruptEvent:
 				if err := stream.Cancel(); err != nil {

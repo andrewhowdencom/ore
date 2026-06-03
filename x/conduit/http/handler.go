@@ -16,6 +16,8 @@ import (
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
 
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Option configures a Handler via functional options.
@@ -53,6 +55,16 @@ func WithName(name string) Option {
 	}
 }
 
+// WithTracer configures an OpenTelemetry tracer for the HTTP handler.
+// When configured, incoming requests extract traceparent from headers,
+// start a server span, and outgoing event responses carry the span context.
+func WithTracer(tracer trace.Tracer) Option {
+	return func(h *Handler) {
+		h.tracer = tracer
+		h.propagator = propagation.TraceContext{}
+	}
+}
+
 // Descriptor enumerates the capabilities of the HTTP conduit.
 // CapAudioNotification is included because the embedded web UI
 // (chat.js) can play Web Audio API oscillator tones on assistant
@@ -72,10 +84,12 @@ var Descriptor = conduit.Descriptor{
 // Handler provides HTTP endpoints for the ore framework's thread
 // primitives. It is mounted on an http.ServeMux via ServeMux().
 type Handler struct {
-	mgr    *session.Manager
-	withUI bool
-	addr   string
-	name   string
+	mgr        *session.Manager
+	withUI     bool
+	addr       string
+	name       string
+	tracer     trace.Tracer
+	propagator propagation.TextMapPropagator
 }
 
 // New creates a new HTTP conduit that implements conduit.Conduit.
@@ -303,13 +317,27 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	// Subscribe to the session's FanOut before the goroutine starts.
 	subCh := stream.Subscribe(req.Kinds...)
 
+	// Extract traceparent from request headers and start server span.
+	ctx := r.Context()
+	if h.propagator != nil {
+		ctx = h.propagator.Extract(ctx, propagation.HeaderCarrier(r.Header))
+	}
+	var span trace.Span
+	if h.tracer != nil {
+		ctx, span = h.tracer.Start(ctx, "http.send_message", trace.WithSpanKind(trace.SpanKindServer))
+		defer span.End()
+	}
+
 	// Run the inference pipeline in a goroutine.
 	done := make(chan error)
 	go func() {
-		err := stream.Process(r.Context(), session.UserMessageEvent{Content: req.Content})
+		err := stream.Process(ctx, session.UserMessageEvent{
+			Content: req.Content,
+			Ctx:     loop.WithProvenance(ctx, "http"),
+		})
 		select {
 		case done <- err:
-		case <-r.Context().Done():
+		case <-ctx.Done():
 		}
 	}()
 
