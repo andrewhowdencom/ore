@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http/httptrace"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
@@ -15,6 +16,7 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/option"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -263,6 +265,9 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		if id, ok := loop.ThreadIDFrom(ctx); ok {
 			span.SetAttributes(attribute.String("thread_id", id))
 		}
+		// Attach httptrace hooks to record granular HTTP lifecycle events
+		// (DNS, connect, TLS, first-byte) on the provider.invoke span.
+		ctx = httptrace.WithClientTrace(ctx, otelhttptrace.NewClientTrace(ctx, otelhttptrace.WithoutSubSpans()))
 		defer span.End()
 	}
 
