@@ -139,6 +139,9 @@ func (m *model) buildContent() string {
 							content = block.source
 						}
 					}
+					if block.toolCallID != "" {
+						b.WriteString("[" + block.toolCallID + "] ")
+					}
 					b.WriteString(toolBlockStyle.Render(content))
 				}
 				if i < len(turn.blocks)-1 {
@@ -159,6 +162,9 @@ func (m *model) buildContent() string {
 						} else {
 							content = block.source
 						}
+					}
+					if block.toolCallID != "" {
+						b.WriteString("[" + block.toolCallID + "] ")
 					}
 					isError := strings.HasPrefix(block.source, "Error: ")
 					if isError {
@@ -218,6 +224,9 @@ func (m *model) buildContent() string {
 					} else {
 						content = block.source
 					}
+				}
+				if block.toolCallID != "" {
+					b.WriteString("[" + block.toolCallID + "] ")
 				}
 				b.WriteString(toolBlockStyle.Render(content))
 			}

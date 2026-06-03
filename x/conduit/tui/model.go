@@ -76,10 +76,11 @@ type renderTickMsg struct{}
 // (Ctrl+O collapsed). It is computed during turn processing to avoid
 // repeated JSON parsing on every viewport refresh.
 type renderedBlock struct {
-	kind     string // "text", "reasoning", "tool_call", or "tool_result"
-	source   string // original content
-	compact  string // compact single-line representation
-	rendered string // pre-rendered ANSI output (for text, reasoning, tool_call and tool_result blocks)
+	kind       string // "text", "reasoning", "tool_call", or "tool_result"
+	source     string // original content
+	compact    string // compact single-line representation
+	rendered   string // pre-rendered ANSI output (for text, reasoning, tool_call and tool_result blocks)
+	toolCallID string // ID pairing tool_call with its corresponding tool_result
 }
 
 // The TUI aims to keep the conversation view concise. Tool calls and their
@@ -261,7 +262,7 @@ func (m *model) renderArtifact(art artifact.Artifact, shouldRenderMarkdown bool)
 			source = fmt.Sprintf("Calling: %s(%s)", a.Name, a.Arguments)
 		}
 		compact := compactToolCall(a, m.viewport.Width())
-		block := renderedBlock{kind: "tool_call", source: source, compact: compact}
+		block := renderedBlock{kind: "tool_call", source: source, compact: compact, toolCallID: a.ID}
 		if shouldRenderMarkdown {
 			rendered, err := m.renderMarkdown(source, m.viewport.Width())
 			if err == nil {
@@ -274,13 +275,19 @@ func (m *model) renderArtifact(art artifact.Artifact, shouldRenderMarkdown bool)
 		if a.IsError {
 			source = "Error: " + source
 		}
-		compact := compactToolResult(source, m.viewport.Width())
-		block := renderedBlock{kind: "tool_result", source: source, compact: compact}
+		block := renderedBlock{kind: "tool_result", source: source, toolCallID: a.ToolCallID}
 		if shouldRenderMarkdown {
 			rendered, err := m.renderMarkdown(source, m.viewport.Width())
 			if err == nil {
 				block.rendered = rendered
 			}
+		}
+		// Derive compact from rendered Markdown output, falling back to raw
+		// source when rendering is unavailable (e.g. user turns or errors).
+		if block.rendered != "" {
+			block.compact = compactToolResult(block.rendered, m.viewport.Width())
+		} else {
+			block.compact = compactToolResult(source, m.viewport.Width())
 		}
 		return block
 	}
