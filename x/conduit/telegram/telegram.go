@@ -17,6 +17,7 @@ import (
 	"github.com/andrewhowdencom/ore/state"
 
 	"github.com/andrewhowdencom/ore/x/conduit"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Descriptor enumerates the capabilities of the Telegram conduit.
@@ -37,6 +38,7 @@ type telegramConduit struct {
 	client   *http.Client
 	timeout  int // getUpdates timeout in seconds
 	baseURL  string
+	tracer   trace.Tracer
 }
 
 // Option configures the telegramConduit via functional options.
@@ -60,6 +62,13 @@ func WithHTTPClient(client *http.Client) Option {
 func WithGetUpdatesTimeout(seconds int) Option {
 	return func(c *telegramConduit) {
 		c.timeout = seconds
+	}
+}
+
+// WithTracer configures an OpenTelemetry tracer for the Telegram conduit.
+func WithTracer(tracer trace.Tracer) Option {
+	return func(c *telegramConduit) {
+		c.tracer = tracer
 	}
 }
 
@@ -103,7 +112,7 @@ func (c *telegramConduit) Start(ctx context.Context) error {
 
 	// Register sink for turn_complete events from all streams.
 	cleanup := c.mgr.RegisterSink([]string{"turn_complete"}, func(streamID string, event loop.OutputEvent) {
-		if event.Context().Provenance != "telegram" {
+		if p, _ := loop.ProvenanceFrom(event.Context()); p != "telegram" {
 			return
 		}
 
@@ -188,12 +197,21 @@ func (c *telegramConduit) poll(ctx context.Context, botUserID int64) {
 				continue
 			}
 
+			turnCtx := ctx
+			var span trace.Span
+			if c.tracer != nil {
+				turnCtx, span = c.tracer.Start(turnCtx, "telegram.turn", trace.WithSpanKind(trace.SpanKindServer))
+			}
+
 			event := session.UserMessageEvent{
 				Content: update.Message.Text,
-				Ctx:     loop.EventContext{Provenance: "telegram"},
+				Ctx:     loop.WithProvenance(turnCtx, "telegram"),
 			}
 			if err := stream.Submit(event); err != nil {
 				slog.Error("telegram: submit event failed", "chat_id", chatIDStr, "err", err)
+			}
+			if span != nil {
+				span.End()
 			}
 
 			if update.UpdateID >= offset {

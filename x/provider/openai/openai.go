@@ -7,14 +7,17 @@ import (
 	"encoding/json"
 	"fmt"
 
-
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/option"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Provider implements provider.Provider for OpenAI-compatible APIs using the
@@ -22,6 +25,7 @@ import (
 type Provider struct {
 	client openai.Client
 	model  string
+	tracer trace.Tracer
 }
 
 // WithTools returns an InvokeOption that configures the set of available tools
@@ -80,6 +84,7 @@ type config struct {
 	model      string
 	baseURL    string
 	httpClient option.HTTPClient
+	tracer     trace.Tracer
 }
 
 // Option configures a Provider via the functional options pattern.
@@ -114,6 +119,13 @@ func WithHTTPClient(client option.HTTPClient) Option {
 	}
 }
 
+// WithTracer configures an OpenTelemetry tracer for the provider.
+func WithTracer(tracer trace.Tracer) Option {
+	return func(c *config) {
+		c.tracer = tracer
+	}
+}
+
 // New creates an OpenAI-compatible provider.
 func New(opts ...Option) (*Provider, error) {
 	cfg := &config{}
@@ -139,6 +151,7 @@ func New(opts ...Option) (*Provider, error) {
 	return &Provider{
 		client: openai.NewClient(sdkOpts...),
 		model:  cfg.model,
+		tracer: cfg.tracer,
 	}, nil
 }
 
@@ -243,6 +256,16 @@ func concatText(artifacts []artifact.Artifact) string {
 // Tool call fragments are assembled into complete ToolCall artifacts;
 // text and reasoning deltas are emitted directly without accumulation.
 func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+	var span trace.Span
+	if p.tracer != nil {
+		ctx, span = p.tracer.Start(ctx, "provider.invoke", trace.WithSpanKind(trace.SpanKindClient))
+		span.SetAttributes(attribute.String("model", p.model))
+		if id, ok := loop.ThreadIDFrom(ctx); ok {
+			span.SetAttributes(attribute.String("thread_id", id))
+		}
+		defer span.End()
+	}
+
 	messages := p.serializeMessages(s)
 
 	var tools []tool.Tool
@@ -336,6 +359,10 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	}
 
 	if err := stream.Err(); err != nil {
+		if span != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
 		return fmt.Errorf("streaming chat completion: %w", err)
 	}
 

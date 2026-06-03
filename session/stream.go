@@ -155,16 +155,17 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 		return fmt.Errorf("session %s is closed", s.id)
 	}
 	turnCtx, cancel := context.WithCancel(ctx)
+	turnCtx = loop.WithThreadID(turnCtx, s.id)
 	s.cancel = cancel
 	s.mu.Unlock()
 
 	var runErr error
-	var eventCtx loop.EventContext
+	var eventCtx context.Context
 	switch e := event.(type) {
 	case UserMessageEvent:
 		eventCtx = e.Context()
 		s.step.SetEventContext(e.Context())
-		defer s.step.SetEventContext(loop.EventContext{})
+		defer s.step.SetEventContext(context.Background())
 		_, runErr = s.step.Submit(turnCtx, s.thread.State, state.RoleUser, artifact.Text{Content: e.Content})
 		if runErr == nil {
 			_, runErr = s.processor(turnCtx, s.step, s.thread.State, s.provider)
@@ -174,7 +175,7 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 		// No inference is started for an interrupt event itself.
 		eventCtx = e.Context()
 		s.step.SetEventContext(e.Context())
-		defer s.step.SetEventContext(loop.EventContext{})
+		defer s.step.SetEventContext(context.Background())
 		cancel()
 	default:
 		runErr = fmt.Errorf("unsupported event kind: %s", event.Kind())
@@ -321,7 +322,7 @@ func (s *Stream) SetMetadata(key, value string) {
 	s.mu.Unlock()
 	_ = s.Emit(context.Background(), loop.PropertiesEvent{
 		Properties: map[string]string{key: value},
-		Ctx:        loop.EventContext{Provenance: "app"},
+		Ctx:        loop.WithProvenance(context.Background(), "app"),
 	})
 }
 

@@ -11,6 +11,8 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Transform modifies the state view presented to the provider during
@@ -24,21 +26,16 @@ type Transform interface {
 	Transform(ctx context.Context, st state.State) (state.State, error)
 }
 
-// EventContext carries metadata for an event, analogous to context.Context.
-// It travels with an event through the event stream so subscribers can
-// access routing metadata (provenance, trace IDs, etc.) uniformly.
-type EventContext struct {
-	Provenance string
-}
+
 
 // OutputEvent represents any event emitted by a Step.
-// All output events carry an EventContext so subscribers can access
+// All output events carry a context.Context so subscribers can access
 // routing metadata uniformly. Events include wrapped artifacts
 // (ArtifactEvent), turn completions (TurnCompleteEvent), and errors
 // (ErrorEvent).
 type OutputEvent interface {
 	Kind() string
-	Context() EventContext
+	Context() context.Context
 }
 
 // TurnCompleteEvent is emitted when a turn (assistant, user, system, or
@@ -50,14 +47,14 @@ type TurnCompleteEvent struct {
 
 	// Ctx carries routing metadata for the event, such as provenance
 	// information for echo suppression.
-	Ctx EventContext
+	Ctx context.Context
 }
 
 // Kind returns the event kind identifier.
 func (e TurnCompleteEvent) Kind() string { return "turn_complete" }
 
 // Context returns the event context.
-func (e TurnCompleteEvent) Context() EventContext { return e.Ctx }
+func (e TurnCompleteEvent) Context() context.Context { return e.Ctx }
 
 // ErrorEvent is emitted when a turn fails due to a provider or handler error.
 type ErrorEvent struct {
@@ -65,14 +62,14 @@ type ErrorEvent struct {
 
 	// Ctx carries routing metadata for the event, such as provenance
 	// information for echo suppression.
-	Ctx EventContext
+	Ctx context.Context
 }
 
 // Kind returns the event kind identifier.
 func (e ErrorEvent) Kind() string { return "error" }
 
 // Context returns the event context.
-func (e ErrorEvent) Context() EventContext { return e.Ctx }
+func (e ErrorEvent) Context() context.Context { return e.Ctx }
 
 // LifecycleEvent is emitted at structural boundaries of a single inference
 // turn to signal phase transitions. Phases are linear per-pipeline:
@@ -84,16 +81,16 @@ type LifecycleEvent struct {
 
 	// Ctx carries routing metadata for the event, such as provenance
 	// information for echo suppression.
-	Ctx EventContext
+	Ctx context.Context
 }
 
 // Kind returns the event kind identifier.
 func (e LifecycleEvent) Kind() string { return "lifecycle" }
 
 // Context returns the event context.
-func (e LifecycleEvent) Context() EventContext { return e.Ctx }
+func (e LifecycleEvent) Context() context.Context { return e.Ctx }
 
-// ArtifactEvent wraps an artifact.Artifact with an EventContext so it
+// ArtifactEvent wraps an artifact.Artifact with a context.Context so it
 // can be emitted as an OutputEvent without polluting the artifact type
 // with routing metadata.
 type ArtifactEvent struct {
@@ -101,14 +98,14 @@ type ArtifactEvent struct {
 
 	// Ctx carries routing metadata for the event, such as provenance
 	// information for echo suppression.
-	Ctx EventContext
+	Ctx context.Context
 }
 
 // Kind returns the underlying artifact's kind.
 func (e ArtifactEvent) Kind() string { return e.Artifact.Kind() }
 
 // Context returns the event context.
-func (e ArtifactEvent) Context() EventContext { return e.Ctx }
+func (e ArtifactEvent) Context() context.Context { return e.Ctx }
 
 // PropertiesEvent carries ambient, persistent metadata as a map of
 // key-value pairs. It is emitted by any producer holding a
@@ -119,20 +116,51 @@ type PropertiesEvent struct {
 
 	// Ctx carries routing metadata for the event, such as provenance
 	// information for echo suppression.
-	Ctx EventContext
+	Ctx context.Context
 }
 
 // Kind returns the event kind identifier.
 func (e PropertiesEvent) Kind() string { return "properties" }
 
 // Context returns the event context.
-func (e PropertiesEvent) Context() EventContext { return e.Ctx }
+func (e PropertiesEvent) Context() context.Context { return e.Ctx }
 
 // outputEventEnvelope wraps an OutputEvent with an acknowledgment channel.
 // The producer blocks until the FanOut closes done after delivering the event.
 type outputEventEnvelope struct {
 	event OutputEvent
 	done  chan struct{}
+}
+
+// provenanceKey is the typed context key for provenance metadata.
+type provenanceKey struct{}
+
+// WithProvenance attaches a provenance name to the context.
+func WithProvenance(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, provenanceKey{}, name)
+}
+
+// ProvenanceFrom extracts the provenance name from a context, if present.
+func ProvenanceFrom(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
+	}
+	name, ok := ctx.Value(provenanceKey{}).(string)
+	return name, ok
+}
+
+// threadIDKey is the typed context key for thread identity.
+type threadIDKey struct{}
+
+// WithThreadID attaches a thread ID to the context.
+func WithThreadID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, threadIDKey{}, id)
+}
+
+// ThreadIDFrom extracts the thread ID from a context, if present.
+func ThreadIDFrom(ctx context.Context) (string, bool) {
+	id, ok := ctx.Value(threadIDKey{}).(string)
+	return id, ok
 }
 
 // OnEmit is a synchronous callback invoked by Emit before the event is
@@ -153,7 +181,8 @@ type Step struct {
 	handlers     []Handler
 	onEmit       []OnEmit
 	invokeOpts   []provider.InvokeOption
-	eventContext EventContext
+	eventContext context.Context
+	tracer       trace.Tracer
 }
 
 // New creates a Step with the given options.
@@ -195,20 +224,24 @@ func (s *Step) Subscribe(kinds ...string) <-chan OutputEvent {
 	return s.fanOut.Subscribe(kinds...)
 }
 
-// SetEventContext sets the EventContext that will be attached to all
+// SetEventContext sets the context.Context that will be attached to all
 // subsequent output events emitted by this Step. It is used by
 // Stream.Process to thread context from the input event through the
 // turn pipeline. Callers must ensure this is called before Turn or
 // Submit and cleared after (typically via defer).
-func (s *Step) SetEventContext(ctx EventContext) {
-	s.eventContext = ctx
+func (s *Step) SetEventContext(ctx context.Context) {
+	if ctx != nil {
+		s.eventContext = context.WithoutCancel(ctx)
+	} else {
+		s.eventContext = nil
+	}
 }
 
-// clearEventContext resets the EventContext on the Step to its zero
-// value. It is the counterpart to SetEventContext and is invoked via
+// clearEventContext resets the context.Context on the Step to nil.
+// It is the counterpart to SetEventContext and is invoked via
 // defer in Turn and Submit to prevent context leakage between calls.
 func (s *Step) clearEventContext() {
-	s.eventContext = EventContext{}
+	s.eventContext = nil
 }
 
 // Close stops the Step's FanOut and closes all subscriber channels.
@@ -256,6 +289,29 @@ func WithInvokeOptions(opts ...provider.InvokeOption) Option {
 	}
 }
 
+// WithTracer configures an OpenTelemetry tracer for the Step.
+// When configured, Turn and Submit create spans for each inference turn.
+func WithTracer(tracer trace.Tracer) Option {
+	return func(s *Step) {
+		s.tracer = tracer
+	}
+}
+
+// startSpan creates a "loop.turn" internal span when a tracer is configured.
+// It reads thread_id from the context and adds it as a span attribute.
+// Returns the span-attached context and a function that must be called to end
+// the span. If no tracer is configured, returns the input context and a no-op.
+func (s *Step) startSpan(ctx context.Context) (context.Context, func()) {
+	if s.tracer == nil {
+		return ctx, func() {}
+	}
+	ctx, span := s.tracer.Start(ctx, "loop.turn", trace.WithSpanKind(trace.SpanKindInternal))
+	if id, ok := ThreadIDFrom(ctx); ok {
+		span.SetAttributes(attribute.String("thread_id", id))
+	}
+	return ctx, func() { span.End() }
+}
+
 // Turn performs one inference turn with the given provider.
 // The provider emits artifacts to a channel; all artifacts are forwarded to
 // the Step's FanOut subscribers immediately as they arrive. Deltas implementing
@@ -267,6 +323,8 @@ func WithInvokeOptions(opts ...provider.InvokeOption) Option {
 // The operation is fully synchronous and blocking.
 func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, opts ...provider.InvokeOption) (state.State, error) {
 	defer s.clearEventContext()
+	ctx, endSpan := s.startSpan(ctx)
+	defer endSpan()
 	var err error
 
 	for _, tr := range s.transforms {
@@ -399,6 +457,8 @@ func enrichToolCalls(ctx context.Context, artifacts []artifact.Artifact, opts []
 // mechanism for user, system, or tool turns to enter the same artifact stream
 // as assistant responses from Turn().
 func (s *Step) Submit(ctx context.Context, st state.State, role state.Role, artifacts ...artifact.Artifact) (state.State, error) {
+	ctx, endSpan := s.startSpan(ctx)
+	defer endSpan()
 	return s.finalizeTurn(ctx, st, role, artifacts)
 }
 

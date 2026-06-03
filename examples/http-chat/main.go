@@ -65,6 +65,7 @@ import (
 	"github.com/andrewhowdencom/ore/x/usage"
 
 	httpc "github.com/andrewhowdencom/ore/x/conduit/http"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 func main() {
@@ -97,6 +98,10 @@ func run() error {
 		port = "8080"
 	}
 
+	// Create a noop tracer for the example (replace with a real OTel setup in
+	// production). This demonstrates how tracing is wired through all components.
+	tracer := noop.NewTracerProvider().Tracer("http-chat")
+
 	// Build OpenAI provider.
 	var opts []openai.Option
 	if baseURL != "" {
@@ -105,6 +110,7 @@ func run() error {
 	prov, err := openai.New(append([]openai.Option{
 		openai.WithAPIKey(apiKey),
 		openai.WithModel(modelName),
+		openai.WithTracer(tracer),
 	}, opts...)...)
 	if err != nil {
 		return fmt.Errorf("create openai provider: %w", err)
@@ -125,8 +131,9 @@ func run() error {
 	// is handled automatically by Manager; no custom OnEmit needed.
 	stepFactory := func(stream *session.Stream) ([]loop.Option, error) {
 		return []loop.Option{
-			loop.WithHandlers(xtool.NewHandler(registry), usage.New()),
+			loop.WithHandlers(xtool.NewHandler(registry, xtool.WithTracer(tracer)), usage.New()),
 			loop.WithInvokeOptions(openai.WithTools(registry.Tools())),
+			loop.WithTracer(tracer),
 		}, nil
 	}
 
@@ -143,11 +150,11 @@ func run() error {
 	}
 
 	// Create the session manager with the ReAct cognitive pattern.
-	mgr := session.NewManager(threadStore, prov, stepFactory, cognitive.NewTurnProcessor())
+	mgr := session.NewManager(threadStore, prov, stepFactory, cognitive.NewTurnProcessor(tracer))
 
 	// Create the HTTP conduit.
 	// UI is enabled by default in New(); use httpc.WithoutUI() to disable it.
-	c, err := httpc.New(mgr, httpc.WithUI(), httpc.WithAddr(":"+port))
+	c, err := httpc.New(mgr, httpc.WithUI(), httpc.WithAddr(":"+port), httpc.WithTracer(tracer))
 	if err != nil {
 		return fmt.Errorf("create HTTP conduit: %w", err)
 	}

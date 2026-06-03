@@ -10,6 +10,9 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/state"
 	toolpkg "github.com/andrewhowdencom/ore/tool"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Handler implements loop.Handler for executing tool calls.
@@ -18,11 +21,26 @@ import (
 // artifact.
 type Handler struct {
 	registry toolpkg.Registry
+	tracer   trace.Tracer
+}
+
+// HandlerOption configures a Handler.
+type HandlerOption func(*Handler)
+
+// WithTracer configures an OpenTelemetry tracer for the handler.
+func WithTracer(tracer trace.Tracer) HandlerOption {
+	return func(h *Handler) {
+		h.tracer = tracer
+	}
 }
 
 // NewHandler creates a Handler backed by the given registry.
-func NewHandler(registry toolpkg.Registry) *Handler {
-	return &Handler{registry: registry}
+func NewHandler(registry toolpkg.Registry, opts ...HandlerOption) *Handler {
+	h := &Handler{registry: registry}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // Compile-time interface check.
@@ -36,6 +54,16 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 	tc, ok := art.(artifact.ToolCall)
 	if !ok {
 		return nil
+	}
+
+	var span trace.Span
+	if h.tracer != nil {
+		ctx, span = h.tracer.Start(ctx, "tool.execute", trace.WithSpanKind(trace.SpanKindInternal))
+		span.SetAttributes(attribute.String("tool.name", tc.Name))
+		if id, ok := loop.ThreadIDFrom(ctx); ok {
+			span.SetAttributes(attribute.String("thread_id", id))
+		}
+		defer span.End()
 	}
 
 	var args map[string]any
@@ -74,6 +102,10 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 
 		result, err := source.Call(ctx, name, args)
 		if err != nil {
+			if span != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
 			content := fmt.Sprintf("tool execution error: %v", err)
 			var value any
 			if result != nil {
@@ -157,6 +189,10 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 
 	result, err := fn(ctx, sb, args)
 	if err != nil {
+		if span != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
 		content := fmt.Sprintf("tool execution error: %v", err)
 		var value any
 		if result != nil {

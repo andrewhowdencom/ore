@@ -327,7 +327,7 @@ func TestProvenanceFiltering(t *testing.T) {
 	// on the assistant turn. This simulates a multi-conduit setup where another
 	// conduit's events carry their own provenance.
 	preservingProcessor := func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
-		step.SetEventContext(loop.EventContext{Provenance: "http"})
+		step.SetEventContext(loop.WithProvenance(context.Background(), "http"))
 		return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "Test reply"})
 	}
 
@@ -359,7 +359,7 @@ func TestProvenanceFiltering(t *testing.T) {
 
 	err = stream.Process(ctx, session.UserMessageEvent{
 		Content: "Hello from HTTP",
-		Ctx:     loop.EventContext{Provenance: "http"},
+		Ctx:     loop.WithProvenance(context.Background(), "http"),
 	})
 	require.NoError(t, err)
 

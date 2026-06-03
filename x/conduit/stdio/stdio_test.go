@@ -225,7 +225,7 @@ func TestStart_WithThreadID(t *testing.T) {
 func TestStart_ProvenanceFiltering(t *testing.T) {
 	store := session.NewMemoryStore()
 	foreignProcessor := func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
-		step.SetEventContext(loop.EventContext{Provenance: "other"})
+		step.SetEventContext(loop.WithProvenance(context.Background(), "other"))
 		return step.Turn(ctx, st, prov)
 	}
 	prov := &mockProvider{
