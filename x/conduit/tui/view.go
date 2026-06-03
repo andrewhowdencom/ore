@@ -8,11 +8,11 @@ import (
 	"time"
 	"unicode/utf8"
 
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
-	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/cellbuf"
 )
 
@@ -46,29 +46,65 @@ var (
 				Padding(0, 1)
 )
 
-// formatTurnLabel builds a label string "hh:mm:ss Role: " for a rendered turn.
-// If the timestamp is zero, it falls back to just "Role: ".
-func formatTurnLabel(role string, ts time.Time) string {
+// renderBlockUnified renders a single block with the consistent header format:
+// "<Timestamp> <Title> · |s| <rune_count>" followed by compact or expanded body.
+// The expansion is controlled by the expanded parameter; when false, reasoning
+// blocks render header-only (the count is sufficient), tool blocks use their
+// pre-computed compact form, and generic blocks truncate to two lines.
+func renderBlockUnified(block renderedBlock, ts time.Time, expanded bool, width int) string {
+	var header string
+	count := utf8.RuneCountInString(block.source)
 	if ts.IsZero() {
-		return role + ": "
+		header = fmt.Sprintf("%s · |s| %d", block.title, count)
+	} else {
+		header = fmt.Sprintf("%s %s · |s| %d", ts.Format("15:04:05"), block.title, count)
 	}
-	return ts.Format("15:04:05") + " " + role + ": "
+
+	styledHeader := block.style.Render(header)
+
+	var body string
+	if expanded {
+		if block.rendered != "" {
+			body = block.rendered
+		} else {
+			body = block.source
+		}
+		if width > 0 && body != "" {
+			body = cellbuf.Wrap(body, width, " ")
+		}
+	} else {
+		switch block.kind {
+		case "reasoning":
+			// Header already conveys the count; no body needed in compact mode.
+			return styledHeader
+		case "tool_call", "tool_result":
+			if block.compact != "" {
+				body = block.compact
+			} else {
+				body = compactGeneric(block.source, width)
+			}
+		default:
+			body = compactGeneric(block.source, width)
+		}
+	}
+
+	if body == "" {
+		return styledHeader
+	}
+	return styledHeader + "\n" + body
 }
 
-// renderBlock renders a labeled content block with the label on its own line
-// and content starting at column 0. If width > 0, content is wrapped to fit.
-func renderBlock(label string, labelStyle lipgloss.Style, content string, width int) string {
-	styledLabel := labelStyle.Render(label)
-	if content == "" {
-		return styledLabel
+// compactGeneric truncates content to at most two lines and maxWidth runes,
+// appending "…" when truncated.
+func compactGeneric(content string, width int) string {
+	lines := strings.Split(content, "\n")
+	if len(lines) > 2 {
+		content = strings.Join(lines[:2], "\n") + "…"
 	}
 	if width > 0 {
 		content = cellbuf.Wrap(content, width, " ")
 	}
-	if strings.HasPrefix(content, "\n") {
-		return styledLabel + content
-	}
-	return styledLabel + "\n" + content
+	return truncateString(content, width)
 }
 
 // buildContent constructs the full conversation string for the viewport.
@@ -86,7 +122,6 @@ func (m *model) buildContent() string {
 	}
 
 	var b strings.Builder
-
 	width := m.viewport.Width()
 
 	// Find the last assistant turn index.
@@ -99,96 +134,16 @@ func (m *model) buildContent() string {
 
 	// Render conversation history.
 	for turnIdx, turn := range m.turns {
-		isLatestAssistant := turnIdx == lastAssistantIdx
+		isLatestAssistant := turn.role == state.RoleAssistant && turnIdx == lastAssistantIdx
 		isAfterLatestAssistant := turnIdx > lastAssistantIdx
-		switch turn.role {
-		case state.RoleUser:
-			for i, block := range turn.blocks {
-				if block.kind == "text" {
-					b.WriteString(renderBlock(formatTurnLabel("You", turn.timestamp), lipgloss.NewStyle(), block.source, width))
-				}
-				if i < len(turn.blocks)-1 {
-					b.WriteString("\n\n")
-				}
+		for i, block := range turn.blocks {
+			expanded := block.expandedByDefault
+			if !block.expandedByDefault && (isLatestAssistant || isAfterLatestAssistant) {
+				expanded = m.expandLatestDetails
 			}
-		case state.RoleAssistant:
-			for i, block := range turn.blocks {
-				switch block.kind {
-				case "text":
-					if block.rendered != "" {
-						b.WriteString(renderBlock(formatTurnLabel("Assistant", turn.timestamp), assistantStyle, block.rendered, 0))
-					} else {
-						b.WriteString(renderBlock(formatTurnLabel("Assistant", turn.timestamp), assistantStyle, block.source, width))
-					}
-				// Reasoning blocks are rendered through the same Markdown pipeline
-				// as text blocks; the rendered ANSI is cached in renderedBlock.rendered.
-				case "reasoning":
-					isExpanded := isLatestAssistant && m.expandLatestDetails
-					if !isExpanded {
-						b.WriteString(thinkingStyle.Render(thinkingCompact(block.source)))
-					} else {
-						if block.rendered != "" {
-							b.WriteString(renderBlock(formatTurnLabel("Thinking", turn.timestamp), thinkingStyle, reasoningExpandedStyle.Render(block.rendered), 0))
-						} else {
-							b.WriteString(renderBlock(formatTurnLabel("Thinking", turn.timestamp), thinkingStyle, reasoningExpandedStyle.Render(block.source), width))
-						}
-					}
-				case "tool_call":
-					isExpanded := isLatestAssistant && m.expandLatestDetails
-					content := block.compact
-					if content == "" || isExpanded {
-						if block.rendered != "" {
-							content = block.rendered
-						} else {
-							content = block.source
-						}
-					}
-					if block.toolCallID != "" {
-						b.WriteString("[" + block.toolCallID + "] ")
-					}
-					b.WriteString(toolBlockStyle.Render(content))
-				}
-				if i < len(turn.blocks)-1 {
-					b.WriteString("\n\n")
-				}
-			}
-		case state.RoleTool:
-			for i, block := range turn.blocks {
-				switch block.kind {
-				case "text":
-					b.WriteString(renderBlock(formatTurnLabel("Tool", turn.timestamp), lipgloss.NewStyle(), block.source, width))
-				case "tool_result":
-					isExpanded := isAfterLatestAssistant && m.expandLatestDetails
-					content := block.compact
-					if content == "" || isExpanded {
-						if block.rendered != "" {
-							content = block.rendered
-						} else {
-							content = block.source
-						}
-					}
-					if block.toolCallID != "" {
-						b.WriteString("[" + block.toolCallID + "] ")
-					}
-					isError := strings.HasPrefix(block.source, "Error: ")
-					if isError {
-						b.WriteString(toolErrorBlockStyle.Render(content))
-					} else {
-						b.WriteString(toolBlockStyle.Render(content))
-					}
-				}
-				if i < len(turn.blocks)-1 {
-					b.WriteString("\n\n")
-				}
-			}
-		case state.RoleSystem:
-			for i, block := range turn.blocks {
-				if block.kind == "error" {
-					b.WriteString(renderBlock("From: System, Message: ", errorStyle, block.source, width))
-				}
-				if i < len(turn.blocks)-1 {
-					b.WriteString("\n\n")
-				}
+			b.WriteString(renderBlockUnified(block, turn.timestamp, expanded, width))
+			if i < len(turn.blocks)-1 {
+				b.WriteString("\n\n")
 			}
 		}
 		b.WriteString("\n\n")
@@ -197,43 +152,8 @@ func (m *model) buildContent() string {
 	// Render the in-progress assistant turn accumulated from ArtifactEvents.
 	if len(m.currentTurn.blocks) > 0 {
 		for i, block := range m.currentTurn.blocks {
-			switch block.kind {
-			case "text":
-				if block.rendered != "" {
-					b.WriteString(renderBlock("Assistant: ", assistantStyle, block.rendered, 0))
-				} else {
-					b.WriteString(renderBlock("Assistant: ", assistantStyle, block.source, width))
-				}
-			case "reasoning":
-				if !m.expandLatestDetails {
-					isActive := (i == len(m.currentTurn.blocks)-1 && block.kind == "reasoning")
-					if isActive {
-						// Use rune count for user-visible "chars" metric.
-						b.WriteString(thinkingStyle.Render(fmt.Sprintf("Thinking · %d Chars", utf8.RuneCountInString(block.source))))
-					} else {
-						b.WriteString(thinkingStyle.Render(thinkingCompact(block.source)))
-					}
-				} else {
-					if block.rendered != "" {
-						b.WriteString(renderBlock("Thinking: ", thinkingStyle, reasoningExpandedStyle.Render(block.rendered), 0))
-					} else {
-						b.WriteString(renderBlock("Thinking: ", thinkingStyle, reasoningExpandedStyle.Render(block.source), width))
-					}
-				}
-			case "tool_call":
-				content := block.compact
-				if content == "" || m.expandLatestDetails {
-					if block.rendered != "" {
-						content = block.rendered
-					} else {
-						content = block.source
-					}
-				}
-				if block.toolCallID != "" {
-					b.WriteString("[" + block.toolCallID + "] ")
-				}
-				b.WriteString(toolBlockStyle.Render(content))
-			}
+			expanded := m.expandLatestDetails || block.expandedByDefault
+			b.WriteString(renderBlockUnified(block, time.Time{}, expanded, width))
 			if i < len(m.currentTurn.blocks)-1 {
 				b.WriteString("\n\n")
 			}
@@ -243,7 +163,13 @@ func (m *model) buildContent() string {
 
 	// Render pending placeholder only when no artifacts have arrived yet.
 	if m.pending && len(m.currentTurn.blocks) == 0 {
-		b.WriteString(renderBlock("Assistant: ", assistantStyle, "...", width))
+		b.WriteString(renderBlockUnified(renderedBlock{
+			kind:              "text",
+			source:            "...",
+			title:             "Assistant",
+			style:             assistantStyle,
+			expandedByDefault: true,
+		}, time.Time{}, true, width))
 		b.WriteString("\n\n")
 	}
 
@@ -523,13 +449,6 @@ func truncateString(s string, maxWidth int) string {
 		return "…"
 	}
 	return string(runes[:maxWidth-1]) + "…"
-}
-
-// thinkingCompact returns the compact single-line representation for a
-// reasoning block, showing the rune count so users can gauge how much
-// reasoning was performed.
-func thinkingCompact(source string) string {
-	return fmt.Sprintf("Thinking · %d Chars", utf8.RuneCountInString(source))
 }
 
 // windowTitle returns a dynamic terminal window title based on the
