@@ -267,6 +267,7 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		}
 		// Attach httptrace hooks to record granular HTTP lifecycle events
 		// (DNS, connect, TLS, first-byte) on the provider.invoke span.
+		// This is only enabled when a tracer is configured via WithTracer.
 		ctx = httptrace.WithClientTrace(ctx, otelhttptrace.NewClientTrace(ctx, otelhttptrace.WithoutSubSpans()))
 		defer span.End()
 	}
