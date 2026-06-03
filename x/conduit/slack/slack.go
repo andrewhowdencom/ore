@@ -19,6 +19,7 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type transportMode int
@@ -62,6 +63,7 @@ type SlackConduit struct {
 	socketModeClient socketModeClient
 	activeStreams    map[string]*session.Stream
 	streamsMu        sync.Mutex
+	tracer           trace.Tracer
 }
 
 // Option configures a SlackConduit.
@@ -86,6 +88,13 @@ func WithAppToken(token string) Option {
 func WithEventsAPI() Option {
 	return func(c *SlackConduit) {
 		c.mode = modeEventsAPI
+	}
+}
+
+// WithTracer configures an OpenTelemetry tracer for the Slack conduit.
+func WithTracer(tracer trace.Tracer) Option {
+	return func(c *SlackConduit) {
+		c.tracer = tracer
 	}
 }
 
@@ -167,7 +176,11 @@ func (c *SlackConduit) Start(ctx context.Context) error {
 	// Register sink for turn_complete events from Slack-originated threads.
 	sink := func(streamID string, event loop.OutputEvent) {
 		tc, ok := event.(loop.TurnCompleteEvent)
-		if !ok || tc.Turn.Role != state.RoleAssistant || tc.Ctx.Provenance != "slack" {
+		if !ok || tc.Turn.Role != state.RoleAssistant {
+			return
+		}
+		p, _ := loop.ProvenanceFrom(tc.Ctx)
+		if p != "slack" {
 			return
 		}
 		stream, err := c.mgr.Get(streamID)

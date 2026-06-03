@@ -58,7 +58,7 @@ func TestStream_Process_ContextPropagation(t *testing.T) {
 
 	ch := stream.Subscribe("turn_complete")
 
-	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi", Ctx: loop.EventContext{Provenance: "test-provenance"}})
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi", Ctx: loop.WithProvenance(context.Background(), "test-provenance")})
 	require.NoError(t, err)
 
 	events := drainWithClose(t, ch, func() { _ = stream.Close() })
@@ -66,10 +66,10 @@ func TestStream_Process_ContextPropagation(t *testing.T) {
 	require.Len(t, events, 2) // user turn + assistant turn
 	tc, ok := events[0].(loop.TurnCompleteEvent)
 	require.True(t, ok)
-	assert.Equal(t, "test-provenance", tc.Ctx.Provenance)
+	assert.Equal(t, "test-provenance", provenance(tc.Ctx))
 	tc, ok = events[1].(loop.TurnCompleteEvent)
 	require.True(t, ok)
-	assert.Equal(t, "test-provenance", tc.Ctx.Provenance)
+	assert.Equal(t, "test-provenance", provenance(tc.Ctx))
 }
 
 func TestStream_ContextClearedBetweenProcesses(t *testing.T) {
@@ -82,7 +82,7 @@ func TestStream_ContextClearedBetweenProcesses(t *testing.T) {
 
 	// First process with provenance
 	ch1 := stream.Subscribe("turn_complete")
-	err = stream.Process(context.Background(), UserMessageEvent{Content: "first", Ctx: loop.EventContext{Provenance: "first-provenance"}})
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "first", Ctx: loop.WithProvenance(context.Background(), "first-provenance")})
 	require.NoError(t, err)
 
 	var events1 []loop.OutputEvent
@@ -95,8 +95,8 @@ func TestStream_ContextClearedBetweenProcesses(t *testing.T) {
 		}
 	}
 	require.Len(t, events1, 2)
-	assert.Equal(t, "first-provenance", events1[0].(loop.TurnCompleteEvent).Ctx.Provenance)
-	assert.Equal(t, "first-provenance", events1[1].(loop.TurnCompleteEvent).Ctx.Provenance)
+	assert.Equal(t, "first-provenance", provenance(events1[0].(loop.TurnCompleteEvent).Ctx))
+	assert.Equal(t, "first-provenance", provenance(events1[1].(loop.TurnCompleteEvent).Ctx))
 
 	// Second process without provenance — context should be cleared.
 	// With the replay buffer, the new subscriber also receives the buffered
@@ -117,11 +117,11 @@ func TestStream_ContextClearedBetweenProcesses(t *testing.T) {
 	}
 	require.Len(t, events2, 4)
 	// First two are replayed from first process.
-	assert.Equal(t, "first-provenance", events2[0].(loop.TurnCompleteEvent).Ctx.Provenance)
-	assert.Equal(t, "first-provenance", events2[1].(loop.TurnCompleteEvent).Ctx.Provenance)
+	assert.Equal(t, "first-provenance", provenance(events2[0].(loop.TurnCompleteEvent).Ctx))
+	assert.Equal(t, "first-provenance", provenance(events2[1].(loop.TurnCompleteEvent).Ctx))
 	// Next two are live from second process.
-	assert.Empty(t, events2[2].(loop.TurnCompleteEvent).Ctx.Provenance)
-	assert.Empty(t, events2[3].(loop.TurnCompleteEvent).Ctx.Provenance)
+	assert.Empty(t, provenance(events2[2].(loop.TurnCompleteEvent).Ctx))
+	assert.Empty(t, provenance(events2[3].(loop.TurnCompleteEvent).Ctx))
 }
 
 func TestStream_InterruptEvent_ContextPropagation(t *testing.T) {
@@ -133,7 +133,7 @@ func TestStream_InterruptEvent_ContextPropagation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Process an interrupt with provenance — sets then clears context
-	err = stream.Process(context.Background(), InterruptEvent{Ctx: loop.EventContext{Provenance: "interrupt-provenance"}})
+	err = stream.Process(context.Background(), InterruptEvent{Ctx: loop.WithProvenance(context.Background(), "interrupt-provenance")})
 	require.NoError(t, err)
 
 	// Subsequent process without provenance should have empty context
@@ -151,18 +151,18 @@ func TestStream_InterruptEvent_ContextPropagation(t *testing.T) {
 		}
 	}
 	require.Len(t, events, 2)
-	assert.Empty(t, events[0].(loop.TurnCompleteEvent).Ctx.Provenance)
-	assert.Empty(t, events[1].(loop.TurnCompleteEvent).Ctx.Provenance)
+	assert.Empty(t, provenance(events[0].(loop.TurnCompleteEvent).Ctx))
+	assert.Empty(t, provenance(events[1].(loop.TurnCompleteEvent).Ctx))
 }
 
 // testCustomEvent is a test-only OutputEvent for verifying Stream.Emit().
 type testCustomEvent struct {
 	Value string
-	Ctx   loop.EventContext
+	Ctx   context.Context
 }
 
 func (e testCustomEvent) Kind() string          { return "test_custom" }
-func (e testCustomEvent) Context() loop.EventContext { return e.Ctx }
+func (e testCustomEvent) Context() context.Context { return e.Ctx }
 
 func TestStream_Emit_DeliversToSubscribers(t *testing.T) {
 	store := NewMemoryStore()
@@ -174,7 +174,7 @@ func TestStream_Emit_DeliversToSubscribers(t *testing.T) {
 
 	ch := stream.Subscribe("test_custom")
 
-	err = stream.Emit(context.Background(), testCustomEvent{Value: "hello", Ctx: loop.EventContext{Provenance: "emit-test"}})
+	err = stream.Emit(context.Background(), testCustomEvent{Value: "hello", Ctx: loop.WithProvenance(context.Background(), "emit-test")})
 	require.NoError(t, err)
 
 	select {
@@ -182,7 +182,7 @@ func TestStream_Emit_DeliversToSubscribers(t *testing.T) {
 		custom, ok := event.(testCustomEvent)
 		require.True(t, ok)
 		assert.Equal(t, "hello", custom.Value)
-		assert.Equal(t, "emit-test", custom.Ctx.Provenance)
+		assert.Equal(t, "emit-test", provenance(custom.Ctx))
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("timeout waiting for custom event")
 	}
@@ -411,7 +411,7 @@ func TestStream_Process_EmitsLifecycleEvent_PropagatesProvenance(t *testing.T) {
 	require.NoError(t, err)
 
 	ch := stream.Subscribe("lifecycle")
-	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi", Ctx: loop.EventContext{Provenance: "test-provenance"}})
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi", Ctx: loop.WithProvenance(context.Background(), "test-provenance")})
 	require.NoError(t, err)
 
 	var le loop.LifecycleEvent
@@ -431,7 +431,7 @@ func TestStream_Process_EmitsLifecycleEvent_PropagatesProvenance(t *testing.T) {
 		}
 	}
 	require.True(t, found)
-	assert.Equal(t, "test-provenance", le.Ctx.Provenance)
+	assert.Equal(t, "test-provenance", provenance(le.Ctx))
 
 	_ = stream.Close()
 }
