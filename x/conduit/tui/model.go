@@ -9,13 +9,14 @@ import (
 	"log/slog"
 	"time"
 
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
-	"charm.land/bubbles/v2/textarea"
-	"charm.land/bubbles/v2/viewport"
-	tea "charm.land/bubbletea/v2"
 )
 
 // artifactMsg is a Bubble Tea message that carries a single artifact
@@ -76,11 +77,15 @@ type renderTickMsg struct{}
 // (Ctrl+O collapsed). It is computed during turn processing to avoid
 // repeated JSON parsing on every viewport refresh.
 type renderedBlock struct {
-	kind       string // "text", "reasoning", "tool_call", or "tool_result"
-	source     string // original content
-	compact    string // compact single-line representation
-	rendered   string // pre-rendered ANSI output (for text, reasoning, tool_call and tool_result blocks)
-	toolCallID string // ID pairing tool_call with its corresponding tool_result
+	kind              string         // "text", "reasoning", "tool_call", or "tool_result"
+	source            string         // original content
+	compact           string         // compact single-line representation
+	rendered          string         // pre-rendered ANSI output (for text, reasoning, tool_call and tool_result blocks)
+	toolCallID        string         // ID pairing tool_call with its corresponding tool_result
+	title             string         // display title for the unified header
+	style             lipgloss.Style // color/style applied to the header
+	expandedByDefault bool           // whether this block type defaults to expanded body
+	isError           bool           // whether this block represents an error state
 }
 
 // The TUI aims to keep the conversation view concise. Tool calls and their
@@ -228,16 +233,25 @@ func (m *model) syncViewport() {
 	m.viewport.SetContent(m.buildContent())
 }
 
-// renderArtifact creates a renderedBlock from a single artifact.Artifact.
-// It is used both for incremental ArtifactEvent accumulation (assistant
-// turns) and for building user/tool turns from TurnCompleteEvent.
 // When shouldRenderMarkdown is true, text, reasoning, tool_call, and
 // tool_result artifacts are processed through the Markdown renderer;
 // this is appropriate for assistant and tool turns.
-func (m *model) renderArtifact(art artifact.Artifact, shouldRenderMarkdown bool) renderedBlock {
+func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRenderMarkdown bool) renderedBlock {
 	switch a := art.(type) {
 	case artifact.Text:
 		block := renderedBlock{kind: "text", source: a.Content}
+		switch role {
+		case state.RoleAssistant:
+			block.title = "Assistant"
+			block.style = assistantStyle
+		case state.RoleUser:
+			block.title = "You"
+			block.style = lipgloss.NewStyle()
+		case state.RoleTool:
+			block.title = "Tool"
+			block.style = toolBlockStyle
+		}
+		block.expandedByDefault = true
 		if shouldRenderMarkdown {
 			rendered, err := m.renderMarkdown(a.Content, m.viewport.Width())
 			if err == nil {
@@ -246,7 +260,13 @@ func (m *model) renderArtifact(art artifact.Artifact, shouldRenderMarkdown bool)
 		}
 		return block
 	case artifact.Reasoning:
-		block := renderedBlock{kind: "reasoning", source: a.Content, compact: thinkingCompact(a.Content)}
+		block := renderedBlock{
+			kind:              "reasoning",
+			source:            a.Content,
+			title:             "Thinking",
+			style:             thinkingStyle,
+			expandedByDefault: false,
+		}
 		if shouldRenderMarkdown {
 			rendered, err := m.renderMarkdown(a.Content, m.viewport.Width())
 			if err == nil {
@@ -262,7 +282,15 @@ func (m *model) renderArtifact(art artifact.Artifact, shouldRenderMarkdown bool)
 			source = fmt.Sprintf("Calling: %s(%s)", a.Name, a.Arguments)
 		}
 		compact := compactToolCall(a, m.viewport.Width())
-		block := renderedBlock{kind: "tool_call", source: source, compact: compact, toolCallID: a.ID}
+		block := renderedBlock{
+			kind:              "tool_call",
+			source:            source,
+			compact:           compact,
+			toolCallID:        a.ID,
+			title:             fmt.Sprintf("Tool (%s)", a.Name),
+			style:             toolBlockStyle,
+			expandedByDefault: false,
+		}
 		if shouldRenderMarkdown {
 			rendered, err := m.renderMarkdown(source, m.viewport.Width())
 			if err == nil {
@@ -275,7 +303,15 @@ func (m *model) renderArtifact(art artifact.Artifact, shouldRenderMarkdown bool)
 		if a.IsError {
 			source = "Error: " + source
 		}
-		block := renderedBlock{kind: "tool_result", source: source, toolCallID: a.ToolCallID}
+		block := renderedBlock{
+			kind:              "tool_result",
+			source:            source,
+			toolCallID:        a.ToolCallID,
+			title:             "Tool Result",
+			style:             toolBlockStyle,
+			expandedByDefault: false,
+			isError:           a.IsError,
+		}
 		if shouldRenderMarkdown {
 			rendered, err := m.renderMarkdown(source, m.viewport.Width())
 			if err == nil {
@@ -288,6 +324,9 @@ func (m *model) renderArtifact(art artifact.Artifact, shouldRenderMarkdown bool)
 			block.compact = compactToolResult(block.rendered, m.viewport.Width())
 		} else {
 			block.compact = compactToolResult(source, m.viewport.Width())
+		}
+		if a.IsError {
+			block.style = toolErrorBlockStyle
 		}
 		return block
 	}
@@ -320,7 +359,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			if !found {
-				m.currentTurn.blocks = append(m.currentTurn.blocks, renderedBlock{kind: "text", source: a.Content})
+				m.currentTurn.blocks = append(m.currentTurn.blocks, renderedBlock{kind: "text", source: a.Content, title: "Assistant", style: assistantStyle, expandedByDefault: true})
 			}
 		case artifact.ReasoningDelta:
 			if a.Content == "" {
@@ -336,10 +375,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			if !found {
-				m.currentTurn.blocks = append(m.currentTurn.blocks, renderedBlock{kind: "reasoning", source: a.Content, compact: thinkingCompact(a.Content)})
+				m.currentTurn.blocks = append(m.currentTurn.blocks, renderedBlock{kind: "reasoning", source: a.Content, title: "Thinking", style: thinkingStyle, expandedByDefault: false})
 			}
 		default:
-			block := m.renderArtifact(msg.artifact, true)
+			block := m.renderArtifact(msg.artifact, state.RoleAssistant, true)
 			if block.kind != "" {
 				m.currentTurn.blocks = append(m.currentTurn.blocks, block)
 			}
@@ -381,7 +420,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// build the turn from the full Turn content.
 			var blocks []renderedBlock
 			for _, art := range msg.turn.Artifacts {
-				block := m.renderArtifact(art, msg.turn.Role == state.RoleAssistant || msg.turn.Role == state.RoleTool)
+				block := m.renderArtifact(art, msg.turn.Role, msg.turn.Role == state.RoleAssistant || msg.turn.Role == state.RoleTool)
 				if block.kind != "" {
 					blocks = append(blocks, block)
 				}
@@ -462,7 +501,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.turns = append(m.turns, renderedTurn{
 			role: state.RoleSystem,
 			blocks: []renderedBlock{
-				{kind: "error", source: msg.err.Error()},
+				{kind: "error", source: msg.err.Error(), title: "System", style: errorStyle, expandedByDefault: true},
 			},
 		})
 		m.contentDirty = true
