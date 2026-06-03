@@ -165,7 +165,7 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 	case UserMessageEvent:
 		eventCtx = e.Context()
 		s.step.SetEventContext(e.Context())
-		defer s.step.SetEventContext(nil)
+		defer s.step.SetEventContext(context.Background())
 		_, runErr = s.step.Submit(turnCtx, s.thread.State, state.RoleUser, artifact.Text{Content: e.Content})
 		if runErr == nil {
 			_, runErr = s.processor(turnCtx, s.step, s.thread.State, s.provider)
@@ -175,7 +175,7 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 		// No inference is started for an interrupt event itself.
 		eventCtx = e.Context()
 		s.step.SetEventContext(e.Context())
-		defer s.step.SetEventContext(nil)
+		defer s.step.SetEventContext(context.Background())
 		cancel()
 	default:
 		runErr = fmt.Errorf("unsupported event kind: %s", event.Kind())
