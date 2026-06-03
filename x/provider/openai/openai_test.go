@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"strings"
 	"sync"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"github.com/andrewhowdencom/ore/state"
 	toolpkg "github.com/andrewhowdencom/ore/tool"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
+	"go.opentelemetry.io/otel/trace"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1342,4 +1344,49 @@ func TestProviderInvoke_PartialStreamError(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), wantErr.Error())
+}
+
+func TestProviderInvoke_HTTPTraceContext(t *testing.T) {
+	tests := []struct {
+		name       string
+		withTracer bool
+		wantTrace  bool
+	}{
+		{"with tracer injects httptrace", true, true},
+		{"without tracer no httptrace", false, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			transport := &mockTransport{
+				response: mockResponseSSE(simpleSSE("ok")),
+			}
+
+			var opts []Option
+			opts = append(opts, WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+			if tt.withTracer {
+				opts = append(opts, WithTracer(trace.NewNoopTracerProvider().Tracer("test")))
+			}
+
+			p, err := New(opts...)
+			require.NoError(t, err)
+
+			mem := &state.Buffer{}
+			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+			ch := make(chan artifact.Artifact, 10)
+			_ = p.Invoke(t.Context(), mem, ch)
+			close(ch)
+			for range ch {
+			}
+
+			require.NotNil(t, transport.request)
+			ct := httptrace.ContextClientTrace(transport.request.Context())
+			if tt.wantTrace {
+				assert.NotNil(t, ct, "httptrace.ClientTrace should be present in request context")
+			} else {
+				assert.Nil(t, ct, "httptrace.ClientTrace should not be present when no tracer is configured")
+			}
+		})
+	}
 }
