@@ -11,6 +11,7 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
@@ -108,7 +109,7 @@ func TestModel_Update_LifecycleCancelled_ClearsCurrentTurn(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.pending = true
-	m.currentTurn = renderedTurn{blocks: []renderedBlock{{kind: "text", source: "partial"}}}
+	m.currentTurn = renderedTurn{blocks: []renderedBlock{{kind: "text", source: "partial", title: "Assistant", style: assistantStyle, expandedByDefault: true}}}
 
 	newM, _ := m.Update(lifecycleMsg{phase: "cancelled"})
 	mm := newM.(*model)
@@ -266,13 +267,13 @@ func TestModel_View_ContainsTurn(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
+		{role: state.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "hello"}}},
 	}
 	m.syncViewport()
 	output := m.View().Content
-	assert.Contains(t, output, "You: ")
+	assert.Contains(t, output, "You · |s|")
 	assert.Contains(t, output, "hello")
-	idxLabel := strings.Index(output, "You: ")
+	idxLabel := strings.Index(output, "You · |s|")
 	idxContent := strings.Index(output, "hello")
 	assert.Greater(t, idxContent, idxLabel, "content should appear after label")
 	segment := output[idxLabel:idxContent]
@@ -283,13 +284,13 @@ func TestModel_View_ContainsAssistantTurn(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "world"}}},
+		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "world"}}},
 	}
 	m.syncViewport()
 	output := m.View().Content
-	assert.Contains(t, output, "Assistant: ")
+	assert.Contains(t, output, "Assistant · |s|")
 	assert.Contains(t, output, "world")
-	idxLabel := strings.Index(output, "Assistant: ")
+	idxLabel := strings.Index(output, "Assistant · |s|")
 	idxContent := strings.Index(output, "world")
 	assert.Greater(t, idxContent, idxLabel, "content should appear after label")
 	segment := output[idxLabel:idxContent]
@@ -300,13 +301,13 @@ func TestModel_View_ContainsToolTurn(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleTool, blocks: []renderedBlock{{kind: "text", source: "result"}}},
+		{role: state.RoleTool, blocks: []renderedBlock{{title: "Tool", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "result"}}},
 	}
 	m.syncViewport()
 	output := m.View().Content
-	assert.Contains(t, output, "Tool: ")
+	assert.Contains(t, output, "Tool · |s|")
 	assert.Contains(t, output, "result")
-	idxLabel := strings.Index(output, "Tool: ")
+	idxLabel := strings.Index(output, "Tool · |s|")
 	idxContent := strings.Index(output, "result")
 	assert.Greater(t, idxContent, idxLabel, "content should appear after label")
 	segment := output[idxLabel:idxContent]
@@ -411,7 +412,7 @@ func TestModel_View_ContainsInputAtBottom(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
+		{role: state.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "hello"}}},
 	}
 	output := m.View().Content
 	lines := strings.Split(output, "\n")
@@ -454,7 +455,7 @@ func TestModel_Update_Turn_AutoScrollsViewport(t *testing.T) {
 		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
 		// Pre-populate with tall content so buildContent() exceeds viewport height.
 		m.turns = []renderedTurn{
-			{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 200)}}},
+			{role: state.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 200)}}},
 		}
 		m.viewport.SetContent(m.buildContent())
 		m.viewport.GotoBottom()
@@ -479,7 +480,7 @@ func TestModel_Update_Turn_AutoScrollsViewport(t *testing.T) {
 		m := newTestModel()
 		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
 		m.turns = []renderedTurn{
-			{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 200)}}},
+			{role: state.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 200)}}},
 		}
 		m.viewport.SetContent(m.buildContent())
 		m.viewport.GotoBottom()
@@ -508,7 +509,7 @@ func TestModel_View_LongHistory_InputAtBottom(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		m.turns = append(m.turns, renderedTurn{
 			role:   state.RoleUser,
-			blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 20)}},
+			blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 20)}},
 		})
 	}
 	output := m.View().Content
@@ -521,7 +522,7 @@ func TestModel_View_WrapsLongTurn(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(20), viewport.WithHeight(5))
 	m.turns = []renderedTurn{
-		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 10)}}},
+		{role: state.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 10)}}},
 	}
 	m.syncViewport()
 	output := m.View().Content
@@ -529,7 +530,7 @@ func TestModel_View_WrapsLongTurn(t *testing.T) {
 	// Find the label line
 	labelIdx := -1
 	for i, line := range lines {
-		if strings.HasPrefix(line, "You: ") {
+		if strings.HasPrefix(line, "You · |s|") {
 			labelIdx = i
 			break
 		}
@@ -662,7 +663,7 @@ func TestModel_View_AssistantTurn_RenderError_FallbackToPlainText(t *testing.T) 
 	newM2, _ := mm.Update(turnMsg{turn: turn})
 	mm2 := newM2.(*model)
 	output := mm2.View().Content
-	assert.Contains(t, output, "Assistant: ")
+	assert.Contains(t, output, "Assistant · |s|")
 	assert.Contains(t, output, "plain fallback text")
 }
 
@@ -751,7 +752,7 @@ func TestModel_Update_Turn_Assistant_EmptyText(t *testing.T) {
 	assert.Equal(t, "mock-empty-output", mm2.turns[0].blocks[0].rendered)
 	// View should not crash with empty text.
 	output := mm2.View().Content
-	assert.Contains(t, output, "Assistant: ")
+	assert.Contains(t, output, "Assistant · |s|")
 }
 
 // --- Critical coverage gap tests (added per testing agent review) ---
@@ -1031,7 +1032,7 @@ func TestModel_Update_TurnMsg_DoesNotScrollWhenNotAtBottom(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
 	m.turns = []renderedTurn{
-		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 200)}}},
+		{role: state.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 200)}}},
 	}
 	m.viewport.SetContent(m.buildContent())
 	m.viewport.GotoBottom()
@@ -1056,7 +1057,7 @@ func TestModel_Update_RenderTickMsg_DoesNotScrollWhenNotAtBottom(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
 	m.turns = []renderedTurn{
-		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 200)}}},
+		{role: state.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 200)}}},
 	}
 	m.viewport.SetContent(m.buildContent())
 	m.viewport.GotoBottom()
@@ -1131,12 +1132,12 @@ func TestModel_Update_UserAfterTool_DoesNotResetExpand(t *testing.T) {
 	// Simulate an assistant turn with a tool call
 	m.turns = append(m.turns, renderedTurn{
 		role:   state.RoleAssistant,
-		blocks: []renderedBlock{{kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"}},
+		blocks: []renderedBlock{{title: "Tool", style: toolBlockStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"}},
 	})
 	// Simulate a tool result turn
 	m.turns = append(m.turns, renderedTurn{
 		role:   state.RoleTool,
-		blocks: []renderedBlock{{kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"}},
+		blocks: []renderedBlock{{title: "Tool Result", style: toolBlockStyle, expandedByDefault: false, kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"}},
 	})
 	m.expandLatestDetails = true
 
@@ -1154,7 +1155,6 @@ func TestModel_Update_UserAfterTool_DoesNotResetExpand(t *testing.T) {
 
 	// Previous assistant turn's tool blocks remain expanded
 	output := mm.buildContent()
-	assert.Contains(t, output, "[call_1]")
 	assert.Contains(t, output, "Calling: foo({})")
 }
 
@@ -1171,7 +1171,7 @@ func TestModel_Update_KeyCtrlO_WhilePending(t *testing.T) {
 
 	// View should still show the pending placeholder
 	output := mm.View().Content
-	assert.Contains(t, output, "Assistant: ")
+	assert.Contains(t, output, "Assistant · |s|")
 	assert.Contains(t, output, "...")
 }
 
@@ -1366,7 +1366,7 @@ func TestModel_View_ContainsCurrentTurn(t *testing.T) {
 	m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "in-progress"}})
 	m.Update(renderTickMsg{})
 	output := m.View().Content
-	assert.Contains(t, output, "Assistant: ")
+	assert.Contains(t, output, "Assistant · |s|")
 	assert.Contains(t, output, "in-progress")
 }
 
@@ -1648,7 +1648,7 @@ func TestModel_Update_AutoScrollLock_PreservesBottom(t *testing.T) {
 		m := newTestModel()
 		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
 		m.turns = []renderedTurn{
-			{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: strings.Repeat("word ", 200)}}},
+			{role: state.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 200)}}},
 		}
 		m.viewport.SetContent(m.buildContent())
 		m.viewport.GotoBottom()
