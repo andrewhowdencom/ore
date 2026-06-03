@@ -87,7 +87,7 @@ func TestArtifactToJSON(t *testing.T) {
 			name:     "tool_result_json_fallback",
 			art:      artifact.ToolResult{ToolCallID: "1", Content: "fallback", Value: "hello"},
 			wantKind: "tool_result",
-			wantDTO:  artifactJSON{Kind: "tool_result", ToolCallID: "1", Content: `"hello"`, IsError: false},
+			wantDTO:  artifactJSON{Kind: "tool_result", ToolCallID: "1", Content: "```json\n\"hello\"\n```", IsError: false},
 		},
 		{
 			name:     "usage",
@@ -149,7 +149,7 @@ func TestMarshalArtifact(t *testing.T) {
 		{
 			name: "tool_result_json_fallback",
 			art:  artifact.ToolResult{ToolCallID: "1", Content: "fallback", Value: 42},
-			want: `{"kind":"tool_result","tool_call_id":"1","content":"42"}`,
+			want: `{"kind":"tool_result","tool_call_id":"1","content":"` + "```json\\n42\\n```" + `"}`,
 		},
 		{
 			name: "unsupported",
