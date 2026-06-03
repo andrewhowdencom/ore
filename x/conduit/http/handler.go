@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/x/conduit"
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/state"
 
 )
 
@@ -94,19 +96,82 @@ func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
 	return h, nil
 }
 
-func (h *Handler) redirectRoot(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+// threadItem holds the data for a single thread on the landing page.
+type threadItem struct {
+	ID        string
+	Preview   string
+	UpdatedAt time.Time
+}
+
+func (h *Handler) serveLanding(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	if r.URL.Path != "/" {
 		stdhttp.NotFound(w, r)
 		return
 	}
-	stdhttp.Redirect(w, r, "/chat", stdhttp.StatusTemporaryRedirect)
+
+	threads, err := h.mgr.ListThreads()
+	if err != nil {
+		w.WriteHeader(stdhttp.StatusInternalServerError)
+		return
+	}
+
+	items := make([]threadItem, len(threads))
+	for i, thr := range threads {
+		items[i] = threadItem{
+			ID:        thr.ID,
+			Preview:   previewSnippet(thr, 120),
+			UpdatedAt: thr.UpdatedAt,
+		}
+	}
+
+	data, err := staticFS.ReadFile("static/landing.html")
+	if err != nil {
+		w.WriteHeader(stdhttp.StatusInternalServerError)
+		return
+	}
+	tmpl, err := template.New("landing").Parse(string(data))
+	if err != nil {
+		w.WriteHeader(stdhttp.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = tmpl.Execute(w, struct {
+		Name    string
+		Threads []threadItem
+	}{Name: h.name, Threads: items})
+}
+
+// previewSnippet extracts a preview from the first user Text artifact in the
+// thread's state, truncated to the given length with "...".
+func previewSnippet(thr *session.Thread, maxLen int) string {
+	for _, turn := range thr.State.Turns() {
+		if turn.Role != state.RoleUser {
+			continue
+		}
+		for _, art := range turn.Artifacts {
+			if art.Kind() != "text" {
+				continue
+			}
+			text, ok := art.(artifact.Text)
+			if !ok {
+				continue
+			}
+			if len(text.Content) <= maxLen {
+				return text.Content
+			}
+			return text.Content[:maxLen] + "..."
+		}
+		break // only consider the first user turn
+	}
+	return ""
 }
 
 // ServeMux returns an http.ServeMux with all HTTP conduit routes registered.
 // Routes include POST /sessions, DELETE /sessions/{id}, POST /messages,
 // GET /events, and GET /threads. When WithUI() is enabled, GET /chat and
 // GET /chat.js are also registered for the embedded web client, and GET /
-// redirects to /chat.
+// renders a thread-list landing page.
 // This method is exported primarily for table-driven unit tests; most
 // callers should use Start(ctx) which creates and runs the server internally.
 func (h *Handler) ServeMux() *stdhttp.ServeMux {
@@ -117,7 +182,7 @@ func (h *Handler) ServeMux() *stdhttp.ServeMux {
 	mux.HandleFunc("GET /sessions/{id}/events", h.sessionEvents)
 	mux.HandleFunc("GET /threads", h.listThreads)
 	if h.withUI {
-		mux.HandleFunc("GET /", h.redirectRoot)
+		mux.HandleFunc("GET /", h.serveLanding)
 		mux.HandleFunc("GET /chat", h.serveUI)
 		mux.HandleFunc("GET /chat.js", h.serveUI)
 	}
