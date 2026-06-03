@@ -1,5 +1,5 @@
-github.com/andrewhowdencom/ore v0.4.0 h1:TkaFvh3yyXvORIwbkhO9Jwf2pSqMjZ3lQ4gnXK9ZRrM=
-github.com/andrewhowdencom/ore v0.4.0/go.mod h1:7fuXpWI3YeQEhh5XfZUtDStq6e1hoIx1Q+SKDkg/YZg=
+github.com/andrewhowdencom/ore v0.5.0 h1:H+uuIXQCO8aB+wMAqphpgpoGd7w9MfE0t6ZUsXZ6UDQ=
+github.com/andrewhowdencom/ore v0.5.0/go.mod h1:7fuXpWI3YeQEhh5XfZUtDStq6e1hoIx1Q+SKDkg/YZg=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dlclark/regexp2 v1.11.5 h1:Q/sSnsKerHeCkc/jSTNq1oCm7KiVgUMZRDUoRu0JQZQ=
