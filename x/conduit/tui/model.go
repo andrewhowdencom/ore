@@ -231,9 +231,9 @@ func (m *model) syncViewport() {
 // renderArtifact creates a renderedBlock from a single artifact.Artifact.
 // It is used both for incremental ArtifactEvent accumulation (assistant
 // turns) and for building user/tool turns from TurnCompleteEvent.
-// When shouldRenderMarkdown is true, text and reasoning artifacts are
-// processed through the Markdown renderer; this is only appropriate for
-// assistant turns.
+// When shouldRenderMarkdown is true, text, reasoning, tool_call, and
+// tool_result artifacts are processed through the Markdown renderer;
+// this is appropriate for assistant and tool turns.
 func (m *model) renderArtifact(art artifact.Artifact, shouldRenderMarkdown bool) renderedBlock {
 	switch a := art.(type) {
 	case artifact.Text:
@@ -381,7 +381,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// build the turn from the full Turn content.
 			var blocks []renderedBlock
 			for _, art := range msg.turn.Artifacts {
-				block := m.renderArtifact(art, msg.turn.Role == state.RoleAssistant)
+				block := m.renderArtifact(art, msg.turn.Role == state.RoleAssistant || msg.turn.Role == state.RoleTool)
 				if block.kind != "" {
 					blocks = append(blocks, block)
 				}

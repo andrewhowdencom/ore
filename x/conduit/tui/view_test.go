@@ -979,8 +979,8 @@ func TestRenderArtifact_ToolResult_JSONFallback(t *testing.T) {
 	block := m.renderArtifact(tr, false)
 	assert.Equal(t, "tool_result", block.kind)
 	assert.Equal(t, "call_1", block.toolCallID)
-	assert.Equal(t, `"json value"`, block.source)
-	assert.Equal(t, `"json value"`, block.compact)
+	assert.Equal(t, "```json\n\"json value\"\n```", block.source)
+	assert.Equal(t, "```json\n\"json value\"\n```", block.compact)
 }
 
 func TestRenderArtifact_ToolResult_Error(t *testing.T) {
