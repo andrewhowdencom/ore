@@ -258,14 +258,14 @@ type Option func(*Step)
 // serializes it. They must not mutate the underlying buffer.
 func WithTransforms(transforms ...Transform) Option {
 	return func(s *Step) {
-		s.transforms = transforms
+		s.transforms = append(s.transforms, transforms...)
 	}
 }
 
 // WithHandlers configures artifact handlers to run after each turn.
 func WithHandlers(handlers ...Handler) Option {
 	return func(s *Step) {
-		s.handlers = handlers
+		s.handlers = append(s.handlers, handlers...)
 	}
 }
 
@@ -285,7 +285,7 @@ func WithOnEmit(fns ...OnEmit) Option {
 // automatically passed to every provider call made by this Step.
 func WithInvokeOptions(opts ...provider.InvokeOption) Option {
 	return func(s *Step) {
-		s.invokeOpts = opts
+		s.invokeOpts = append(s.invokeOpts, opts...)
 	}
 }
 

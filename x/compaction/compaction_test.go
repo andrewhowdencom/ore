@@ -2,6 +2,7 @@ package compaction
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
@@ -229,3 +230,77 @@ func TestTokenUsageTrigger(t *testing.T) {
 		})
 	}
 }
+
+// errorStrategy is a test double that always returns an error.
+type errorStrategy struct {
+	msg string
+}
+
+func (e errorStrategy) Compact(_ context.Context, _ []state.Turn) ([]state.Turn, error) {
+	return nil, errors.New(e.msg)
+}
+
+func TestMaybeCompact_MultipleStrategies(t *testing.T) {
+	c := New(
+		WithTrigger(TurnCountTrigger{N: 3}),
+		WithStrategy(KeepLastN{N: 3}),
+		WithStrategy(KeepLastN{N: 1}),
+	)
+	turns := []state.Turn{
+		{Role: state.RoleSystem},
+		{Role: state.RoleUser},
+		{Role: state.RoleAssistant},
+		{Role: state.RoleUser},
+		{Role: state.RoleAssistant},
+	}
+	result, didCompact, err := c.MaybeCompact(context.Background(), turns)
+	require.NoError(t, err)
+	assert.True(t, didCompact)
+	assert.Len(t, result, 1)
+	assert.Equal(t, state.RoleAssistant, result[0].Role)
+}
+
+func TestMaybeCompact_MultipleStrategies_ErrorPropagation(t *testing.T) {
+	c := New(
+		WithTrigger(TurnCountTrigger{N: 0}),
+		WithStrategy(KeepLastN{N: 3}),
+		WithStrategy(errorStrategy{msg: "second strategy failed"}),
+	)
+	turns := []state.Turn{
+		{Role: state.RoleSystem},
+		{Role: state.RoleUser},
+		{Role: state.RoleAssistant},
+	}
+	_, _, err := c.MaybeCompact(context.Background(), turns)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "compaction strategy failed")
+	assert.Contains(t, err.Error(), "second strategy failed")
+}
+
+func TestWithStrategy_NilIgnored(t *testing.T) {
+	c := New(
+		WithTrigger(TurnCountTrigger{N: 0}),
+		WithStrategy(nil),
+		WithStrategy(KeepLastN{N: 1}),
+	)
+	turns := []state.Turn{
+		{Role: state.RoleUser},
+		{Role: state.RoleAssistant},
+	}
+	result, didCompact, err := c.MaybeCompact(context.Background(), turns)
+	require.NoError(t, err)
+	assert.True(t, didCompact)
+	assert.Len(t, result, 1)
+}
+
+func TestMaybeCompact_TriggerOnly_NeverCompacts(t *testing.T) {
+	c := New(
+		WithTrigger(TurnCountTrigger{N: 0}),
+	)
+	turns := []state.Turn{{Role: state.RoleUser}}
+	result, didCompact, err := c.MaybeCompact(context.Background(), turns)
+	require.NoError(t, err)
+	assert.False(t, didCompact)
+	assert.Equal(t, turns, result)
+}
+

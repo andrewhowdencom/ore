@@ -47,7 +47,11 @@
 //	compactor := compaction.New(
 //	    compaction.WithTrigger(compaction.TurnCountTrigger{N: 20}),
 //	    compaction.WithStrategy(compaction.KeepLastN{N: 10}),
+//	    compaction.WithStrategy(compaction.SummarizeStrategy{Provider: prov, PreserveLastN: 2}),
 //	)
+//
+// WithStrategy accumulates; each call appends another strategy to the
+// pipeline. Strategies execute in registration order.
 //
 //	for {
 //	    turns, didCompact, err := compactor.MaybeCompact(ctx, buf.Turns())
