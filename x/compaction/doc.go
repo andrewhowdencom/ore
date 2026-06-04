@@ -41,9 +41,9 @@
 //
 // ChainStrategy composes multiple strategies into a single strategy that
 // runs them in sequence, piping the output of each strategy into the input
-// of the next. It is used automatically by Compactor when WithStrategy is
-// called multiple times, and can also be constructed explicitly via
-// NewChainStrategy for programmatic composition.
+// of the next. It can be used explicitly via NewChainStrategy for
+// programmatic composition, or strategies can be accumulated via repeated
+// WithStrategy calls on a Compactor.
 //
 // # Application wiring
 //

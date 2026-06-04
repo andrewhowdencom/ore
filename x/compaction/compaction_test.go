@@ -327,3 +327,42 @@ func TestMaybeCompact_MultipleStrategies_ErrorPropagation(t *testing.T) {
 	assert.Contains(t, err.Error(), "compaction strategy failed")
 	assert.Contains(t, err.Error(), "second strategy failed")
 }
+
+func TestWithStrategy_NilIgnored(t *testing.T) {
+	c := New(
+		WithTrigger(TurnCountTrigger{N: 0}),
+		WithStrategy(nil),
+		WithStrategy(KeepLastN{N: 1}),
+	)
+	turns := []state.Turn{
+		{Role: state.RoleUser},
+		{Role: state.RoleAssistant},
+	}
+	result, didCompact, err := c.MaybeCompact(context.Background(), turns)
+	require.NoError(t, err)
+	assert.True(t, didCompact)
+	assert.Len(t, result, 1)
+}
+
+func TestMaybeCompact_TriggerOnly_NeverCompacts(t *testing.T) {
+	c := New(
+		WithTrigger(TurnCountTrigger{N: 0}),
+	)
+	turns := []state.Turn{{Role: state.RoleUser}}
+	result, didCompact, err := c.MaybeCompact(context.Background(), turns)
+	require.NoError(t, err)
+	assert.False(t, didCompact)
+	assert.Equal(t, turns, result)
+}
+
+func TestChainStrategy_NilStrategy_ReturnsError(t *testing.T) {
+	chain := NewChainStrategy(KeepLastN{N: 2}, nil)
+	turns := []state.Turn{
+		{Role: state.RoleSystem},
+		{Role: state.RoleUser},
+		{Role: state.RoleAssistant},
+	}
+	_, err := chain.Compact(context.Background(), turns)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "strategy at index 1 is nil")
+}
