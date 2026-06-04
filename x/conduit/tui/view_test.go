@@ -540,6 +540,25 @@ func TestTruncateString(t *testing.T) {
 	assert.Equal(t, "…", truncateString("hello", 1))
 }
 
+func TestTruncateString_ANSIAware(t *testing.T) {
+	// ANSI-styled string: raw rune count is 14, visible width is 5.
+	ansiHello := "\x1b[31mhello\x1b[0m"
+
+	// Old implementation would see 14 runes > 10 and truncate to hel….
+	// New implementation sees 5 visible chars < 10 and returns full string.
+	assert.Equal(t, ansiHello, truncateString(ansiHello, 10),
+		"should not truncate when visible width fits")
+
+	// When truncation is needed, visible characters should be preserved
+	// with ANSI codes intact.
+	result := truncateString(ansiHello, 3)
+	assert.Contains(t, result, "he…",
+		"should truncate to visible width")
+	// Verify ANSI codes are preserved.
+	assert.Contains(t, result, "\x1b[31m")
+	assert.Contains(t, result, "\x1b[0m")
+}
+
 func TestBuildContent_ExpandLatestTools_Toggle(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))

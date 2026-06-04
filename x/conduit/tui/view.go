@@ -13,6 +13,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/cellbuf"
 )
 
@@ -427,21 +428,17 @@ func compactToolResult(content string, maxWidth int) string {
 	return truncateString(content, maxWidth)
 }
 
-// truncateString truncates s to maxWidth runes, adding "…" if truncated.
-// Truncation is rune-aware, ensuring multi-byte Unicode characters are
-// not split mid-character.
+// truncateString truncates s to maxWidth visible characters, adding "…" if
+// truncated. It is ANSI-aware, ensuring invisible escape sequences from
+// Glamour-rendered markdown are not counted against the width limit.
 func truncateString(s string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return s
 	}
-	runes := []rune(s)
-	if len(runes) <= maxWidth {
+	if ansi.StringWidth(s) <= maxWidth {
 		return s
 	}
-	if maxWidth <= 1 {
-		return "…"
-	}
-	return string(runes[:maxWidth-1]) + "…"
+	return ansi.Truncate(s, maxWidth, "…")
 }
 
 // windowTitle returns a dynamic terminal window title based on the
