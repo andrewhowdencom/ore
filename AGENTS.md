@@ -48,17 +48,20 @@ The provider contract is intentionally minimal: a single `Invoke(ctx, State) ([]
 ### Loop
 
 The `loop.Step` is a thin orchestrator. A `Turn()` method calls the provider,
-emits returned artifacts as a TurnCompleteEvent via OnEmit callbacks (which may
-append to state with `RoleAssistant`), and returns the mutated state. It does
-not handle retries, tool execution, or multi-turn looping — those are
-application-layer concerns.
+emits returned artifacts as a TurnCompleteEvent via Emit. When a state is
+bound via loop.WithState, the turn is automatically appended before OnEmit
+callbacks run. It does not handle retries, tool execution, or multi-turn
+looping — those are application-layer concerns.
 
 ### Event Emission and State Persistence
 
 `Step.Emit` is the single gateway for all observable mutations. A
 synchronous `OnEmit` callback tier runs before the async `FanOut`,
-providing a lossless, ordered, zero-drop path for state mutation
-while preserving the intentionally lossy FanOut for conduits.
+providing a lossless, ordered, zero-drop path for custom side-effects
+(logging, metrics) while preserving the intentionally lossy FanOut for
+conduits. The canonical state persistence mechanism is `loop.WithState`,
+which causes `Emit` to automatically append `TurnCompleteEvent` to the
+bound state before running `OnEmit` callbacks.
 
 - `OnEmit` callbacks receive every `OutputEvent` and are invoked in
   registration order before the event reaches subscribers.

@@ -183,6 +183,7 @@ type Step struct {
 	invokeOpts   []provider.InvokeOption
 	eventContext context.Context
 	tracer       trace.Tracer
+	state        state.State
 }
 
 // New creates a Step with the given options.
@@ -200,7 +201,13 @@ func New(opts ...Option) *Step {
 
 // Emit runs all registered OnEmit callbacks synchronously, then sends the
 // event to the FanOut and blocks until it has been delivered.
+// When a state has been bound via WithState, only TurnCompleteEvent is
+// automatically appended to that state before OnEmit callbacks run. Other
+// event types are passed through unchanged.
 func (s *Step) Emit(ctx context.Context, event OutputEvent) {
+	if tc, ok := event.(TurnCompleteEvent); ok && s.state != nil {
+		s.state.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+	}
 	for _, fn := range s.onEmit {
 		fn(ctx, event)
 	}
@@ -278,6 +285,21 @@ func WithHandlers(handlers ...Handler) Option {
 func WithOnEmit(fns ...OnEmit) Option {
 	return func(s *Step) {
 		s.onEmit = append(s.onEmit, fns...)
+	}
+}
+
+// WithState binds a mutable state.State to the Step so that every
+// TurnCompleteEvent emitted by the Step (including from finalizeTurn and
+// from artifact handlers) is automatically appended to the state before
+// OnEmit callbacks run. The supplied state is mutated in-place. When no
+// state is bound, TurnCompleteEvent has no automatic side effects on state.
+//
+// WithState is the canonical mechanism for state persistence. Use
+// WithOnEmit only for custom side-effects that do not also append to the
+// same state, or duplicate turns will result.
+func WithState(st state.State) Option {
+	return func(s *Step) {
+		s.state = st
 	}
 }
 

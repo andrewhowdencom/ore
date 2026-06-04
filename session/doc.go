@@ -45,10 +45,11 @@
 //	and "done" (turn or pipeline complete). Conduits should subscribe to
 //	it to drive UI state without inferring lifecycle from data events.
 //
-// State persistence is handled automatically by the Manager. The default
-// OnEmit callback appends TurnCompleteEvent turns to the thread's state
-// buffer after every turn. Applications only need a stepFactory when
-// adding custom transforms, handlers, or other loop.Step options:
+// State persistence is handled automatically by the Manager via
+// loop.WithState, which binds the thread's state to the Step so that
+// TurnCompleteEvent is appended after every turn. Applications only
+// need a stepFactory when adding custom transforms, handlers, or other
+// loop.Step options:
 //
 //	store := NewMemoryStore()
 //	prov, _ := openai.New(openai.WithAPIKey(apiKey), openai.WithModel(model))
