@@ -1262,3 +1262,115 @@ func TestManager_RegisterSink_ContextEchoSuppression(t *testing.T) {
 	assert.Equal(t, "test-provenance", provenances[0])
 	assert.Equal(t, "test-provenance", provenances[1])
 }
+
+func TestManager_Process_NoDuplicateTurns(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+			artifact.TextDelta{Content: " world"},
+		},
+	}
+	store := NewMemoryStore()
+	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {
+		return nil, nil
+	}, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.NoError(t, err)
+	_ = stream.Close()
+
+	thr, ok := store.Get(stream.ID())
+	require.True(t, ok)
+	turns := thr.State.Turns()
+
+	// Exactly 2 turns: user message + assistant response.
+	require.Len(t, turns, 2, "expected exactly one user turn and one assistant turn, got %d", len(turns))
+
+	roleCounts := make(map[state.Role]int)
+	for _, turn := range turns {
+		roleCounts[turn.Role]++
+	}
+	assert.Equal(t, 1, roleCounts[state.RoleUser], "user turn should appear exactly once")
+	assert.Equal(t, 1, roleCounts[state.RoleAssistant], "assistant turn should appear exactly once")
+}
+
+// toolLoopProvider returns a ToolCall on the first invocation and a text
+// delta on the second, simulating a ReAct tool-calling loop.
+type toolLoopProvider struct {
+	callCount int
+}
+
+func (p *toolLoopProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+	p.callCount++
+	if p.callCount == 1 {
+		ch <- artifact.ToolCall{Name: "test_tool", Arguments: `{"query":"hello"}`}
+	} else {
+		ch <- artifact.TextDelta{Content: "Final answer"}
+	}
+	return nil
+}
+
+func TestManager_Process_ToolLoop_NoDuplicateTurns(t *testing.T) {
+	prov := &toolLoopProvider{}
+	store := NewMemoryStore()
+
+	// Custom processor that simulates a ReAct-like tool loop:
+	// 1. Turn (assistant with tool call)
+	// 2. Emit tool result (simulating tool handler)
+	// 3. Turn (assistant with final answer)
+	toolProc := TurnProcessor(func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+		// First assistant turn (tool call)
+		st, err := step.Turn(ctx, st, prov)
+		if err != nil {
+			return st, err
+		}
+
+		// Simulate tool handler emitting tool result
+		step.Emit(ctx, loop.TurnCompleteEvent{
+			Turn: state.Turn{
+				Role:      state.RoleTool,
+				Artifacts: []artifact.Artifact{artifact.ToolResult{Content: "tool result"}},
+			},
+			Ctx: ctx,
+		})
+
+		// Second assistant turn (final answer)
+		return step.Turn(ctx, st, prov)
+	})
+
+	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {
+		return nil, nil
+	}, toolProc)
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hi"})
+	require.NoError(t, err)
+	_ = stream.Close()
+
+	thr, ok := store.Get(stream.ID())
+	require.True(t, ok)
+	turns := thr.State.Turns()
+
+	// Expected: user, assistant-tool-call, tool-result, assistant-final
+	require.Len(t, turns, 4, "expected 4 turns: user + assistant(tool) + tool + assistant(final)")
+
+	roles := make([]state.Role, len(turns))
+	for i, turn := range turns {
+		roles[i] = turn.Role
+	}
+	assert.Equal(t, []state.Role{state.RoleUser, state.RoleAssistant, state.RoleTool, state.RoleAssistant}, roles)
+
+	// Verify no duplicates by checking each role appears the expected number of times
+	roleCounts := make(map[state.Role]int)
+	for _, turn := range turns {
+		roleCounts[turn.Role]++
+	}
+	assert.Equal(t, 1, roleCounts[state.RoleUser])
+	assert.Equal(t, 2, roleCounts[state.RoleAssistant])
+	assert.Equal(t, 1, roleCounts[state.RoleTool])
+}
