@@ -18,34 +18,6 @@ type Strategy interface {
 	Compact(ctx context.Context, turns []state.Turn) ([]state.Turn, error)
 }
 
-// ChainStrategy implements Strategy by running multiple strategies in
-// sequence, piping the output of each strategy into the input of the next.
-type ChainStrategy struct {
-	strategies []Strategy
-}
-
-// NewChainStrategy creates a ChainStrategy from the provided strategies.
-func NewChainStrategy(strategies ...Strategy) ChainStrategy {
-	return ChainStrategy{strategies: strategies}
-}
-
-// Compact runs each strategy in order, passing the output of strategy N as
-// the input to strategy N+1. If any strategy fails, the chain stops and
-// returns the error.
-func (c ChainStrategy) Compact(ctx context.Context, turns []state.Turn) ([]state.Turn, error) {
-	var err error
-	for i, s := range c.strategies {
-		if s == nil {
-			return nil, fmt.Errorf("strategy at index %d is nil", i)
-		}
-		turns, err = s.Compact(ctx, turns)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return turns, nil
-}
-
 // Compactor coordinates a Trigger and a Strategy to optionally reduce state.
 type Compactor struct {
 	trigger    Trigger
