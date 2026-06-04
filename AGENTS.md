@@ -124,6 +124,11 @@ configured the instrumentation is a no-op.
 - `x/provider/openai.Provider.Invoke()` — `provider.invoke` — `SpanKindClient`
 - `x/tool.Handler.Handle()` — `tool.execute` — `SpanKindInternal`
 
+When a tracer is configured, the `provider.invoke` span also records
+granular HTTP lifecycle events (DNS, connection, TLS handshake, first-byte)
+via an attached `httptrace.ClientTrace`, enriching the span without
+creating child sub-spans.
+
 All spans carry `thread_id` as a `go.opentelemetry.io/otel/attribute.String`
 attribute, extracted from the context via `loop.ThreadIDFrom(ctx)`.
 

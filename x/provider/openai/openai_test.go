@@ -2,11 +2,14 @@ package openai
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/http/httptrace"
 	"strings"
 	"sync"
 	"testing"
@@ -16,6 +19,10 @@ import (
 	"github.com/andrewhowdencom/ore/state"
 	toolpkg "github.com/andrewhowdencom/ore/tool"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1342,4 +1349,202 @@ func TestProviderInvoke_PartialStreamError(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), wantErr.Error())
+}
+
+func TestProviderInvoke_HTTPTraceContext(t *testing.T) {
+	tests := []struct {
+		name       string
+		withTracer bool
+		wantTrace  bool
+	}{
+		{"with tracer injects httptrace", true, true},
+		{"without tracer no httptrace", false, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			transport := &mockTransport{
+				response: mockResponseSSE(simpleSSE("ok")),
+			}
+
+			var opts []Option
+			opts = append(opts, WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+			if tt.withTracer {
+				opts = append(opts, WithTracer(trace.NewNoopTracerProvider().Tracer("test")))
+			}
+
+			p, err := New(opts...)
+			require.NoError(t, err)
+
+			mem := &state.Buffer{}
+			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+			ch := make(chan artifact.Artifact, 10)
+			_ = p.Invoke(t.Context(), mem, ch)
+			close(ch)
+			for range ch {
+			}
+
+			require.NotNil(t, transport.request)
+			ct := httptrace.ContextClientTrace(transport.request.Context())
+			if tt.wantTrace {
+				assert.NotNil(t, ct, "httptrace.ClientTrace should be present in request context")
+			} else {
+				assert.Nil(t, ct, "httptrace.ClientTrace should not be present when no tracer is configured")
+			}
+		})
+	}
+}
+
+// hookingMockTransport is an http.RoundTripper that calls httptrace hooks
+// on the request's context before returning a canned response. This lets
+// tests exercise the otelhttptrace instrumentation without a real network.
+type hookingMockTransport struct {
+	response *http.Response
+	request  *http.Request
+}
+
+func (m *hookingMockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	m.request = req
+	ct := httptrace.ContextClientTrace(req.Context())
+	if ct != nil {
+		if ct.DNSStart != nil {
+			ct.DNSStart(httptrace.DNSStartInfo{Host: "api.openai.com"})
+		}
+		if ct.DNSDone != nil {
+			ct.DNSDone(httptrace.DNSDoneInfo{Addrs: []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}})
+		}
+		if ct.ConnectStart != nil {
+			ct.ConnectStart("tcp", "127.0.0.1:443")
+		}
+		if ct.ConnectDone != nil {
+			ct.ConnectDone("tcp", "127.0.0.1:443", nil)
+		}
+		if ct.TLSHandshakeStart != nil {
+			ct.TLSHandshakeStart()
+		}
+		if ct.TLSHandshakeDone != nil {
+			ct.TLSHandshakeDone(tls.ConnectionState{}, nil)
+		}
+		if ct.GotFirstResponseByte != nil {
+			ct.GotFirstResponseByte()
+		}
+	}
+	return m.response, nil
+}
+
+func TestProviderInvoke_SpanLifecycle(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		response   string
+		wantErr    bool
+		wantStatus codes.Code
+	}{
+		{
+			name:       "success",
+			statusCode: 200,
+			response:   simpleSSE("ok"),
+			wantErr:    false,
+			wantStatus: codes.Unset,
+		},
+		{
+			name:       "http error",
+			statusCode: 401,
+			response:   `{"error":{"message":"invalid key","type":"invalid_request_error"}}`,
+			wantErr:    true,
+			wantStatus: codes.Error,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sr := tracetest.NewSpanRecorder()
+			tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
+			defer tp.Shutdown(context.Background())
+
+			var transport *mockTransport
+			if tt.statusCode == 200 {
+				transport = &mockTransport{response: mockResponseSSE(tt.response)}
+			} else {
+				transport = &mockTransport{response: mockResponse(tt.statusCode, tt.response)}
+			}
+
+			p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)), WithTracer(tp.Tracer("test")))
+			require.NoError(t, err)
+
+			mem := &state.Buffer{}
+			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+			ch := make(chan artifact.Artifact, 10)
+			err = p.Invoke(t.Context(), mem, ch)
+			close(ch)
+			for range ch {
+			}
+
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			ended := sr.Ended()
+			require.Len(t, ended, 1, "exactly one span should be ended")
+			assert.Equal(t, "provider.invoke", ended[0].Name())
+			assert.Equal(t, trace.SpanKindClient, ended[0].SpanKind())
+			assert.Equal(t, tt.wantStatus, ended[0].Status().Code)
+		})
+	}
+}
+
+func TestProviderInvoke_HTTPTrace_Events(t *testing.T) {
+	sr := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
+	defer tp.Shutdown(context.Background())
+
+	transport := &hookingMockTransport{
+		response: mockResponseSSE(simpleSSE("ok")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(&http.Client{Transport: transport}), WithTracer(tp.Tracer("test")))
+	require.NoError(t, err)
+
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	err = p.Invoke(t.Context(), mem, ch)
+	require.NoError(t, err)
+	drainArtifacts(ch)
+
+	ended := sr.Ended()
+	require.Len(t, ended, 1)
+	events := ended[0].Events()
+	assert.NotEmpty(t, events, "span should have HTTP lifecycle events recorded")
+}
+
+func TestProviderInvoke_WithoutSubSpans(t *testing.T) {
+	sr := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
+	defer tp.Shutdown(context.Background())
+
+	transport := &hookingMockTransport{
+		response: mockResponseSSE(simpleSSE("ok")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(&http.Client{Transport: transport}), WithTracer(tp.Tracer("test")))
+	require.NoError(t, err)
+
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	err = p.Invoke(t.Context(), mem, ch)
+	require.NoError(t, err)
+	drainArtifacts(ch)
+
+	ended := sr.Ended()
+	require.Len(t, ended, 1)
+	assert.Equal(t, "provider.invoke", ended[0].Name())
+	assert.Equal(t, 0, ended[0].ChildSpanCount(), "WithoutSubSpans() should not create child spans")
 }
