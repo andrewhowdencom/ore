@@ -39,12 +39,6 @@
 // ignored. This is an MVP limitation; future work may add custom formatters
 // or multi-modal support.
 //
-// ChainStrategy composes multiple strategies into a single strategy that
-// runs them in sequence, piping the output of each strategy into the input
-// of the next. It can be used explicitly via NewChainStrategy for
-// programmatic composition, or strategies can be accumulated via repeated
-// WithStrategy calls on a Compactor.
-//
 // # Application wiring
 //
 // The compactor is called by the application before step.Turn(). If
