@@ -1566,3 +1566,86 @@ func TestEnrichToolCalls_InvalidJSON(t *testing.T) {
 	require.True(t, ok)
 	assert.Nil(t, tc.Value)
 }
+
+func TestStep_Emit_WithState_NoOnEmit(t *testing.T) {
+	buf := &state.Buffer{}
+	s := New(WithState(buf))
+
+	ctx := context.Background()
+	turn := state.Turn{
+		Role:      state.RoleAssistant,
+		Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}},
+	}
+	s.Emit(ctx, TurnCompleteEvent{Turn: turn, Ctx: ctx})
+
+	turns := buf.Turns()
+	require.Len(t, turns, 1)
+	assert.Equal(t, state.RoleAssistant, turns[0].Role)
+	assert.Len(t, turns[0].Artifacts, 1)
+}
+
+func TestStep_WithState_Nil_NoPanic(t *testing.T) {
+	s := New(WithState(nil))
+
+	ctx := context.Background()
+	turn := state.Turn{
+		Role:      state.RoleUser,
+		Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}},
+	}
+	// Should not panic even though state is nil.
+	require.NotPanics(t, func() {
+		s.Emit(ctx, TurnCompleteEvent{Turn: turn, Ctx: ctx})
+	})
+}
+
+type emitTurnCompleteHandler struct{}
+
+func (h *emitTurnCompleteHandler) Handle(ctx context.Context, art artifact.Artifact, e Emitter) error {
+	e.Emit(ctx, TurnCompleteEvent{
+		Turn: state.Turn{
+			Role:      state.RoleTool,
+			Artifacts: []artifact.Artifact{artifact.ToolResult{Content: "tool result"}},
+		},
+		Ctx: ctx,
+	})
+	return nil
+}
+
+func TestStep_Submit_WithState_HandlerEmitsTurnComplete(t *testing.T) {
+	buf := &state.Buffer{}
+	handler := &emitTurnCompleteHandler{}
+	s := New(WithState(buf), WithHandlers(handler))
+
+	ctx := context.Background()
+	_, err := s.Submit(ctx, buf, state.RoleUser, artifact.Text{Content: "hello"})
+	require.NoError(t, err)
+
+	turns := buf.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, state.RoleUser, turns[0].Role)
+	assert.Equal(t, state.RoleTool, turns[1].Role)
+}
+
+func TestStep_WithState_And_OnEmit_BothAppend_DocumentsAntiPattern(t *testing.T) {
+	buf := &state.Buffer{}
+	customAppend := func(ctx context.Context, event OutputEvent) {
+		if tc, ok := event.(TurnCompleteEvent); ok {
+			buf.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+		}
+	}
+	s := New(WithState(buf), WithOnEmit(customAppend))
+
+	ctx := context.Background()
+	turn := state.Turn{
+		Role:      state.RoleUser,
+		Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}},
+	}
+	s.Emit(ctx, TurnCompleteEvent{Turn: turn, Ctx: ctx})
+
+	// Combining WithState (auto-append) with an OnEmit callback that also
+	// appends results in a double append. This is an anti-pattern:
+	// use WithState for persistence and WithOnEmit only for side-effects
+	// that do not mutate the same state.
+	turns := buf.Turns()
+	assert.Len(t, turns, 2, "combining WithState and an OnEmit that appends causes double append")
+}

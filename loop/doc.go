@@ -19,6 +19,10 @@
 //     views that prepend virtual turns. See x/systemprompt for a reusable
 //     transform that injects a system prompt without touching history.
 //   - WithHandlers — run artifact handlers on the complete response.
+//   - WithState — bind a mutable state.State so that TurnCompleteEvent
+//     is automatically appended by Emit before OnEmit callbacks run.
+//     This is the canonical mechanism for state persistence; use
+//     WithOnEmit only for custom side-effects that do not mutate state.
 //
 // Step is the single canonical single-turn execution primitive with
 // optional, opt-in capabilities via functional options. A Step with no
