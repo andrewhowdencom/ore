@@ -135,6 +135,33 @@ func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
 	return t, nil
 }
 
+// initModel creates and initializes the Bubble Tea model for the TUI,
+// including pre-populating historical turns from the stream when resuming
+// an existing thread.
+func (t *TUI) initModel(eventsCh chan session.Event, stream *session.Stream) model {
+	ta := textarea.New()
+	ta.ShowLineNumbers = false
+	ta.Prompt = "> "
+	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("shift+enter", "ctrl+j"))
+	ta.DynamicHeight = true
+	ta.MinHeight = 1
+	ta.Focus()
+
+	m := model{
+		eventsCh:       eventsCh,
+		viewport:       viewport.New(),
+		textarea:       ta,
+		md:             newGlamourMarkdownRenderer(),
+		name:           t.name,
+		zoneFormatter:  t.zoneFormatter,
+		zonePriorities: t.zonePriorities,
+	}
+
+	// Pre-populate the model with historical turns when resuming a thread.
+	m.loadHistory(stream.Turns())
+	return m
+}
+
 // Start creates or attaches to a session, initializes the Bubble Tea program,
 // subscribes to the session output stream, and blocks until the user quits
 // (Ctrl+C) or ctx is cancelled. On context cancellation the program exits
@@ -156,24 +183,7 @@ func (t *TUI) Start(ctx context.Context) error {
 	}
 
 	surfEventsCh := make(chan session.Event, 10)
-
-	ta := textarea.New()
-	ta.ShowLineNumbers = false
-	ta.Prompt = "> "
-	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("shift+enter", "ctrl+j"))
-	ta.DynamicHeight = true
-	ta.MinHeight = 1
-	ta.Focus()
-
-	m := model{
-		eventsCh:       surfEventsCh,
-		viewport:       viewport.New(),
-		textarea:       ta,
-		md:             newGlamourMarkdownRenderer(),
-		name:           t.name,
-		zoneFormatter:  t.zoneFormatter,
-		zonePriorities: t.zonePriorities,
-	}
+	m := t.initModel(surfEventsCh, stream)
 	p := tea.NewProgram(&m)
 	t.eventsCh = surfEventsCh
 	t.program = p

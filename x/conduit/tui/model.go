@@ -333,6 +333,30 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRen
 	return renderedBlock{}
 }
 
+// loadHistory pre-populates the model's turn slice from a stream's
+// historical conversation state. It is called once during TUI startup
+// when resuming an existing thread. The supplied turns are expected to be
+// read-only; the method does not modify the slice or its contained artifacts.
+func (m *model) loadHistory(turns []state.Turn) {
+	for _, turn := range turns {
+		var blocks []renderedBlock
+		for _, art := range turn.Artifacts {
+			block := m.renderArtifact(art, turn.Role, turn.Role == state.RoleAssistant || turn.Role == state.RoleTool)
+			if block.kind != "" {
+				blocks = append(blocks, block)
+			}
+		}
+		m.turns = append(m.turns, renderedTurn{
+			role:      turn.Role,
+			blocks:    blocks,
+			timestamp: turn.Timestamp,
+		})
+	}
+	if len(m.turns) > 0 {
+		m.contentDirty = true
+	}
+}
+
 // Init returns an initial command. No periodic ticks are needed because
 // turns arrive via program.Send from the orchestrator goroutine.
 func (m *model) Init() tea.Cmd {
