@@ -92,3 +92,53 @@ func TestNew_WithName(t *testing.T) {
 func TestTUI_ImplementsAudioNotifier(t *testing.T) {
 	var _ conduit.AudioNotifier = (*TUI)(nil)
 }
+
+func TestTUI_InitModel_ResumesThreadWithHistory(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "assistant response"},
+		},
+	}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	// Create a stream and have a conversation.
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+	err = stream.Process(context.Background(), session.UserMessageEvent{Content: "hello"})
+	require.NoError(t, err)
+
+	// Close the stream so we can re-attach.
+	threadID := stream.ID()
+	err = stream.Close()
+	require.NoError(t, err)
+
+	// Create a new TUI targeting the existing thread.
+	c, err := New(mgr, WithThreadID(threadID))
+	require.NoError(t, err)
+	tui := c.(*TUI)
+
+	// Re-attach to get a fresh stream handle backed by the same thread.
+	stream2, err := mgr.Attach(threadID)
+	require.NoError(t, err)
+	defer stream2.Close()
+
+	// Verify the thread has historical turns.
+	turns := stream2.Turns()
+	require.Len(t, turns, 2)
+
+	// Call initModel directly to verify history pre-population.
+	eventsCh := make(chan session.Event, 10)
+	m := tui.initModel(eventsCh, stream2)
+
+	// The model should have both turns pre-populated.
+	require.Len(t, m.turns, 2)
+	assert.Equal(t, state.RoleUser, m.turns[0].role)
+	require.Len(t, m.turns[0].blocks, 1)
+	assert.Equal(t, "hello", m.turns[0].blocks[0].source)
+
+	assert.Equal(t, state.RoleAssistant, m.turns[1].role)
+	require.Len(t, m.turns[1].blocks, 1)
+	assert.Equal(t, "assistant response", m.turns[1].blocks[0].source)
+	assert.NotEmpty(t, m.turns[1].blocks[0].rendered, "assistant turn should be markdown rendered")
+}

@@ -307,6 +307,15 @@ func (s *Stream) Emit(ctx context.Context, event loop.OutputEvent) error {
 // ID returns the stream's unique identifier (same as the thread ID).
 func (s *Stream) ID() string { return s.id }
 
+// Turns returns a defensive (shallow) copy of the thread's turn history.
+// The slice of Turns is copied, but each Turn's Artifacts slice is shared.
+// Callers should treat the returned artifacts as immutable.
+func (s *Stream) Turns() []state.Turn {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.thread.State.Turns()
+}
+
 // GetMetadata retrieves a metadata value from the underlying thread.
 func (s *Stream) GetMetadata(key string) (string, bool) {
 	s.mu.Lock()
