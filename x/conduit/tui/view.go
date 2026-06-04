@@ -31,19 +31,6 @@ var (
 	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
 	// zoneLabelStyle styles zone names (Lifecycle, Context) bold in the status bar.
 	zoneLabelStyle = lipgloss.NewStyle().Bold(true)
-	// toolBlockStyle wraps tool execution blocks with a thick left border to
-	// visually delimit them from assistant prose.
-	thickLeftBorder = lipgloss.Border{Left: "█"}
-	// toolBlockStyle uses a blue left border for normal tool calls and results.
-	toolBlockStyle = lipgloss.NewStyle().
-				Border(thickLeftBorder, false, false, false, true).
-				BorderForeground(lipgloss.Color("#6C8EBF")).
-				Padding(0, 1)
-	// toolErrorBlockStyle uses a red left border for failed tool executions.
-	toolErrorBlockStyle = lipgloss.NewStyle().
-				Border(thickLeftBorder, false, false, false, true).
-				BorderForeground(lipgloss.Color("#FF5555")).
-				Padding(0, 1)
 )
 
 // renderBlockUnified renders a single block with the consistent header format:
