@@ -36,6 +36,20 @@ func newTestModel() model {
 	}
 }
 
+func TestHashToolCallID(t *testing.T) {
+	h1 := hashToolCallID("call_abc123")
+	h2 := hashToolCallID("call_abc123")
+	assert.Equal(t, h1, h2, "hash should be deterministic for the same ID")
+	assert.Len(t, h1, 4, "hash should be exactly 4 characters")
+
+	h3 := hashToolCallID("call_different")
+	assert.NotEqual(t, h1, h3, "different IDs should produce different hashes")
+
+	// Verify empty string hash is stable and 4 chars.
+	hEmpty := hashToolCallID("")
+	assert.Len(t, hEmpty, 4, "empty ID hash should be 4 characters")
+}
+
 func TestModel_Update_Turn(t *testing.T) {
 	m := model{}
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
