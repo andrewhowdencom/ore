@@ -30,7 +30,7 @@ type Option func(*config)
 // WithRules sets the guardrail rules.
 func WithRules(rules ...string) Option {
 	return func(c *config) {
-		c.rules = rules
+		c.rules = append(c.rules, rules...)
 	}
 }
 

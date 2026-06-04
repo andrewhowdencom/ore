@@ -20,8 +20,8 @@ type Strategy interface {
 
 // Compactor coordinates a Trigger and a Strategy to optionally reduce state.
 type Compactor struct {
-	trigger  Trigger
-	strategy Strategy
+	trigger    Trigger
+	strategies []Strategy
 }
 
 // Option configures a Compactor.
@@ -35,9 +35,12 @@ func WithTrigger(t Trigger) Option {
 }
 
 // WithStrategy sets the strategy that reduces the turn slice.
+// Multiple calls accumulate; the order of calls determines execution order.
 func WithStrategy(s Strategy) Option {
 	return func(c *Compactor) {
-		c.strategy = s
+		if s != nil {
+			c.strategies = append(c.strategies, s)
+		}
 	}
 }
 
@@ -55,17 +58,20 @@ func New(opts ...Option) *Compactor {
 // Strategy and returns the compacted turns along with true. If the Trigger
 // does not fire, it returns the original turns and false.
 func (c *Compactor) MaybeCompact(ctx context.Context, turns []state.Turn) ([]state.Turn, bool, error) {
-	if c.trigger == nil || c.strategy == nil {
+	if c.trigger == nil || len(c.strategies) == 0 {
 		return turns, false, nil
 	}
 	if !c.trigger.ShouldCompact(turns) {
 		return turns, false, nil
 	}
-	compact, err := c.strategy.Compact(ctx, turns)
-	if err != nil {
-		return nil, false, fmt.Errorf("compaction strategy failed: %w", err)
+	var err error
+	for _, s := range c.strategies {
+		turns, err = s.Compact(ctx, turns)
+		if err != nil {
+			return nil, false, fmt.Errorf("compaction strategy failed: %w", err)
+		}
 	}
-	return compact, true, nil
+	return turns, true, nil
 }
 
 // TurnCountTrigger fires when the number of turns exceeds a threshold.
