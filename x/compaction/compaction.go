@@ -18,8 +18,8 @@ type Strategy interface {
 	Compact(ctx context.Context, turns []state.Turn) ([]state.Turn, error)
 }
 
-// ChainStrategy runs multiple strategies in sequence, piping the output of
-// each strategy into the input of the next.
+// ChainStrategy implements Strategy by running multiple strategies in
+// sequence, piping the output of each strategy into the input of the next.
 type ChainStrategy struct {
 	strategies []Strategy
 }
@@ -34,7 +34,10 @@ func NewChainStrategy(strategies ...Strategy) ChainStrategy {
 // returns the error.
 func (c ChainStrategy) Compact(ctx context.Context, turns []state.Turn) ([]state.Turn, error) {
 	var err error
-	for _, s := range c.strategies {
+	for i, s := range c.strategies {
+		if s == nil {
+			return nil, fmt.Errorf("strategy at index %d is nil", i)
+		}
 		turns, err = s.Compact(ctx, turns)
 		if err != nil {
 			return nil, err
@@ -60,10 +63,12 @@ func WithTrigger(t Trigger) Option {
 }
 
 // WithStrategy sets the strategy that reduces the turn slice.
-// Multiple calls accumulate; strategies are run in sequence.
+// Multiple calls accumulate; the order of calls determines execution order.
 func WithStrategy(s Strategy) Option {
 	return func(c *Compactor) {
-		c.strategies = append(c.strategies, s)
+		if s != nil {
+			c.strategies = append(c.strategies, s)
+		}
 	}
 }
 
