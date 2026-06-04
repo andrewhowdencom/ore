@@ -569,7 +569,7 @@ func TestBuildContent_ExpandLatestTools_Toggle(t *testing.T) {
 		},
 	}
 
-	// Compact mode (default): blocks wrapped in assistantStyle, no arrows.
+	// Compact mode (default): blocks use borderless header styles.
 	m.expandLatestDetails = false
 	compactOutput := m.buildContent()
 	assert.Contains(t, compactOutput, "search_files")
@@ -635,13 +635,13 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 		{
 			role: state.RoleTool,
 			blocks: []renderedBlock{
-				{title: "Tool Result", style: assistantStyle, expandedByDefault: false, kind: "tool_result", source: "result1", compact: "result1", toolCallID: "call_1"},
-				{title: "Tool Result", style: assistantStyle, expandedByDefault: false, kind: "tool_result", source: "result2", compact: "result2", toolCallID: "call_2"},
+				{title: "Tool Result", style: toolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result1", compact: "result1", toolCallID: "call_1"},
+				{title: "Tool Result", style: toolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result2", compact: "result2", toolCallID: "call_2"},
 			},
 		},
 	}
 
-	// Compact mode: blocks wrapped in assistantStyle, no arrows.
+	// Compact mode: blocks use borderless header styles.
 	m.expandLatestDetails = false
 	output := m.buildContent()
 	assert.Contains(t, output, "foo")
@@ -679,7 +679,7 @@ func TestBuildContent_MixedBlocks(t *testing.T) {
 		{
 			role: state.RoleTool,
 			blocks: []renderedBlock{
-				{title: "Tool Result", style: assistantStyle, expandedByDefault: false, kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"},
+				{title: "Tool Result", style: toolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"},
 			},
 		},
 	}
