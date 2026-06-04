@@ -1709,3 +1709,147 @@ func TestModel_Update_AutoScrollLock_PreservesBottom(t *testing.T) {
 		assert.True(t, mm.viewport.AtBottom(), "WindowSizeMsg should preserve bottom lock")
 	})
 }
+
+func TestModel_LoadHistory(t *testing.T) {
+	t.Run("empty history", func(t *testing.T) {
+		m := newTestModel()
+		m.loadHistory(nil)
+		assert.Empty(t, m.turns)
+		assert.False(t, m.contentDirty)
+	})
+
+	t.Run("user turn", func(t *testing.T) {
+		m := newTestModel()
+		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+		m.loadHistory([]state.Turn{
+			{
+				Role:      state.RoleUser,
+				Artifacts: []artifact.Artifact{artifact.Text{Content: "hello world"}},
+			},
+		})
+		require.Len(t, m.turns, 1)
+		assert.Equal(t, state.RoleUser, m.turns[0].role)
+		require.Len(t, m.turns[0].blocks, 1)
+		assert.Equal(t, "text", m.turns[0].blocks[0].kind)
+		assert.Equal(t, "hello world", m.turns[0].blocks[0].source)
+		assert.Empty(t, m.turns[0].blocks[0].rendered, "user turn should not be markdown rendered")
+		assert.True(t, m.contentDirty)
+	})
+
+	t.Run("assistant turn with text", func(t *testing.T) {
+		m := newTestModel()
+		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+		m.loadHistory([]state.Turn{
+			{
+				Role:      state.RoleAssistant,
+				Artifacts: []artifact.Artifact{artifact.Text{Content: "response text"}},
+			},
+		})
+		require.Len(t, m.turns, 1)
+		assert.Equal(t, state.RoleAssistant, m.turns[0].role)
+		require.Len(t, m.turns[0].blocks, 1)
+		assert.Equal(t, "text", m.turns[0].blocks[0].kind)
+		assert.Equal(t, "response text", m.turns[0].blocks[0].source)
+		assert.NotEmpty(t, m.turns[0].blocks[0].rendered, "assistant text should be markdown rendered")
+	})
+
+	t.Run("multiple turns in order", func(t *testing.T) {
+		m := newTestModel()
+		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+		m.loadHistory([]state.Turn{
+			{
+				Role:      state.RoleUser,
+				Artifacts: []artifact.Artifact{artifact.Text{Content: "first"}},
+			},
+			{
+				Role:      state.RoleAssistant,
+				Artifacts: []artifact.Artifact{artifact.Text{Content: "second"}},
+			},
+			{
+				Role:      state.RoleUser,
+				Artifacts: []artifact.Artifact{artifact.Text{Content: "third"}},
+			},
+		})
+		require.Len(t, m.turns, 3)
+		assert.Equal(t, state.RoleUser, m.turns[0].role)
+		assert.Equal(t, "first", m.turns[0].blocks[0].source)
+		assert.Equal(t, state.RoleAssistant, m.turns[1].role)
+		assert.Equal(t, "second", m.turns[1].blocks[0].source)
+		assert.Equal(t, state.RoleUser, m.turns[2].role)
+		assert.Equal(t, "third", m.turns[2].blocks[0].source)
+	})
+
+	t.Run("assistant turn with reasoning", func(t *testing.T) {
+		m := newTestModel()
+		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+		m.loadHistory([]state.Turn{
+			{
+				Role: state.RoleAssistant,
+				Artifacts: []artifact.Artifact{
+					artifact.Text{Content: "answer"},
+					artifact.Reasoning{Content: "thinking..."},
+				},
+			},
+		})
+		require.Len(t, m.turns, 1)
+		require.Len(t, m.turns[0].blocks, 2)
+		assert.Equal(t, "text", m.turns[0].blocks[0].kind)
+		assert.Equal(t, "answer", m.turns[0].blocks[0].source)
+		assert.Equal(t, "reasoning", m.turns[0].blocks[1].kind)
+		assert.Equal(t, "thinking...", m.turns[0].blocks[1].source)
+	})
+
+	t.Run("tool turn", func(t *testing.T) {
+		m := newTestModel()
+		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+		m.loadHistory([]state.Turn{
+			{
+				Role: state.RoleTool,
+				Artifacts: []artifact.Artifact{
+					artifact.ToolResult{ToolCallID: "call_1", Content: "result data"},
+				},
+			},
+		})
+		require.Len(t, m.turns, 1)
+		assert.Equal(t, state.RoleTool, m.turns[0].role)
+		require.Len(t, m.turns[0].blocks, 1)
+		assert.Equal(t, "tool_result", m.turns[0].blocks[0].kind)
+	})
+}
+
+func TestModel_LoadHistory_WindowSize_Rerenders(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+
+	// Use a recording renderer to capture width values passed to Render.
+	rec := &recordingMockRenderer{output: "rendered-at-width"}
+	m.md = rec
+
+	// Load history with assistant text.
+	m.loadHistory([]state.Turn{
+		{
+			Role: state.RoleAssistant,
+			Artifacts: []artifact.Artifact{
+				artifact.Text{Content: "text that wraps differently at width forty versus width eighty."},
+			},
+		},
+	})
+
+	require.Len(t, m.turns, 1)
+	require.Len(t, m.turns[0].blocks, 1)
+	// After loadHistory, renderMarkdown was called once at the initial viewport width (80).
+	require.Len(t, rec.widths, 1)
+	assert.Equal(t, 80, rec.widths[0])
+	assert.Equal(t, "rendered-at-width", m.turns[0].blocks[0].rendered)
+
+	// Resize to a narrower width.
+	newM, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 20})
+	mm := newM.(*model)
+
+	require.Len(t, mm.turns, 1)
+	require.Len(t, mm.turns[0].blocks, 1)
+	// After WindowSizeMsg, renderMarkdown was called again at width 40.
+	require.Len(t, rec.widths, 2)
+	assert.Equal(t, 40, rec.widths[1])
+	assert.Equal(t, "rendered-at-width", mm.turns[0].blocks[0].rendered)
+}

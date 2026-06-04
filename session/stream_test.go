@@ -48,6 +48,37 @@ func TestStream_Interface(t *testing.T) {
 	assert.True(t, ok)
 }
 
+func TestStream_Turns(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	// Fresh stream has no turns.
+	assert.Empty(t, stream.Turns())
+
+	// Process a user message + assistant response.
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hello"})
+	require.NoError(t, err)
+
+	turns := stream.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, state.RoleUser, turns[0].Role)
+	assert.Equal(t, "hello", turns[0].Artifacts[0].(artifact.Text).Content)
+	assert.Equal(t, state.RoleAssistant, turns[1].Role)
+
+	// Modifying the returned slice must not affect the stream.
+	turns[0].Role = state.RoleSystem
+	turns = append(turns, state.Turn{Role: state.RoleSystem})
+	freshTurns := stream.Turns()
+	require.Len(t, freshTurns, 2)
+	assert.Equal(t, state.RoleUser, freshTurns[0].Role)
+
+	_ = stream.Close()
+}
+
 func TestStream_Process_ContextPropagation(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
