@@ -1137,7 +1137,7 @@ func TestModel_Update_UserAfterTool_DoesNotResetExpand(t *testing.T) {
 	// Simulate a tool result turn
 	m.turns = append(m.turns, renderedTurn{
 		role:   state.RoleTool,
-		blocks: []renderedBlock{{title: "Tool Result", style: assistantStyle, expandedByDefault: false, kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"}},
+		blocks: []renderedBlock{{title: "Tool Result", style: toolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"}},
 	})
 	m.expandLatestDetails = true
 

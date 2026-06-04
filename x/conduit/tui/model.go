@@ -246,10 +246,13 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRen
 			block.style = assistantStyle
 		case state.RoleUser:
 			block.title = "You"
-			block.style = lipgloss.NewStyle()
+			block.style = userStyle
 		case state.RoleTool:
 			block.title = "Tool"
-			block.style = assistantStyle
+			block.style = toolResultStyle
+		case state.RoleSystem:
+			block.title = "System"
+			block.style = systemStyle
 		}
 		block.expandedByDefault = true
 		if shouldRenderMarkdown {
@@ -308,7 +311,7 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRen
 			source:            source,
 			toolCallID:        a.ToolCallID,
 			title:             "Tool Result",
-			style:             assistantStyle,
+			style:             toolResultStyle,
 			expandedByDefault: false,
 			isError:           a.IsError,
 		}

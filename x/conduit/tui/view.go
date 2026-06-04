@@ -29,6 +29,12 @@ var (
 	reasoningExpandedStyle = lipgloss.NewStyle().Faint(true)
 	// errorStyle styles error turns from the harness in red.
 	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
+	// userStyle styles user input in yellow.
+	userStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#E5C07B"))
+	// systemStyle styles system-level messages in purple.
+	systemStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#C678DD"))
+	// toolResultStyle styles successful tool results in green.
+	toolResultStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#98C379"))
 	// zoneLabelStyle styles zone names (Lifecycle, Context) bold in the status bar.
 	zoneLabelStyle = lipgloss.NewStyle().Bold(true)
 )
