@@ -90,6 +90,9 @@
 //	tuiConduit, _ := tui.New(mgr)
 //	_ = tuiConduit.Start(ctx)
 //
+//	// Retrieve the conversation history without exposing the internal Thread.
+//	turns := stream.Turns()
+//
 //	// Emit custom output events (e.g. status updates) into the stream's FanOut.
 //	_ = stream.Emit(ctx, loop.PropertiesEvent{Properties: map[string]string{"thread_id": stream.ID()}})
 package session

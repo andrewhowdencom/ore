@@ -99,10 +99,14 @@ func (m *Manager) Create() (*Stream, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create step: %w", err)
 	}
-	// WithState replaces the previous defaultOnEmit callback, providing a
-	// single-source-of-truth for TurnCompleteEvent persistence and eliminating
-	// the double-append bug (#327).
-	stream.step = loop.New(append([]loop.Option{loop.WithState(stream.thread.State)}, factoryOpts...)...)
+	defaultOnEmit := loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+		if tc, ok := event.(loop.TurnCompleteEvent); ok {
+			stream.mu.Lock()
+			stream.thread.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+			stream.mu.Unlock()
+		}
+	})
+	stream.step = loop.New(append([]loop.Option{defaultOnEmit}, factoryOpts...)...)
 
 	m.mu.Lock()
 	m.sessions[thr.ID] = stream
@@ -141,10 +145,14 @@ func (m *Manager) Attach(threadID string) (*Stream, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create step: %w", err)
 	}
-	// WithState replaces the previous defaultOnEmit callback, providing a
-	// single-source-of-truth for TurnCompleteEvent persistence and eliminating
-	// the double-append bug (#327).
-	stream.step = loop.New(append([]loop.Option{loop.WithState(stream.thread.State)}, factoryOpts...)...)
+	defaultOnEmit := loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+		if tc, ok := event.(loop.TurnCompleteEvent); ok {
+			stream.mu.Lock()
+			stream.thread.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+			stream.mu.Unlock()
+		}
+	})
+	stream.step = loop.New(append([]loop.Option{defaultOnEmit}, factoryOpts...)...)
 
 	m.mu.Lock()
 	if existing, ok := m.sessions[threadID]; ok {
@@ -220,10 +228,14 @@ func (m *Manager) CreateWithID(id string) (*Stream, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create step: %w", err)
 	}
-	// WithState replaces the previous defaultOnEmit callback, providing a
-	// single-source-of-truth for TurnCompleteEvent persistence and eliminating
-	// the double-append bug (#327).
-	stream.step = loop.New(append([]loop.Option{loop.WithState(stream.thread.State)}, factoryOpts...)...)
+	defaultOnEmit := loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
+		if tc, ok := event.(loop.TurnCompleteEvent); ok {
+			stream.mu.Lock()
+			stream.thread.State.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+			stream.mu.Unlock()
+		}
+	})
+	stream.step = loop.New(append([]loop.Option{defaultOnEmit}, factoryOpts...)...)
 
 	m.mu.Lock()
 	m.sessions[thr.ID] = stream
