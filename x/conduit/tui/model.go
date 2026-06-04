@@ -249,7 +249,7 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRen
 			block.style = lipgloss.NewStyle()
 		case state.RoleTool:
 			block.title = "Tool"
-			block.style = toolBlockStyle
+			block.style = assistantStyle
 		}
 		block.expandedByDefault = true
 		if shouldRenderMarkdown {
@@ -288,7 +288,7 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRen
 			compact:           compact,
 			toolCallID:        a.ID,
 			title:             fmt.Sprintf("Tool (%s)", a.Name),
-			style:             toolBlockStyle,
+			style:             assistantStyle,
 			expandedByDefault: false,
 		}
 		if shouldRenderMarkdown {
@@ -308,7 +308,7 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRen
 			source:            source,
 			toolCallID:        a.ToolCallID,
 			title:             "Tool Result",
-			style:             toolBlockStyle,
+			style:             assistantStyle,
 			expandedByDefault: false,
 			isError:           a.IsError,
 		}
@@ -326,7 +326,7 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRen
 			block.compact = compactToolResult(source, m.viewport.Width())
 		}
 		if a.IsError {
-			block.style = toolErrorBlockStyle
+			block.style = errorStyle
 		}
 		return block
 	}

@@ -359,7 +359,7 @@ func TestRenderBlockUnified_NegativeWidth(t *testing.T) {
 }
 
 func TestRenderBlockUnified_ToolResultErrorStyle(t *testing.T) {
-	block := renderedBlock{kind: "tool_result", source: "Error: failed", title: "Tool Result", style: toolErrorBlockStyle, expandedByDefault: false, isError: true}
+	block := renderedBlock{kind: "tool_result", source: "Error: failed", title: "Tool Result", style: errorStyle, expandedByDefault: false, isError: true}
 	ts := time.Date(2024, 1, 1, 12, 30, 45, 0, time.UTC)
 	output := renderBlockUnified(block, ts, false, 80)
 	assert.Contains(t, output, "Tool Result")
@@ -569,7 +569,7 @@ func TestBuildContent_ExpandLatestTools_Toggle(t *testing.T) {
 		},
 	}
 
-	// Compact mode (default): blocks wrapped in toolBlockStyle, no arrows.
+	// Compact mode (default): blocks wrapped in assistantStyle, no arrows.
 	m.expandLatestDetails = false
 	compactOutput := m.buildContent()
 	assert.Contains(t, compactOutput, "search_files")
@@ -591,7 +591,7 @@ func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
 		{
 			role: state.RoleAssistant,
 			blocks: []renderedBlock{
-				{title: "Tool", style: toolBlockStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
+				{title: "Tool", style: assistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
 			},
 		},
 		{
@@ -607,12 +607,12 @@ func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
 		},
 	}
 
-	// Compact mode: error block should be wrapped in toolErrorBlockStyle.
+	// Compact mode: error block should be wrapped in errorStyle.
 	m.expandLatestDetails = false
 	output := m.buildContent()
 	assert.Contains(t, output, "Error: failed")
 
-	// Expanded mode: error block should be wrapped in toolErrorBlockStyle.
+	// Expanded mode: error block should be wrapped in errorStyle.
 	m.expandLatestDetails = true
 	m.contentDirty = true
 	output = m.buildContent()
@@ -628,20 +628,20 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 		{
 			role: state.RoleAssistant,
 			blocks: []renderedBlock{
-				{title: "Tool", style: toolBlockStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
-				{title: "Tool", style: toolBlockStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: bar({})", compact: "bar", toolCallID: "call_2"},
+				{title: "Tool", style: assistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
+				{title: "Tool", style: assistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: bar({})", compact: "bar", toolCallID: "call_2"},
 			},
 		},
 		{
 			role: state.RoleTool,
 			blocks: []renderedBlock{
-				{title: "Tool Result", style: toolBlockStyle, expandedByDefault: false, kind: "tool_result", source: "result1", compact: "result1", toolCallID: "call_1"},
-				{title: "Tool Result", style: toolBlockStyle, expandedByDefault: false, kind: "tool_result", source: "result2", compact: "result2", toolCallID: "call_2"},
+				{title: "Tool Result", style: assistantStyle, expandedByDefault: false, kind: "tool_result", source: "result1", compact: "result1", toolCallID: "call_1"},
+				{title: "Tool Result", style: assistantStyle, expandedByDefault: false, kind: "tool_result", source: "result2", compact: "result2", toolCallID: "call_2"},
 			},
 		},
 	}
 
-	// Compact mode: blocks wrapped in toolBlockStyle, no arrows.
+	// Compact mode: blocks wrapped in assistantStyle, no arrows.
 	m.expandLatestDetails = false
 	output := m.buildContent()
 	assert.Contains(t, output, "foo")
@@ -671,7 +671,7 @@ func TestBuildContent_MixedBlocks(t *testing.T) {
 			role: state.RoleAssistant,
 			blocks: []renderedBlock{
 				{title: "Tool", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "intro", rendered: "intro"},
-				{title: "Tool", style: toolBlockStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
+				{title: "Tool", style: assistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
 				{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "think", rendered: "think"},
 				{title: "Tool", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "outro", rendered: "outro"},
 			},
@@ -679,7 +679,7 @@ func TestBuildContent_MixedBlocks(t *testing.T) {
 		{
 			role: state.RoleTool,
 			blocks: []renderedBlock{
-				{title: "Tool Result", style: toolBlockStyle, expandedByDefault: false, kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"},
+				{title: "Tool Result", style: assistantStyle, expandedByDefault: false, kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"},
 			},
 		},
 	}
@@ -741,7 +741,7 @@ func TestBuildContent_CompactToolCall_BlockStyling(t *testing.T) {
 		{
 			role: state.RoleAssistant,
 			blocks: []renderedBlock{
-				{title: "Tool", style: toolBlockStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
+				{title: "Tool", style: assistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
 			},
 		},
 	}
