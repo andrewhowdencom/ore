@@ -318,10 +318,10 @@ func TestRenderBlockUnified_ExpandedReasoning(t *testing.T) {
 }
 
 func TestRenderBlockUnified_CompactToolCall(t *testing.T) {
-	block := renderedBlock{kind: "tool_call", source: "{}", compact: "bash · command=\"test\"", title: "Tool (bash)", style: lipgloss.NewStyle(), expandedByDefault: false}
+	block := renderedBlock{kind: "tool_call", source: "{}", compact: "bash · command=\"test\"", title: "Assistant · Call bash", style: lipgloss.NewStyle(), expandedByDefault: false}
 	ts := time.Date(2024, 1, 1, 12, 30, 45, 0, time.UTC)
 	output := renderBlockUnified(block, ts, false, 80)
-	assert.Contains(t, output, "Tool (bash)")
+	assert.Contains(t, output, "Assistant · Call bash")
 	assert.Contains(t, output, "bash · command=\"test\"")
 }
 

@@ -290,7 +290,7 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRen
 			source:            source,
 			compact:           compact,
 			toolCallID:        a.ID,
-			title:             fmt.Sprintf("Tool (%s)", a.Name),
+			title:             fmt.Sprintf("Assistant · Call %s", a.Name),
 			style:             assistantStyle,
 			expandedByDefault: false,
 		}
