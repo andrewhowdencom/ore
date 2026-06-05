@@ -29,8 +29,9 @@ func WithDefaultMetadata(fn func(*Stream) map[string]string) ManagerOption {
 	}
 }
 
-// WithInterceptor sets an interceptor that processes events before they
-// enter the LLM inference pipeline for every stream managed by this Manager.
+// WithInterceptor sets an interceptor that processes UserMessageEvent events
+// before they enter the LLM inference pipeline for every stream managed by
+// this Manager.
 func WithInterceptor(interceptor Interceptor) ManagerOption {
 	return func(m *Manager) {
 		m.interceptor = interceptor

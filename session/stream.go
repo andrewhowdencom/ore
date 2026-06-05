@@ -160,7 +160,7 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 	s.cancel = cancel
 	s.mu.Unlock()
 
-	// Run interceptor if configured.
+	// Run interceptor if configured (only for UserMessageEvent events).
 	if s.interceptor != nil {
 		if _, ok := event.(UserMessageEvent); ok {
 			newEvent, consumed, err := s.interceptor.Intercept(ctx, event)
