@@ -653,6 +653,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.textarea, cmd = m.textarea.Update(msg)
 		m.recalcLayout()
 		return m, cmd
+	case tea.MouseWheelMsg:
+		var cmd tea.Cmd
+		m.viewport, cmd = m.viewport.Update(msg)
+		return m, cmd
 	case tea.PasteMsg:
 		wasAtBottom := m.viewport.AtBottom()
 		var cmd tea.Cmd
