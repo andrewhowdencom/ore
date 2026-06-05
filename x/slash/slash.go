@@ -9,9 +9,10 @@ import (
 )
 
 // Handler is a slash command handler. It receives the parsed command arguments
-// and returns an error if the command fails. A nil error means the command
-// was handled successfully and the original event is consumed (no LLM processing).
-type Handler func(ctx context.Context, args []string) error
+// and returns an error if the command fails.
+// A nil error with a nil event means the original event is consumed (no LLM processing).
+// A nil error with a non-nil event means the event is replaced with the returned one.
+type Handler func(ctx context.Context, args []string) (session.Event, error)
 
 // Registry is the slash command registry interface.
 type Registry interface {
@@ -73,9 +74,12 @@ func (r *registry) Intercept(ctx context.Context, event session.Event) (session.
 		args = parts[1:]
 	}
 
-	if err := handler(ctx, args); err != nil {
+	newEvent, err := handler(ctx, args)
+	if err != nil {
 		return event, false, err
 	}
-
-	return event, true, nil
+	if newEvent == nil {
+		return event, true, nil
+	}
+	return newEvent, false, nil
 }
