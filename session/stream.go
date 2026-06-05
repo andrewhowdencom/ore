@@ -26,11 +26,12 @@ type Stream struct {
 	step        *loop.Step
 	provider    provider.Provider
 	processor   TurnProcessor
-	store       Store
-	mu          sync.Mutex
-	cancel      context.CancelFunc
-	closed      bool
-	forwardOnce sync.Once
+	store        Store
+	interceptor  Interceptor
+	mu           sync.Mutex
+	cancel       context.CancelFunc
+	closed       bool
+	forwardOnce  sync.Once
 
 	// queue is an unbounded FIFO of events waiting to be processed.
 	queue      []queuedEvent
@@ -159,6 +160,20 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 	s.cancel = cancel
 	s.mu.Unlock()
 
+	// Run interceptor if configured (only for UserMessageEvent events).
+	if s.interceptor != nil {
+		if _, ok := event.(UserMessageEvent); ok {
+			newEvent, consumed, err := s.interceptor.Intercept(ctx, event)
+			if err != nil {
+				return fmt.Errorf("interceptor: %w", err)
+			}
+			if consumed {
+				return nil
+			}
+			event = newEvent
+		}
+	}
+
 	var runErr error
 	var eventCtx context.Context
 	switch e := event.(type) {
@@ -177,6 +192,11 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 		s.step.SetEventContext(e.Context())
 		defer s.step.SetEventContext(context.Background())
 		cancel()
+	case SessionSwitchEvent:
+		// SessionSwitchEvent is a meta-event emitted by slash handlers to
+		// signal cross-session navigation. It does not trigger inference.
+		eventCtx = e.Context()
+		s.step.Emit(context.Background(), e)
 	default:
 		runErr = fmt.Errorf("unsupported event kind: %s", event.Kind())
 	}

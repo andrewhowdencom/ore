@@ -124,129 +124,19 @@ func eventContextFromJSON(ctx *eventContextJSON) context.Context {
 
 // --- Marshal functions ---
 
-// MarshalArtifact serializes an artifact.Artifact to JSON bytes.
-// It supports all core artifact kinds (text, text_delta, reasoning,
-// reasoning_delta, tool_call, tool_call_delta, tool_result, usage, image).
-// Unknown artifact kinds are silently skipped (returns nil, nil).
-func MarshalArtifact(art artifact.Artifact) ([]byte, error) {
-	dto, ok := artifactToJSON(art)
-	if !ok {
-		return nil, nil
-	}
-	return json.Marshal(dto)
-}
 
-// artifactToJSON converts a framework artifact to its JSON DTO.
-// Returns false for unsupported kinds, signaling the caller to skip.
-func artifactToJSON(art artifact.Artifact) (*artifactJSON, bool) {
-	switch a := art.(type) {
-	case artifact.Text:
-		return &artifactJSON{Kind: "text", Content: a.Content}, true
-	case artifact.TextDelta:
-		return &artifactJSON{Kind: "text_delta", Content: a.Content}, true
-	case artifact.Reasoning:
-		return &artifactJSON{Kind: "reasoning", Content: a.Content}, true
-	case artifact.ReasoningDelta:
-		return &artifactJSON{Kind: "reasoning_delta", Content: a.Content}, true
-	case artifact.ToolCall:
-		display := a.MarkdownString()
-		// Only populate Display when the custom value differs from raw arguments
-		if display == a.Arguments {
-			display = ""
-		}
-		return &artifactJSON{Kind: "tool_call", ID: a.ID, Name: a.Name, Arguments: a.Arguments, Display: display}, true
-	case artifact.ToolCallDelta:
-		return &artifactJSON{Kind: "tool_call_delta", ID: a.ID, Name: a.Name, Arguments: a.Arguments, Index: a.Index}, true
-	case artifact.ToolResult:
-		return &artifactJSON{Kind: "tool_result", ToolCallID: a.ToolCallID, Content: a.MarkdownString(), IsError: a.IsError}, true
-	case artifact.Usage:
-		return &artifactJSON{
-			Kind:             "usage",
-			PromptTokens:     a.PromptTokens,
-			CompletionTokens: a.CompletionTokens,
-			TotalTokens:      a.TotalTokens,
-		}, true
-	case artifact.Image:
-		return &artifactJSON{Kind: "image", URL: a.URL}, true
-	default:
-		return nil, false
-	}
-}
 
 // MarshalOutputEvent serializes a loop.OutputEvent to JSON bytes.
-// It handles TurnCompleteEvent, ErrorEvent, PropertiesEvent,
-// LifecycleEvent, and all loop.ArtifactEvent wrapper
-// types that contain an artifact.Artifact. Unknown artifact kinds are
-// silently skipped (returns nil, nil). Returns an error only for
-// unsupported event kinds.
+// It dispatches to the event's json.Marshaler implementation when
+// available. Returns an error for unsupported event kinds.
 func MarshalOutputEvent(event loop.OutputEvent) ([]byte, error) {
-	switch e := event.(type) {
-	case loop.TurnCompleteEvent:
-		turn, err := turnToJSON(e.Turn)
-		if err != nil {
-			return nil, err
-		}
-		return json.Marshal(turnCompleteEventJSON{
-			Kind:    "turn_complete",
-			Turn:    turn,
-			Context: eventContextToJSON(e.Ctx),
-		})
-	case loop.ErrorEvent:
-		return json.Marshal(errorEventJSON{
-			Kind:    "error",
-			Message: e.Err.Error(),
-			Context: eventContextToJSON(e.Ctx),
-		})
-	case loop.ArtifactEvent:
-		dto, ok := artifactToJSON(e.Artifact)
-		if !ok {
-			return nil, nil
-		}
-		return json.Marshal(artifactEventJSON{
-			artifactJSON: *dto,
-			Context:      eventContextToJSON(e.Ctx),
-		})
-	case loop.PropertiesEvent:
-		return json.Marshal(propertiesEventJSON{
-			Kind:       "properties",
-			Properties: e.Properties,
-			Context:    eventContextToJSON(e.Ctx),
-		})
-	case loop.LifecycleEvent:
-		return json.Marshal(lifecycleEventJSON{
-			Kind:    "lifecycle",
-			Phase:   e.Phase,
-			Context: eventContextToJSON(e.Ctx),
-		})
-	default:
-		if m, ok := event.(json.Marshaler); ok {
-			return m.MarshalJSON()
-		}
-		return nil, fmt.Errorf("unsupported event kind: %s", event.Kind())
+	if m, ok := event.(json.Marshaler); ok {
+		return m.MarshalJSON()
 	}
+	return nil, fmt.Errorf("unsupported event kind: %s", event.Kind())
 }
 
-// turnToJSON converts a state.Turn to its JSON DTO.
-// Artifacts with unsupported kinds are silently skipped.
-func turnToJSON(t state.Turn) (turnJSON, error) {
-	var artifacts []artifactJSON
-	for _, art := range t.Artifacts {
-		dto, ok := artifactToJSON(art)
-		if !ok {
-			continue // skip unknown artifact kinds
-		}
-		artifacts = append(artifacts, *dto)
-	}
-	ts := ""
-	if !t.Timestamp.IsZero() {
-		ts = t.Timestamp.Format(time.RFC3339Nano)
-	}
-	return turnJSON{
-		Role:      string(t.Role),
-		Artifacts: artifacts,
-		Timestamp: ts,
-	}, nil
-}
+
 
 // --- Unmarshal functions ---
 

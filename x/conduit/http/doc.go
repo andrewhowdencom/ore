@@ -24,16 +24,20 @@
 //	201  - session created
 //	204  - session closed
 //	404  - session or thread not found
-//	409  - session busy (concurrent request rejected)
 //	400  - malformed JSON or unsupported event
 //	405  - method not allowed (returned automatically by net/http.ServeMux)
 //	500  - internal error (provider, store, etc.)
 //
 // Default event kinds for POST /messages responses:
 //
-//	text, reasoning, tool_call, tool_result, turn_complete, error
+//	text, reasoning, tool_call, tool_result, turn_complete, error,
+//	properties, lifecycle
 //
 // Per-request handlers obtain a *session.Stream handle from the Manager
 // and use it directly for Process and Subscribe, while Manager methods
 // remain for metadata and registry lifecycle (Store, List, Check, Close).
+//
+// Serialization of all output events is handled by MarshalOutputEvent in
+// x/conduit/http/types.go, which dispatches to each event's json.Marshaler
+// implementation.
 package http
