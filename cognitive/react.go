@@ -12,6 +12,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// Pattern is a cognitive pattern that can run a multi-turn inference loop
+// starting from a given state. Implementations decide when to stop based on
+// the conversation state (e.g., when no pending tool calls remain).
+type Pattern interface {
+	Run(ctx context.Context, st state.State) (state.State, error)
+}
+
 // ReAct is a cognitive pattern that implements the ReAct feedback loop:
 // it repeatedly invokes Step.Turn() while the last turn in state is not
 // from the assistant (indicating pending tool results), driving the
@@ -21,6 +28,9 @@ type ReAct struct {
 	Provider provider.Provider
 	tracer   trace.Tracer
 }
+
+// Compile-time assertion that ReAct implements Pattern.
+var _ Pattern = (*ReAct)(nil)
 
 // Run executes the ReAct feedback loop starting from the given state.
 // It returns when the last turn is from the assistant (no pending tool
