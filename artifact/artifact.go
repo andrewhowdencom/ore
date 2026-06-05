@@ -38,6 +38,15 @@ type Text struct {
 // Kind returns the artifact kind identifier.
 func (t Text) Kind() string { return "text" }
 
+// MarshalJSON serializes Text to JSON.
+func (t Text) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind    string `json:"kind"`
+		Content string `json:"content"`
+	}
+	return json.Marshal(output{Kind: "text", Content: t.Content})
+}
+
 // ToolCall represents a tool invocation artifact.
 type ToolCall struct {
 	ID        string
@@ -81,6 +90,29 @@ func (t ToolCall) MarkdownString() string {
 	return t.Arguments
 }
 
+// MarshalJSON serializes ToolCall to JSON. The display field is only
+// included when it differs from the raw arguments.
+func (t ToolCall) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind      string `json:"kind"`
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+		Display   string `json:"display,omitempty"`
+	}
+	display := t.MarkdownString()
+	if display == t.Arguments {
+		display = ""
+	}
+	return json.Marshal(output{
+		Kind:      "tool_call",
+		ID:        t.ID,
+		Name:      t.Name,
+		Arguments: t.Arguments,
+		Display:   display,
+	})
+}
+
 // StatusContributor is implemented by tool result values that carry
 // ambient metadata to be broadcast to all subscribers via PropertiesEvent.
 type StatusContributor interface {
@@ -106,10 +138,10 @@ type MarkdownRenderer interface {
 // via LLMRenderer or MarkdownRenderer. When Value is nil or its type is
 // not recognized, consumers fall back to Content.
 type ToolResult struct {
-	ToolCallID string
-	Content    string
-	Value      any
-	IsError    bool
+	ToolCallID string `json:"tool_call_id"`
+	Content    string `json:"content"`
+	Value      any    `json:"-"`
+	IsError    bool   `json:"is_error"`
 }
 
 // Kind returns the artifact kind identifier.
@@ -147,15 +179,47 @@ func (t ToolResult) MarkdownString() string {
 	return t.Content
 }
 
+// MarshalJSON serializes ToolResult to JSON.
+func (t ToolResult) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind       string `json:"kind"`
+		ToolCallID string `json:"tool_call_id"`
+		Content    string `json:"content"`
+		IsError    bool   `json:"is_error"`
+	}
+	return json.Marshal(output{
+		Kind:       "tool_result",
+		ToolCallID: t.ToolCallID,
+		Content:    t.MarkdownString(),
+		IsError:    t.IsError,
+	})
+}
+
 // Usage represents token consumption metadata from a provider response.
 type Usage struct {
-	PromptTokens     int
-	CompletionTokens int
-	TotalTokens      int
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
 }
 
 // Kind returns the artifact kind identifier.
 func (u Usage) Kind() string { return "usage" }
+
+// MarshalJSON serializes Usage to JSON.
+func (u Usage) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind             string `json:"kind"`
+		PromptTokens     int    `json:"prompt_tokens"`
+		CompletionTokens int    `json:"completion_tokens"`
+		TotalTokens      int    `json:"total_tokens"`
+	}
+	return json.Marshal(output{
+		Kind:             "usage",
+		PromptTokens:     u.PromptTokens,
+		CompletionTokens: u.CompletionTokens,
+		TotalTokens:      u.TotalTokens,
+	})
+}
 
 // Image represents an image artifact referenced by URL.
 type Image struct {
@@ -165,6 +229,15 @@ type Image struct {
 // Kind returns the artifact kind identifier.
 func (i Image) Kind() string { return "image" }
 
+// MarshalJSON serializes Image to JSON.
+func (i Image) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind string `json:"kind"`
+		URL  string `json:"url"`
+	}
+	return json.Marshal(output{Kind: "image", URL: i.URL})
+}
+
 // Reasoning represents a reasoning or thinking content artifact.
 type Reasoning struct {
 	Content string
@@ -172,6 +245,15 @@ type Reasoning struct {
 
 // Kind returns the artifact kind identifier.
 func (r Reasoning) Kind() string { return "reasoning" }
+
+// MarshalJSON serializes Reasoning to JSON.
+func (r Reasoning) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind    string `json:"kind"`
+		Content string `json:"content"`
+	}
+	return json.Marshal(output{Kind: "reasoning", Content: r.Content})
+}
 
 // TextDelta represents a partial chunk of text content for streaming.
 type TextDelta struct {
@@ -184,6 +266,15 @@ func (t TextDelta) Kind() string { return "text_delta" }
 // IsDelta marks TextDelta as an ephemeral streaming fragment.
 func (t TextDelta) IsDelta() {}
 
+// MarshalJSON serializes TextDelta to JSON.
+func (t TextDelta) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind    string `json:"kind"`
+		Content string `json:"content"`
+	}
+	return json.Marshal(output{Kind: "text_delta", Content: t.Content})
+}
+
 // ReasoningDelta represents a partial chunk of reasoning content for streaming.
 type ReasoningDelta struct {
 	Content string
@@ -194,6 +285,15 @@ func (r ReasoningDelta) Kind() string { return "reasoning_delta" }
 
 // IsDelta marks ReasoningDelta as an ephemeral streaming fragment.
 func (r ReasoningDelta) IsDelta() {}
+
+// MarshalJSON serializes ReasoningDelta to JSON.
+func (r ReasoningDelta) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind    string `json:"kind"`
+		Content string `json:"content"`
+	}
+	return json.Marshal(output{Kind: "reasoning_delta", Content: r.Content})
+}
 
 // ToolCallDelta represents a partial chunk of a tool invocation for streaming.
 // Index identifies which parallel tool call in the current turn this fragment
@@ -210,6 +310,24 @@ func (t ToolCallDelta) Kind() string { return "tool_call_delta" }
 
 // IsDelta marks ToolCallDelta as an ephemeral streaming fragment.
 func (t ToolCallDelta) IsDelta() {}
+
+// MarshalJSON serializes ToolCallDelta to JSON.
+func (t ToolCallDelta) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind      string `json:"kind"`
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+		Index     int    `json:"index"`
+	}
+	return json.Marshal(output{
+		Kind:      "tool_call_delta",
+		ID:        t.ID,
+		Name:      t.Name,
+		Arguments: t.Arguments,
+		Index:     t.Index,
+	})
+}
 
 // AccumulatorKey returns a stable routing key for the generic accumulator.
 // TextDelta accumulates into a single "text" block.

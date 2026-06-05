@@ -71,7 +71,7 @@ func TestStream_Turns(t *testing.T) {
 
 	// Modifying the returned slice must not affect the stream.
 	turns[0].Role = state.RoleSystem
-	turns = append(turns, state.Turn{Role: state.RoleSystem})
+	_ = append(turns, state.Turn{Role: state.RoleSystem})
 	freshTurns := stream.Turns()
 	require.Len(t, freshTurns, 2)
 	assert.Equal(t, state.RoleUser, freshTurns[0].Role)
