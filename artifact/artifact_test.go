@@ -1,9 +1,12 @@
 package artifact
 
 import (
+	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Compile-time interface satisfaction checks.
@@ -321,4 +324,74 @@ func TestAccumulable_MergeInto_EdgeCases(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestText_MarshalJSON(t *testing.T) {
+	data, err := json.Marshal(Text{Content: "hello"})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"text","content":"hello"}`, string(data))
+}
+
+func TestTextDelta_MarshalJSON(t *testing.T) {
+	data, err := json.Marshal(TextDelta{Content: "world"})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"text_delta","content":"world"}`, string(data))
+}
+
+func TestReasoning_MarshalJSON(t *testing.T) {
+	data, err := json.Marshal(Reasoning{Content: "think"})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"reasoning","content":"think"}`, string(data))
+}
+
+func TestReasoningDelta_MarshalJSON(t *testing.T) {
+	data, err := json.Marshal(ReasoningDelta{Content: "chunk"})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"reasoning_delta","content":"chunk"}`, string(data))
+}
+
+func TestToolCall_MarshalJSON(t *testing.T) {
+	data, err := json.Marshal(ToolCall{ID: "1", Name: "calc", Arguments: `{"a":1}`})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"tool_call","id":"1","name":"calc","arguments":"{\"a\":1}"}`, string(data))
+}
+
+func TestToolCall_MarshalJSON_WithDisplay(t *testing.T) {
+	tc := ToolCall{ID: "1", Name: "calc", Arguments: `{"a":1}`, Value: map[string]interface{}{"result": 42}}
+	data, err := json.Marshal(tc)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"tool_call","id":"1","name":"calc","arguments":"{\"a\":1}","display":"{\"result\":42}"}`, string(data))
+}
+
+func TestToolCallDelta_MarshalJSON(t *testing.T) {
+	data, err := json.Marshal(ToolCallDelta{Index: 0, ID: "1", Name: "calc", Arguments: "args"})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"tool_call_delta","id":"1","name":"calc","arguments":"args","index":0}`, string(data))
+}
+
+func TestToolResult_MarshalJSON(t *testing.T) {
+	data, err := json.Marshal(ToolResult{ToolCallID: "1", Content: "result", IsError: false})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"tool_result","tool_call_id":"1","content":"result","is_error":false}`, string(data))
+}
+
+func TestToolResult_MarshalJSON_WithValue(t *testing.T) {
+	tr := ToolResult{ToolCallID: "1", Content: "result", Value: map[string]interface{}{"data": "value"}, IsError: false}
+	data, err := json.Marshal(tr)
+	require.NoError(t, err)
+	content, _ := json.Marshal(tr.MarkdownString())
+	expected := fmt.Sprintf(`{"kind":"tool_result","tool_call_id":"1","content":%s,"is_error":false}`, string(content))
+	assert.JSONEq(t, expected, string(data))
+}
+
+func TestUsage_MarshalJSON(t *testing.T) {
+	data, err := json.Marshal(Usage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"usage","prompt_tokens":10,"completion_tokens":20,"total_tokens":30}`, string(data))
+}
+
+func TestImage_MarshalJSON(t *testing.T) {
+	data, err := json.Marshal(Image{URL: "https://example.com/img.png"})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"image","url":"https://example.com/img.png"}`, string(data))
 }
