@@ -785,3 +785,131 @@ func TestStream_MultipleSubmit_StartsSingleWorker(t *testing.T) {
 
 	assert.False(t, prov.detected, "detected concurrent Invoke calls — multiple workers may have started")
 }
+
+func TestStream_Interceptor_Consume(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	consumeInterceptor := func(ctx context.Context, event Event) (Event, bool, error) {
+		return event, true, nil
+	}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(consumeInterceptor)))
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	ch := stream.Subscribe("turn_complete")
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hello"})
+	require.NoError(t, err)
+
+	// No events should be emitted because the interceptor consumed the event.
+	select {
+	case event := <-ch:
+		t.Fatalf("expected no events, got %T", event)
+	case <-time.After(50 * time.Millisecond):
+		// Expected timeout — no events.
+	}
+
+	// No turns should be added to state.
+	assert.Empty(t, stream.Turns())
+
+	_ = stream.Close()
+}
+
+func TestStream_Interceptor_PassThrough(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	passThroughInterceptor := func(ctx context.Context, event Event) (Event, bool, error) {
+		return event, false, nil
+	}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(passThroughInterceptor)))
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	ch := stream.Subscribe("turn_complete")
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hello"})
+	require.NoError(t, err)
+
+	// Normal processing should occur — two turn_complete events (user + assistant).
+	var events []loop.OutputEvent
+	for i := 0; i < 2; i++ {
+		select {
+		case event := <-ch:
+			events = append(events, event)
+		case <-time.After(100 * time.Millisecond):
+			t.Fatalf("timeout waiting for event %d", i)
+		}
+	}
+	require.Len(t, events, 2)
+
+	turns := stream.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, "hello", turns[0].Artifacts[0].(artifact.Text).Content)
+
+	_ = stream.Close()
+}
+
+func TestStream_Interceptor_Rewrite(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	rewriteInterceptor := func(ctx context.Context, event Event) (Event, bool, error) {
+		if ume, ok := event.(UserMessageEvent); ok {
+			ume.Content = "rewritten: " + ume.Content
+			return ume, false, nil
+		}
+		return event, false, nil
+	}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(rewriteInterceptor)))
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hello"})
+	require.NoError(t, err)
+
+	turns := stream.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, "rewritten: hello", turns[0].Artifacts[0].(artifact.Text).Content)
+
+	_ = stream.Close()
+}
+
+func TestStream_Interceptor_Error(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	errorInterceptor := func(ctx context.Context, event Event) (Event, bool, error) {
+		return nil, false, errors.New("interceptor error")
+	}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(errorInterceptor)))
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hello"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "interceptor error")
+
+	_ = stream.Close()
+}
+
+func TestStream_Interceptor_NonUserMessage(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	var calledWith Event
+	nonUserInterceptor := func(ctx context.Context, event Event) (Event, bool, error) {
+		calledWith = event
+		return event, false, nil
+	}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(nonUserInterceptor)))
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	err = stream.Process(context.Background(), InterruptEvent{Ctx: context.Background()})
+	require.NoError(t, err)
+
+	// Interceptor should not be called for non-UserMessageEvent.
+	assert.Nil(t, calledWith)
+
+	_ = stream.Close()
+}

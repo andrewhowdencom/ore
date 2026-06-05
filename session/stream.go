@@ -26,11 +26,12 @@ type Stream struct {
 	step        *loop.Step
 	provider    provider.Provider
 	processor   TurnProcessor
-	store       Store
-	mu          sync.Mutex
-	cancel      context.CancelFunc
-	closed      bool
-	forwardOnce sync.Once
+	store        Store
+	interceptor  Interceptor
+	mu           sync.Mutex
+	cancel       context.CancelFunc
+	closed       bool
+	forwardOnce  sync.Once
 
 	// queue is an unbounded FIFO of events waiting to be processed.
 	queue      []queuedEvent
@@ -158,6 +159,20 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 	turnCtx = loop.WithThreadID(turnCtx, s.id)
 	s.cancel = cancel
 	s.mu.Unlock()
+
+	// Run interceptor if configured.
+	if s.interceptor != nil {
+		if _, ok := event.(UserMessageEvent); ok {
+			newEvent, consumed, err := s.interceptor.Intercept(ctx, event)
+			if err != nil {
+				return fmt.Errorf("interceptor: %w", err)
+			}
+			if consumed {
+				return nil
+			}
+			event = newEvent
+		}
+	}
 
 	var runErr error
 	var eventCtx context.Context
