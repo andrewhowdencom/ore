@@ -162,7 +162,7 @@ func run() error {
 		threadStore,
 		prov,
 		stepFactory,
-		cognitive.NewTurnProcessor(tracer),
+		cognitive.NewTurnProcessor(cognitive.ReActFactory, tracer),
 		session.WithInterceptor(slashReg),
 	)
 
