@@ -35,3 +35,20 @@ func (e InterruptEvent) Kind() string { return "interrupt" }
 
 // Context returns the event's context.Context metadata.
 func (e InterruptEvent) Context() context.Context { return e.Ctx }
+
+// Interceptor processes events before they enter the LLM pipeline.
+// It receives a session.Event and can either:
+//   - Return a new event and false to rewrite the event
+//   - Return any event and true to consume the event (no further processing)
+//   - Return an error to abort processing
+type Interceptor interface {
+	Intercept(ctx context.Context, event Event) (Event, bool, error)
+}
+
+// InterceptorFunc is a function type that implements Interceptor.
+type InterceptorFunc func(ctx context.Context, event Event) (Event, bool, error)
+
+// Intercept delegates to the function.
+func (f InterceptorFunc) Intercept(ctx context.Context, event Event) (Event, bool, error) {
+	return f(ctx, event)
+}
