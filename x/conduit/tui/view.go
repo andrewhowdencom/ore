@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -172,6 +173,34 @@ func (m *model) buildContent() string {
 	return m.cachedContent
 }
 
+// compactNumber formats a raw integer as a compact string:
+// <1000 → raw integer, 1000–999999 → "1.5K", "10K", "100K",
+// ≥1,000,000 → "1M", "1.5M", "10M", "100M", "1B".
+func compactNumber(s string) string {
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return s
+	}
+	switch {
+	case n >= 1_000_000_000:
+		return fmt.Sprintf("%.0fB", float64(n)/1_000_000_000)
+	case n >= 100_000_000:
+		return fmt.Sprintf("%.0fM", float64(n)/1_000_000)
+	case n >= 10_000_000:
+		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+	case n >= 1_000_000:
+		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+	case n >= 100_000:
+		return fmt.Sprintf("%.0fK", float64(n)/1_000)
+	case n >= 10_000:
+		return fmt.Sprintf("%.1fK", float64(n)/1_000)
+	case n >= 1_000:
+		return fmt.Sprintf("%.1fK", float64(n)/1_000)
+	default:
+		return s
+	}
+}
+
 // buildStatusLine renders the status map into a single wrapped line using
 // "key: value · key: value" format with ANSI styling.
 //
@@ -201,7 +230,7 @@ func buildStatusLine(status map[string]string, width int) (string, int) {
 			case "total":
 				sym = "Σ"
 			}
-			tokens = append(tokens, fmt.Sprintf("%s %s", sym, v))
+			tokens = append(tokens, fmt.Sprintf("%s %s", sym, compactNumber(v)))
 		}
 	}
 	if len(tokens) > 0 {
@@ -254,7 +283,7 @@ func compactTokenSegments(segs []conduit.StatusSegment) []conduit.StatusSegment 
 			filtered = append(filtered, seg)
 			continue
 		}
-		values = append(values, fmt.Sprintf("%s %s", sym, seg.Value))
+		values = append(values, fmt.Sprintf("%s %s", sym, compactNumber(seg.Value)))
 	}
 	if len(values) > 0 {
 		sort.Strings(values)
