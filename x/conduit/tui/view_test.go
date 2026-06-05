@@ -1139,3 +1139,41 @@ func TestBuildStatusLine_NegativeWidth(t *testing.T) {
 	assert.NotEmpty(t, rendered)
 	assert.Equal(t, 1, lines)
 }
+
+func TestCompactNumber(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"0", "0"},
+		{"1", "1"},
+		{"12", "12"},
+		{"123", "123"},
+		{"999", "999"},
+		{"1000", "1.0K"},
+		{"1234", "1.2K"},
+		{"9999", "10.0K"},
+		{"10000", "10.0K"},
+		{"12345", "12.3K"},
+		{"99999", "100.0K"},
+		{"100000", "100K"},
+		{"123456", "123K"},
+		{"999999", "1000K"},
+		{"1000000", "1.0M"},
+		{"1234567", "1.2M"},
+		{"10000000", "10.0M"},
+		{"12345678", "12.3M"},
+		{"100000000", "100M"},
+		{"123456789", "123M"},
+		{"1000000000", "1B"},
+		{"1234567890", "1B"},
+		{"10000000000", "10B"},
+		{"invalid", "invalid"},
+		{"", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			assert.Equal(t, tc.expected, compactNumber(tc.input))
+		})
+	}
+}
