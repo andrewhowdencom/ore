@@ -13,9 +13,9 @@ import (
 func TestRegistry_BindAndMatch(t *testing.T) {
 	r := NewRegistry()
 	called := false
-	r.Bind("new", func(ctx context.Context, args []string) error {
+	r.Bind("new", func(ctx context.Context, args []string) (session.Event, error) {
 		called = true
-		return nil
+		return nil, nil
 	})
 
 	event := session.UserMessageEvent{Content: "/new"}
@@ -28,9 +28,9 @@ func TestRegistry_BindAndMatch(t *testing.T) {
 
 func TestRegistry_NoMatch(t *testing.T) {
 	r := NewRegistry()
-	r.Bind("new", func(ctx context.Context, args []string) error {
+	r.Bind("new", func(ctx context.Context, args []string) (session.Event, error) {
 		t.Fatal("handler should not be called for non-matching command")
-		return nil
+		return nil, nil
 	})
 
 	event := session.UserMessageEvent{Content: "/other"}
@@ -44,8 +44,8 @@ func TestRegistry_NoMatch(t *testing.T) {
 func TestRegistry_HandlerError(t *testing.T) {
 	r := NewRegistry()
 	expectedErr := errors.New("handler error")
-	r.Bind("fail", func(ctx context.Context, args []string) error {
-		return expectedErr
+	r.Bind("fail", func(ctx context.Context, args []string) (session.Event, error) {
+		return nil, expectedErr
 	})
 
 	event := session.UserMessageEvent{Content: "/fail"}
@@ -59,9 +59,9 @@ func TestRegistry_HandlerError(t *testing.T) {
 func TestRegistry_ArgsParsing(t *testing.T) {
 	r := NewRegistry()
 	var capturedArgs []string
-	r.Bind("new", func(ctx context.Context, args []string) error {
+	r.Bind("new", func(ctx context.Context, args []string) (session.Event, error) {
 		capturedArgs = args
-		return nil
+		return nil, nil
 	})
 
 	event := session.UserMessageEvent{Content: "/new arg1 arg2"}
@@ -74,9 +74,9 @@ func TestRegistry_ArgsParsing(t *testing.T) {
 
 func TestRegistry_NonUserMessage(t *testing.T) {
 	r := NewRegistry()
-	r.Bind("new", func(ctx context.Context, args []string) error {
+	r.Bind("new", func(ctx context.Context, args []string) (session.Event, error) {
 		t.Fatal("handler should not be called for non-UserMessageEvent")
-		return nil
+		return nil, nil
 	})
 
 	event := session.InterruptEvent{Ctx: context.Background()}
@@ -89,9 +89,9 @@ func TestRegistry_NonUserMessage(t *testing.T) {
 
 func TestRegistry_NoSlashPrefix(t *testing.T) {
 	r := NewRegistry()
-	r.Bind("new", func(ctx context.Context, args []string) error {
+	r.Bind("new", func(ctx context.Context, args []string) (session.Event, error) {
 		t.Fatal("handler should not be called for text without slash prefix")
-		return nil
+		return nil, nil
 	})
 
 	event := session.UserMessageEvent{Content: "new"}
@@ -104,9 +104,9 @@ func TestRegistry_NoSlashPrefix(t *testing.T) {
 
 func TestRegistry_EmptyContent(t *testing.T) {
 	r := NewRegistry()
-	r.Bind("new", func(ctx context.Context, args []string) error {
+	r.Bind("new", func(ctx context.Context, args []string) (session.Event, error) {
 		t.Fatal("handler should not be called for empty content")
-		return nil
+		return nil, nil
 	})
 
 	event := session.UserMessageEvent{Content: ""}
@@ -115,6 +115,26 @@ func TestRegistry_EmptyContent(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, consumed, "expected event to pass through")
 	assert.Equal(t, event, newEvent)
+}
+
+func TestRegistry_HandlerReturnsEvent(t *testing.T) {
+	r := NewRegistry()
+	r.Bind("new", func(ctx context.Context, args []string) (session.Event, error) {
+		return session.SessionSwitchEvent{
+			SessionID: "new-session-123",
+			Ctx:       context.Background(),
+		}, nil
+	})
+
+	event := session.UserMessageEvent{Content: "/new"}
+	newEvent, consumed, err := r.Intercept(context.Background(), event)
+
+	require.NoError(t, err)
+	assert.False(t, consumed, "expected event to be replaced, not consumed")
+
+	switchEvent, ok := newEvent.(session.SessionSwitchEvent)
+	require.True(t, ok, "expected SessionSwitchEvent")
+	assert.Equal(t, "new-session-123", switchEvent.SessionID)
 }
 
 func TestRegistry_CompileTimeAssertion(t *testing.T) {

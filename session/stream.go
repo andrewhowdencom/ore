@@ -192,6 +192,11 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 		s.step.SetEventContext(e.Context())
 		defer s.step.SetEventContext(context.Background())
 		cancel()
+	case SessionSwitchEvent:
+		// SessionSwitchEvent is a meta-event emitted by slash handlers to
+		// signal cross-session navigation. It does not trigger inference.
+		eventCtx = e.Context()
+		s.step.Emit(context.Background(), e)
 	default:
 		runErr = fmt.Errorf("unsupported event kind: %s", event.Kind())
 	}
