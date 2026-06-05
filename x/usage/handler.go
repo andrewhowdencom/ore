@@ -47,8 +47,11 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 	}
 
 	h.mu.Lock()
-	h.prompt += u.PromptTokens
-	h.completion += u.CompletionTokens
+	// Update: prompt and completion track the last turn's values
+	// (current API request size), not cumulative. Total remains cumulative
+	// for billing tracking.
+	h.prompt = u.PromptTokens
+	h.completion = u.CompletionTokens
 	h.total += u.TotalTokens
 	prompt := h.prompt
 	completion := h.completion
