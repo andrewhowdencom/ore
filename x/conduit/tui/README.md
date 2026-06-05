@@ -39,6 +39,13 @@ a terminal multiplexer.
 | `Shift+Enter` | Insert newline in the input box |
 | `Ctrl+J`      | Insert newline (alternative for terminals that don't pass Shift+Enter) |
 
+## Mouse Scrolling
+
+The TUI captures mouse events so the scroll wheel scrolls the conversation
+history in the same way as `PgUp` / `PgDown`. This is enabled by default and
+can be used in any terminal that supports mouse mode (e.g. iTerm2, Windows
+Terminal, tmux with `mouse on`).
+
 ## Design
 
 Tool calls, tool results, and reasoning blocks are rendered in a compact
