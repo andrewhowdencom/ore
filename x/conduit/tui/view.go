@@ -513,11 +513,13 @@ func (m *model) View() tea.View {
 		}
 		v := tea.NewView(strings.Join(parts, "\n"))
 		v.AltScreen = true
+		v.MouseMode = tea.MouseModeCellMotion
 		v.WindowTitle = m.windowTitle()
 		return v
 	}
 	v := tea.NewView(m.textarea.View())
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 	v.WindowTitle = m.windowTitle()
 	return v
 }
