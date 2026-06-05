@@ -60,6 +60,7 @@ import (
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
+	"github.com/andrewhowdencom/ore/x/slash"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
 	"github.com/andrewhowdencom/ore/x/tool/calculator"
 	"github.com/andrewhowdencom/ore/x/usage"
@@ -149,8 +150,43 @@ func run() error {
 		threadStore = session.NewMemoryStore()
 	}
 
+	// Create a slash command registry. Commands are intercepted before they
+	// reach the LLM inference pipeline, allowing meta-operations like session
+	// switching without triggering a model turn.
+	slashReg := slash.NewRegistry()
+
 	// Create the session manager with the ReAct cognitive pattern.
-	mgr := session.NewManager(threadStore, prov, stepFactory, cognitive.NewTurnProcessor(tracer))
+	// Wire the slash command registry as an interceptor so user messages
+	// starting with "/" are handled by slash commands before inference.
+	mgr := session.NewManager(
+		threadStore,
+		prov,
+		stepFactory,
+		cognitive.NewTurnProcessor(tracer),
+		session.WithInterceptor(slashReg),
+	)
+
+	// Bind slash commands after the manager is created so handlers can
+	// capture the manager in their closures.
+	slashReg.Bind("new", func(ctx context.Context, args []string) (session.Event, error) {
+		// Create a new session and emit a SessionSwitchEvent to notify
+		// all conduits subscribed to the current stream that the user
+		// wants to navigate to a new session.
+		stream, err := mgr.Create()
+		if err != nil {
+			return nil, fmt.Errorf("create session: %w", err)
+		}
+		slog.Info("slash command: /new", "new_session", stream.ID())
+		return session.SessionSwitchEvent{
+			SessionID: stream.ID(),
+			Ctx:       loop.WithProvenance(ctx, "slash"),
+		}, nil
+	})
+
+	slashReg.Bind("compact", func(ctx context.Context, args []string) (session.Event, error) {
+		slog.Info("slash command: /compact", "args", args)
+		return nil, nil
+	})
 
 	// Create the HTTP conduit.
 	// UI is enabled by default in New(); use httpc.WithoutUI() to disable it.

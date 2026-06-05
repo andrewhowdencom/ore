@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -1648,4 +1649,49 @@ func TestStep_WithState_And_OnEmit_BothAppend_DocumentsAntiPattern(t *testing.T)
 	// that do not mutate the same state.
 	turns := buf.Turns()
 	assert.Len(t, turns, 2, "combining WithState and an OnEmit that appends causes double append")
+}
+
+func TestTurnCompleteEvent_MarshalJSON(t *testing.T) {
+	turn := state.Turn{
+		Role:      state.RoleUser,
+		Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}},
+		Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	ctx := WithProvenance(context.Background(), "test")
+	event := TurnCompleteEvent{Turn: turn, Ctx: ctx}
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"turn_complete","turn":{"role":"user","artifacts":[{"kind":"text","content":"hello"}],"timestamp":"2024-01-01T00:00:00Z"},"context":{"provenance":"test"}}`, string(data))
+}
+
+func TestErrorEvent_MarshalJSON(t *testing.T) {
+	ctx := WithProvenance(context.Background(), "test")
+	event := ErrorEvent{Err: fmt.Errorf("boom"), Ctx: ctx}
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"error","message":"boom","context":{"provenance":"test"}}`, string(data))
+}
+
+func TestLifecycleEvent_MarshalJSON(t *testing.T) {
+	ctx := WithProvenance(context.Background(), "test")
+	event := LifecycleEvent{Phase: "submitted", Ctx: ctx}
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"lifecycle","phase":"submitted","context":{"provenance":"test"}}`, string(data))
+}
+
+func TestArtifactEvent_MarshalJSON(t *testing.T) {
+	ctx := WithProvenance(context.Background(), "test")
+	event := ArtifactEvent{Artifact: artifact.Text{Content: "hello"}, Ctx: ctx}
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"text","content":"hello","context":{"provenance":"test"}}`, string(data))
+}
+
+func TestPropertiesEvent_MarshalJSON(t *testing.T) {
+	ctx := WithProvenance(context.Background(), "test")
+	event := PropertiesEvent{Properties: map[string]string{"k": "v"}, Ctx: ctx}
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"properties","properties":{"k":"v"},"context":{"provenance":"test"}}`, string(data))
 }

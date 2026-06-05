@@ -12,6 +12,7 @@ import (
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -56,6 +57,23 @@ func (e TurnCompleteEvent) Kind() string { return "turn_complete" }
 // Context returns the event context.
 func (e TurnCompleteEvent) Context() context.Context { return e.Ctx }
 
+// MarshalJSON serializes the event to JSON.
+func (e TurnCompleteEvent) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind    string                 `json:"kind"`
+		Turn    state.Turn             `json:"turn"`
+		Context map[string]interface{} `json:"context,omitempty"`
+	}
+	o := output{
+		Kind: "turn_complete",
+		Turn: e.Turn,
+	}
+	if ctx := marshalEventContext(e.Ctx); ctx != nil {
+		o.Context = ctx
+	}
+	return json.Marshal(o)
+}
+
 // ErrorEvent is emitted when a turn fails due to a provider or handler error.
 type ErrorEvent struct {
 	Err error
@@ -70,6 +88,23 @@ func (e ErrorEvent) Kind() string { return "error" }
 
 // Context returns the event context.
 func (e ErrorEvent) Context() context.Context { return e.Ctx }
+
+// MarshalJSON serializes the event to JSON.
+func (e ErrorEvent) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind    string                 `json:"kind"`
+		Message string                 `json:"message"`
+		Context map[string]interface{} `json:"context,omitempty"`
+	}
+	o := output{
+		Kind:    "error",
+		Message: e.Err.Error(),
+	}
+	if ctx := marshalEventContext(e.Ctx); ctx != nil {
+		o.Context = ctx
+	}
+	return json.Marshal(o)
+}
 
 // LifecycleEvent is emitted at structural boundaries of a single inference
 // turn to signal phase transitions. Phases are linear per-pipeline:
@@ -90,6 +125,23 @@ func (e LifecycleEvent) Kind() string { return "lifecycle" }
 // Context returns the event context.
 func (e LifecycleEvent) Context() context.Context { return e.Ctx }
 
+// MarshalJSON serializes the event to JSON.
+func (e LifecycleEvent) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind    string                 `json:"kind"`
+		Phase   string                 `json:"phase"`
+		Context map[string]interface{} `json:"context,omitempty"`
+	}
+	o := output{
+		Kind:  "lifecycle",
+		Phase: e.Phase,
+	}
+	if ctx := marshalEventContext(e.Ctx); ctx != nil {
+		o.Context = ctx
+	}
+	return json.Marshal(o)
+}
+
 // ArtifactEvent wraps an artifact.Artifact with a context.Context so it
 // can be emitted as an OutputEvent without polluting the artifact type
 // with routing metadata.
@@ -106,6 +158,23 @@ func (e ArtifactEvent) Kind() string { return e.Artifact.Kind() }
 
 // Context returns the event context.
 func (e ArtifactEvent) Context() context.Context { return e.Ctx }
+
+// MarshalJSON serializes the event to JSON. It merges the artifact's JSON
+// with an optional context envelope.
+func (e ArtifactEvent) MarshalJSON() ([]byte, error) {
+	artData, err := json.Marshal(e.Artifact)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(artData, &m); err != nil {
+		return nil, err
+	}
+	if ctx := marshalEventContext(e.Ctx); ctx != nil {
+		m["context"] = ctx
+	}
+	return json.Marshal(m)
+}
 
 // PropertiesEvent carries ambient, persistent metadata as a map of
 // key-value pairs. It is emitted by any producer holding a
@@ -124,6 +193,48 @@ func (e PropertiesEvent) Kind() string { return "properties" }
 
 // Context returns the event context.
 func (e PropertiesEvent) Context() context.Context { return e.Ctx }
+
+// MarshalJSON serializes the event to JSON.
+func (e PropertiesEvent) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind       string                 `json:"kind"`
+		Properties map[string]string      `json:"properties"`
+		Context    map[string]interface{} `json:"context,omitempty"`
+	}
+	o := output{
+		Kind:       "properties",
+		Properties: e.Properties,
+	}
+	if ctx := marshalEventContext(e.Ctx); ctx != nil {
+		o.Context = ctx
+	}
+	return json.Marshal(o)
+}
+
+// marshalEventContext extracts provenance and traceparent from a context and
+// returns them as a map for JSON serialization. Returns nil if the context
+// carries no provenance.
+func marshalEventContext(ctx context.Context) map[string]interface{} {
+	if ctx == nil {
+		return nil
+	}
+	prov, ok := ProvenanceFrom(ctx)
+	if !ok || prov == "" {
+		return nil
+	}
+	result := map[string]interface{}{
+		"provenance": prov,
+	}
+	if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
+		carrier := propagation.MapCarrier{}
+		propagator := propagation.TraceContext{}
+		propagator.Inject(ctx, carrier)
+		if tp := carrier.Get("traceparent"); tp != "" {
+			result["traceparent"] = tp
+		}
+	}
+	return result
+}
 
 // outputEventEnvelope wraps an OutputEvent with an acknowledgment channel.
 // The producer blocks until the FanOut closes done after delivering the event.

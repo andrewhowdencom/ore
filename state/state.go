@@ -3,6 +3,7 @@
 package state
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
@@ -20,9 +21,24 @@ const (
 
 // Turn represents a single turn in the conversation history.
 type Turn struct {
-	Role      Role
-	Artifacts []artifact.Artifact
-	Timestamp time.Time
+	Role      Role                `json:"role"`
+	Artifacts []artifact.Artifact `json:"artifacts"`
+	Timestamp time.Time           `json:"timestamp,omitempty"`
+}
+
+// MarshalJSON implements json.Marshaler, omitting the zero timestamp.
+func (t Turn) MarshalJSON() ([]byte, error) {
+	type alias Turn
+	if t.Timestamp.IsZero() {
+		return json.Marshal(struct {
+			Role      Role                `json:"role"`
+			Artifacts []artifact.Artifact `json:"artifacts"`
+		}{
+			Role:      t.Role,
+			Artifacts: t.Artifacts,
+		})
+	}
+	return json.Marshal(alias(t))
 }
 
 // State is a mutable conversation state that the core loop appends to.

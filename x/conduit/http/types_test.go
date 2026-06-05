@@ -22,155 +22,6 @@ func (m mockHTTPMarkdownValue) MarshalMarkdown() string {
 	return m.output
 }
 
-func TestArtifactToJSON(t *testing.T) {
-	tests := []struct {
-		name     string
-		art      artifact.Artifact
-		wantKind string
-		wantDTO  artifactJSON
-	}{
-		{
-			name:     "text",
-			art:      artifact.Text{Content: "hello"},
-			wantKind: "text",
-			wantDTO:  artifactJSON{Kind: "text", Content: "hello"},
-		},
-		{
-			name:     "text_delta",
-			art:      artifact.TextDelta{Content: "he"},
-			wantKind: "text_delta",
-			wantDTO:  artifactJSON{Kind: "text_delta", Content: "he"},
-		},
-		{
-			name:     "reasoning",
-			art:      artifact.Reasoning{Content: "think"},
-			wantKind: "reasoning",
-			wantDTO:  artifactJSON{Kind: "reasoning", Content: "think"},
-		},
-		{
-			name:     "reasoning_delta",
-			art:      artifact.ReasoningDelta{Content: "th"},
-			wantKind: "reasoning_delta",
-			wantDTO:  artifactJSON{Kind: "reasoning_delta", Content: "th"},
-		},
-		{
-			name:     "tool_call",
-			art:      artifact.ToolCall{ID: "1", Name: "calc", Arguments: `{"a":1}`},
-			wantKind: "tool_call",
-			wantDTO:  artifactJSON{Kind: "tool_call", ID: "1", Name: "calc", Arguments: `{"a":1}`},
-		},
-		{
-			name:     "tool_call with custom display",
-			art:      artifact.ToolCall{ID: "1", Name: "bash", Arguments: `{"command":"go test"}`, Value: mockHTTPMarkdownValue{output: "```bash\n$ go test\n```"}},
-			wantKind: "tool_call",
-			wantDTO:  artifactJSON{Kind: "tool_call", ID: "1", Name: "bash", Arguments: `{"command":"go test"}`, Display: "```bash\n$ go test\n```"},
-		},
-		{
-			name:     "tool_call_delta",
-			art:      artifact.ToolCallDelta{ID: "1", Name: "calc", Arguments: `{"`},
-			wantKind: "tool_call_delta",
-			wantDTO:  artifactJSON{Kind: "tool_call_delta", ID: "1", Name: "calc", Arguments: `{"`},
-		},
-		{
-			name:     "tool_result",
-			art:      artifact.ToolResult{ToolCallID: "1", Content: "42", IsError: true},
-			wantKind: "tool_result",
-			wantDTO:  artifactJSON{Kind: "tool_result", ToolCallID: "1", Content: "42", IsError: true},
-		},
-		{
-			name:     "tool_result_markdown_renderer",
-			art:      artifact.ToolResult{ToolCallID: "1", Content: `{"raw":"json"}`, Value: mockHTTPMarkdownValue{output: "# Custom Markdown"}},
-			wantKind: "tool_result",
-			wantDTO:  artifactJSON{Kind: "tool_result", ToolCallID: "1", Content: "# Custom Markdown", IsError: false},
-		},
-		{
-			name:     "tool_result_json_fallback",
-			art:      artifact.ToolResult{ToolCallID: "1", Content: "fallback", Value: "hello"},
-			wantKind: "tool_result",
-			wantDTO:  artifactJSON{Kind: "tool_result", ToolCallID: "1", Content: "```json\n\"hello\"\n```", IsError: false},
-		},
-		{
-			name:     "usage",
-			art:      artifact.Usage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30},
-			wantKind: "usage",
-			wantDTO:  artifactJSON{Kind: "usage", PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30},
-		},
-		{
-			name:     "image",
-			art:      artifact.Image{URL: "http://example.com/img.png"},
-			wantKind: "image",
-			wantDTO:  artifactJSON{Kind: "image", URL: "http://example.com/img.png"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, ok := artifactToJSON(tt.art)
-			require.True(t, ok)
-			require.NotNil(t, got)
-			assert.Equal(t, tt.wantDTO, *got)
-			assert.Equal(t, tt.wantKind, tt.art.Kind())
-		})
-	}
-}
-
-func TestArtifactToJSON_Unsupported(t *testing.T) {
-	// A custom artifact type not known to the serializer is skipped.
-	_, ok := artifactToJSON(&unknownArtifact{})
-	assert.False(t, ok)
-}
-
-type unknownArtifact struct{}
-
-func (u *unknownArtifact) Kind() string { return "unknown" }
-
-func TestMarshalArtifact(t *testing.T) {
-	tests := []struct {
-		name    string
-		art     artifact.Artifact
-		want    string
-		wantErr bool
-	}{
-		{
-			name: "text",
-			art:  artifact.Text{Content: "hello"},
-			want: `{"kind":"text","content":"hello"}`,
-		},
-		{
-			name: "tool_result",
-			art:  artifact.ToolResult{ToolCallID: "1", Content: "42", IsError: true},
-			want: `{"kind":"tool_result","tool_call_id":"1","content":"42","is_error":true}`,
-		},
-		{
-			name: "tool_result_markdown_renderer",
-			art:  artifact.ToolResult{ToolCallID: "1", Content: `{"raw":"json"}`, Value: mockHTTPMarkdownValue{output: "# Markdown Result"}},
-			want: `{"kind":"tool_result","tool_call_id":"1","content":"# Markdown Result"}`,
-		},
-		{
-			name: "tool_result_json_fallback",
-			art:  artifact.ToolResult{ToolCallID: "1", Content: "fallback", Value: 42},
-			want: `{"kind":"tool_result","tool_call_id":"1","content":"` + "```json\\n42\\n```" + `"}`,
-		},
-		{
-			name: "unsupported",
-			art:  &unknownArtifact{},
-			want: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := MarshalArtifact(tt.art)
-			require.NoError(t, err)
-			if tt.want == "" {
-				assert.Nil(t, got)
-				return
-			}
-			assert.JSONEq(t, tt.want, string(got))
-		})
-	}
-}
-
 func TestUnmarshalArtifact(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -258,7 +109,7 @@ func TestRoundTrip_Artifact(t *testing.T) {
 
 	for _, art := range artifacts {
 		t.Run(art.Kind(), func(t *testing.T) {
-			data, err := MarshalArtifact(art)
+			data, err := json.Marshal(art)
 			require.NoError(t, err)
 
 			got, err := UnmarshalArtifact(data)
@@ -303,7 +154,7 @@ func TestMarshalOutputEvent(t *testing.T) {
 		{
 			name:  "unsupported_artifact",
 			event: loop.ArtifactEvent{Artifact: &unknownArtifact{}},
-			want:  "",
+			want:  `{}`,
 		},
 		{
 			name:  "properties",
@@ -326,44 +177,9 @@ func TestMarshalOutputEvent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := MarshalOutputEvent(tt.event)
 			require.NoError(t, err)
-			if tt.want == "" {
-				assert.Nil(t, got)
-				return
-			}
 			assert.JSONEq(t, tt.want, string(got))
 		})
 	}
-}
-
-
-
-func TestTurnToJSON(t *testing.T) {
-	turn := state.Turn{
-		Role: state.RoleAssistant,
-		Artifacts: []artifact.Artifact{
-			artifact.Text{Content: "hello"},
-			artifact.Usage{PromptTokens: 1, CompletionTokens: 2, TotalTokens: 3},
-		},
-	}
-
-	got, err := turnToJSON(turn)
-	require.NoError(t, err)
-	assert.Equal(t, "assistant", got.Role)
-	assert.Len(t, got.Artifacts, 2)
-	assert.Equal(t, artifactJSON{Kind: "text", Content: "hello"}, got.Artifacts[0])
-	assert.Equal(t, artifactJSON{Kind: "usage", PromptTokens: 1, CompletionTokens: 2, TotalTokens: 3}, got.Artifacts[1])
-}
-
-func TestTurnToJSON_SkipsUnknownArtifact(t *testing.T) {
-	turn := state.Turn{
-		Role:      state.RoleAssistant,
-		Artifacts: []artifact.Artifact{&unknownArtifact{}},
-	}
-
-	got, err := turnToJSON(turn)
-	require.NoError(t, err)
-	assert.Equal(t, "assistant", got.Role)
-	assert.Empty(t, got.Artifacts)
 }
 
 func TestUnmarshalOutputEvent(t *testing.T) {
@@ -564,7 +380,7 @@ func TestMarshalOutputEvent_OmitEmptyContext(t *testing.T) {
 }
 
 // customMarshalerEvent is a test-only OutputEvent that implements
-// json.Marshaler, verifying the MarshalOutputEvent fallback path.
+// json.Marshaler, verifying the MarshalOutputEvent dispatch path.
 type customMarshalerEvent struct {
 	Value string
 	Ctx   context.Context
@@ -588,7 +404,7 @@ func TestMarshalOutputEvent_CustomMarshaler(t *testing.T) {
 
 func TestArtifactJSON_ToolCallDelta_IndexRoundTrip(t *testing.T) {
 	art := artifact.ToolCallDelta{Index: 2, ID: "tc-1", Name: "add", Arguments: "1"}
-	data, err := MarshalArtifact(art)
+	data, err := json.Marshal(art)
 	require.NoError(t, err)
 
 	got, err := UnmarshalArtifact(data)
@@ -682,3 +498,7 @@ func TestRoundTrip_LifecycleEvent(t *testing.T) {
 		})
 	}
 }
+
+type unknownArtifact struct{}
+
+func (u *unknownArtifact) Kind() string { return "unknown" }

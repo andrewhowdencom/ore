@@ -1,6 +1,13 @@
 package session
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+
+	"github.com/andrewhowdencom/ore/loop"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
+)
 
 // Event is the base interface for all ingress events to a session Stream.
 // Custom event types can be defined in other packages by implementing
@@ -35,3 +42,69 @@ func (e InterruptEvent) Kind() string { return "interrupt" }
 
 // Context returns the event's context.Context metadata.
 func (e InterruptEvent) Context() context.Context { return e.Ctx }
+
+// Interceptor processes events before they enter the LLM pipeline.
+// It receives a session.Event and can either:
+//   - Return a new event and false to rewrite the event
+//   - Return any event and true to consume the event (no further processing)
+//   - Return an error to abort processing
+type Interceptor interface {
+	Intercept(ctx context.Context, event Event) (Event, bool, error)
+}
+
+// InterceptorFunc is a function type that implements Interceptor.
+type InterceptorFunc func(ctx context.Context, event Event) (Event, bool, error)
+
+// Intercept delegates to the function.
+func (f InterceptorFunc) Intercept(ctx context.Context, event Event) (Event, bool, error) {
+	return f(ctx, event)
+}
+
+// SessionSwitchEvent signals a cross-session navigation.
+type SessionSwitchEvent struct {
+	SessionID string
+	Ctx       context.Context
+}
+
+// Kind returns the event kind identifier.
+func (e SessionSwitchEvent) Kind() string { return "session_switch" }
+
+// Context returns the event's context.Context metadata.
+func (e SessionSwitchEvent) Context() context.Context { return e.Ctx }
+
+// MarshalJSON serializes the event to JSON. It includes the session_id
+// and an optional context envelope with provenance and traceparent.
+func (e SessionSwitchEvent) MarshalJSON() ([]byte, error) {
+	type contextJSON struct {
+		Provenance  string `json:"provenance,omitempty"`
+		Traceparent string `json:"traceparent,omitempty"`
+	}
+	type output struct {
+		Kind      string       `json:"kind"`
+		SessionID string       `json:"session_id"`
+		Context   *contextJSON `json:"context,omitempty"`
+	}
+
+	o := output{
+		Kind:      "session_switch",
+		SessionID: e.SessionID,
+	}
+
+	if prov, ok := loop.ProvenanceFrom(e.Ctx); ok && prov != "" {
+		o.Context = &contextJSON{Provenance: prov}
+	}
+
+	if span := trace.SpanFromContext(e.Ctx); span.SpanContext().IsValid() {
+		carrier := propagation.MapCarrier{}
+		propagator := propagation.TraceContext{}
+		propagator.Inject(e.Ctx, carrier)
+		if tp := carrier.Get("traceparent"); tp != "" {
+			if o.Context == nil {
+				o.Context = &contextJSON{}
+			}
+			o.Context.Traceparent = tp
+		}
+	}
+
+	return json.Marshal(o)
+}
