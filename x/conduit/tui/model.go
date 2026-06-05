@@ -6,6 +6,7 @@ package tui
 
 import (
 	"fmt"
+	"hash/fnv"
 	"log/slog"
 	"time"
 
@@ -165,6 +166,15 @@ type renderedTurn struct {
 	timestamp time.Time
 }
 
+// hashToolCallID derives a 4-character truncated hex hash from a toolCallID.
+// The hash is deterministic and stateless, making parallel tool calls and
+// out-of-order results pairable by visual inspection.
+func hashToolCallID(id string) string {
+	h := fnv.New32a()
+	h.Write([]byte(id))
+	return fmt.Sprintf("%04x", h.Sum32())[:4]
+}
+
 // renderMarkdown delegates to the model's markdown renderer, falling back
 // to a default glamourMarkdownRenderer if none was injected.
 func (m *model) renderMarkdown(text string, width int) (string, error) {
@@ -246,10 +256,13 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRen
 			block.style = assistantStyle
 		case state.RoleUser:
 			block.title = "You"
-			block.style = lipgloss.NewStyle()
+			block.style = userStyle
 		case state.RoleTool:
 			block.title = "Tool"
-			block.style = toolBlockStyle
+			block.style = toolResultStyle
+		case state.RoleSystem:
+			block.title = "System"
+			block.style = systemStyle
 		}
 		block.expandedByDefault = true
 		if shouldRenderMarkdown {
@@ -287,8 +300,8 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRen
 			source:            source,
 			compact:           compact,
 			toolCallID:        a.ID,
-			title:             fmt.Sprintf("Tool (%s)", a.Name),
-			style:             toolBlockStyle,
+			title:             fmt.Sprintf("Assistant · Call %s (%s)", a.Name, hashToolCallID(a.ID)),
+			style:             assistantStyle,
 			expandedByDefault: false,
 		}
 		if shouldRenderMarkdown {
@@ -307,8 +320,8 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRen
 			kind:              "tool_result",
 			source:            source,
 			toolCallID:        a.ToolCallID,
-			title:             "Tool Result",
-			style:             toolBlockStyle,
+			title:             fmt.Sprintf("Tool Result (%s)", hashToolCallID(a.ToolCallID)),
+			style:             toolResultStyle,
 			expandedByDefault: false,
 			isError:           a.IsError,
 		}
@@ -326,7 +339,7 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRen
 			block.compact = compactToolResult(source, m.viewport.Width())
 		}
 		if a.IsError {
-			block.style = toolErrorBlockStyle
+			block.style = errorStyle
 		}
 		return block
 	}

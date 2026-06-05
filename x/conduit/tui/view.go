@@ -13,6 +13,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/cellbuf"
 )
 
@@ -29,21 +30,14 @@ var (
 	reasoningExpandedStyle = lipgloss.NewStyle().Faint(true)
 	// errorStyle styles error turns from the harness in red.
 	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
+	// userStyle styles user input in yellow.
+	userStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#E5C07B"))
+	// systemStyle styles system-level messages in purple.
+	systemStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#C678DD"))
+	// toolResultStyle styles successful tool results in green.
+	toolResultStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#98C379"))
 	// zoneLabelStyle styles zone names (Lifecycle, Context) bold in the status bar.
 	zoneLabelStyle = lipgloss.NewStyle().Bold(true)
-	// toolBlockStyle wraps tool execution blocks with a thick left border to
-	// visually delimit them from assistant prose.
-	thickLeftBorder = lipgloss.Border{Left: "█"}
-	// toolBlockStyle uses a blue left border for normal tool calls and results.
-	toolBlockStyle = lipgloss.NewStyle().
-				Border(thickLeftBorder, false, false, false, true).
-				BorderForeground(lipgloss.Color("#6C8EBF")).
-				Padding(0, 1)
-	// toolErrorBlockStyle uses a red left border for failed tool executions.
-	toolErrorBlockStyle = lipgloss.NewStyle().
-				Border(thickLeftBorder, false, false, false, true).
-				BorderForeground(lipgloss.Color("#FF5555")).
-				Padding(0, 1)
 )
 
 // renderBlockUnified renders a single block with the consistent header format:
@@ -434,21 +428,17 @@ func compactToolResult(content string, maxWidth int) string {
 	return truncateString(content, maxWidth)
 }
 
-// truncateString truncates s to maxWidth runes, adding "…" if truncated.
-// Truncation is rune-aware, ensuring multi-byte Unicode characters are
-// not split mid-character.
+// truncateString truncates s to maxWidth visible characters, adding "…" if
+// truncated. It is ANSI-aware, ensuring invisible escape sequences from
+// Glamour-rendered markdown are not counted against the width limit.
 func truncateString(s string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return s
 	}
-	runes := []rune(s)
-	if len(runes) <= maxWidth {
+	if ansi.StringWidth(s) <= maxWidth {
 		return s
 	}
-	if maxWidth <= 1 {
-		return "…"
-	}
-	return string(runes[:maxWidth-1]) + "…"
+	return ansi.Truncate(s, maxWidth, "…")
 }
 
 // windowTitle returns a dynamic terminal window title based on the
