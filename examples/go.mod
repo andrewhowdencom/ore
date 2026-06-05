@@ -3,14 +3,14 @@ module github.com/andrewhowdencom/ore/examples
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.5.1
-	github.com/andrewhowdencom/ore/x/conduit/http v0.6.1
-	github.com/andrewhowdencom/ore/x/conduit/tui v0.7.1
-	github.com/andrewhowdencom/ore/x/provider/openai v0.4.1
+	github.com/andrewhowdencom/ore v0.6.0
+	github.com/andrewhowdencom/ore/x/conduit/http v0.6.3
+	github.com/andrewhowdencom/ore/x/conduit/tui v0.7.4
+	github.com/andrewhowdencom/ore/x/provider/openai v0.4.2
 	github.com/andrewhowdencom/ore/x/tool v0.4.2
 	github.com/andrewhowdencom/ore/x/tool/calculator v0.2.1
 	github.com/andrewhowdencom/ore/x/tool/filesystem v0.4.1
-	github.com/andrewhowdencom/ore/x/usage v0.1.1
+	github.com/andrewhowdencom/ore/x/usage v0.1.2
 	go.opentelemetry.io/otel/trace v1.44.0
 )
 
@@ -41,6 +41,8 @@ require (
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
+	github.com/go-logr/logr v1.4.3 // indirect
+	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -58,10 +60,13 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yuin/goldmark v1.7.13 // indirect
 	github.com/yuin/goldmark-emoji v1.0.6 // indirect
+	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.69.0 // indirect
 	go.opentelemetry.io/otel v1.44.0 // indirect
+	go.opentelemetry.io/otel/metric v1.44.0 // indirect
 	golang.org/x/net v0.44.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/term v0.36.0 // indirect
 	golang.org/x/text v0.30.0 // indirect
 )
