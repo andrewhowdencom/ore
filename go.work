@@ -20,6 +20,7 @@ use (
 	./x/tool/settitle
 	./x/tool/skills
 	./x/usage
+	./x/verifier
 )
 
 replace github.com/andrewhowdencom/ore v0.0.0 => .
