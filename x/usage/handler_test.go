@@ -57,7 +57,7 @@ func TestHandler_AggregatesUsageAndEmitsProperties(t *testing.T) {
 	assert.Equal(t, "150", pe.Properties["total"])
 }
 
-func TestHandler_AccumulatesAcrossMultipleUsages(t *testing.T) {
+func TestHandler_TracksLastTurnValuesAndAccumulatesTotal(t *testing.T) {
 	h := New()
 	var e mockEmitter
 
@@ -76,8 +76,8 @@ func TestHandler_AccumulatesAcrossMultipleUsages(t *testing.T) {
 
 	expected := []map[string]string{
 		{"sent": "10", "received": "5", "total": "15"},
-		{"sent": "30", "received": "15", "total": "45"},
-		{"sent": "60", "received": "30", "total": "90"},
+		{"sent": "20", "received": "10", "total": "45"},
+		{"sent": "30", "received": "15", "total": "90"},
 	}
 
 	for i, exp := range expected {
@@ -102,7 +102,7 @@ func TestHandler_ZeroUsage(t *testing.T) {
 	assert.Equal(t, "0", pe.Properties["total"])
 }
 
-func TestHandler_ConcurrentAccumulation(t *testing.T) {
+func TestHandler_ConcurrentUpdates(t *testing.T) {
 	h := New()
 
 	var wg sync.WaitGroup
@@ -119,18 +119,20 @@ func TestHandler_ConcurrentAccumulation(t *testing.T) {
 	}
 	wg.Wait()
 
-	// Read final accumulated totals via a zero-usage call.
+	// Verify total accumulated correctly and overwrite semantics work
+	// by doing a final handle with known values.
 	e := &mockEmitter{}
 	err := h.Handle(context.Background(), artifact.Usage{
-		PromptTokens:     0,
-		CompletionTokens: 0,
-		TotalTokens:      0,
+		PromptTokens:     10,
+		CompletionTokens: 5,
+		TotalTokens:      15,
 	}, e)
 	require.NoError(t, err)
 	require.Len(t, e.events, 1)
 
 	props := e.events[0].(loop.PropertiesEvent)
-	assert.Equal(t, "100", props.Properties["sent"])
-	assert.Equal(t, "100", props.Properties["received"])
-	assert.Equal(t, "200", props.Properties["total"])
+	assert.Equal(t, "10", props.Properties["sent"])
+	assert.Equal(t, "5", props.Properties["received"])
+	// total accumulates: 100 * 2 + 15 = 215.
+	assert.Equal(t, "215", props.Properties["total"])
 }
