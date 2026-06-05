@@ -36,6 +36,20 @@ func newTestModel() model {
 	}
 }
 
+func TestHashToolCallID(t *testing.T) {
+	h1 := hashToolCallID("call_abc123")
+	h2 := hashToolCallID("call_abc123")
+	assert.Equal(t, h1, h2, "hash should be deterministic for the same ID")
+	assert.Len(t, h1, 4, "hash should be exactly 4 characters")
+
+	h3 := hashToolCallID("call_different")
+	assert.NotEqual(t, h1, h3, "different IDs should produce different hashes")
+
+	// Verify empty string hash is stable and 4 chars.
+	hEmpty := hashToolCallID("")
+	assert.Len(t, hEmpty, 4, "empty ID hash should be 4 characters")
+}
+
 func TestModel_Update_Turn(t *testing.T) {
 	m := model{}
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
@@ -1132,12 +1146,12 @@ func TestModel_Update_UserAfterTool_DoesNotResetExpand(t *testing.T) {
 	// Simulate an assistant turn with a tool call
 	m.turns = append(m.turns, renderedTurn{
 		role:   state.RoleAssistant,
-		blocks: []renderedBlock{{title: "Tool", style: toolBlockStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"}},
+		blocks: []renderedBlock{{title: "Tool", style: assistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"}},
 	})
 	// Simulate a tool result turn
 	m.turns = append(m.turns, renderedTurn{
 		role:   state.RoleTool,
-		blocks: []renderedBlock{{title: "Tool Result", style: toolBlockStyle, expandedByDefault: false, kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"}},
+		blocks: []renderedBlock{{title: "Tool Result", style: toolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"}},
 	})
 	m.expandLatestDetails = true
 
