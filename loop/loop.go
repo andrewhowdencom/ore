@@ -283,26 +283,22 @@ func ThreadIDFrom(ctx context.Context) (string, bool) {
 type OnEmit func(ctx context.Context, event OutputEvent)
 
 // Step executes a single complete inference turn: it invokes the provider,
-// distributes streaming artifacts to subscribers via an embedded FanOut, and
+// distributes streaming artifacts to subscribers via an embedded EventBus, and
 // runs registered artifact handlers synchronously on the complete response.
 type Step struct {
-	events       chan outputEventEnvelope
-	fanOut       *FanOut
+	eventBus     *EventBus
 	transforms   []Transform
 	handlers     []Handler
-	onEmit       []OnEmit
 	invokeOpts   []provider.InvokeOption
 	eventContext context.Context
 	tracer       trace.Tracer
-	state        state.State
 }
 
 // New creates a Step with the given options.
 func New(opts ...Option) *Step {
-	events := make(chan outputEventEnvelope)
+	eb := newEventBus()
 	s := &Step{
-		events: events,
-		fanOut: NewFanOut(events),
+		eventBus: eb,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -316,22 +312,7 @@ func New(opts ...Option) *Step {
 // automatically appended to that state before OnEmit callbacks run. Other
 // event types are passed through unchanged.
 func (s *Step) Emit(ctx context.Context, event OutputEvent) {
-	if tc, ok := event.(TurnCompleteEvent); ok && s.state != nil {
-		s.state.Append(tc.Turn.Role, tc.Turn.Artifacts...)
-	}
-	for _, fn := range s.onEmit {
-		fn(ctx, event)
-	}
-	env := outputEventEnvelope{event: event, done: make(chan struct{})}
-	select {
-	case s.events <- env:
-	case <-ctx.Done():
-		return
-	}
-	select {
-	case <-env.done:
-	case <-ctx.Done():
-	}
+	s.eventBus.Emit(ctx, event)
 }
 
 // Subscribe returns a receive-only channel of OutputEvents whose Kind()
@@ -339,7 +320,7 @@ func (s *Step) Emit(ctx context.Context, event OutputEvent) {
 // FanOut is closed. Events are delivered non-blocking; slow subscribers
 // may drop events.
 func (s *Step) Subscribe(kinds ...string) <-chan OutputEvent {
-	return s.fanOut.Subscribe(kinds...)
+	return s.eventBus.Subscribe(kinds...)
 }
 
 // SetEventContext sets the context.Context that will be attached to all
@@ -364,7 +345,7 @@ func (s *Step) clearEventContext() {
 
 // Close stops the Step's FanOut and closes all subscriber channels.
 func (s *Step) Close() error {
-	return s.fanOut.Close()
+	return s.eventBus.Close()
 }
 
 // Option configures a Step.
@@ -395,7 +376,7 @@ func WithHandlers(handlers ...Handler) Option {
 // patterns that mutated state directly inside Turn().
 func WithOnEmit(fns ...OnEmit) Option {
 	return func(s *Step) {
-		s.onEmit = append(s.onEmit, fns...)
+		s.eventBus.onEmit = append(s.eventBus.onEmit, fns...)
 	}
 }
 
@@ -410,7 +391,7 @@ func WithOnEmit(fns ...OnEmit) Option {
 // same state, or duplicate turns will result.
 func WithState(st state.State) Option {
 	return func(s *Step) {
-		s.state = st
+		s.eventBus.state = st
 	}
 }
 
