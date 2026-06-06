@@ -12,6 +12,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// Pattern is a cognitive pattern that can run a multi-turn inference loop
+// starting from a given state. Implementations decide when to stop based on
+// the conversation state (e.g., when no pending tool calls remain).
+type Pattern interface {
+	Run(ctx context.Context, st state.State) (state.State, error)
+}
+
 // ReAct is a cognitive pattern that implements the ReAct feedback loop:
 // it repeatedly invokes Step.Turn() while the last turn in state is not
 // from the assistant (indicating pending tool results), driving the
@@ -21,6 +28,9 @@ type ReAct struct {
 	Provider provider.Provider
 	tracer   trace.Tracer
 }
+
+// Compile-time assertion that ReAct implements Pattern.
+var _ Pattern = (*ReAct)(nil)
 
 // Run executes the ReAct feedback loop starting from the given state.
 // It returns when the last turn is from the assistant (no pending tool
@@ -55,13 +65,17 @@ func (r *ReAct) Run(ctx context.Context, st state.State) (state.State, error) {
 	}
 }
 
-// NewTurnProcessor returns a session.TurnProcessor that runs the ReAct
-// cognitive pattern. It creates a temporary ReAct with the session's
-// loop.Step and the Manager's provider for each turn. Pass a tracer to
-// enable OpenTelemetry spans for the ReAct loop.
-func NewTurnProcessor(tracer trace.Tracer) session.TurnProcessor {
+// NewTurnProcessor returns a session.TurnProcessor that runs the given
+// Pattern factory for each turn. The factory receives the session's
+// loop.Step and provider so it can construct stateful Patterns like ReAct.
+func NewTurnProcessor(factory func(*loop.Step, provider.Provider, trace.Tracer) Pattern, tracer trace.Tracer) session.TurnProcessor {
 	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
-		react := &ReAct{Step: step, Provider: prov, tracer: tracer}
-		return react.Run(ctx, st)
+		pattern := factory(step, prov, tracer)
+		return pattern.Run(ctx, st)
 	}
+}
+
+// ReActFactory returns a Pattern that runs the ReAct cognitive loop.
+func ReActFactory(step *loop.Step, prov provider.Provider, tracer trace.Tracer) Pattern {
+	return &ReAct{Step: step, Provider: prov, tracer: tracer}
 }

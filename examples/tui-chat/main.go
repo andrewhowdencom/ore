@@ -148,7 +148,7 @@ func run() error {
 			loop.WithHandlers(usage.New()),
 			loop.WithTracer(tracer),
 		}, nil
-	}, cognitive.NewTurnProcessor(tracer))
+	}, cognitive.NewTurnProcessor(cognitive.ReActFactory, tracer))
 
 	// Create the TUI conduit, passing the thread ID via functional option.
 	// The TUI creates or attaches to the session internally on Start.
