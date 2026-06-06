@@ -57,7 +57,7 @@
 //		// Build transforms that use stream.Metadata, stream.ID, etc.
 //		return nil, nil  // use default step with auto-persistence
 //	}
-//	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor(tracer))
+//	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor(cognitive.ReActFactory, tracer))
 //
 // The factory receives *Stream so it can bind per-session runtime state.
 // For example, a factory can close over the stream to inject a dynamic
