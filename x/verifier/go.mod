@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/x/verifier
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.0.0
+	github.com/andrewhowdencom/ore v0.6.1
 	github.com/stretchr/testify v1.11.1
 )
 
