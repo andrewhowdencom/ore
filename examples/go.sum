@@ -16,10 +16,10 @@ github.com/andrewhowdencom/ore v0.6.0 h1:4nups2046Qzc+sNamI1POaOh5gU0c/L6MRyvu9c
 github.com/andrewhowdencom/ore v0.6.0/go.mod h1:vrIWuIUeCnM584x33CysFqk2cNoBsGHeUqEqW/vN75A=
 github.com/andrewhowdencom/ore/x/conduit v0.1.3 h1:ulhVcLr0zVWbbwS32JfDWRK2Tlgrsr5+J4gqFboOljs=
 github.com/andrewhowdencom/ore/x/conduit v0.1.3/go.mod h1:83aDeFABkaP1x98A9jxkqIr3zN4XsiprPnpAxHGpPFw=
-github.com/andrewhowdencom/ore/x/conduit/http v0.6.2 h1:rFx5veh+RrpysIifeGpUMcnB97qdLbnaXxrkRHwCwPo=
-github.com/andrewhowdencom/ore/x/conduit/http v0.6.2/go.mod h1:pEYt2eLzGfmv5YqPUs9kxiy1ReWu71ONhSopuFiuI1w=
-github.com/andrewhowdencom/ore/x/conduit/tui v0.7.3 h1:BuwbIz2f+LfUla16x7mfpseZa9dffyQaC8sFrWfgp8s=
-github.com/andrewhowdencom/ore/x/conduit/tui v0.7.3/go.mod h1:diBSzSBf1E5eqzqZYRTyWPKfHITMgDuBCKynb2OKEtc=
+github.com/andrewhowdencom/ore/x/conduit/http v0.6.3 h1:kYiFwQvh2LjnKPjbZjHuB+QX9uH2iq3m/grTROi7hGM=
+github.com/andrewhowdencom/ore/x/conduit/http v0.6.3/go.mod h1:3j+VV65qJEeNYQ+6ghn7mv+JSGH5EwUe295Skk07BdY=
+github.com/andrewhowdencom/ore/x/conduit/tui v0.7.4 h1:Z/FXfq6u9tHRPpS+u9/KVrYQRIdLxaldTHnevuidP5I=
+github.com/andrewhowdencom/ore/x/conduit/tui v0.7.4/go.mod h1:sw3ysZ76QbSVCsMExTpm7Xbw24KyVD022lC5TGkUIyQ=
 github.com/andrewhowdencom/ore/x/provider/openai v0.4.2 h1:kRKKh4JCtOTbILB7JaJvx/SjLOR7tnPn5xusorUHIC0=
 github.com/andrewhowdencom/ore/x/provider/openai v0.4.2/go.mod h1:T9+ibJmw5JFshqIW7G6w+nVirpfzUuUqKR0OSLEr/fI=
 github.com/andrewhowdencom/ore/x/tool v0.4.2 h1:R45ZKT/QGglyid8hjv3OaDICyGzTvgVv3vsY5Sl2hMw=
@@ -28,8 +28,8 @@ github.com/andrewhowdencom/ore/x/tool/calculator v0.2.1 h1:Zi1Hkj8JD3D+VvTRMd9Oc
 github.com/andrewhowdencom/ore/x/tool/calculator v0.2.1/go.mod h1:uTS0Btl5YAW7e3N49TfMK4KVrT7odMbj234URLauG8Y=
 github.com/andrewhowdencom/ore/x/tool/filesystem v0.4.1 h1:Ql7Hnir9uV5St9hRLDLY3x3Xe31IJ6TOSSyoIOaD7v8=
 github.com/andrewhowdencom/ore/x/tool/filesystem v0.4.1/go.mod h1:lDOJFofW//J2bEKfO7F2458Ao9Ehiogli//OIebjCBE=
-github.com/andrewhowdencom/ore/x/usage v0.1.1 h1:3puYyRU501pg3FDsE7ObCKxOWEhr8ax0QKE+FnP0yGQ=
-github.com/andrewhowdencom/ore/x/usage v0.1.1/go.mod h1:hBFM7D8rmbwQXR3tlO/29SX/niuZ1NKujWap75ssceE=
+github.com/andrewhowdencom/ore/x/usage v0.1.2 h1:bCNoKMyyGaNfbtdHocMay7i5Vq4WAi3+2XJKNF+svmE=
+github.com/andrewhowdencom/ore/x/usage v0.1.2/go.mod h1:4Bsvm3iK7WhfJD4sIpM6lFpY7vkMNe4EP1VUgoDCiX8=
 github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
 github.com/atotto/clipboard v0.1.4/go.mod h1:ZY9tmq7sm5xIbd9bOK4onWV4S6X0u6GY7Vn0Yu86PYI=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=
