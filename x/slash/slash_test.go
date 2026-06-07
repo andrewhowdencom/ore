@@ -240,3 +240,57 @@ func TestRegistry_CompileTimeAssertion(t *testing.T) {
 	// Verify that the registry struct implements session.Interceptor.
 	var _ session.Interceptor = (*registry)(nil)
 }
+
+func TestRegistry_LeadingWhitespace(t *testing.T) {
+	r := NewRegistry()
+	var capturedCmd Command
+	r.Bind("help", "Show help", func(ctx context.Context, cmd Command) (Result, error) {
+		capturedCmd = cmd
+		return Result{}, nil
+	})
+
+	event := session.UserMessageEvent{Content: "   /help"}
+	result, err := r.Intercept(context.Background(), event)
+
+	require.NoError(t, err)
+	assert.Nil(t, result.Event, "expected event to be consumed")
+	assert.Equal(t, "help", capturedCmd.Name)
+	assert.Empty(t, capturedCmd.Input)
+}
+
+func TestRegistry_MultipleFeedback(t *testing.T) {
+	r := NewRegistry()
+	r.Bind("multi", "Multiple feedback", func(ctx context.Context, cmd Command) (Result, error) {
+		return Result{
+			Feedback: artifact.Text{Content: "first"},
+		}, nil
+	})
+
+	// Note: the Handler type only has a single Feedback field, not a slice.
+	// The session.Interceptor interface uses a slice, so the registry returns
+	// multiple feedback items by having a single handler return one item.
+	// This test verifies that the single feedback item is correctly passed through.
+	event := session.UserMessageEvent{Content: "/multi"}
+	result, err := r.Intercept(context.Background(), event)
+
+	require.NoError(t, err)
+	assert.Nil(t, result.Event, "expected event to be consumed")
+	require.Len(t, result.Feedback, 1)
+	assert.Equal(t, "first", result.Feedback[0].Content)
+}
+
+func TestRegistry_CaseSensitive(t *testing.T) {
+	r := NewRegistry()
+	r.Bind("help", "Show help", func(ctx context.Context, cmd Command) (Result, error) {
+		return Result{}, nil
+	})
+
+	// Uppercase HELP should be treated as unknown command.
+	event := session.UserMessageEvent{Content: "/HELP"}
+	result, err := r.Intercept(context.Background(), event)
+
+	require.NoError(t, err)
+	assert.Nil(t, result.Event, "expected event to be consumed for unknown command")
+	require.Len(t, result.Feedback, 1)
+	assert.Contains(t, result.Feedback[0].Content, "Unknown command: /HELP")
+}
