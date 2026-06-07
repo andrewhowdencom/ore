@@ -488,6 +488,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.turns = nil
 		m.currentTurn = renderedTurn{} // defensive: clear any partial turn
 		m.pending = false              // defensive: reset pending state
+		m.renderScheduled = false      // clear any pending render tick
 		m.loadHistory(msg.turns)
 		m.contentDirty = true
 		wasAtBottom := m.viewport.AtBottom()

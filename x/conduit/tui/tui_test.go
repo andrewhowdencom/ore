@@ -142,3 +142,22 @@ func TestTUI_InitModel_ResumesThreadWithHistory(t *testing.T) {
 	assert.Equal(t, "assistant response", m.turns[1].blocks[0].source)
 	assert.NotEmpty(t, m.turns[1].blocks[0].rendered, "assistant turn should be markdown rendered")
 }
+
+func TestTUI_ReloadHistory_NilProgram(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	c, err := New(mgr)
+	require.NoError(t, err)
+
+	// Type assert to *TUI so we can call ReloadHistory directly.
+	tui := c.(*TUI)
+
+	// program is nil because Start has not been called.
+	// ReloadHistory should not panic.
+	assert.NotPanics(t, func() {
+		err := tui.ReloadHistory(nil)
+		assert.NoError(t, err)
+	})
+}

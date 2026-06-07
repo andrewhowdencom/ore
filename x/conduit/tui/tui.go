@@ -12,6 +12,12 @@
 // incrementally as chunks arrive. A 16ms debounced render tick batches
 // glamour markdown re-renders to keep the UI smooth at ~60fps.
 //
+// State refresh:
+// If the underlying conversation state is replaced (e.g. after compaction via
+// stream.LoadTurns), call ReloadHistory on the TUI to rebuild the conversation
+// view from the new turn slice. This must be done after Start has been called
+// so the Bubble Tea program is running.
+//
 // Keyboard shortcuts:
 //   Ctrl+O — toggle expansion of latest assistant turn's tool blocks
 //            (compact by default; resets after each new turn)
@@ -281,6 +287,8 @@ func (t *TUI) PlayError(ctx context.Context) error {
 // processor) call after replacing the stream's persistent state via
 // stream.LoadTurns so the TUI view stays synchronized with the backend.
 func (t *TUI) ReloadHistory(turns []state.Turn) error {
-	t.program.Send(reloadHistoryMsg{turns: turns})
+	if t.program != nil {
+		t.program.Send(reloadHistoryMsg{turns: turns})
+	}
 	return nil
 }
