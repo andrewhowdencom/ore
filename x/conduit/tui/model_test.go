@@ -1979,3 +1979,34 @@ func TestModel_Update_ReloadHistory_ClearsRenderScheduled(t *testing.T) {
 
 	assert.False(t, mm.renderScheduled, "renderScheduled should be cleared after reload")
 }
+
+func TestModel_Update_ReloadHistory_WithPending(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.pending = true
+
+	newM, _ := m.Update(reloadHistoryMsg{turns: []state.Turn{{
+		Role: state.RoleUser,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "hello"},
+		},
+	}}})
+	mm := newM.(*model)
+
+	assert.False(t, mm.pending, "pending should be reset after reload")
+}
+
+func TestModel_Update_ReloadHistory_NilSlice(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.turns = []renderedTurn{
+		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
+	}
+
+	newM, _ := m.Update(reloadHistoryMsg{turns: nil})
+	mm := newM.(*model)
+
+	assert.Empty(t, mm.turns, "nil slice should be treated as empty history")
+	assert.False(t, mm.pending)
+	assert.Empty(t, mm.currentTurn.blocks)
+}
