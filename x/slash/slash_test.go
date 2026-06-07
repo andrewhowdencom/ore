@@ -241,6 +241,137 @@ func TestRegistry_CompileTimeAssertion(t *testing.T) {
 	var _ session.Interceptor = (*registry)(nil)
 }
 
+func TestRegistry_PostSlashWhitespace(t *testing.T) {
+	r := NewRegistry()
+	var capturedCmd Command
+	r.Bind("help", "Show help", func(ctx context.Context, cmd Command) (Result, error) {
+		capturedCmd = cmd
+		return Result{}, nil
+	})
+
+	// Multiple spaces after the slash — command should be parsed correctly.
+	event := session.UserMessageEvent{Content: "/   help"}
+	result, err := r.Intercept(context.Background(), event)
+
+	require.NoError(t, err)
+	assert.Nil(t, result.Event, "expected event to be consumed")
+	assert.Equal(t, "help", capturedCmd.Name)
+	assert.Empty(t, capturedCmd.Input)
+}
+
+func TestRegistry_PostSlashWhitespace_WithInput(t *testing.T) {
+	r := NewRegistry()
+	var capturedCmd Command
+	r.Bind("include", "Include a file", func(ctx context.Context, cmd Command) (Result, error) {
+		capturedCmd = cmd
+		return Result{}, nil
+	})
+
+	// Multiple spaces after slash and between command and input.
+	event := session.UserMessageEvent{Content: "/   include   /path/with spaces"}
+	result, err := r.Intercept(context.Background(), event)
+
+	require.NoError(t, err)
+	assert.Nil(t, result.Event, "expected event to be consumed")
+	assert.Equal(t, "include", capturedCmd.Name)
+	assert.Equal(t, "  /path/with spaces", capturedCmd.Input)
+}
+
+func TestRegistry_DuplicateBind_Overwrites(t *testing.T) {
+	r := NewRegistry()
+	firstCalled := false
+	r.Bind("test", "First test", func(ctx context.Context, cmd Command) (Result, error) {
+		firstCalled = true
+		return Result{}, nil
+	})
+	r.Bind("test", "Second test", func(ctx context.Context, cmd Command) (Result, error) {
+		return Result{Feedback: artifact.Text{Content: "second handler"}}, nil
+	})
+
+	event := session.UserMessageEvent{Content: "/test"}
+	result, err := r.Intercept(context.Background(), event)
+
+	require.NoError(t, err)
+	assert.False(t, firstCalled, "first handler should not be called")
+	require.Len(t, result.Feedback, 1)
+	assert.Equal(t, "second handler", result.Feedback[0].Content)
+}
+
+func TestRegistry_DuplicateBind_UpdatesDescription(t *testing.T) {
+	r := NewRegistry()
+	r.Bind("cmd", "Original cmd", func(ctx context.Context, cmd Command) (Result, error) {
+		return Result{}, nil
+	})
+	r.Bind("cmd", "Updated cmd", func(ctx context.Context, cmd Command) (Result, error) {
+		return Result{}, nil
+	})
+
+	// Verify /help shows the updated description.
+	event := session.UserMessageEvent{Content: "/help"}
+	result, err := r.Intercept(context.Background(), event)
+
+	require.NoError(t, err)
+	require.Len(t, result.Feedback, 1)
+	content := result.Feedback[0].Content
+	assert.Contains(t, content, "/cmd")
+	assert.Contains(t, content, "Updated cmd")
+	assert.NotContains(t, content, "Original cmd")
+}
+
+func TestRegistry_MixedCase(t *testing.T) {
+	r := NewRegistry()
+	r.Bind("help", "Show help", func(ctx context.Context, cmd Command) (Result, error) {
+		return Result{}, nil
+	})
+
+	event := session.UserMessageEvent{Content: "/HeLp"}
+	result, err := r.Intercept(context.Background(), event)
+
+	require.NoError(t, err)
+	assert.Nil(t, result.Event)
+	require.Len(t, result.Feedback, 1)
+	assert.Contains(t, result.Feedback[0].Content, "Unknown command: /HeLp")
+}
+
+func TestRegistry_EmptyFeedback(t *testing.T) {
+	r := NewRegistry()
+	r.Bind("silent", "Silent command", func(ctx context.Context, cmd Command) (Result, error) {
+		return Result{Feedback: artifact.Text{Content: ""}}, nil
+	})
+
+	event := session.UserMessageEvent{Content: "/silent"}
+	result, err := r.Intercept(context.Background(), event)
+
+	require.NoError(t, err)
+	assert.Nil(t, result.Event, "expected event to be consumed")
+	assert.Empty(t, result.Feedback, "empty feedback should not be emitted")
+}
+
+func TestRegistry_FieldsWhitespace(t *testing.T) {
+	assert.Equal(t, []string{"a", "b", "c"}, Fields("  a   b  c  "), "leading/trailing whitespace should be trimmed")
+	assert.Equal(t, []string{}, Fields("   "), "only whitespace should produce empty slice")
+	assert.Equal(t, []string{"a"}, Fields("a"), "no whitespace should return single element")
+	assert.Equal(t, []string{"a", "b"}, Fields("a\tb\n"), "tabs and newlines should split")
+}
+
+func TestRegistry_Isolation(t *testing.T) {
+	r1 := NewRegistry()
+	r1.Bind("foo", "Foo command", func(ctx context.Context, cmd Command) (Result, error) {
+		return Result{}, nil
+	})
+
+	// r2 is a fresh registry and should not have the "foo" command.
+	r2 := NewRegistry()
+
+	event := session.UserMessageEvent{Content: "/foo"}
+	result, err := r2.Intercept(context.Background(), event)
+
+	require.NoError(t, err)
+	assert.Nil(t, result.Event)
+	require.Len(t, result.Feedback, 1)
+	assert.Contains(t, result.Feedback[0].Content, "Unknown command: /foo")
+}
+
 func TestRegistry_LeadingWhitespace(t *testing.T) {
 	r := NewRegistry()
 	var capturedCmd Command
