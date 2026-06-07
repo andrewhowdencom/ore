@@ -499,6 +499,152 @@ func TestRoundTrip_LifecycleEvent(t *testing.T) {
 	}
 }
 
+func TestValidateEventSchemas(t *testing.T) {
+	tests := []struct {
+		name       string
+		event      loop.OutputEvent
+		schemaName string
+	}{
+		{
+			name:       "text",
+			event:      loop.ArtifactEvent{Artifact: artifact.Text{Content: "hello"}},
+			schemaName: "TextEvent",
+		},
+		{
+			name:       "text_delta",
+			event:      loop.ArtifactEvent{Artifact: artifact.TextDelta{Content: "he"}},
+			schemaName: "TextDeltaEvent",
+		},
+		{
+			name:       "reasoning",
+			event:      loop.ArtifactEvent{Artifact: artifact.Reasoning{Content: "I should think about this"}},
+			schemaName: "ReasoningEvent",
+		},
+		{
+			name:       "reasoning_delta",
+			event:      loop.ArtifactEvent{Artifact: artifact.ReasoningDelta{Content: "I sh"}},
+			schemaName: "ReasoningDeltaEvent",
+		},
+		{
+			name:       "tool_call",
+			event:      loop.ArtifactEvent{Artifact: artifact.ToolCall{ID: "1", Name: "add", Arguments: `{"a":1}`}},
+			schemaName: "ToolCallEvent",
+		},
+		{
+			name:       "tool_call_delta",
+			event:      loop.ArtifactEvent{Artifact: artifact.ToolCallDelta{ID: "1", Name: "add", Arguments: `{"a":1`, Index: 0}},
+			schemaName: "ToolCallDeltaEvent",
+		},
+		{
+			name:       "tool_result",
+			event:      loop.ArtifactEvent{Artifact: artifact.ToolResult{ToolCallID: "1", Content: "3", IsError: false}},
+			schemaName: "ToolResultEvent",
+		},
+		{
+			name:       "usage",
+			event:      loop.ArtifactEvent{Artifact: artifact.Usage{PromptTokens: 5, CompletionTokens: 10, TotalTokens: 15}},
+			schemaName: "UsageEvent",
+		},
+		{
+			name:       "image",
+			event:      loop.ArtifactEvent{Artifact: artifact.Image{URL: "https://example.com/cat.png"}},
+			schemaName: "ImageEvent",
+		},
+		{
+			name: "turn_complete",
+			event: loop.TurnCompleteEvent{
+				Turn: state.Turn{
+					Role:      state.RoleAssistant,
+					Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}},
+				},
+			},
+			schemaName: "TurnCompleteEvent",
+		},
+		{
+			name:       "error",
+			event:      loop.ErrorEvent{Err: errors.New("boom")},
+			schemaName: "ErrorEvent",
+		},
+		{
+			name:       "properties",
+			event:      loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}},
+			schemaName: "PropertiesEvent",
+		},
+		{
+			name:       "lifecycle_submitted",
+			event:      loop.LifecycleEvent{Phase: "submitted"},
+			schemaName: "LifecycleEvent",
+		},
+		{
+			name:       "lifecycle_streaming",
+			event:      loop.LifecycleEvent{Phase: "streaming"},
+			schemaName: "LifecycleEvent",
+		},
+		{
+			name:       "lifecycle_done",
+			event:      loop.LifecycleEvent{Phase: "done"},
+			schemaName: "LifecycleEvent",
+		},
+		{
+			name:       "lifecycle_cancelled",
+			event:      loop.LifecycleEvent{Phase: "cancelled"},
+			schemaName: "LifecycleEvent",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := MarshalOutputEvent(tt.event)
+			require.NoError(t, err, "marshal event")
+			validateAgainstSchema(t, tt.schemaName, data)
+		})
+	}
+}
+
+func TestValidateEventSchemas_WithContext(t *testing.T) {
+	ctx := loop.WithProvenance(context.Background(), "http")
+
+	tests := []struct {
+		name       string
+		event      loop.OutputEvent
+		schemaName string
+	}{
+		{
+			name:       "text_with_context",
+			event:      loop.ArtifactEvent{Artifact: artifact.Text{Content: "hello"}, Ctx: ctx},
+			schemaName: "TextEvent",
+		},
+		{
+			name:       "turn_complete_with_context",
+			event:      loop.TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}}}, Ctx: ctx},
+			schemaName: "TurnCompleteEvent",
+		},
+		{
+			name:       "error_with_context",
+			event:      loop.ErrorEvent{Err: errors.New("boom"), Ctx: ctx},
+			schemaName: "ErrorEvent",
+		},
+		{
+			name:       "properties_with_context",
+			event:      loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}, Ctx: ctx},
+			schemaName: "PropertiesEvent",
+		},
+		{
+			name:       "lifecycle_done_with_context",
+			event:      loop.LifecycleEvent{Phase: "done", Ctx: ctx},
+			schemaName: "LifecycleEvent",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := MarshalOutputEvent(tt.event)
+			require.NoError(t, err, "marshal event")
+			validateAgainstSchema(t, tt.schemaName, data)
+		})
+	}
+}
+
 type unknownArtifact struct{}
 
 func (u *unknownArtifact) Kind() string { return "unknown" }

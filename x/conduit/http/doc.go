@@ -40,4 +40,9 @@
 // Serialization of all output events is handled by MarshalOutputEvent in
 // x/conduit/http/types.go, which dispatches to each event's json.Marshaler
 // implementation.
+//
+// The authoritative API contract is documented in the OpenAPI 3.1
+// specification at openapi.yaml, which defines all endpoints, request and
+// response schemas, event kind discriminated unions, and lifecycle phases.
+// Test-time validation against the spec is provided via kin-openapi.
 package http

@@ -249,14 +249,15 @@ function handleEvent(event) {
         return;
     }
 
-    if (event.kind === 'process_complete') {
-        if (event.error) {
-            playError();
-            setStatus('Error: ' + (event.error || 'Unknown error'));
-        } else {
+    if (event.kind === 'lifecycle') {
+        if (event.phase === 'done') {
             playDone();
+            finalizeTurn();
+        } else if (event.phase === 'cancelled') {
+            playError();
+            setStatus('Turn cancelled');
+            finalizeTurn();
         }
-        finalizeTurn();
         return;
     }
 
