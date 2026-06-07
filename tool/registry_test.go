@@ -333,3 +333,32 @@ func TestRegistry_Tools_WithRemoteSource(t *testing.T) {
 	assert.Contains(t, names, "add")
 	assert.Contains(t, names, "filesystem/read_file")
 }
+
+func TestRegistry_Tools_RemoteExamplesPreserved(t *testing.T) {
+	remote := &mockRemoteSource{
+		name: "fs",
+		tools: []Tool{
+			{
+				Name:        "read_file",
+				Description: "Read a file",
+				Schema:      map[string]any{"type": "object"},
+				Examples: []Example{
+					{
+						Input:       map[string]any{"path": "hello.go"},
+						Output:      "package main\n",
+						Explanation: "Basic file read",
+					},
+				},
+			},
+		},
+	}
+
+	r := NewRegistry(WithMCPServer(remote))
+	tools := r.Tools()
+	require.Len(t, tools, 1)
+	assert.Equal(t, "fs/read_file", tools[0].Name)
+	require.Len(t, tools[0].Examples, 1)
+	assert.Equal(t, map[string]any{"path": "hello.go"}, tools[0].Examples[0].Input)
+	assert.Equal(t, "package main\n", tools[0].Examples[0].Output)
+	assert.Equal(t, "Basic file read", tools[0].Examples[0].Explanation)
+}
