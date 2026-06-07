@@ -23,6 +23,22 @@
 //   - TurnSubmitter — records a non-inference turn (Submit).
 //   - TurnExecutor — combines both TurnRunner and TurnSubmitter.
 //
+// Architecture overview:
+//
+//          Step (thin orchestrator)
+//           │
+//    Emit() │          Turn()
+//           │            │
+//           ▼            ▼
+//      EventBus ◄── Pipeline (transforms, provider, accumulate, handlers)
+//           │            │
+//           │     onArtifact callback
+//           │            │
+//           │            ▼
+//           │      subscribers (channels)
+//           │
+//           └──► FanOut (broadcast)
+//
 // Why use transforms?
 //
 // Transforms inject virtual content (system prompts, guardrails, dynamic
@@ -73,4 +89,7 @@
 //     key-value pairs (e.g. thread_id, token counts, model name). It is
 //     emitted by any component holding a *session.Stream and delivered to
 //     all subscribers through the per-session FanOut.
+//
+// See also: cognitive package — composable middleware patterns (ReAct,
+// WithVerification) that depend on the TurnRunner and TurnSubmitter interfaces.
 package loop
