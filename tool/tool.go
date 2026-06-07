@@ -28,6 +28,17 @@ type ExecSandbox interface {
 	Run(ctx context.Context, cmd, dir string, timeout time.Duration) (stdout, stderr string, exitCode int, err error)
 }
 
+// Example describes a single few-shot usage example for a tool.
+type Example struct {
+	// Input is the JSON arguments passed to the tool.
+	Input map[string]any
+	// Output is the expected result produced by the tool.
+	Output any
+	// Explanation is a human-readable note describing why the example
+	// produces the given output.
+	Explanation string
+}
+
 // Tool describes a callable tool exposed to an LLM provider.
 type Tool struct {
 	Name        string
@@ -39,6 +50,11 @@ type Tool struct {
 	// MarkdownRenderer / LLMRenderer). When nil, conduits fall back to
 	// raw JSON Arguments.
 	DisplayHint func(map[string]any) any
+	// Examples is an optional list of few-shot input/output pairs that
+	// illustrate how the tool should be used. They are not sent to the
+	// provider by default; applications may opt-in via systemprompt
+	// transforms or other middleware.
+	Examples []Example
 }
 
 // ToolFunc is a callable tool implementation. It receives a resolved sandbox
