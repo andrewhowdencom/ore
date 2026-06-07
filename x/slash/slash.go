@@ -107,6 +107,13 @@ func (r *registry) Intercept(ctx context.Context, event session.Event) (session.
 	}
 
 	rest := trimmed[1:]
+	// Skip leading whitespace after the slash to find the command name.
+	start := 0
+	for start < len(rest) && (rest[start] == ' ' || rest[start] == '\t' || rest[start] == '\n' || rest[start] == '\r') {
+		start++
+	}
+	rest = rest[start:]
+
 	var command, input string
 	if i := strings.IndexFunc(rest, func(r rune) bool { return r == ' ' || r == '\t' || r == '\n' || r == '\r' }); i >= 0 {
 		command = rest[:i]

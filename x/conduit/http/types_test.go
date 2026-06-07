@@ -684,3 +684,14 @@ func TestRoundTrip_FeedbackEvent(t *testing.T) {
 type unknownArtifact struct{}
 
 func (u *unknownArtifact) Kind() string { return "unknown" }
+
+func TestUnmarshalOutputEvent_MalformedJSON(t *testing.T) {
+	_, err := UnmarshalOutputEvent([]byte(`{invalid`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid")
+}
+
+func TestUnmarshalOutputEvent_InvalidKindType(t *testing.T) {
+	_, err := UnmarshalOutputEvent([]byte(`{"kind":123}`))
+	require.Error(t, err)
+}

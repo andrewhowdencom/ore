@@ -1,5 +1,5 @@
 {
-  "nextId": 14,
+  "nextId": 19,
   "tasks": [
     {
       "id": "1",
@@ -153,6 +153,66 @@
       "blockedBy": [],
       "createdAt": 1780842492315,
       "updatedAt": 1780842864437
+    },
+    {
+      "id": "14",
+      "subject": "Fix post-slash whitespace parsing in x/slash/slash.go",
+      "description": "Fix the slash command parsing to skip leading spaces after the `/` character, so `/   help` is treated the same as `/help`. Add test for this behavior.",
+      "status": "completed",
+      "activeForm": "Fixing post-slash whitespace parsing",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780844140452,
+      "updatedAt": 1780844370197
+    },
+    {
+      "id": "15",
+      "subject": "Add feedback provenance and multi-feedback+replace tests in session/stream_test.go",
+      "description": "Add TestStream_Interceptor_FeedbackProvenance (verifies FeedbackEvent.Ctx carries the original UserMessageEvent provenance) and TestStream_Interceptor_FeedbackWithReplaceAndMultipleFeedback (verifies both feedback and replacement work together).",
+      "status": "completed",
+      "activeForm": "Adding session feedback tests",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780844140452,
+      "updatedAt": 1780844370198
+    },
+    {
+      "id": "16",
+      "subject": "Add all remaining slash tests to x/slash/slash_test.go",
+      "description": "Add tests for: duplicate bind overwrite, mixed-case unknown command, empty feedback not emitted, Fields whitespace handling, registry isolation.",
+      "status": "completed",
+      "activeForm": "Adding slash edge case tests",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780844140452,
+      "updatedAt": 1780844370198
+    },
+    {
+      "id": "17",
+      "subject": "Add empty context omission tests to loop/loop_test.go",
+      "description": "Add tests verifying that TurnCompleteEvent, ErrorEvent, and LifecycleEvent omit the 'context' field from JSON when Ctx is empty/nil.",
+      "status": "completed",
+      "activeForm": "Adding loop context omission tests",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780844140452,
+      "updatedAt": 1780844370198
+    },
+    {
+      "id": "18",
+      "subject": "Add malformed JSON tests to x/conduit/http/types_test.go",
+      "description": "Add tests for UnmarshalOutputEvent with malformed JSON and invalid kind type.",
+      "status": "completed",
+      "activeForm": "Adding HTTP malformed JSON tests",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780844140453,
+      "updatedAt": 1780844370199
     }
   ]
 }
