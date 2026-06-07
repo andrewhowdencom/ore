@@ -27,6 +27,7 @@ import (
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/state"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
@@ -271,5 +272,15 @@ func (t *TUI) PlayDone(ctx context.Context) error {
 // distinct error tones.
 func (t *TUI) PlayError(ctx context.Context) error {
 	t.program.Send(audioMsg{})
+	return nil
+}
+
+// ReloadHistory discards the model's current conversation history and
+// rebuilds it from the supplied turn slice. This is the public hook that
+// downstream applications (e.g., a slash command handler or compaction
+// processor) call after replacing the stream's persistent state via
+// stream.LoadTurns so the TUI view stays synchronized with the backend.
+func (t *TUI) ReloadHistory(turns []state.Turn) error {
+	t.program.Send(reloadHistoryMsg{turns: turns})
 	return nil
 }
