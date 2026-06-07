@@ -32,10 +32,10 @@ func WithMaxRetries(n int) VerificationOption {
 // If verifiers fail, it injects a system turn with the combined report and
 // retries the inner pattern up to maxRetries times. If any verifier returns
 // an Error status, the error is propagated immediately as a fatal error.
-func WithVerification(inner Pattern, step *loop.Step, opts ...VerificationOption) Pattern {
+func WithVerification(inner Pattern, step loop.TurnSubmitter, opts ...VerificationOption) Pattern {
 	p := &verifyingPattern{
 		inner:      inner,
-		step:       step,
+		submitter:  step,
 		maxRetries: 3,
 	}
 	for _, opt := range opts {
@@ -46,7 +46,7 @@ func WithVerification(inner Pattern, step *loop.Step, opts ...VerificationOption
 
 type verifyingPattern struct {
 	inner      Pattern
-	step       *loop.Step
+	submitter  loop.TurnSubmitter
 	verifiers  []verifier.Verifier
 	maxRetries int
 }
@@ -87,7 +87,7 @@ func (p *verifyingPattern) Run(ctx context.Context, st state.State) (state.State
 		}
 
 		report := verifier.BuildReport(results)
-		_, err = p.step.Submit(ctx, result, state.RoleSystem, artifact.Text{Content: report})
+		_, err = p.submitter.Submit(ctx, result, state.RoleSystem, artifact.Text{Content: report})
 		if err != nil {
 			return result, fmt.Errorf("failed to inject verification report: %w", err)
 		}

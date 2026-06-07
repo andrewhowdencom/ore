@@ -15,7 +15,7 @@ import (
 // TurnProcessor runs the full inference pipeline for a single turn after
 // the user event has been submitted to state. It is called with the
 // stream's loop.Step, state, and provider.
-type TurnProcessor func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error)
+type TurnProcessor func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error)
 
 // ManagerOption configures a Manager.
 type ManagerOption func(*Manager)
