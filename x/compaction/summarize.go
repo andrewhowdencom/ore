@@ -69,7 +69,8 @@ func (s SummarizeStrategy) Compact(ctx context.Context, turns []state.Turn) ([]s
 	}
 
 	// Walk backwards to find the split point.
-	// Always preserve at least the last turn.
+	// Always preserve at least the last turn (best effort), even if it
+	// alone exceeds the budget. The strategy is a reducer, not a strict enforcer.
 	k := len(turns) - 1
 	accumulated := estimateTokens(turns[k:])
 	for i := len(turns) - 2; i >= 0; i-- {

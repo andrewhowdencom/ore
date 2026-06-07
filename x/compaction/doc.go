@@ -33,7 +33,8 @@
 // summarize conversation history. It walks backwards from the last turn,
 // preserving the suffix that fits within MaxTokens, and replaces the prefix
 // with a single synthetic system summary turn. If the entire history fits,
-// it returns a defensive copy without calling the provider.
+// it returns a defensive copy without calling the provider. Token estimation
+// is a rough heuristic (len(text)/4) with no external dependencies.
 // The summary turn uses RoleSystem because it is injected context about
 // prior conversation, not a real assistant response.
 //
