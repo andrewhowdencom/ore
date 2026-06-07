@@ -32,7 +32,11 @@ import (
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/x/conduit/tui"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
+	"github.com/andrewhowdencom/ore/x/telemetry"
 	"github.com/andrewhowdencom/ore/x/usage"
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	sdkresource "go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
@@ -126,6 +130,26 @@ func run() error {
 	// production). This demonstrates how tracing is wired through all components.
 	tracer := noop.NewTracerProvider().Tracer("tui-chat")
 
+	// Application version for OTel resource attributes.
+	version := os.Getenv("APP_VERSION")
+	if version == "" {
+		version = "dev"
+	}
+
+	// Create a real meter provider with a version resource attribute.
+	res, err := sdkresource.New(context.Background(),
+		sdkresource.WithAttributes(attribute.String("service.version", version)),
+	)
+	if err != nil {
+		return fmt.Errorf("create OTel resource: %w", err)
+	}
+
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithResource(res))
+	defer mp.Shutdown(context.Background())
+
+	meter := mp.Meter("tui-chat")
+	tel := telemetry.New(meter)
+
 	// Build OpenAI provider.
 	var opts []openai.Option
 	if baseURL != "" {
@@ -146,6 +170,7 @@ func run() error {
 	mgr := session.NewManager(store, prov, func(_ *session.Stream) ([]loop.Option, error) {
 		return []loop.Option{
 			loop.WithHandlers(usage.New()),
+			loop.WithOnEmit(tel.OnEmit()),
 			loop.WithTracer(tracer),
 		}, nil
 	}, cognitive.NewTurnProcessor(cognitive.ReActFactory, tracer))
