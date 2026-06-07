@@ -63,6 +63,11 @@ conduits. The canonical state persistence mechanism is `loop.WithState`,
 which causes `Emit` to automatically append `TurnCompleteEvent` to the
 bound state before running `OnEmit` callbacks.
 
+Conduits that maintain local cached views (e.g. the TUI conduit) must
+expose a reload hook (e.g. `ReloadHistory([]state.Turn)`) so application
+code can refresh the view after external state mutations such as compaction
+via `stream.LoadTurns`.
+
 - `OnEmit` callbacks receive every `OutputEvent` and are invoked in
   registration order before the event reaches subscribers.
 - `Emitter` is the interface exposed to artifact handlers for emitting
