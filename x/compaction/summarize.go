@@ -14,37 +14,85 @@ import (
 // SummarizeStrategy uses an LLM provider to summarize conversation history,
 // replacing dropped turns with a single synthetic system summary turn.
 //
+// It is token-aware: it walks backwards from the last turn, accumulating
+// token estimates, and preserves the suffix that fits within MaxTokens.
+// Everything before the suffix is summarized. If the entire history fits,
+// it returns a defensive copy without calling the provider.
+//
 // The provider is called with the turns to be summarized loaded into a
 // temporary state.Buffer, followed by a user prompt asking for a concise
 // summary. Only artifact.Text responses from the provider are collected;
 // other artifact types (Usage, Reasoning, ToolCall, etc.) are ignored.
 // This is an MVP limitation.
 type SummarizeStrategy struct {
-	Provider      provider.Provider
-	PreserveLastN int
+	Provider  provider.Provider
+	MaxTokens int
 }
 
-// Compact splits turns into summarizable and preserved slices, calls the
-// provider to generate a summary, and returns a new slice containing the
-// summary turn followed by the preserved turns.
+// estimateTokens returns a rough token estimate for a slice of turns by
+// summing len(artifact.Text.Content) / 4 for all text artifacts in each turn.
+// This is a heuristic approximation (~4 characters per token) and requires no
+// external dependencies. Non-text artifacts are ignored for estimation.
+func estimateTokens(turns []state.Turn) int {
+	total := 0
+	for _, turn := range turns {
+		for _, art := range turn.Artifacts {
+			if t, ok := art.(artifact.Text); ok {
+				total += len(t.Content) / 4
+			}
+		}
+	}
+	return total
+}
+
+// Compact walks backwards from the last turn, accumulating token estimates,
+// to find the split point where the suffix fits within MaxTokens. It
+// summarizes the prefix via the provider and returns a new slice containing
+// the summary turn followed by the preserved turns.
 //
-// If len(turns) <= PreserveLastN, it returns a defensive copy of the
-// original slice (no-op).
+// If the entire history fits within MaxTokens, it returns a defensive copy
+// of the original slice without calling the provider (no-op).
 //
 // The summary turn uses RoleSystem because it is injected context about prior
 // conversation, not a real assistant response.
 func (s SummarizeStrategy) Compact(ctx context.Context, turns []state.Turn) ([]state.Turn, error) {
-	if s.PreserveLastN < 0 {
-		return nil, fmt.Errorf("SummarizeStrategy.PreserveLastN must be >= 0, got %d", s.PreserveLastN)
+	if s.MaxTokens <= 0 {
+		return nil, fmt.Errorf("SummarizeStrategy.MaxTokens must be > 0, got %d", s.MaxTokens)
 	}
-	if len(turns) <= s.PreserveLastN {
+	if len(turns) == 0 {
+		return []state.Turn{}, nil
+	}
+	if estimateTokens(turns) <= s.MaxTokens {
 		result := make([]state.Turn, len(turns))
 		copy(result, turns)
 		return result, nil
 	}
 
-	toSummarize := turns[:len(turns)-s.PreserveLastN]
-	toPreserve := turns[len(turns)-s.PreserveLastN:]
+	// Walk backwards to find the split point.
+	// Always preserve at least the last turn.
+	k := len(turns) - 1
+	accumulated := estimateTokens(turns[k:])
+	for i := len(turns) - 2; i >= 0; i-- {
+		turnTokens := estimateTokens(turns[i : i+1])
+		if accumulated+turnTokens > s.MaxTokens {
+			k = i + 1
+			break
+		}
+		accumulated += turnTokens
+		if i == 0 {
+			k = 0
+		}
+	}
+
+	toSummarize := turns[:k]
+	toPreserve := turns[k:]
+
+	// If there is nothing to summarize, return the preserved turns directly.
+	if len(toSummarize) == 0 {
+		result := make([]state.Turn, len(toPreserve))
+		copy(result, toPreserve)
+		return result, nil
+	}
 
 	buf := &state.Buffer{}
 	buf.LoadTurns(toSummarize)
