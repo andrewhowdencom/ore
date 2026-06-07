@@ -29,8 +29,12 @@
 // fast, making it suitable as a safety margin before more expensive
 // strategies.
 //
-// SummarizeStrategy calls an LLM provider to summarize conversation history,
-// replacing dropped turns with a single synthetic system summary turn.
+// SummarizeStrategy is a token-aware strategy that calls an LLM provider to
+// summarize conversation history. It walks backwards from the last turn,
+// preserving the suffix that fits within MaxTokens, and replaces the prefix
+// with a single synthetic system summary turn. If the entire history fits,
+// it returns a defensive copy without calling the provider. Token estimation
+// is a rough heuristic (len(text)/4) with no external dependencies.
 // The summary turn uses RoleSystem because it is injected context about
 // prior conversation, not a real assistant response.
 //
@@ -47,7 +51,7 @@
 //	compactor := compaction.New(
 //	    compaction.WithTrigger(compaction.TurnCountTrigger{N: 20}),
 //	    compaction.WithStrategy(compaction.KeepLastN{N: 10}),
-//	    compaction.WithStrategy(compaction.SummarizeStrategy{Provider: prov, PreserveLastN: 2}),
+//	    compaction.WithStrategy(compaction.SummarizeStrategy{Provider: prov, MaxTokens: 8000}),
 //	)
 //
 // WithStrategy accumulates; each call appends another strategy to the
