@@ -60,14 +60,14 @@ func (e *errorFS) ReadFile(name string) ([]byte, error) { return nil, fs.ErrNotE
 
 // simpleProcessor runs a single Step.Turn with the mock provider.
 func simpleProcessor() session.TurnProcessor {
-	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+	return func(ctx context.Context, step loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
 		return step.Turn(ctx, st, prov)
 	}
 }
 
 // boomProcessor always fails.
 func boomProcessor() session.TurnProcessor {
-	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+	return func(ctx context.Context, step loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
 		return st, fmt.Errorf("boom")
 	}
 }
