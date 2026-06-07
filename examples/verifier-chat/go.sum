@@ -1,13 +1,9 @@
 github.com/andrewhowdencom/ore v0.7.0 h1:r6+9aKHuh28tObSOLbpTPLvg8eMrsQ6Ny6Ig9M18BSg=
 github.com/andrewhowdencom/ore v0.7.0/go.mod h1:21KoIj06hHnZ7SPrV6chXMdU4oRjHheaCI+/kasHIFc=
-github.com/andrewhowdencom/ore/x/provider/openai v0.4.2 h1:kRKKh4JCtOTbILB7JaJvx/SjLOR7tnPn5xusorUHIC0=
-github.com/andrewhowdencom/ore/x/provider/openai v0.4.2/go.mod h1:T9+ibJmw5JFshqIW7G6w+nVirpfzUuUqKR0OSLEr/fI=
-github.com/andrewhowdencom/ore/x/tool v0.4.2 h1:R45ZKT/QGglyid8hjv3OaDICyGzTvgVv3vsY5Sl2hMw=
-github.com/andrewhowdencom/ore/x/tool v0.4.2/go.mod h1:eU5Bv1Tu/2fE6tF4pUTIt41/KXOAXKUx0yhIlBPL86A=
-github.com/andrewhowdencom/ore/x/tool/filesystem v0.4.1 h1:Ql7Hnir9uV5St9hRLDLY3x3Xe31IJ6TOSSyoIOaD7v8=
-github.com/andrewhowdencom/ore/x/tool/filesystem v0.4.1/go.mod h1:lDOJFofW//J2bEKfO7F2458Ao9Ehiogli//OIebjCBE=
-github.com/andrewhowdencom/ore/x/verifier v0.1.0 h1:xJfas8uz8DJBNPPvquXBu7K7cPkUhDFWlNe5/YKrdQw=
-github.com/andrewhowdencom/ore/x/verifier v0.1.0/go.mod h1:8U3wTptkVIwaso+pKxc7C0AH4TLi73rD2u+KwkDOYfw=
+github.com/andrewhowdencom/ore/x/provider/openai v0.4.3 h1:SVXWi6aPsRd3T65cG/bjB15xot5v92KIlUAFfeVtEjw=
+github.com/andrewhowdencom/ore/x/tool v0.4.3 h1:VqZutAvuQKnKi4+fV11G/j8IhuOtyFAM+f/DlxohChY=
+github.com/andrewhowdencom/ore/x/tool/filesystem v0.4.2 h1:+m57qmbo/NmVF0X3DU33o25/ikDHOUQjROu9aayM/ho=
+github.com/andrewhowdencom/ore/x/verifier v0.1.1 h1:RkRd3gFkX/Pd1pJuXmNpO23ZHVorgaqXEnKQuHzTN0M=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=

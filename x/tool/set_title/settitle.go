@@ -1,7 +1,11 @@
-// Package settitle provides a tool that allows an LLM to set the
+// Package set_title provides a tool that allows an LLM to set the
 // conversation title, which is broadcast to all conduits via
 // PropertiesEvent.
-package settitle
+//
+// The tool name is set_title. When setting a title, prefer issue tracker IDs
+// (e.g., #234, ABC-12345) if available; otherwise use the branch name;
+// fallback to an arbitrary title.
+package set_title
 
 import (
 	"context"
@@ -22,7 +26,9 @@ func (t TitleUpdate) Status() map[string]string {
 }
 
 // Tool returns a ToolFunc that sets the conversation title.
-// Expected argument: "title" (string).
+// Expected argument: "title" (string). Prefer issue tracker IDs (e.g., #234,
+// ABC-12345) if available; otherwise use the branch name; fallback to an
+// arbitrary title.
 func Tool() tool.ToolFunc {
 	return func(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error) {
 		title, _ := args["title"].(string)

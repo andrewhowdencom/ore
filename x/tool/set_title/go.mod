@@ -1,4 +1,4 @@
-module github.com/andrewhowdencom/ore/x/tool/settitle
+module github.com/andrewhowdencom/ore/x/tool/set_title
 
 go 1.26.2
 
