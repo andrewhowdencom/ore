@@ -2,11 +2,14 @@ package systemprompt
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/tool"
 )
 
 // Transform prepends a system prompt to the inference context.
@@ -60,6 +63,49 @@ func WithContextContentFunc(fn func(context.Context) string) Option {
 			c.ctxContentFuncs = append(c.ctxContentFuncs, fn)
 		}
 	}
+}
+
+// WithToolExamples adds a content function that renders a markdown prompt
+// fragment containing the few-shot examples for the given tools. Only tools
+// with non-empty Examples are included. Each tool is rendered with its name,
+// description, and then each example as an input JSON block, an output block,
+// and an optional explanation. This is opt-in; applications may choose which
+// tools to pass.
+func WithToolExamples(tools []tool.Tool) Option {
+	return WithContentFunc(func() string {
+		var sections []string
+		for _, t := range tools {
+			if len(t.Examples) == 0 {
+				continue
+			}
+			var lines []string
+			lines = append(lines, fmt.Sprintf("## %s", t.Name))
+			if t.Description != "" {
+				lines = append(lines, t.Description)
+			}
+			for i, ex := range t.Examples {
+				lines = append(lines, fmt.Sprintf("### Example %d", i+1))
+				if in, err := json.MarshalIndent(ex.Input, "", "  "); err == nil {
+					lines = append(lines, "Input:", "```json", string(in), "```")
+				}
+				if out, err := json.MarshalIndent(ex.Output, "", "  "); err == nil {
+					lines = append(lines, "Output:", "```json", string(out), "```")
+				} else if s, ok := ex.Output.(string); ok {
+					lines = append(lines, "Output:", "```", s, "```")
+				} else {
+					lines = append(lines, "Output:", "```", fmt.Sprintf("%v", ex.Output), "```")
+				}
+				if ex.Explanation != "" {
+					lines = append(lines, ex.Explanation)
+				}
+			}
+			sections = append(sections, strings.Join(lines, "\n"))
+		}
+		if len(sections) == 0 {
+			return ""
+		}
+		return "Tool Examples:\n\n" + strings.Join(sections, "\n\n")
+	})
 }
 
 // New creates a system prompt transform with the given options.
