@@ -304,3 +304,42 @@ func TestMaybeCompact_TriggerOnly_NeverCompacts(t *testing.T) {
 	assert.Equal(t, turns, result)
 }
 
+func TestForceCompact_BypassesTrigger(t *testing.T) {
+	c := New(
+		WithTrigger(TurnCountTrigger{N: 100}), // trigger won't fire
+		WithStrategy(KeepLastN{N: 2}),
+	)
+	turns := []state.Turn{
+		{Role: state.RoleSystem},
+		{Role: state.RoleUser},
+		{Role: state.RoleAssistant},
+	}
+	result, didCompact, err := c.ForceCompact(context.Background(), turns)
+	require.NoError(t, err)
+	assert.True(t, didCompact)
+	assert.Len(t, result, 2)
+	assert.Equal(t, state.RoleUser, result[0].Role)
+	assert.Equal(t, state.RoleAssistant, result[1].Role)
+}
+
+func TestForceCompact_NoStrategies(t *testing.T) {
+	c := New(
+		WithTrigger(TurnCountTrigger{N: 0}),
+	)
+	turns := []state.Turn{{Role: state.RoleUser}}
+	result, didCompact, err := c.ForceCompact(context.Background(), turns)
+	require.NoError(t, err)
+	assert.False(t, didCompact)
+	assert.Equal(t, turns, result)
+}
+
+func TestForceCompact_StrategyError(t *testing.T) {
+	c := New(
+		WithStrategy(KeepLastN{N: 0}),
+	)
+	turns := []state.Turn{{Role: state.RoleUser}}
+	_, _, err := c.ForceCompact(context.Background(), turns)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "KeepLastN.N must be > 0")
+}
+

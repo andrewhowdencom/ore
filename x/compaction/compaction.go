@@ -74,6 +74,24 @@ func (c *Compactor) MaybeCompact(ctx context.Context, turns []state.Turn) ([]sta
 	return turns, true, nil
 }
 
+// ForceCompact executes the configured strategies directly without evaluating
+// the trigger. If no strategies are configured, it returns the original turns
+// and false. It returns the compacted turns, true if strategies were applied,
+// and any error from the strategies.
+func (c *Compactor) ForceCompact(ctx context.Context, turns []state.Turn) ([]state.Turn, bool, error) {
+	if len(c.strategies) == 0 {
+		return turns, false, nil
+	}
+	var err error
+	for _, s := range c.strategies {
+		turns, err = s.Compact(ctx, turns)
+		if err != nil {
+			return nil, false, fmt.Errorf("compaction strategy failed: %w", err)
+		}
+	}
+	return turns, true, nil
+}
+
 // TurnCountTrigger fires when the number of turns exceeds a threshold.
 type TurnCountTrigger struct {
 	N int
