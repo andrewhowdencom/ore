@@ -1063,3 +1063,23 @@ func TestHandler_SendMessage_LifecycleEventInNDJSON(t *testing.T) {
 	}
 	assert.Equal(t, []string{"submitted", "streaming", "done"}, phases)
 }
+
+func TestHandler_DefaultSubscriptionKinds_MatchSpec(t *testing.T) {
+	specKinds := extractEventKindEnum(t)
+	defaultKinds := defaultSubscriptionKinds()
+
+	// Build a set of valid EventKind values from the spec.
+	valid := make(map[string]struct{}, len(specKinds))
+	for _, k := range specKinds {
+		valid[k] = struct{}{}
+	}
+
+	// Every handler default kind must be a valid EventKind in the spec.
+	for _, k := range defaultKinds {
+		_, ok := valid[k]
+		assert.Truef(t, ok, "handler default kind %q is not in the OpenAPI EventKind enum", k)
+	}
+
+	// Both handler default lists (sendMessage and sessionEvents) must be identical.
+	assert.Equal(t, defaultKinds, defaultSubscriptionKinds(), "handler default kinds must be consistent across sendMessage and sessionEvents")
+}
