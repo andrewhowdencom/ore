@@ -255,6 +255,7 @@ func TestRoundTrip_OutputEvent(t *testing.T) {
 		loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc", "state": "ready"}},
 		loop.LifecycleEvent{Phase: "submitted"},
 		loop.LifecycleEvent{Phase: "done", Ctx: loop.WithProvenance(context.Background(), "http")},
+		loop.FeedbackEvent{Content: "help message"},
 	}
 
 	for _, event := range events {
@@ -590,6 +591,11 @@ func TestValidateEventSchemas(t *testing.T) {
 			event:      loop.LifecycleEvent{Phase: "cancelled"},
 			schemaName: "LifecycleEvent",
 		},
+		{
+			name:       "feedback",
+			event:      loop.FeedbackEvent{Content: "help message"},
+			schemaName: "FeedbackEvent",
+		},
 	}
 
 	for _, tt := range tests {
@@ -634,6 +640,11 @@ func TestValidateEventSchemas_WithContext(t *testing.T) {
 			event:      loop.LifecycleEvent{Phase: "done", Ctx: ctx},
 			schemaName: "LifecycleEvent",
 		},
+		{
+			name:       "feedback_with_context",
+			event:      loop.FeedbackEvent{Content: "help message", Ctx: ctx},
+			schemaName: "FeedbackEvent",
+		},
 	}
 
 	for _, tt := range tests {
@@ -645,6 +656,42 @@ func TestValidateEventSchemas_WithContext(t *testing.T) {
 	}
 }
 
+func TestMarshalOutputEvent_Feedback(t *testing.T) {
+	event := loop.FeedbackEvent{Content: "help message"}
+	data, err := MarshalOutputEvent(event)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"feedback","content":"help message"}`, string(data))
+}
+
+func TestUnmarshalOutputEvent_Feedback(t *testing.T) {
+	got, err := UnmarshalOutputEvent([]byte(`{"kind":"feedback","content":"help message"}`))
+	require.NoError(t, err)
+	fb, ok := got.(loop.FeedbackEvent)
+	require.True(t, ok)
+	assert.Equal(t, "help message", fb.Content)
+}
+
+func TestRoundTrip_FeedbackEvent(t *testing.T) {
+	event := loop.FeedbackEvent{Content: "help message", Ctx: loop.WithProvenance(context.Background(), "http")}
+	data, err := MarshalOutputEvent(event)
+	require.NoError(t, err)
+
+	got, err := UnmarshalOutputEvent(data)
+	require.NoError(t, err)
+	assert.Equal(t, event, got)
+}
+
 type unknownArtifact struct{}
 
 func (u *unknownArtifact) Kind() string { return "unknown" }
+
+func TestUnmarshalOutputEvent_MalformedJSON(t *testing.T) {
+	_, err := UnmarshalOutputEvent([]byte(`{invalid`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid")
+}
+
+func TestUnmarshalOutputEvent_InvalidKindType(t *testing.T) {
+	_, err := UnmarshalOutputEvent([]byte(`{"kind":123}`))
+	require.Error(t, err)
+}

@@ -67,6 +67,13 @@ type errorMsg struct {
 	err error
 }
 
+// feedbackMsg carries an ephemeral feedback message from the conduit to
+// the UI model. Feedback messages are rendered as system-styled turns
+// in the conversation but are not persisted to state.
+type feedbackMsg struct {
+	content string
+}
+
 // renderTickMsg triggers a debounced markdown re-render of the current
 // assistant turn's text and reasoning blocks.
 type renderTickMsg struct{}
@@ -564,6 +571,20 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		})
 		m.contentDirty = true
 		m.recalcLayout()
+		m.syncViewport()
+		if wasAtBottom {
+			m.viewport.GotoBottom()
+		}
+		return m, nil
+	case feedbackMsg:
+		wasAtBottom := m.viewport.AtBottom()
+		m.turns = append(m.turns, renderedTurn{
+			role: state.RoleSystem,
+			blocks: []renderedBlock{
+				{kind: "feedback", source: msg.content, title: "System", style: systemStyle, expandedByDefault: true},
+			},
+		})
+		m.contentDirty = true
 		m.syncViewport()
 		if wasAtBottom {
 			m.viewport.GotoBottom()

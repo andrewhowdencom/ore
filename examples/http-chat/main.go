@@ -192,24 +192,24 @@ func run() error {
 
 	// Bind slash commands after the manager is created so handlers can
 	// capture the manager in their closures.
-	slashReg.Bind("new", func(ctx context.Context, args []string) (session.Event, error) {
+	slashReg.Bind("new", "Create a new session", func(ctx context.Context, cmd slash.Command) (slash.Result, error) {
 		// Create a new session and emit a SessionSwitchEvent to notify
 		// all conduits subscribed to the current stream that the user
 		// wants to navigate to a new session.
 		stream, err := mgr.Create()
 		if err != nil {
-			return nil, fmt.Errorf("create session: %w", err)
+			return slash.Result{}, fmt.Errorf("create session: %w", err)
 		}
 		slog.Info("slash command: /new", "new_session", stream.ID())
-		return session.SessionSwitchEvent{
+		return slash.Result{Replace: session.SessionSwitchEvent{
 			SessionID: stream.ID(),
 			Ctx:       loop.WithProvenance(ctx, "slash"),
-		}, nil
+		}}, nil
 	})
 
-	slashReg.Bind("compact", func(ctx context.Context, args []string) (session.Event, error) {
-		slog.Info("slash command: /compact", "args", args)
-		return nil, nil
+	slashReg.Bind("compact", "Compact conversation history", func(ctx context.Context, cmd slash.Command) (slash.Result, error) {
+		slog.Info("slash command: /compact", "args", slash.Fields(cmd.Input))
+		return slash.Result{}, nil
 	})
 
 	// Create the HTTP conduit.

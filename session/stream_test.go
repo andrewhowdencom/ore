@@ -818,8 +818,8 @@ func TestStream_MultipleSubmit_StartsSingleWorker(t *testing.T) {
 func TestStream_Interceptor_Consume(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	consumeInterceptor := func(ctx context.Context, event Event) (Event, bool, error) {
-		return event, true, nil
+	consumeInterceptor := func(ctx context.Context, event Event) (InterceptResult, error) {
+		return InterceptResult{}, nil
 	}
 	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(consumeInterceptor)))
 
@@ -847,8 +847,8 @@ func TestStream_Interceptor_Consume(t *testing.T) {
 func TestStream_Interceptor_PassThrough(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	passThroughInterceptor := func(ctx context.Context, event Event) (Event, bool, error) {
-		return event, false, nil
+	passThroughInterceptor := func(ctx context.Context, event Event) (InterceptResult, error) {
+		return InterceptResult{Event: event}, nil
 	}
 	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(passThroughInterceptor)))
 
@@ -881,12 +881,12 @@ func TestStream_Interceptor_PassThrough(t *testing.T) {
 func TestStream_Interceptor_Rewrite(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	rewriteInterceptor := func(ctx context.Context, event Event) (Event, bool, error) {
+	rewriteInterceptor := func(ctx context.Context, event Event) (InterceptResult, error) {
 		if ume, ok := event.(UserMessageEvent); ok {
 			ume.Content = "rewritten: " + ume.Content
-			return ume, false, nil
+			return InterceptResult{Event: ume}, nil
 		}
-		return event, false, nil
+		return InterceptResult{Event: event}, nil
 	}
 	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(rewriteInterceptor)))
 
@@ -906,8 +906,8 @@ func TestStream_Interceptor_Rewrite(t *testing.T) {
 func TestStream_Interceptor_Error(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	errorInterceptor := func(ctx context.Context, event Event) (Event, bool, error) {
-		return nil, false, errors.New("interceptor error")
+	errorInterceptor := func(ctx context.Context, event Event) (InterceptResult, error) {
+		return InterceptResult{}, errors.New("interceptor error")
 	}
 	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(errorInterceptor)))
 
@@ -925,9 +925,9 @@ func TestStream_Interceptor_NonUserMessage(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
 	var calledWith Event
-	nonUserInterceptor := func(ctx context.Context, event Event) (Event, bool, error) {
+	nonUserInterceptor := func(ctx context.Context, event Event) (InterceptResult, error) {
 		calledWith = event
-		return event, false, nil
+		return InterceptResult{Event: event}, nil
 	}
 	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(nonUserInterceptor)))
 
@@ -939,6 +939,202 @@ func TestStream_Interceptor_NonUserMessage(t *testing.T) {
 
 	// Interceptor should not be called for non-UserMessageEvent.
 	assert.Nil(t, calledWith)
+
+	_ = stream.Close()
+}
+
+func TestStream_Interceptor_Feedback(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	feedbackInterceptor := func(ctx context.Context, event Event) (InterceptResult, error) {
+		return InterceptResult{
+			Feedback: []artifact.Text{
+				{Content: "first feedback"},
+				{Content: "second feedback"},
+			},
+		}, nil
+	}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(feedbackInterceptor)))
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	feedbackCh := stream.Subscribe("feedback")
+	turnCh := stream.Subscribe("turn_complete")
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "/test"})
+	require.NoError(t, err)
+
+	// Should receive 2 feedback events in order.
+	var feedbackEvents []loop.FeedbackEvent
+	for i := 0; i < 2; i++ {
+		select {
+		case event := <-feedbackCh:
+			fb, ok := event.(loop.FeedbackEvent)
+			require.True(t, ok)
+			feedbackEvents = append(feedbackEvents, fb)
+		case <-time.After(100 * time.Millisecond):
+			t.Fatalf("timeout waiting for feedback event %d", i)
+		}
+	}
+	require.Len(t, feedbackEvents, 2)
+	assert.Equal(t, "first feedback", feedbackEvents[0].Content)
+	assert.Equal(t, "second feedback", feedbackEvents[1].Content)
+
+	// No turn_complete events because the event was consumed (nil Event).
+	select {
+	case event := <-turnCh:
+		t.Fatalf("expected no turn events, got %T", event)
+	case <-time.After(50 * time.Millisecond):
+		// Expected timeout — no events.
+	}
+
+	// No turns should be added to state.
+	assert.Empty(t, stream.Turns())
+
+	_ = stream.Close()
+}
+
+func TestStream_Interceptor_FeedbackProvenance(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	feedbackInterceptor := func(ctx context.Context, event Event) (InterceptResult, error) {
+		return InterceptResult{
+			Feedback: []artifact.Text{{Content: "feedback message"}},
+		}, nil
+	}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(feedbackInterceptor)))
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	feedbackCh := stream.Subscribe("feedback")
+
+	ctx := loop.WithProvenance(context.Background(), "test-provenance")
+	err = stream.Process(ctx, UserMessageEvent{Content: "/test", Ctx: ctx})
+	require.NoError(t, err)
+
+	select {
+	case event := <-feedbackCh:
+		fb, ok := event.(loop.FeedbackEvent)
+		require.True(t, ok)
+		assert.Equal(t, "feedback message", fb.Content)
+		name, _ := loop.ProvenanceFrom(fb.Ctx)
+		assert.Equal(t, "test-provenance", name, "feedback event should carry the original user message provenance")
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for feedback event")
+	}
+
+	_ = stream.Close()
+}
+
+func TestStream_Interceptor_FeedbackWithReplaceAndMultipleFeedback(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	feedbackInterceptor := func(ctx context.Context, event Event) (InterceptResult, error) {
+		ume, ok := event.(UserMessageEvent)
+		require.True(t, ok)
+		ume.Content = "rewritten: " + ume.Content
+		return InterceptResult{
+			Event:    ume,
+			Feedback: []artifact.Text{{Content: "fb1"}, {Content: "fb2"}},
+		}, nil
+	}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(feedbackInterceptor)))
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	feedbackCh := stream.Subscribe("feedback")
+	turnCh := stream.Subscribe("turn_complete")
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hello"})
+	require.NoError(t, err)
+
+	// Should receive 2 feedback events.
+	var feedbackEvents []loop.FeedbackEvent
+	for i := 0; i < 2; i++ {
+		select {
+		case event := <-feedbackCh:
+			fb, ok := event.(loop.FeedbackEvent)
+			require.True(t, ok)
+			feedbackEvents = append(feedbackEvents, fb)
+		case <-time.After(100 * time.Millisecond):
+			t.Fatalf("timeout waiting for feedback event %d", i)
+		}
+	}
+	require.Len(t, feedbackEvents, 2)
+	assert.Equal(t, "fb1", feedbackEvents[0].Content)
+	assert.Equal(t, "fb2", feedbackEvents[1].Content)
+
+	// Should also receive turn_complete events because the event was replaced.
+	var events []loop.OutputEvent
+	for i := 0; i < 2; i++ {
+		select {
+		case event := <-turnCh:
+			events = append(events, event)
+		case <-time.After(100 * time.Millisecond):
+			t.Fatalf("timeout waiting for turn event %d", i)
+		}
+	}
+	require.Len(t, events, 2)
+
+	// Turns should have the rewritten content.
+	turns := stream.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, "rewritten: hello", turns[0].Artifacts[0].(artifact.Text).Content)
+
+	_ = stream.Close()
+}
+
+func TestStream_Interceptor_FeedbackWithReplace(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	feedbackInterceptor := func(ctx context.Context, event Event) (InterceptResult, error) {
+		ume, ok := event.(UserMessageEvent)
+		require.True(t, ok)
+		ume.Content = "rewritten: " + ume.Content
+		return InterceptResult{
+			Event:    ume,
+			Feedback: []artifact.Text{{Content: "feedback message"}},
+		}, nil
+	}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(feedbackInterceptor)))
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	feedbackCh := stream.Subscribe("feedback")
+	turnCh := stream.Subscribe("turn_complete")
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hello"})
+	require.NoError(t, err)
+
+	// Feedback event should be received.
+	select {
+	case event := <-feedbackCh:
+		fb, ok := event.(loop.FeedbackEvent)
+		require.True(t, ok)
+		assert.Equal(t, "feedback message", fb.Content)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for feedback event")
+	}
+
+	// Turn should complete because the event was replaced (not consumed).
+	var events []loop.OutputEvent
+	for i := 0; i < 2; i++ {
+		select {
+		case event := <-turnCh:
+			events = append(events, event)
+		case <-time.After(100 * time.Millisecond):
+			t.Fatalf("timeout waiting for turn event %d", i)
+		}
+	}
+	require.Len(t, events, 2)
+
+	turns := stream.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, "rewritten: hello", turns[0].Artifacts[0].(artifact.Text).Content)
 
 	_ = stream.Close()
 }
