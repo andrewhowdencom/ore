@@ -79,6 +79,35 @@ func TestStream_Turns(t *testing.T) {
 	_ = stream.Close()
 }
 
+func TestStream_LoadTurns(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	// Process a user message to get initial turns.
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hello"})
+	require.NoError(t, err)
+
+	initialTurns := stream.Turns()
+	require.Len(t, initialTurns, 2)
+
+	// Replace the turns with a single synthetic turn.
+	replacement := []state.Turn{
+		{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "replaced"}}},
+	}
+	stream.LoadTurns(replacement)
+
+	got := stream.Turns()
+	require.Len(t, got, 1)
+	assert.Equal(t, state.RoleUser, got[0].Role)
+	assert.Equal(t, "replaced", got[0].Artifacts[0].(artifact.Text).Content)
+
+	_ = stream.Close()
+}
+
 func TestStream_Process_ContextPropagation(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}

@@ -336,6 +336,14 @@ func (s *Stream) Turns() []state.Turn {
 	return s.thread.State.Turns()
 }
 
+// LoadTurns replaces the thread's turn state with the provided slice.
+// It acquires the stream's mutex to ensure thread-safe state mutation.
+func (s *Stream) LoadTurns(turns []state.Turn) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.thread.State.LoadTurns(turns)
+}
+
 // GetMetadata retrieves a metadata value from the underlying thread.
 func (s *Stream) GetMetadata(key string) (string, bool) {
 	s.mu.Lock()
