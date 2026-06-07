@@ -1,0 +1,598 @@
+openapi: 3.1.0
+info:
+  title: ore HTTP Conduit API
+  description: |
+    HTTP conduit for the ore framework, exposing session.Stream conversation
+    primitives over HTTP with NDJSON streaming and SSE ambient channels.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:7654
+
+paths:
+  /sessions:
+    post:
+      summary: Create a new session
+      description: |
+        Creates a new ephemeral session. Optionally attach to an existing
+        thread by providing a thread_id in the request body.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionCreateRequest'
+      responses:
+        '201':
+          description: Session created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '404':
+          description: Thread not found (when attaching to existing thread)
+        '500':
+          description: Internal server error
+
+  /sessions/{id}:
+    delete:
+      summary: Close a session
+      description: |
+        Removes the session and closes its Step. The underlying thread is
+        NOT deleted from the store.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Session ID
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Session closed successfully
+        '404':
+          description: Session not found
+
+  /sessions/{id}/messages:
+    post:
+      summary: Send a message
+      description: |
+        Sends a user message to the session and returns an NDJSON stream of
+        events. The stream includes artifact events, lifecycle events, and
+        the final turn_complete event.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Session ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageRequest'
+      responses:
+        '200':
+          description: NDJSON event stream
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                enum: [application/x-ndjson]
+          content:
+            application/x-ndjson:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404':
+          description: Session not found
+        '400':
+          description: Malformed JSON or unsupported event
+
+  /sessions/{id}/events:
+    get:
+      summary: Subscribe to events
+      description: |
+        SSE stream of events from the session. The connection is persistent
+        until the client disconnects or the session is deleted.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Session ID
+          schema:
+            type: string
+        - name: kinds
+          in: query
+          required: false
+          description: Comma-separated list of event kinds to subscribe to
+          schema:
+            type: string
+      responses:
+        '200':
+          description: SSE event stream
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                enum: [text/event-stream]
+            Cache-Control:
+              schema:
+                type: string
+                enum: [no-cache]
+            Connection:
+              schema:
+                type: string
+                enum: [keep-alive]
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404':
+          description: Session not found
+
+  /threads:
+    get:
+      summary: List all threads
+      description: Returns all threads in the store as a JSON array.
+      responses:
+        '200':
+          description: Thread list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ThreadSummary'
+
+  /:
+    get:
+      summary: Landing page
+      description: Thread-list landing page with embedded web UI links.
+      responses:
+        '200':
+          description: HTML landing page
+          content:
+            text/html:
+              schema:
+                type: string
+        '404':
+          description: Not found (when UI is disabled)
+
+  /chat:
+    get:
+      summary: Web chat UI
+      description: Embedded web chat interface (HTML).
+      responses:
+        '200':
+          description: HTML chat UI
+          content:
+            text/html:
+              schema:
+                type: string
+        '404':
+          description: Not found (when UI is disabled)
+
+  /chat.js:
+    get:
+      summary: Web chat UI JavaScript
+      description: JavaScript bundle for the embedded web chat UI.
+      responses:
+        '200':
+          description: JavaScript bundle
+          content:
+            application/javascript:
+              schema:
+                type: string
+        '404':
+          description: Not found (when UI is disabled)
+
+components:
+  schemas:
+    Session:
+      type: object
+      required:
+        - id
+        - events_url
+      properties:
+        id:
+          type: string
+          description: Unique session identifier
+        events_url:
+          type: string
+          description: URL for SSE events (GET /sessions/{id}/events)
+
+    SessionCreateRequest:
+      type: object
+      properties:
+        thread_id:
+          type: string
+          description: Existing thread ID to attach to (optional)
+
+    MessageRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          description: User message content
+        kinds:
+          type: array
+          description: |
+            Event kinds to subscribe to. Defaults to:
+            text, reasoning, tool_call, tool_result, turn_complete,
+            error, properties, lifecycle.
+          items:
+            $ref: '#/components/schemas/EventKind'
+
+    ThreadSummary:
+      type: object
+      required:
+        - id
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          description: Thread identifier
+        created_at:
+          type: string
+          format: date-time
+          description: Thread creation timestamp (RFC3339)
+        updated_at:
+          type: string
+          format: date-time
+          description: Thread last update timestamp (RFC3339)
+
+    EventKind:
+      type: string
+      description: All possible event kind identifiers
+      enum:
+        - text
+        - text_delta
+        - reasoning
+        - reasoning_delta
+        - tool_call
+        - tool_call_delta
+        - tool_result
+        - usage
+        - image
+        - turn_complete
+        - error
+        - properties
+        - lifecycle
+
+    EventContext:
+      type: object
+      description: Routing metadata attached to events
+      properties:
+        provenance:
+          type: string
+          description: Event provenance (e.g., "http", "tui")
+        traceparent:
+          type: string
+          description: W3C traceparent for distributed tracing
+
+    Turn:
+      type: object
+      required:
+        - role
+        - artifacts
+      properties:
+        role:
+          type: string
+          enum: [user, assistant, system]
+          description: Role of the turn author
+        artifacts:
+          type: array
+          description: Artifacts in this turn
+          items:
+            $ref: '#/components/schemas/Artifact'
+        timestamp:
+          type: string
+          format: date-time
+          description: Turn timestamp (RFC3339)
+
+    Artifact:
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum: [text, text_delta, reasoning, reasoning_delta, tool_call, tool_call_delta, tool_result, usage, image]
+          description: Artifact type discriminator
+        content:
+          type: string
+          description: Text or reasoning content (text, text_delta, reasoning, reasoning_delta)
+        id:
+          type: string
+          description: Tool call identifier (tool_call, tool_call_delta)
+        name:
+          type: string
+          description: Tool name (tool_call, tool_call_delta)
+        arguments:
+          type: string
+          description: Tool call arguments as JSON string (tool_call, tool_call_delta)
+        display:
+          type: string
+          description: Human-readable display of tool call arguments (tool_call)
+        tool_call_id:
+          type: string
+          description: Reference to the originating tool call (tool_result)
+        is_error:
+          type: boolean
+          description: Whether the tool result is an error (tool_result)
+        prompt_tokens:
+          type: integer
+          description: Number of prompt tokens (usage)
+        completion_tokens:
+          type: integer
+          description: Number of completion tokens (usage)
+        total_tokens:
+          type: integer
+          description: Total token count (usage)
+        index:
+          type: integer
+          description: Parallel tool call index (tool_call_delta)
+        url:
+          type: string
+          description: Image URL (image)
+
+    Event:
+      type: object
+      required:
+        - kind
+      description: |
+        Discriminated union of all event types. The kind field determines
+        the schema of the remaining fields.
+      oneOf:
+        - $ref: '#/components/schemas/TextEvent'
+        - $ref: '#/components/schemas/TextDeltaEvent'
+        - $ref: '#/components/schemas/ReasoningEvent'
+        - $ref: '#/components/schemas/ReasoningDeltaEvent'
+        - $ref: '#/components/schemas/ToolCallEvent'
+        - $ref: '#/components/schemas/ToolCallDeltaEvent'
+        - $ref: '#/components/schemas/ToolResultEvent'
+        - $ref: '#/components/schemas/UsageEvent'
+        - $ref: '#/components/schemas/ImageEvent'
+        - $ref: '#/components/schemas/TurnCompleteEvent'
+        - $ref: '#/components/schemas/ErrorEvent'
+        - $ref: '#/components/schemas/PropertiesEvent'
+        - $ref: '#/components/schemas/LifecycleEvent'
+      discriminator:
+        propertyName: kind
+        mapping:
+          text: '#/components/schemas/TextEvent'
+          text_delta: '#/components/schemas/TextDeltaEvent'
+          reasoning: '#/components/schemas/ReasoningEvent'
+          reasoning_delta: '#/components/schemas/ReasoningDeltaEvent'
+          tool_call: '#/components/schemas/ToolCallEvent'
+          tool_call_delta: '#/components/schemas/ToolCallDeltaEvent'
+          tool_result: '#/components/schemas/ToolResultEvent'
+          usage: '#/components/schemas/UsageEvent'
+          image: '#/components/schemas/ImageEvent'
+          turn_complete: '#/components/schemas/TurnCompleteEvent'
+          error: '#/components/schemas/ErrorEvent'
+          properties: '#/components/schemas/PropertiesEvent'
+          lifecycle: '#/components/schemas/LifecycleEvent'
+
+    TextEvent:
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum: [text]
+        content:
+          type: string
+        context:
+          $ref: '#/components/schemas/EventContext'
+
+    TextDeltaEvent:
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum: [text_delta]
+        content:
+          type: string
+        context:
+          $ref: '#/components/schemas/EventContext'
+
+    ReasoningEvent:
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum: [reasoning]
+        content:
+          type: string
+        context:
+          $ref: '#/components/schemas/EventContext'
+
+    ReasoningDeltaEvent:
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum: [reasoning_delta]
+        content:
+          type: string
+        context:
+          $ref: '#/components/schemas/EventContext'
+
+    ToolCallEvent:
+      type: object
+      required:
+        - kind
+        - id
+        - name
+        - arguments
+      properties:
+        kind:
+          type: string
+          enum: [tool_call]
+        id:
+          type: string
+        name:
+          type: string
+        arguments:
+          type: string
+        display:
+          type: string
+        context:
+          $ref: '#/components/schemas/EventContext'
+
+    ToolCallDeltaEvent:
+      type: object
+      required:
+        - kind
+        - id
+        - name
+        - arguments
+        - index
+      properties:
+        kind:
+          type: string
+          enum: [tool_call_delta]
+        id:
+          type: string
+        name:
+          type: string
+        arguments:
+          type: string
+        index:
+          type: integer
+        context:
+          $ref: '#/components/schemas/EventContext'
+
+    ToolResultEvent:
+      type: object
+      required:
+        - kind
+        - tool_call_id
+        - content
+        - is_error
+      properties:
+        kind:
+          type: string
+          enum: [tool_result]
+        tool_call_id:
+          type: string
+        content:
+          type: string
+        is_error:
+          type: boolean
+        context:
+          $ref: '#/components/schemas/EventContext'
+
+    UsageEvent:
+      type: object
+      required:
+        - kind
+        - prompt_tokens
+        - completion_tokens
+        - total_tokens
+      properties:
+        kind:
+          type: string
+          enum: [usage]
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+        context:
+          $ref: '#/components/schemas/EventContext'
+
+    ImageEvent:
+      type: object
+      required:
+        - kind
+        - url
+      properties:
+        kind:
+          type: string
+          enum: [image]
+        url:
+          type: string
+        context:
+          $ref: '#/components/schemas/EventContext'
+
+    TurnCompleteEvent:
+      type: object
+      required:
+        - kind
+        - turn
+      properties:
+        kind:
+          type: string
+          enum: [turn_complete]
+        turn:
+          $ref: '#/components/schemas/Turn'
+        context:
+          $ref: '#/components/schemas/EventContext'
+
+    ErrorEvent:
+      type: object
+      required:
+        - kind
+        - message
+      properties:
+        kind:
+          type: string
+          enum: [error]
+        message:
+          type: string
+          description: Error message
+        context:
+          $ref: '#/components/schemas/EventContext'
+
+    PropertiesEvent:
+      type: object
+      required:
+        - kind
+        - properties
+      properties:
+        kind:
+          type: string
+          enum: [properties]
+        properties:
+          type: object
+          description: Key-value property map
+          additionalProperties:
+            type: string
+        context:
+          $ref: '#/components/schemas/EventContext'
+
+    LifecycleEvent:
+      type: object
+      required:
+        - kind
+        - phase
+      properties:
+        kind:
+          type: string
+          enum: [lifecycle]
+        phase:
+          type: string
+          enum: [submitted, streaming, done, cancelled]
+          description: |
+            Pipeline phase:
+            - submitted: user message accepted, provider call about to start
+            - streaming: first artifact has arrived from the provider
+            - done: turn completed successfully
+            - cancelled: turn was cancelled
+        context:
+          $ref: '#/components/schemas/EventContext'
