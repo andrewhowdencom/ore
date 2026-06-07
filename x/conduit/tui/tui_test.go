@@ -34,7 +34,7 @@ func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- arti
 
 // simpleProcessor runs a single Step.Turn with the mock provider.
 func simpleProcessor() session.TurnProcessor {
-	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+	return func(ctx context.Context, step loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
 		return step.Turn(ctx, st, prov)
 	}
 }
@@ -141,4 +141,23 @@ func TestTUI_InitModel_ResumesThreadWithHistory(t *testing.T) {
 	require.Len(t, m.turns[1].blocks, 1)
 	assert.Equal(t, "assistant response", m.turns[1].blocks[0].source)
 	assert.NotEmpty(t, m.turns[1].blocks[0].rendered, "assistant turn should be markdown rendered")
+}
+
+func TestTUI_ReloadHistory_NilProgram(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	c, err := New(mgr)
+	require.NoError(t, err)
+
+	// Type assert to *TUI so we can call ReloadHistory directly.
+	tui := c.(*TUI)
+
+	// program is nil because Start has not been called.
+	// ReloadHistory should not panic.
+	assert.NotPanics(t, func() {
+		err := tui.ReloadHistory(nil)
+		assert.NoError(t, err)
+	})
 }

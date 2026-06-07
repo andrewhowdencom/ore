@@ -1867,3 +1867,146 @@ func TestModel_LoadHistory_WindowSize_Rerenders(t *testing.T) {
 	assert.Equal(t, 40, rec.widths[1])
 	assert.Equal(t, "rendered-at-width", mm.turns[0].blocks[0].rendered)
 }
+
+func TestModel_Update_ReloadHistory(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+
+	// Pre-populate with two turns.
+	m.turns = []renderedTurn{
+		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
+		{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "hi"}}},
+	}
+
+	replacementTurn := state.Turn{
+		Role: state.RoleSystem,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "compacted summary"},
+		},
+	}
+
+	newM, _ := m.Update(reloadHistoryMsg{turns: []state.Turn{replacementTurn}})
+	mm := newM.(*model)
+
+	require.Len(t, mm.turns, 1)
+	assert.Equal(t, state.RoleSystem, mm.turns[0].role)
+	require.Len(t, mm.turns[0].blocks, 1)
+	assert.Equal(t, "text", mm.turns[0].blocks[0].kind)
+	assert.Equal(t, "compacted summary", mm.turns[0].blocks[0].source)
+	assert.False(t, mm.pending)
+	assert.Empty(t, mm.currentTurn.blocks)
+}
+
+func TestModel_Update_ReloadHistory_Empty(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.turns = []renderedTurn{
+		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
+	}
+
+	newM, _ := m.Update(reloadHistoryMsg{turns: []state.Turn{}})
+	mm := newM.(*model)
+
+	assert.Empty(t, mm.turns)
+	assert.False(t, mm.pending)
+	assert.Empty(t, mm.currentTurn.blocks)
+}
+
+func TestModel_Update_ReloadHistory_PreservesScroll(t *testing.T) {
+	// Case 1: at bottom -> stays at bottom.
+	m1 := newTestModel()
+	m1.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
+	m1.md = mockMarkdownRenderer{output: "rendered\nline"}
+	for i := 0; i < 50; i++ {
+		m1.turns = append(m1.turns, renderedTurn{
+			role:   state.RoleUser,
+			blocks: []renderedBlock{{kind: "text", source: "any"}},
+		})
+	}
+	m1.contentDirty = true
+	m1.syncViewport()
+	m1.viewport.GotoBottom()
+	assert.True(t, m1.viewport.AtBottom(), "should be at bottom before reload")
+
+	replacementTurns := make([]state.Turn, 50)
+	for i := 0; i < 50; i++ {
+		replacementTurns[i] = state.Turn{
+			Role: state.RoleUser,
+			Artifacts: []artifact.Artifact{
+				artifact.Text{Content: "any"},
+			},
+		}
+	}
+
+	newM1, _ := m1.Update(reloadHistoryMsg{turns: replacementTurns})
+	mm1 := newM1.(*model)
+	mm1.syncViewport()
+	assert.True(t, mm1.viewport.AtBottom(), "should remain at bottom after reload")
+
+	// Case 2: not at bottom -> does not jump to bottom.
+	m2 := newTestModel()
+	m2.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
+	m2.md = mockMarkdownRenderer{output: "rendered\nline"}
+	for i := 0; i < 50; i++ {
+		m2.turns = append(m2.turns, renderedTurn{
+			role:   state.RoleUser,
+			blocks: []renderedBlock{{kind: "text", source: "any"}},
+		})
+	}
+	m2.contentDirty = true
+	m2.syncViewport()
+	// Viewport is at top by default, so AtBottom is false.
+	assert.False(t, m2.viewport.AtBottom(), "should not be at bottom initially")
+
+	newM2, _ := m2.Update(reloadHistoryMsg{turns: replacementTurns})
+	mm2 := newM2.(*model)
+	mm2.syncViewport()
+	assert.False(t, mm2.viewport.AtBottom(), "should not jump to bottom when not previously at bottom")
+}
+
+func TestModel_Update_ReloadHistory_ClearsRenderScheduled(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.renderScheduled = true
+
+	newM, _ := m.Update(reloadHistoryMsg{turns: []state.Turn{{
+		Role: state.RoleUser,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "hello"},
+		},
+	}}})
+	mm := newM.(*model)
+
+	assert.False(t, mm.renderScheduled, "renderScheduled should be cleared after reload")
+}
+
+func TestModel_Update_ReloadHistory_WithPending(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.pending = true
+
+	newM, _ := m.Update(reloadHistoryMsg{turns: []state.Turn{{
+		Role: state.RoleUser,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "hello"},
+		},
+	}}})
+	mm := newM.(*model)
+
+	assert.False(t, mm.pending, "pending should be reset after reload")
+}
+
+func TestModel_Update_ReloadHistory_NilSlice(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.turns = []renderedTurn{
+		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
+	}
+
+	newM, _ := m.Update(reloadHistoryMsg{turns: nil})
+	mm := newM.(*model)
+
+	assert.Empty(t, mm.turns, "nil slice should be treated as empty history")
+	assert.False(t, mm.pending)
+	assert.Empty(t, mm.currentTurn.blocks)
+}
