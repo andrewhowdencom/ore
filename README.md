@@ -76,6 +76,11 @@ without any YAML or code generation layer.
 For a more fully fledged coding agent built on `ore`, see
 [`andrewhowdencom/workshop`](https://github.com/andrewhowdencom/workshop).
 
+> **Note:** The TUI conduit's conversation view is cached locally. If your
+> application replaces thread state via `stream.LoadTurns` (e.g. after
+> compaction), call `tui.ReloadHistory(stream.Turns())` to refresh the UI.
+> See [`x/conduit/tui/README.md`](x/conduit/tui/README.md) for details.
+
 All examples read `ORE_API_KEY` from the environment. Set `ORE_MODEL` to choose
 a different model (default: `gpt-4o`). Set `STORE_DIR` for persistent JSON
 thread storage.

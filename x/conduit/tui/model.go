@@ -71,6 +71,15 @@ type errorMsg struct {
 // assistant turn's text and reasoning blocks.
 type renderTickMsg struct{}
 
+// reloadHistoryMsg is a Bubble Tea message that instructs the model to
+// discard its current turn history and rebuild it from a fresh slice of
+// state.Turn values. This is used after compaction (or any other
+// operation that replaces the persistent state via stream.LoadTurns) so
+// the TUI view remains synchronized with the backend.
+type reloadHistoryMsg struct {
+	turns []state.Turn
+}
+
 // renderedBlock tracks a finalized piece of turn content with its kind,
 // original source, optional compact representation, and optional
 // pre-rendered ANSI cache.
@@ -471,6 +480,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		wasAtBottom := m.viewport.AtBottom()
 		m.contentDirty = true
+		m.syncViewport()
+		if wasAtBottom {
+			m.viewport.GotoBottom()
+		}
+	case reloadHistoryMsg:
+		m.turns = nil
+		m.currentTurn = renderedTurn{} // defensive: clear any partial turn
+		m.pending = false              // defensive: reset pending state
+		m.renderScheduled = false      // clear any pending render tick
+		m.loadHistory(msg.turns)
+		m.contentDirty = true
+		wasAtBottom := m.viewport.AtBottom()
 		m.syncViewport()
 		if wasAtBottom {
 			m.viewport.GotoBottom()

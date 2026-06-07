@@ -12,6 +12,12 @@
 // incrementally as chunks arrive. A 16ms debounced render tick batches
 // glamour markdown re-renders to keep the UI smooth at ~60fps.
 //
+// State refresh:
+// If the underlying conversation state is replaced (e.g. after compaction via
+// stream.LoadTurns), call ReloadHistory on the TUI to rebuild the conversation
+// view from the new turn slice. This must be done after Start has been called
+// so the Bubble Tea program is running.
+//
 // Keyboard shortcuts:
 //   Ctrl+O — toggle expansion of latest assistant turn's tool blocks
 //            (compact by default; resets after each new turn)
@@ -27,6 +33,7 @@ import (
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/state"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
@@ -271,5 +278,17 @@ func (t *TUI) PlayDone(ctx context.Context) error {
 // distinct error tones.
 func (t *TUI) PlayError(ctx context.Context) error {
 	t.program.Send(audioMsg{})
+	return nil
+}
+
+// ReloadHistory discards the model's current conversation history and
+// rebuilds it from the supplied turn slice. This is the public hook that
+// downstream applications (e.g., a slash command handler or compaction
+// processor) call after replacing the stream's persistent state via
+// stream.LoadTurns so the TUI view stays synchronized with the backend.
+func (t *TUI) ReloadHistory(turns []state.Turn) error {
+	if t.program != nil {
+		t.program.Send(reloadHistoryMsg{turns: turns})
+	}
 	return nil
 }
