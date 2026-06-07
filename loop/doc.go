@@ -1,7 +1,43 @@
 // Package loop implements the single-turn execution primitive for ore.
 // It provides a Step type that invokes a provider, distributes all artifacts
-// (both delta and complete) to subscribers via an embedded FanOut, and runs
-// registered artifact handlers on the complete response.
+// (both delta and complete) to subscribers, and runs registered artifact
+// handlers on the complete response.
+//
+// Step is a thin orchestrator composed of two internal components:
+//
+//   - EventBus — owns the broadcast infrastructure (events channel, FanOut,
+//     OnEmit callbacks, and bound state for auto-append). It is the single
+//     gateway for all observable mutations emitted by loop components.
+//   - Pipeline — the single-turn execution engine. It runs transforms, invokes
+//     the provider, accumulates streaming artifacts (with delta merging), and
+//     executes registered handlers.
+//
+// Step sequences events around Pipeline.Turn(): emits "submitted" lifecycle
+// event, runs the pipeline with an artifact callback that emits streaming
+// events, then emits the final TurnCompleteEvent and runs handlers.
+//
+// Public interfaces enable middleware composition without depending on the
+// concrete *Step type:
+//
+//   - TurnRunner — runs a single inference turn (Turn).
+//   - TurnSubmitter — records a non-inference turn (Submit).
+//   - TurnExecutor — combines both TurnRunner and TurnSubmitter.
+//
+// Architecture overview:
+//
+//          Step (thin orchestrator)
+//           │
+//    Emit() │          Turn()
+//           │            │
+//           ▼            ▼
+//      EventBus ◄── Pipeline (transforms, provider, accumulate, handlers)
+//           │            │
+//           │     onArtifact callback
+//           │            │
+//           │            ▼
+//           │      subscribers (channels)
+//           │
+//           └──► FanOut (broadcast)
 //
 // Why use transforms?
 //
@@ -53,4 +89,7 @@
 //     key-value pairs (e.g. thread_id, token counts, model name). It is
 //     emitted by any component holding a *session.Stream and delivered to
 //     all subscribers through the per-session FanOut.
+//
+// See also: cognitive package — composable middleware patterns (ReAct,
+// WithVerification) that depend on the TurnRunner and TurnSubmitter interfaces.
 package loop

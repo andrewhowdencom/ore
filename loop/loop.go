@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
@@ -283,26 +282,22 @@ func ThreadIDFrom(ctx context.Context) (string, bool) {
 type OnEmit func(ctx context.Context, event OutputEvent)
 
 // Step executes a single complete inference turn: it invokes the provider,
-// distributes streaming artifacts to subscribers via an embedded FanOut, and
+// distributes streaming artifacts to subscribers via an embedded EventBus, and
 // runs registered artifact handlers synchronously on the complete response.
 type Step struct {
-	events       chan outputEventEnvelope
-	fanOut       *FanOut
-	transforms   []Transform
-	handlers     []Handler
-	onEmit       []OnEmit
-	invokeOpts   []provider.InvokeOption
+	eventBus     *EventBus
+	pipeline     *Pipeline
 	eventContext context.Context
 	tracer       trace.Tracer
-	state        state.State
 }
 
 // New creates a Step with the given options.
 func New(opts ...Option) *Step {
-	events := make(chan outputEventEnvelope)
+	eb := newEventBus()
+	pipe := newPipeline()
 	s := &Step{
-		events: events,
-		fanOut: NewFanOut(events),
+		eventBus: eb,
+		pipeline: pipe,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -316,22 +311,7 @@ func New(opts ...Option) *Step {
 // automatically appended to that state before OnEmit callbacks run. Other
 // event types are passed through unchanged.
 func (s *Step) Emit(ctx context.Context, event OutputEvent) {
-	if tc, ok := event.(TurnCompleteEvent); ok && s.state != nil {
-		s.state.Append(tc.Turn.Role, tc.Turn.Artifacts...)
-	}
-	for _, fn := range s.onEmit {
-		fn(ctx, event)
-	}
-	env := outputEventEnvelope{event: event, done: make(chan struct{})}
-	select {
-	case s.events <- env:
-	case <-ctx.Done():
-		return
-	}
-	select {
-	case <-env.done:
-	case <-ctx.Done():
-	}
+	s.eventBus.Emit(ctx, event)
 }
 
 // Subscribe returns a receive-only channel of OutputEvents whose Kind()
@@ -339,7 +319,7 @@ func (s *Step) Emit(ctx context.Context, event OutputEvent) {
 // FanOut is closed. Events are delivered non-blocking; slow subscribers
 // may drop events.
 func (s *Step) Subscribe(kinds ...string) <-chan OutputEvent {
-	return s.fanOut.Subscribe(kinds...)
+	return s.eventBus.Subscribe(kinds...)
 }
 
 // SetEventContext sets the context.Context that will be attached to all
@@ -364,7 +344,7 @@ func (s *Step) clearEventContext() {
 
 // Close stops the Step's FanOut and closes all subscriber channels.
 func (s *Step) Close() error {
-	return s.fanOut.Close()
+	return s.eventBus.Close()
 }
 
 // Option configures a Step.
@@ -376,14 +356,14 @@ type Option func(*Step)
 // serializes it. They must not mutate the underlying buffer.
 func WithTransforms(transforms ...Transform) Option {
 	return func(s *Step) {
-		s.transforms = append(s.transforms, transforms...)
+		s.pipeline.transforms = append(s.pipeline.transforms, transforms...)
 	}
 }
 
 // WithHandlers configures artifact handlers to run after each turn.
 func WithHandlers(handlers ...Handler) Option {
 	return func(s *Step) {
-		s.handlers = append(s.handlers, handlers...)
+		s.pipeline.handlers = append(s.pipeline.handlers, handlers...)
 	}
 }
 
@@ -395,7 +375,7 @@ func WithHandlers(handlers ...Handler) Option {
 // patterns that mutated state directly inside Turn().
 func WithOnEmit(fns ...OnEmit) Option {
 	return func(s *Step) {
-		s.onEmit = append(s.onEmit, fns...)
+		s.eventBus.onEmit = append(s.eventBus.onEmit, fns...)
 	}
 }
 
@@ -410,7 +390,7 @@ func WithOnEmit(fns ...OnEmit) Option {
 // same state, or duplicate turns will result.
 func WithState(st state.State) Option {
 	return func(s *Step) {
-		s.state = st
+		s.eventBus.state = st
 	}
 }
 
@@ -418,7 +398,7 @@ func WithState(st state.State) Option {
 // automatically passed to every provider call made by this Step.
 func WithInvokeOptions(opts ...provider.InvokeOption) Option {
 	return func(s *Step) {
-		s.invokeOpts = append(s.invokeOpts, opts...)
+		s.pipeline.invokeOpts = append(s.pipeline.invokeOpts, opts...)
 	}
 }
 
@@ -447,7 +427,7 @@ func (s *Step) startSpan(ctx context.Context) (context.Context, func()) {
 
 // Turn performs one inference turn with the given provider.
 // The provider emits artifacts to a channel; all artifacts are forwarded to
-// the Step's FanOut subscribers immediately as they arrive. Deltas implementing
+// the Step's EventBus subscribers immediately as they arrive. Deltas implementing
 // Accumulable are merged into blocks keyed by AccumulatorKey, so non-adjacent
 // deltas of the same kind are combined into a single block. Accumulated blocks
 // are flushed on non-delta boundaries and at stream end. The accumulated turn
@@ -458,92 +438,33 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 	defer s.clearEventContext()
 	ctx, endSpan := s.startSpan(ctx)
 	defer endSpan()
-	var err error
-
-	for _, tr := range s.transforms {
-		st, err = tr.Transform(ctx, st)
-		if err != nil {
-			return st, fmt.Errorf("transform failed: %w", err)
-		}
-	}
 
 	s.Emit(ctx, LifecycleEvent{Phase: "submitted", Ctx: s.eventContext})
 
-	provCh := make(chan artifact.Artifact, 100)
-	var accumulatedArtifacts []artifact.Artifact
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		accumulators := make(map[string]artifact.Artifact)
-		var keys []string
-		var hasStreamed bool
-
-		for art := range provCh {
-			if !hasStreamed {
-				hasStreamed = true
-				s.Emit(ctx, LifecycleEvent{Phase: "streaming", Ctx: s.eventContext})
-			}
-			if d, ok := art.(artifact.Accumulable); ok {
-				key := d.AccumulatorKey()
-				if _, exists := accumulators[key]; !exists {
-					keys = append(keys, key)
-				}
-				accumulators[key] = d.MergeInto(accumulators[key])
-				s.Emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
-				if ctx.Err() != nil {
-					return
-				}
-			} else {
-				// Flush all accumulated artifacts before handling non-delta.
-				for _, key := range keys {
-					acc := accumulators[key]
-					s.Emit(ctx, ArtifactEvent{Artifact: acc, Ctx: s.eventContext})
-					accumulatedArtifacts = append(accumulatedArtifacts, acc)
-				}
-				accumulators = make(map[string]artifact.Artifact)
-				keys = nil
-
-				s.Emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
-				if ctx.Err() != nil {
-					return
-				}
-				accumulatedArtifacts = append(accumulatedArtifacts, art)
-			}
+	var hasStreamed bool
+	st, accumulatedArtifacts, err := s.pipeline.Turn(ctx, st, p, func(art artifact.Artifact) {
+		if !hasStreamed {
+			hasStreamed = true
+			s.Emit(ctx, LifecycleEvent{Phase: "streaming", Ctx: s.eventContext})
 		}
-
-		// Flush remaining accumulated artifacts at stream end.
-		for _, key := range keys {
-			acc := accumulators[key]
-			s.Emit(ctx, ArtifactEvent{Artifact: acc, Ctx: s.eventContext})
-			accumulatedArtifacts = append(accumulatedArtifacts, acc)
-		}
-	}()
-
-	allOpts := make([]provider.InvokeOption, 0, len(s.invokeOpts)+len(opts))
-	allOpts = append(allOpts, s.invokeOpts...)
-	allOpts = append(allOpts, opts...)
-
-	err = p.Invoke(ctx, st, provCh, allOpts...)
-	close(provCh)
-	wg.Wait()
-
-	// Post-accumulation: enrich ToolCall artifacts with display hints.
-	enrichToolCalls(ctx, accumulatedArtifacts, allOpts)
+		s.Emit(ctx, ArtifactEvent{Artifact: art, Ctx: s.eventContext})
+	}, opts...)
 
 	if err != nil {
-		// Suppress ErrorEvent for context cancellation so upstream can
-		// emit a dedicated cancelled lifecycle phase instead.
 		if !errors.Is(err, context.Canceled) {
 			s.Emit(context.Background(), ErrorEvent{Err: err, Ctx: s.eventContext})
 		}
-
 		return st, fmt.Errorf("turn failed: %w", err)
 	}
 
-	st, err = s.finalizeTurn(ctx, st, state.RoleAssistant, accumulatedArtifacts)
-	return st, err
+	turn := state.Turn{Role: state.RoleAssistant, Artifacts: accumulatedArtifacts, Timestamp: time.Now()}
+	s.Emit(ctx, TurnCompleteEvent{Turn: turn, Ctx: s.eventContext})
+
+	if err := s.pipeline.RunHandlers(ctx, accumulatedArtifacts, s); err != nil {
+		return st, err
+	}
+
+	return st, nil
 }
 
 // enrichToolCalls scans accumulated artifacts for ToolCall values and, when a
@@ -605,12 +526,8 @@ func (s *Step) finalizeTurn(ctx context.Context, st state.State, role state.Role
 	turn := state.Turn{Role: role, Artifacts: artifacts, Timestamp: time.Now()}
 	s.Emit(ctx, TurnCompleteEvent{Turn: turn, Ctx: s.eventContext})
 
-	for _, art := range artifacts {
-		for _, h := range s.handlers {
-			if err := h.Handle(ctx, art, s); err != nil {
-				return st, fmt.Errorf("artifact handler failed: %w", err)
-			}
-		}
+	if err := s.pipeline.RunHandlers(ctx, artifacts, s); err != nil {
+		return st, err
 	}
 
 	return st, nil
