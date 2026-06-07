@@ -24,12 +24,12 @@ func New(meter metric.Meter) *Telemetry {
 		return &Telemetry{}
 	}
 
-	sent, err := meter.Int64Counter("ore.llm.characters.sent")
+	sent, err := meter.Int64Counter("llm.characters.sent")
 	if err != nil {
 		return &Telemetry{}
 	}
 
-	received, err := meter.Int64Counter("ore.llm.characters.received")
+	received, err := meter.Int64Counter("llm.characters.received")
 	if err != nil {
 		return &Telemetry{}
 	}

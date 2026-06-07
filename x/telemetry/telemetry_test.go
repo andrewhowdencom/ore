@@ -179,7 +179,7 @@ func TestOnEmit_SentCounter_UserRole(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "ore.llm.characters.sent")
+	sum, ok := findMetric(t, rm, "llm.characters.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 1)
 	assert.Equal(t, int64(5), sum.DataPoints[0].Value)
@@ -188,7 +188,7 @@ func TestOnEmit_SentCounter_UserRole(t *testing.T) {
 		"role":          "user",
 	}, attrsMap(sum.DataPoints[0].Attributes))
 
-	_, ok = findMetric(t, rm, "ore.llm.characters.received")
+	_, ok = findMetric(t, rm, "llm.characters.received")
 	assert.False(t, ok)
 }
 
@@ -208,7 +208,7 @@ func TestOnEmit_SentCounter_SystemRole(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "ore.llm.characters.sent")
+	sum, ok := findMetric(t, rm, "llm.characters.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 1)
 	assert.Equal(t, int64(3), sum.DataPoints[0].Value)
@@ -234,7 +234,7 @@ func TestOnEmit_SentCounter_ToolRole(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "ore.llm.characters.sent")
+	sum, ok := findMetric(t, rm, "llm.characters.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 1)
 	assert.Equal(t, map[string]string{
@@ -242,7 +242,7 @@ func TestOnEmit_SentCounter_ToolRole(t *testing.T) {
 		"role":          "tool",
 	}, attrsMap(sum.DataPoints[0].Attributes))
 
-	_, ok = findMetric(t, rm, "ore.llm.characters.received")
+	_, ok = findMetric(t, rm, "llm.characters.received")
 	assert.False(t, ok)
 }
 
@@ -265,11 +265,11 @@ func TestOnEmit_ReceivedCounter_AssistantRole(t *testing.T) {
 	rm := collectMetrics(t, reader)
 
 	// Sent should not be present
-	_, ok := findMetric(t, rm, "ore.llm.characters.sent")
+	_, ok := findMetric(t, rm, "llm.characters.sent")
 	assert.False(t, ok)
 
 	// Received should have two data points (text + reasoning)
-	sum, ok := findMetric(t, rm, "ore.llm.characters.received")
+	sum, ok := findMetric(t, rm, "llm.characters.received")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 2)
 
@@ -290,9 +290,9 @@ func TestOnEmit_NonTurnCompleteEvent_Ignored(t *testing.T) {
 	cb(ctx, loop.PropertiesEvent{Properties: map[string]string{"key": "val"}})
 
 	rm := collectMetrics(t, reader)
-	_, ok := findMetric(t, rm, "ore.llm.characters.sent")
+	_, ok := findMetric(t, rm, "llm.characters.sent")
 	assert.False(t, ok)
-	_, ok = findMetric(t, rm, "ore.llm.characters.received")
+	_, ok = findMetric(t, rm, "llm.characters.received")
 	assert.False(t, ok)
 }
 
@@ -312,7 +312,7 @@ func TestOnEmit_ZeroChars_Skipped(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	_, ok := findMetric(t, rm, "ore.llm.characters.received")
+	_, ok := findMetric(t, rm, "llm.characters.received")
 	assert.False(t, ok)
 }
 
@@ -333,7 +333,7 @@ func TestOnEmit_MultipleArtifacts_MultipleDataPoints(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "ore.llm.characters.sent")
+	sum, ok := findMetric(t, rm, "llm.characters.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 2)
 
@@ -383,7 +383,7 @@ func TestOnEmit_IntegrationWithMockMeter(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "ore.llm.characters.sent")
+	sum, ok := findMetric(t, rm, "llm.characters.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 1)
 	assert.Equal(t, int64(2), sum.DataPoints[0].Value)
@@ -415,7 +415,7 @@ func TestOnEmit_DifferentTurns_SameCounter(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "ore.llm.characters.sent")
+	sum, ok := findMetric(t, rm, "llm.characters.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 1)
 	assert.Equal(t, int64(3), sum.DataPoints[0].Value)
@@ -438,7 +438,7 @@ func TestOnEmit_AssistantTurnWithToolCall(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "ore.llm.characters.received")
+	sum, ok := findMetric(t, rm, "llm.characters.received")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 2)
 
@@ -479,7 +479,7 @@ func TestOnEmit_ToolResultWithLLMStringValue(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "ore.llm.characters.sent")
+	sum, ok := findMetric(t, rm, "llm.characters.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 1)
 	assert.Equal(t, int64(len(`{"result":"ok"}`)), sum.DataPoints[0].Value)
@@ -503,7 +503,7 @@ func TestOnEmit_UnknownArtifactType(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "ore.llm.characters.sent")
+	sum, ok := findMetric(t, rm, "llm.characters.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 1)
 	expectedJSON, _ := json.Marshal(testArtifact{KindVal: "custom", Content: "hello"})
@@ -528,7 +528,7 @@ func TestOnEmit_EmptyArtifacts_NoMetrics(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	_, ok := findMetric(t, rm, "ore.llm.characters.sent")
+	_, ok := findMetric(t, rm, "llm.characters.sent")
 	assert.False(t, ok)
 }
 
@@ -549,7 +549,7 @@ func TestOnEmit_MixedArtifactsWithZeroAndNonZero(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "ore.llm.characters.sent")
+	sum, ok := findMetric(t, rm, "llm.characters.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 1)
 	assert.Equal(t, int64(2), sum.DataPoints[0].Value)

@@ -23,8 +23,8 @@
 //   - Unknown: len(JSON.Marshal(art))
 //
 // Two counters are recorded:
-//   - "ore.llm.characters.sent" for user, system, and tool turns
-//   - "ore.llm.characters.received" for assistant turns
+//   - "llm.characters.sent" for user, system, and tool turns
+//   - "llm.characters.received" for assistant turns
 //
 // Both counters carry attributes:
 //   - "artifact.kind" — the artifact's Kind() string
