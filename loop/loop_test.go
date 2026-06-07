@@ -1695,3 +1695,18 @@ func TestPropertiesEvent_MarshalJSON(t *testing.T) {
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"kind":"properties","properties":{"k":"v"},"context":{"provenance":"test"}}`, string(data))
 }
+
+func TestFeedbackEvent_MarshalJSON(t *testing.T) {
+	ctx := WithProvenance(context.Background(), "test")
+	event := FeedbackEvent{Content: "Unknown command: /foo", Ctx: ctx}
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"feedback","content":"Unknown command: /foo","context":{"provenance":"test"}}`, string(data))
+}
+
+func TestFeedbackEvent_MarshalJSON_OmitEmptyContext(t *testing.T) {
+	event := FeedbackEvent{Content: "help text"}
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"feedback","content":"help text"}`, string(data))
+}

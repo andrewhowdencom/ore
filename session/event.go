@@ -20,6 +20,7 @@ type Event interface {
 
 // UserMessageEvent represents the user submitting a text message.
 type UserMessageEvent struct {
+	// Content holds the raw user message text.
 	Content string
 
 	// Ctx carries the provenance/context metadata for the user message.
@@ -46,7 +47,11 @@ func (e InterruptEvent) Context() context.Context { return e.Ctx }
 
 // InterceptResult is the result of an interceptor processing an event.
 type InterceptResult struct {
-	Event    Event
+	// Event is the replacement event to continue processing. If nil, the
+	// original event is consumed and no further processing occurs.
+	Event Event
+	// Feedback holds UI-only messages (artifact.Text) that are emitted as
+	// FeedbackEvent and never persisted to state.
 	Feedback []artifact.Text
 }
 
