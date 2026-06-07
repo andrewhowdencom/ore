@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
@@ -19,6 +20,7 @@ type Event interface {
 
 // UserMessageEvent represents the user submitting a text message.
 type UserMessageEvent struct {
+	// Content holds the raw user message text.
 	Content string
 
 	// Ctx carries the provenance/context metadata for the user message.
@@ -43,20 +45,31 @@ func (e InterruptEvent) Kind() string { return "interrupt" }
 // Context returns the event's context.Context metadata.
 func (e InterruptEvent) Context() context.Context { return e.Ctx }
 
+// InterceptResult is the result of an interceptor processing an event.
+type InterceptResult struct {
+	// Event is the replacement event to continue processing. If nil, the
+	// original event is consumed and no further processing occurs.
+	Event Event
+	// Feedback holds UI-only messages (artifact.Text) that are emitted as
+	// FeedbackEvent and never persisted to state.
+	Feedback []artifact.Text
+}
+
 // Interceptor processes events before they enter the LLM pipeline.
 // It receives a session.Event and can either:
-//   - Return a new event and false to rewrite the event
-//   - Return any event and true to consume the event (no further processing)
+//   - Return a non-nil Event in the result to rewrite the event
+//   - Return a nil Event in the result to consume the event (no further processing)
 //   - Return an error to abort processing
+// Feedback messages are ephemeral UI messages that are not persisted to state.
 type Interceptor interface {
-	Intercept(ctx context.Context, event Event) (Event, bool, error)
+	Intercept(ctx context.Context, event Event) (InterceptResult, error)
 }
 
 // InterceptorFunc is a function type that implements Interceptor.
-type InterceptorFunc func(ctx context.Context, event Event) (Event, bool, error)
+type InterceptorFunc func(ctx context.Context, event Event) (InterceptResult, error)
 
 // Intercept delegates to the function.
-func (f InterceptorFunc) Intercept(ctx context.Context, event Event) (Event, bool, error) {
+func (f InterceptorFunc) Intercept(ctx context.Context, event Event) (InterceptResult, error) {
 	return f(ctx, event)
 }
 

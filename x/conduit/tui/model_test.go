@@ -2010,3 +2010,24 @@ func TestModel_Update_ReloadHistory_NilSlice(t *testing.T) {
 	assert.False(t, mm.pending)
 	assert.Empty(t, mm.currentTurn.blocks)
 }
+
+func TestModel_Update_FeedbackMsg(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.pending = true // simulate an in-flight assistant response
+
+	newM, _ := m.Update(feedbackMsg{content: "Unknown command: /foo"})
+	mm := newM.(*model)
+
+	// Should append a system turn with the feedback content.
+	require.Len(t, mm.turns, 1)
+	assert.Equal(t, state.RoleSystem, mm.turns[0].role)
+	require.Len(t, mm.turns[0].blocks, 1)
+	assert.Equal(t, "feedback", mm.turns[0].blocks[0].kind)
+	assert.Equal(t, "Unknown command: /foo", mm.turns[0].blocks[0].source)
+	assert.Equal(t, "System", mm.turns[0].blocks[0].title)
+	assert.True(t, mm.turns[0].blocks[0].expandedByDefault)
+
+	// Pending should NOT be reset (feedback is not an error).
+	assert.True(t, mm.pending, "pending should remain unchanged for feedback")
+}

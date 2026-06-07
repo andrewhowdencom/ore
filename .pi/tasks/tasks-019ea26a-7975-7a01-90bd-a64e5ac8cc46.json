@@ -1,0 +1,218 @@
+{
+  "nextId": 19,
+  "tasks": [
+    {
+      "id": "1",
+      "subject": "Update session.Interceptor interface",
+      "description": "Change `session/event.go` to replace `Interceptor` interface returning `(Event, bool, error)` with returning `(InterceptResult, error)`. `InterceptResult` contains `Event` and `Feedback []artifact.Text`. Update `InterceptorFunc` to match.",
+      "status": "completed",
+      "activeForm": "Updating session.Interceptor interface",
+      "metadata": {
+        "note": "Interface updated, but stream.go needs Task 4 for compilation"
+      },
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780841472002,
+      "updatedAt": 1780841495725
+    },
+    {
+      "id": "2",
+      "subject": "Add loop.FeedbackEvent",
+      "description": "Add `FeedbackEvent` struct to `loop/loop.go` with `Content string` and `Ctx context.Context`. Implement `Kind()`, `Context()`, and `MarshalJSON`. Ensure `EventBus.Emit` does NOT append `FeedbackEvent` to state.",
+      "status": "completed",
+      "activeForm": "Adding loop.FeedbackEvent",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780841472003,
+      "updatedAt": 1780841513394
+    },
+    {
+      "id": "3",
+      "subject": "Update x/slash handler signature and parsing",
+      "description": "Change `Handler` signature to `func(ctx context.Context, cmd Command) (Result, error)`. Add `Command` and `Result` structs. Add `Fields` helper. Update `Intercept` to use raw `Input` and return `session.InterceptResult`.",
+      "status": "completed",
+      "activeForm": "Updating x/slash handler signature and parsing",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780841472003,
+      "updatedAt": 1780841653959
+    },
+    {
+      "id": "4",
+      "subject": "Wire feedback into session.Stream.processOne",
+      "description": "Update `Stream.processOne` in `session/stream.go` to handle new `Interceptor` interface. Check `result.Event == nil` for consumption. Emit `loop.FeedbackEvent` for each feedback item.",
+      "status": "in_progress",
+      "activeForm": "Wiring feedback into session.Stream.processOne",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780841472004,
+      "updatedAt": 1780841513394
+    },
+    {
+      "id": "5",
+      "subject": "Auto-register /help and unknown-command fallback",
+      "description": "Update `slash.Bind` to accept `description`. Auto-register `/help` in `NewRegistry()`. Implement unknown-command fallback with feedback message.",
+      "status": "completed",
+      "activeForm": "Implementing auto /help and unknown-command fallback",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780841472004,
+      "updatedAt": 1780841695968
+    },
+    {
+      "id": "6",
+      "subject": "Update TUI to render feedback events",
+      "description": "Add `feedbackMsg` Bubble Tea message type. Handle `loop.FeedbackEvent` in TUI subscription. Render as system-styled message in conversation. Add 'feedback' to subscription kinds.",
+      "status": "completed",
+      "activeForm": "Updating TUI to render feedback events",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780841472004,
+      "updatedAt": 1780841796463
+    },
+    {
+      "id": "7",
+      "subject": "Update HTTP conduit to serialize feedback events",
+      "description": "Add `feedbackEventJSON` struct. Update `MarshalOutputEvent` and `UnmarshalOutputEvent`. Add 'feedback' to default event kinds.",
+      "status": "completed",
+      "activeForm": "Updating HTTP conduit to serialize feedback events",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780841472005,
+      "updatedAt": 1780841819571
+    },
+    {
+      "id": "8",
+      "subject": "Update existing callers and tests",
+      "description": "Update `examples/http-chat/main.go`, `x/slash/slash_test.go`, `session/stream_test.go`, and other test files to use new interfaces.",
+      "status": "completed",
+      "activeForm": "Updating existing callers and tests",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780841472005,
+      "updatedAt": 1780841993918
+    },
+    {
+      "id": "9",
+      "subject": "Add feedback emission integration test in session/stream_test.go",
+      "description": "Add a test that verifies loop.FeedbackEvent is emitted when an interceptor returns Feedback items. Wire a custom Interceptor that returns multiple artifact.Text feedback items, subscribe to 'feedback' kind, and assert receipt of corresponding FeedbackEvents with correct content and context.",
+      "status": "completed",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780842492314,
+      "updatedAt": 1780842550129
+    },
+    {
+      "id": "10",
+      "subject": "Add TUI feedbackMsg handling test",
+      "description": "Add a unit test in x/conduit/tui/model_test.go that sends a feedbackMsg to the model via Update and asserts: a new renderedTurn with RoleSystem is appended, the block has kind 'feedback' with the correct content, and the pending flag is unchanged.",
+      "status": "completed",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780842492314,
+      "updatedAt": 1780842864436
+    },
+    {
+      "id": "11",
+      "subject": "Add FeedbackEvent JSON marshal/unmarshal tests",
+      "description": "Add tests in loop/loop_test.go for FeedbackEvent MarshalJSON, and in x/conduit/http/types_test.go for MarshalOutputEvent/UnmarshalOutputEvent with FeedbackEvent. Verify round-trip correctness including content and context fields.",
+      "status": "completed",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780842492314,
+      "updatedAt": 1780842864437
+    },
+    {
+      "id": "12",
+      "subject": "Add slash parsing edge case tests",
+      "description": "Add tests in x/slash/slash_test.go for leading whitespace before slash commands, and multiple feedback items from a single interceptor. Also test that an interceptor returning only feedback (nil Event) consumes the original event without triggering a turn.",
+      "status": "completed",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780842492314,
+      "updatedAt": 1780842864437
+    },
+    {
+      "id": "13",
+      "subject": "Add missing doc comments identified by documentation review",
+      "description": "Add field comment for UserMessageEvent.Content, clarify InterceptResult.Feedback purpose, add package-level comment to x/conduit/tui/model.go, and add brief comment to examples/http-chat/main.go run function.",
+      "status": "completed",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780842492315,
+      "updatedAt": 1780842864437
+    },
+    {
+      "id": "14",
+      "subject": "Fix post-slash whitespace parsing in x/slash/slash.go",
+      "description": "Fix the slash command parsing to skip leading spaces after the `/` character, so `/   help` is treated the same as `/help`. Add test for this behavior.",
+      "status": "completed",
+      "activeForm": "Fixing post-slash whitespace parsing",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780844140452,
+      "updatedAt": 1780844370197
+    },
+    {
+      "id": "15",
+      "subject": "Add feedback provenance and multi-feedback+replace tests in session/stream_test.go",
+      "description": "Add TestStream_Interceptor_FeedbackProvenance (verifies FeedbackEvent.Ctx carries the original UserMessageEvent provenance) and TestStream_Interceptor_FeedbackWithReplaceAndMultipleFeedback (verifies both feedback and replacement work together).",
+      "status": "completed",
+      "activeForm": "Adding session feedback tests",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780844140452,
+      "updatedAt": 1780844370198
+    },
+    {
+      "id": "16",
+      "subject": "Add all remaining slash tests to x/slash/slash_test.go",
+      "description": "Add tests for: duplicate bind overwrite, mixed-case unknown command, empty feedback not emitted, Fields whitespace handling, registry isolation.",
+      "status": "completed",
+      "activeForm": "Adding slash edge case tests",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780844140452,
+      "updatedAt": 1780844370198
+    },
+    {
+      "id": "17",
+      "subject": "Add empty context omission tests to loop/loop_test.go",
+      "description": "Add tests verifying that TurnCompleteEvent, ErrorEvent, and LifecycleEvent omit the 'context' field from JSON when Ctx is empty/nil.",
+      "status": "completed",
+      "activeForm": "Adding loop context omission tests",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780844140452,
+      "updatedAt": 1780844370198
+    },
+    {
+      "id": "18",
+      "subject": "Add malformed JSON tests to x/conduit/http/types_test.go",
+      "description": "Add tests for UnmarshalOutputEvent with malformed JSON and invalid kind type.",
+      "status": "completed",
+      "activeForm": "Adding HTTP malformed JSON tests",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1780844140453,
+      "updatedAt": 1780844370199
+    }
+  ]
+}

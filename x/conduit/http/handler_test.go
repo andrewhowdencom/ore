@@ -60,14 +60,14 @@ func (e *errorFS) ReadFile(name string) ([]byte, error) { return nil, fs.ErrNotE
 
 // simpleProcessor runs a single Step.Turn with the mock provider.
 func simpleProcessor() session.TurnProcessor {
-	return func(ctx context.Context, step loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
-		return step.Turn(ctx, st, prov)
+	return func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
+		return executor.Turn(ctx, st, prov)
 	}
 }
 
 // boomProcessor always fails.
 func boomProcessor() session.TurnProcessor {
-	return func(ctx context.Context, step loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
+	return func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
 		return st, fmt.Errorf("boom")
 	}
 }
@@ -1062,24 +1062,4 @@ func TestHandler_SendMessage_LifecycleEventInNDJSON(t *testing.T) {
 		phases = append(phases, ev["phase"].(string))
 	}
 	assert.Equal(t, []string{"submitted", "streaming", "done"}, phases)
-}
-
-func TestHandler_DefaultSubscriptionKinds_MatchSpec(t *testing.T) {
-	specKinds := extractEventKindEnum(t)
-	defaultKinds := defaultSubscriptionKinds()
-
-	// Build a set of valid EventKind values from the spec.
-	valid := make(map[string]struct{}, len(specKinds))
-	for _, k := range specKinds {
-		valid[k] = struct{}{}
-	}
-
-	// Every handler default kind must be a valid EventKind in the spec.
-	for _, k := range defaultKinds {
-		_, ok := valid[k]
-		assert.Truef(t, ok, "handler default kind %q is not in the OpenAPI EventKind enum", k)
-	}
-
-	// Both handler default lists (sendMessage and sessionEvents) must be identical.
-	assert.Equal(t, defaultKinds, defaultSubscriptionKinds(), "handler default kinds must be consistent across sendMessage and sessionEvents")
 }

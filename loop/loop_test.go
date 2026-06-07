@@ -1695,3 +1695,42 @@ func TestPropertiesEvent_MarshalJSON(t *testing.T) {
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"kind":"properties","properties":{"k":"v"},"context":{"provenance":"test"}}`, string(data))
 }
+
+func TestTurnCompleteEvent_MarshalJSON_OmitEmptyContext(t *testing.T) {
+	event := TurnCompleteEvent{Turn: state.Turn{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}}
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "context")
+	assert.NotContains(t, string(data), "provenance")
+}
+
+func TestErrorEvent_MarshalJSON_OmitEmptyContext(t *testing.T) {
+	event := ErrorEvent{Err: errors.New("boom")}
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "context")
+	assert.NotContains(t, string(data), "provenance")
+}
+
+func TestLifecycleEvent_MarshalJSON_OmitEmptyContext(t *testing.T) {
+	event := LifecycleEvent{Phase: "done"}
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "context")
+	assert.NotContains(t, string(data), "provenance")
+}
+
+func TestFeedbackEvent_MarshalJSON(t *testing.T) {
+	ctx := WithProvenance(context.Background(), "test")
+	event := FeedbackEvent{Content: "Unknown command: /foo", Ctx: ctx}
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"feedback","content":"Unknown command: /foo","context":{"provenance":"test"}}`, string(data))
+}
+
+func TestFeedbackEvent_MarshalJSON_OmitEmptyContext(t *testing.T) {
+	event := FeedbackEvent{Content: "help text"}
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"feedback","content":"help text"}`, string(data))
+}

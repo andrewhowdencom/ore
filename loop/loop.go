@@ -85,6 +85,41 @@ type ErrorEvent struct {
 // Kind returns the event kind identifier.
 func (e ErrorEvent) Kind() string { return "error" }
 
+// FeedbackEvent is emitted for ephemeral, user-visible messages that bypass
+// the LLM pipeline and are not persisted to state. Conduits render them as
+// system-styled messages in the chat body — scrollable, but invisible to the
+// LLM on the next turn.
+type FeedbackEvent struct {
+	Content string
+
+	// Ctx carries routing metadata for the event, such as provenance
+	// information for echo suppression.
+	Ctx context.Context
+}
+
+// Kind returns the event kind identifier.
+func (e FeedbackEvent) Kind() string { return "feedback" }
+
+// Context returns the event context.
+func (e FeedbackEvent) Context() context.Context { return e.Ctx }
+
+// MarshalJSON serializes the event to JSON.
+func (e FeedbackEvent) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind    string                 `json:"kind"`
+		Content string                 `json:"content"`
+		Context map[string]interface{} `json:"context,omitempty"`
+	}
+	o := output{
+		Kind:    "feedback",
+		Content: e.Content,
+	}
+	if ctx := marshalEventContext(e.Ctx); ctx != nil {
+		o.Context = ctx
+	}
+	return json.Marshal(o)
+}
+
 // Context returns the event context.
 func (e ErrorEvent) Context() context.Context { return e.Ctx }
 
