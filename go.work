@@ -3,6 +3,7 @@ go 1.26.2
 use (
 	.
 	./examples
+	./examples/verifier-chat
 	./x/compaction
 	./x/conduit
 	./x/conduit/http
@@ -11,6 +12,7 @@ use (
 	./x/conduit/telegram
 	./x/conduit/tui
 	./x/provider/openai
+	./x/telemetry
 	./x/tool
 	./x/tool/bash
 	./x/tool/calculator
@@ -21,7 +23,6 @@ use (
 	./x/tool/skills
 	./x/usage
 	./x/verifier
-	./examples/verifier-chat
 )
 
 replace github.com/andrewhowdencom/ore v0.0.0 => .
