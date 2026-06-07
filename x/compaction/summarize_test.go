@@ -14,15 +14,17 @@ import (
 
 // mockProvider is a test double implementing provider.Provider.
 type mockProvider struct {
-	artifacts []artifact.Artifact
-	err       error
-	called    bool
+	artifacts     []artifact.Artifact
+	err           error
+	called        bool
+	receivedTurns []state.Turn
 }
 
 var _ provider.Provider = (*mockProvider)(nil)
 
 func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	m.called = true
+	m.receivedTurns = s.Turns()
 	for _, art := range m.artifacts {
 		select {
 		case ch <- art:
@@ -286,4 +288,108 @@ func TestSummarizeStrategy_SingleTurnUnderBudget(t *testing.T) {
 	assert.Len(t, result, 1)
 	assert.Equal(t, state.RoleUser, result[0].Role)
 	assert.NotSame(t, &turns[0], &result[0])
+}
+
+func TestEstimateTokens(t *testing.T) {
+	tests := []struct {
+		name     string
+		turns    []state.Turn
+		expected int
+	}{
+		{"empty turns", []state.Turn{}, 0},
+		{"single turn 4 chars", []state.Turn{textTurn(state.RoleUser, "aaaa")}, 1},
+		{"single turn 8 chars", []state.Turn{textTurn(state.RoleUser, "aaaaaaaa")}, 2},
+		{"single turn 3 chars", []state.Turn{textTurn(state.RoleUser, "aaa")}, 0},
+		{"multiple turns", []state.Turn{
+			textTurn(state.RoleUser, "aaaa"),
+			textTurn(state.RoleAssistant, "aaaaaaaa"),
+		}, 3},
+		{"non-text artifacts ignored", []state.Turn{{
+			Role: state.RoleUser,
+			Artifacts: []artifact.Artifact{
+				artifact.Usage{TotalTokens: 1000},
+				artifact.Text{Content: "aaaa"},
+				artifact.Reasoning{Content: "think"},
+			},
+		}}, 1},
+		{"empty text", []state.Turn{textTurn(state.RoleUser, "")}, 0},
+		{"mixed text lengths", []state.Turn{
+			textTurn(state.RoleUser, "aaaa"),     // 1
+			textTurn(state.RoleAssistant, "aaa"), // 0
+			textTurn(state.RoleUser, "aaaaaaaa"), // 2
+		}, 3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, estimateTokens(tt.turns))
+		})
+	}
+}
+
+func TestSummarizeStrategy_PassesCorrectPrefix(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "Summary."},
+		},
+	}
+
+	strategy := SummarizeStrategy{
+		Provider:  prov,
+		MaxTokens: 2,
+	}
+
+	turns := []state.Turn{
+		textTurn(state.RoleUser, "aaaa"),        // 1 token
+		textTurn(state.RoleAssistant, "aaaa"),     // 1 token
+		textTurn(state.RoleUser, "aaaa"),        // 1 token
+		textTurn(state.RoleAssistant, "aaaa"),     // 1 token
+	}
+
+	result, err := strategy.Compact(context.Background(), turns)
+	require.NoError(t, err)
+	assert.True(t, prov.called)
+
+	// Provider receives toSummarize + appended user prompt
+	require.Len(t, prov.receivedTurns, 3)
+	assert.Equal(t, state.RoleUser, prov.receivedTurns[0].Role)
+	assert.Equal(t, state.RoleAssistant, prov.receivedTurns[1].Role)
+	assert.Equal(t, state.RoleUser, prov.receivedTurns[2].Role)
+
+	// Result: summary + preserved suffix (turns[2:])
+	require.Len(t, result, 3)
+	assert.Equal(t, state.RoleSystem, result[0].Role)
+	assert.Equal(t, state.RoleUser, result[1].Role)
+	assert.Equal(t, state.RoleAssistant, result[2].Role)
+}
+
+func TestSummarizeStrategy_EmptyTextTurn(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "Summary."},
+		},
+	}
+
+	strategy := SummarizeStrategy{
+		Provider:  prov,
+		MaxTokens: 1,
+	}
+
+	// 3 turns: 1 token, 0 tokens, 1 token
+	turns := []state.Turn{
+		textTurn(state.RoleUser, "aaaa"),         // 1 token
+		textTurn(state.RoleAssistant, ""),          // 0 tokens
+		textTurn(state.RoleUser, "aaaa"),         // 1 token
+	}
+
+	result, err := strategy.Compact(context.Background(), turns)
+	require.NoError(t, err)
+	assert.True(t, prov.called)
+
+	// Total = 2 > 1
+	// toPreserve = turns[1:] (turns 1, 2 — 1 token total due to empty text)
+	// toSummarize = turns[:1] (turn 0)
+	require.Len(t, result, 3)
+	assert.Equal(t, state.RoleSystem, result[0].Role)
+	assert.Equal(t, state.RoleAssistant, result[1].Role) // empty text turn preserved
+	assert.Equal(t, state.RoleUser, result[2].Role)
 }
