@@ -162,15 +162,19 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 
 	// Run interceptor if configured (only for UserMessageEvent events).
 	if s.interceptor != nil {
-		if _, ok := event.(UserMessageEvent); ok {
-			newEvent, consumed, err := s.interceptor.Intercept(ctx, event)
+		if ume, ok := event.(UserMessageEvent); ok {
+			result, err := s.interceptor.Intercept(ctx, event)
 			if err != nil {
 				return fmt.Errorf("interceptor: %w", err)
 			}
-			if consumed {
+			// Emit ephemeral feedback messages to conduits without persisting.
+			for _, fb := range result.Feedback {
+				s.step.Emit(context.Background(), loop.FeedbackEvent{Content: fb.Content, Ctx: ume.Ctx})
+			}
+			if result.Event == nil {
 				return nil
 			}
-			event = newEvent
+			event = result.Event
 		}
 	}
 

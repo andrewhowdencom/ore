@@ -818,8 +818,8 @@ func TestStream_MultipleSubmit_StartsSingleWorker(t *testing.T) {
 func TestStream_Interceptor_Consume(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	consumeInterceptor := func(ctx context.Context, event Event) (Event, bool, error) {
-		return event, true, nil
+	consumeInterceptor := func(ctx context.Context, event Event) (InterceptResult, error) {
+		return InterceptResult{}, nil
 	}
 	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(consumeInterceptor)))
 
@@ -847,8 +847,8 @@ func TestStream_Interceptor_Consume(t *testing.T) {
 func TestStream_Interceptor_PassThrough(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	passThroughInterceptor := func(ctx context.Context, event Event) (Event, bool, error) {
-		return event, false, nil
+	passThroughInterceptor := func(ctx context.Context, event Event) (InterceptResult, error) {
+		return InterceptResult{Event: event}, nil
 	}
 	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(passThroughInterceptor)))
 
@@ -881,12 +881,12 @@ func TestStream_Interceptor_PassThrough(t *testing.T) {
 func TestStream_Interceptor_Rewrite(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	rewriteInterceptor := func(ctx context.Context, event Event) (Event, bool, error) {
+	rewriteInterceptor := func(ctx context.Context, event Event) (InterceptResult, error) {
 		if ume, ok := event.(UserMessageEvent); ok {
 			ume.Content = "rewritten: " + ume.Content
-			return ume, false, nil
+			return InterceptResult{Event: ume}, nil
 		}
-		return event, false, nil
+		return InterceptResult{Event: event}, nil
 	}
 	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(rewriteInterceptor)))
 
@@ -906,8 +906,8 @@ func TestStream_Interceptor_Rewrite(t *testing.T) {
 func TestStream_Interceptor_Error(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	errorInterceptor := func(ctx context.Context, event Event) (Event, bool, error) {
-		return nil, false, errors.New("interceptor error")
+	errorInterceptor := func(ctx context.Context, event Event) (InterceptResult, error) {
+		return InterceptResult{}, errors.New("interceptor error")
 	}
 	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(errorInterceptor)))
 
@@ -925,9 +925,9 @@ func TestStream_Interceptor_NonUserMessage(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
 	var calledWith Event
-	nonUserInterceptor := func(ctx context.Context, event Event) (Event, bool, error) {
+	nonUserInterceptor := func(ctx context.Context, event Event) (InterceptResult, error) {
 		calledWith = event
-		return event, false, nil
+		return InterceptResult{Event: event}, nil
 	}
 	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(nonUserInterceptor)))
 

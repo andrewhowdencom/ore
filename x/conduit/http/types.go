@@ -82,6 +82,13 @@ type lifecycleEventJSON struct {
 	Context *eventContextJSON `json:"context,omitempty"`
 }
 
+// feedbackEventJSON is the JSON representation of a FeedbackEvent.
+type feedbackEventJSON struct {
+	Kind    string            `json:"kind"`
+	Content string            `json:"content"`
+	Context *eventContextJSON `json:"context,omitempty"`
+}
+
 // eventContextToJSON converts a context.Context to a JSON DTO pointer.
 // Returns nil when the context carries no provenance so omitempty removes
 // it from JSON. If the context carries an active span, the traceparent is
@@ -219,6 +226,12 @@ func UnmarshalOutputEvent(data []byte) (loop.OutputEvent, error) {
 			return nil, err
 		}
 		return loop.LifecycleEvent{Phase: dto.Phase, Ctx: eventContextFromJSON(dto.Context)}, nil
+	case "feedback":
+		var dto feedbackEventJSON
+		if err := json.Unmarshal(data, &dto); err != nil {
+			return nil, err
+		}
+		return loop.FeedbackEvent{Content: dto.Content, Ctx: eventContextFromJSON(dto.Context)}, nil
 	default:
 		// Treat as artifact.
 		var dto artifactEventJSON

@@ -1378,9 +1378,9 @@ func TestManager_Process_ToolLoop_NoDuplicateTurns(t *testing.T) {
 func TestManager_WithInterceptor(t *testing.T) {
 	store := NewMemoryStore()
 	var called bool
-	interceptor := InterceptorFunc(func(ctx context.Context, event Event) (Event, bool, error) {
+	interceptor := InterceptorFunc(func(ctx context.Context, event Event) (InterceptResult, error) {
 		called = true
-		return event, false, nil
+		return InterceptResult{Event: event}, nil
 	})
 	mgr := NewManager(store, &mockProvider{}, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(interceptor))
 	require.NotNil(t, mgr)
