@@ -19,7 +19,7 @@ use (
 	./x/tool/filesystem
 	./x/tool/mcp
 	./x/tool/sandbox/unsafe
-	./x/tool/settitle
+	./x/tool/set_title
 	./x/tool/skills
 	./x/usage
 	./x/verifier

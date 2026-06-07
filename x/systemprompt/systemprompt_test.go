@@ -6,6 +6,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -426,4 +427,96 @@ func TestTransform_MultipleContextContentFuncs_OrderAndSkipping(t *testing.T) {
 	assert.Equal(t, "Regular.\n\nAnother regular.\n\nCtx A.\n\nCtx B.", text.Content)
 }
 
+func TestTransform_WithToolExamples(t *testing.T) {
+	tr, err := New(WithToolExamples([]tool.Tool{
+		{
+			Name:        "add",
+			Description: "Add two numbers",
+			Examples: []tool.Example{
+				{
+					Input:       map[string]any{"a": 1, "b": 2},
+					Output:      3,
+					Explanation: "Adding two integers",
+				},
+			},
+		},
+		{
+			Name:        "read_file",
+			Description: "Read a file",
+			Examples: []tool.Example{
+				{
+					Input:       map[string]any{"path": "hello.go"},
+					Output:      "package main\n",
+					Explanation: "Reading a Go source file",
+				},
+			},
+		},
+		{
+			Name:        "no_examples",
+			Description: "Has no examples",
+		},
+	}))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, state.RoleSystem, turns[0].Role)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+
+	assert.Contains(t, text.Content, "Tool Examples:")
+	assert.Contains(t, text.Content, "## add")
+	assert.Contains(t, text.Content, "Add two numbers")
+	assert.Contains(t, text.Content, "### Example 1")
+	assert.Contains(t, text.Content, `"a": 1`)
+	assert.Contains(t, text.Content, `"b": 2`)
+	assert.Contains(t, text.Content, "3")
+	assert.Contains(t, text.Content, "Adding two integers")
+	assert.Contains(t, text.Content, "## read_file")
+	assert.Contains(t, text.Content, "Read a file")
+	assert.Contains(t, text.Content, "package main")
+	assert.Contains(t, text.Content, "Reading a Go source file")
+	assert.NotContains(t, text.Content, "no_examples")
+}
+
+func TestTransform_WithToolExamples_Empty(t *testing.T) {
+	tr, err := New(WithToolExamples([]tool.Tool{}))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Empty(t, text.Content)
+}
+
+func TestTransform_WithToolExamples_NoExamples(t *testing.T) {
+	tr, err := New(WithToolExamples([]tool.Tool{
+		{Name: "no_examples", Description: "Has no examples"},
+	}))
+	require.NoError(t, err)
+	base := &state.Buffer{}
+	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	result, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := result.Turns()
+	require.Len(t, turns, 2)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Empty(t, text.Content)
+}

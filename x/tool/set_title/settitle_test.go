@@ -1,4 +1,4 @@
-package settitle
+package set_title
 
 import (
 	"context"
