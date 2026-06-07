@@ -27,4 +27,12 @@
 //	step := loop.New(
 //	    loop.WithHandlers(handler),
 //	)
+//
+// Deprecation Consideration
+//
+// x/telemetry provides per-artifact, per-role OpenTelemetry character metrics
+// that offer finer-grained attribution than token-level PropertiesEvent.
+// PropertiesEvent may be deprecated in future framework versions in favor
+// of these metrics. However, PropertiesEvent is still required for TUI status
+// bar rendering until the TUI is updated to consume telemetry metrics directly.
 package usage
