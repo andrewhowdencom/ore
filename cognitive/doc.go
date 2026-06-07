@@ -33,4 +33,8 @@
 // (typically application-level code) is responsible for IO wiring: reading
 // conduit events, appending user messages, routing output events to a
 // conduit, and managing status.
+//
+// See also: loop package — the single-turn execution primitive, EventBus /
+// Pipeline decomposition, and the TurnRunner / TurnSubmitter / TurnExecutor
+// interfaces.
 package cognitive
