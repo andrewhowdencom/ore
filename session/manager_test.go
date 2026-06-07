@@ -62,14 +62,14 @@ func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- arti
 
 // simpleProcessor runs a single Step.Turn with the mock provider.
 func simpleProcessor() TurnProcessor {
-	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
-		return step.Turn(ctx, st, prov)
+	return func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
+		return executor.Turn(ctx, st, prov)
 	}
 }
 
 // nopProcessor does nothing (used for submit-only tests).
 func nopProcessor() TurnProcessor {
-	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+	return func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
 		return st, nil
 	}
 }
@@ -585,7 +585,7 @@ func TestManager_List(t *testing.T) {
 func TestStream_Process_Serial(t *testing.T) {
 	// Use a processor that sleeps briefly so we can observe serialization.
 	sleepyProcessor := func() TurnProcessor {
-		return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+		return func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
 			time.Sleep(50 * time.Millisecond)
 			return st, nil
 		}
@@ -612,8 +612,8 @@ func TestStream_Process_Serial(t *testing.T) {
 
 	// All 10 events should have been processed and appended to state.
 	turns := stream.thread.State.Turns()
-	// sleepyProcessor does not call step.Turn(), so each event produces
-	// exactly 1 user turn (from step.Submit()).
+	// sleepyProcessor does not call executor.Turn(), so each event produces
+	// exactly 1 user turn (from executor.Submit()).
 	require.GreaterOrEqual(t, len(turns), 10)
 
 	_ = stream.Close()
@@ -686,7 +686,7 @@ func TestStream_Process_ProviderError(t *testing.T) {
 }
 
 func boomProcessor() TurnProcessor {
-	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+	return func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
 		return st, fmt.Errorf("boom")
 	}
 }
@@ -1321,15 +1321,15 @@ func TestManager_Process_ToolLoop_NoDuplicateTurns(t *testing.T) {
 	// 1. Turn (assistant with tool call)
 	// 2. Emit tool result (simulating tool handler)
 	// 3. Turn (assistant with final answer)
-	toolProc := TurnProcessor(func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+	toolProc := TurnProcessor(func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
 		// First assistant turn (tool call)
-		st, err := step.Turn(ctx, st, prov)
+		st, err := executor.Turn(ctx, st, prov)
 		if err != nil {
 			return st, err
 		}
 
 		// Simulate tool handler emitting tool result
-		step.Emit(ctx, loop.TurnCompleteEvent{
+		executor.(loop.Emitter).Emit(ctx, loop.TurnCompleteEvent{
 			Turn: state.Turn{
 				Role:      state.RoleTool,
 				Artifacts: []artifact.Artifact{artifact.ToolResult{Content: "tool result"}},
@@ -1338,7 +1338,7 @@ func TestManager_Process_ToolLoop_NoDuplicateTurns(t *testing.T) {
 		})
 
 		// Second assistant turn (final answer)
-		return step.Turn(ctx, st, prov)
+		return executor.Turn(ctx, st, prov)
 	})
 
 	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {

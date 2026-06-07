@@ -318,7 +318,7 @@ func TestStream_Process_EmitsLifecycleEvent(t *testing.T) {
 
 func TestStream_Process_EmitsLifecycleEvent_WithError(t *testing.T) {
 	store := NewMemoryStore()
-	mgr := NewManager(store, &mockProvider{}, func(*Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+	mgr := NewManager(store, &mockProvider{}, func(*Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
 		return st, errors.New("processor failed")
 	})
 
@@ -470,12 +470,12 @@ func TestStream_Process_EmitsLifecycleEvent_PropagatesProvenance(t *testing.T) {
 func TestStream_Process_EmitsSingleLifecycleEvent_ForMultiTurn(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
-		st, err := step.Turn(ctx, st, prov)
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
+		st, err := executor.Turn(ctx, st, prov)
 		if err != nil {
 			return st, err
 		}
-		return step.Turn(ctx, st, prov)
+		return executor.Turn(ctx, st, prov)
 	})
 
 	stream, err := mgr.Create()
@@ -520,7 +520,7 @@ func TestStream_Process_EmitsSingleLifecycleEvent_ForMultiTurn(t *testing.T) {
 func TestStream_Submit_NonBlocking(t *testing.T) {
 	store := NewMemoryStore()
 	sleepyProcessor := func() TurnProcessor {
-		return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+		return func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
 			time.Sleep(50 * time.Millisecond)
 			return st, nil
 		}
