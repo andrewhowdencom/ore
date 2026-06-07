@@ -125,6 +125,7 @@ func (r *registry) Tools() []Tool {
 				Description: rt.Description,
 				Schema:      rt.Schema,
 				DisplayHint: rt.DisplayHint,
+				Examples:    rt.Examples,
 			})
 		}
 	}
