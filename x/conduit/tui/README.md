@@ -61,4 +61,15 @@ The TUI subscribes to `text_delta`, `reasoning_delta`, `tool_call`,
 incrementally as deltas arrive, with a 16ms debounced render tick that
 reduces flicker while preserving low latency.
 
+## Refreshing after LoadTurns
+
+If the underlying conversation state is replaced (e.g. after compaction
+via `stream.LoadTurns`), call `ReloadHistory` on the TUI to rebuild the
+conversation view from the new turn slice. This must be done after `Start`
+has been called so the Bubble Tea program is running.
+
+```go
+tuiConduit.(*tui.TUI).ReloadHistory(stream.Turns())
+```
+
 For full API documentation, run `go doc ./x/conduit/tui`.

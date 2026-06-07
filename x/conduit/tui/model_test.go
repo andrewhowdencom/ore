@@ -1963,3 +1963,19 @@ func TestModel_Update_ReloadHistory_PreservesScroll(t *testing.T) {
 	mm2.syncViewport()
 	assert.False(t, mm2.viewport.AtBottom(), "should not jump to bottom when not previously at bottom")
 }
+
+func TestModel_Update_ReloadHistory_ClearsRenderScheduled(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.renderScheduled = true
+
+	newM, _ := m.Update(reloadHistoryMsg{turns: []state.Turn{{
+		Role: state.RoleUser,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "hello"},
+		},
+	}}})
+	mm := newM.(*model)
+
+	assert.False(t, mm.renderScheduled, "renderScheduled should be cleared after reload")
+}
