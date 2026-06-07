@@ -34,7 +34,7 @@ func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- arti
 
 // simpleProcessor runs a single Step.Turn with the mock provider.
 func simpleProcessor() session.TurnProcessor {
-	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+	return func(ctx context.Context, step loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
 		return step.Turn(ctx, st, prov)
 	}
 }
