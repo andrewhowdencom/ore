@@ -289,6 +289,11 @@ func (s *Stream) Cancel() error {
 // events regardless of kind. If the stream is closed, the returned channel
 // is immediately closed.
 //
+// Subscribe is live-only: it delivers events from the point of subscription
+// onward and does not replay historical events. Conduits that need historical
+// state should fetch it via Turns() before subscribing, or load it via
+// LoadTurns() after external mutations (e.g. compaction).
+//
 // The returned channel is closed when the session is closed.
 // Callers should range over the channel and handle closure:
 //
