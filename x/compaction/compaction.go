@@ -102,29 +102,6 @@ func (t TurnCountTrigger) ShouldCompact(turns []state.Turn) bool {
 	return len(turns) > t.N
 }
 
-// KeepLastN drops all but the last N turns.
-type KeepLastN struct {
-	N int
-}
-
-// Compact returns the last N turns. If len(turns) <= N, it returns a copy of
-// the full slice. The returned slice is always a distinct backing array from
-// the input.
-func (k KeepLastN) Compact(_ context.Context, turns []state.Turn) ([]state.Turn, error) {
-	if k.N <= 0 {
-		return nil, fmt.Errorf("KeepLastN.N must be > 0, got %d", k.N)
-	}
-	if len(turns) <= k.N {
-		result := make([]state.Turn, len(turns))
-		copy(result, turns)
-		return result, nil
-	}
-	start := len(turns) - k.N
-	result := make([]state.Turn, k.N)
-	copy(result, turns[start:])
-	return result, nil
-}
-
 // TokenUsageTrigger fires when the most recent artifact.Usage in the turn
 // slice indicates total tokens exceed MaxTokens.
 type TokenUsageTrigger struct {
