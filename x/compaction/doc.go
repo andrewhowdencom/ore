@@ -35,6 +35,12 @@
 // summary turn uses RoleSystem because it is injected context about prior
 // conversation, not a real assistant response.
 //
+// SummarizeStrategy uses a default structured handoff prompt that produces
+// markdown output with five sections: Primary Goal, Key Decisions &
+// Constraints, Completed Work, Current State / Work in Progress, and Pending
+// Tasks & Next Steps. Applications can override the prompt via the Prompt
+// field.
+//
 // SummarizeStrategy only collects artifact.Text responses from the provider.
 // Other artifact types (Usage, Reasoning, ToolCall, etc.) are silently
 // ignored. This is an MVP limitation; future work may add custom formatters
