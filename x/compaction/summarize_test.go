@@ -277,12 +277,11 @@ func TestSummarizeStrategy_UsesDefaultPrompt(t *testing.T) {
 	}
 
 	strategy := SummarizeStrategy{
-		Provider:  prov,
-		MaxTokens: 1,
-		Prompt:    "",
+		Provider: prov,
+		Prompt:   "",
 	}
 
-	// 3 turns of 1 token each; total = 3 > 1 triggers summarization.
+	// With non-empty turns, summarization is triggered.
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
 		textTurn(state.RoleAssistant, "aaaa"),
@@ -293,11 +292,11 @@ func TestSummarizeStrategy_UsesDefaultPrompt(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, prov.called)
 
-	// Provider receives toSummarize (2 turns) + appended user prompt.
-	require.Len(t, prov.receivedTurns, 3)
-	assert.Equal(t, state.RoleUser, prov.receivedTurns[2].Role)
-	require.Len(t, prov.receivedTurns[2].Artifacts, 1)
-	text, ok := prov.receivedTurns[2].Artifacts[0].(artifact.Text)
+	// Provider receives all turns + appended user prompt.
+	require.Len(t, prov.receivedTurns, 4)
+	assert.Equal(t, state.RoleUser, prov.receivedTurns[3].Role)
+	require.Len(t, prov.receivedTurns[3].Artifacts, 1)
+	text, ok := prov.receivedTurns[3].Artifacts[0].(artifact.Text)
 	require.True(t, ok)
 	assert.Equal(t, defaultPrompt, text.Content)
 }
@@ -310,12 +309,11 @@ func TestSummarizeStrategy_UsesCustomPrompt(t *testing.T) {
 	}
 
 	strategy := SummarizeStrategy{
-		Provider:  prov,
-		MaxTokens: 1,
-		Prompt:    "Custom override prompt",
+		Provider: prov,
+		Prompt:   "Custom override prompt",
 	}
 
-	// 3 turns of 1 token each; total = 3 > 1 triggers summarization.
+	// With non-empty turns, summarization is triggered.
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
 		textTurn(state.RoleAssistant, "aaaa"),
@@ -326,11 +324,11 @@ func TestSummarizeStrategy_UsesCustomPrompt(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, prov.called)
 
-	// Provider receives toSummarize (2 turns) + appended user prompt.
-	require.Len(t, prov.receivedTurns, 3)
-	assert.Equal(t, state.RoleUser, prov.receivedTurns[2].Role)
-	require.Len(t, prov.receivedTurns[2].Artifacts, 1)
-	text, ok := prov.receivedTurns[2].Artifacts[0].(artifact.Text)
+	// Provider receives all turns + appended user prompt.
+	require.Len(t, prov.receivedTurns, 4)
+	assert.Equal(t, state.RoleUser, prov.receivedTurns[3].Role)
+	require.Len(t, prov.receivedTurns[3].Artifacts, 1)
+	text, ok := prov.receivedTurns[3].Artifacts[0].(artifact.Text)
 	require.True(t, ok)
 	assert.Equal(t, "Custom override prompt", text.Content)
 }
