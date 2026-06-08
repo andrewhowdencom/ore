@@ -27,7 +27,7 @@ func TestNew_NoOpts_NeverCompacts(t *testing.T) {
 func TestMaybeCompact_TriggerDoesNotFire(t *testing.T) {
 	c := New(
 		WithTrigger(TurnCountTrigger{N: 3}),
-		WithStrategy(KeepLastN{N: 2}),
+		WithStrategy(dropFirstN{n: 2}),
 	)
 	turns := []state.Turn{
 		{Role: state.RoleUser},
@@ -43,7 +43,7 @@ func TestMaybeCompact_TriggerDoesNotFire(t *testing.T) {
 func TestMaybeCompact_TriggerFires(t *testing.T) {
 	c := New(
 		WithTrigger(TurnCountTrigger{N: 3}),
-		WithStrategy(KeepLastN{N: 2}),
+		WithStrategy(dropFirstN{n: 2}),
 	)
 	turns := []state.Turn{
 		{Role: state.RoleSystem},
@@ -62,12 +62,12 @@ func TestMaybeCompact_TriggerFires(t *testing.T) {
 func TestMaybeCompact_StrategyError(t *testing.T) {
 	c := New(
 		WithTrigger(TurnCountTrigger{N: 0}),
-		WithStrategy(KeepLastN{N: 0}),
+		WithStrategy(errorStrategy{msg: "strategy error"}),
 	)
 	turns := []state.Turn{{Role: state.RoleUser}}
 	_, _, err := c.MaybeCompact(context.Background(), turns)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "KeepLastN.N must be > 0")
+	assert.Contains(t, err.Error(), "strategy error")
 }
 
 func TestTurnCountTrigger(t *testing.T) {
@@ -90,90 +90,6 @@ func TestTurnCountTrigger(t *testing.T) {
 			assert.Equal(t, tt.want, tr.ShouldCompact(turns))
 		})
 	}
-}
-
-func TestKeepLastN(t *testing.T) {
-	tests := []struct {
-		name      string
-		n         int
-		turns     []state.Turn
-		wantLen   int
-		wantFirst state.Role
-		wantLast  state.Role
-		wantErr   bool
-	}{
-		{
-			name:    "negative N errors",
-			n:       -1,
-			turns:   []state.Turn{{Role: state.RoleUser}},
-			wantErr: true,
-		},
-		{
-			name:    "zero N errors",
-			n:       0,
-			turns:   []state.Turn{{Role: state.RoleUser}},
-			wantErr: true,
-		},
-		{
-			name:      "fewer than N returns all",
-			n:         5,
-			turns:     []state.Turn{{Role: state.RoleSystem}, {Role: state.RoleUser}},
-			wantLen:   2,
-			wantFirst: state.RoleSystem,
-			wantLast:  state.RoleUser,
-		},
-		{
-			name:      "exactly N returns all",
-			n:         3,
-			turns:     []state.Turn{{Role: state.RoleSystem}, {Role: state.RoleUser}, {Role: state.RoleAssistant}},
-			wantLen:   3,
-			wantFirst: state.RoleSystem,
-			wantLast:  state.RoleAssistant,
-		},
-		{
-			name:      "more than N keeps last N",
-			n:         2,
-			turns:     []state.Turn{{Role: state.RoleSystem}, {Role: state.RoleUser}, {Role: state.RoleAssistant}},
-			wantLen:   2,
-			wantFirst: state.RoleUser,
-			wantLast:  state.RoleAssistant,
-		},
-		{
-			name:    "empty turns, N=1",
-			n:       1,
-			turns:   []state.Turn{},
-			wantLen: 0,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			k := KeepLastN{N: tt.n}
-			result, err := k.Compact(context.Background(), tt.turns)
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			assert.Len(t, result, tt.wantLen)
-			if tt.wantLen > 0 {
-				assert.Equal(t, tt.wantFirst, result[0].Role)
-				assert.Equal(t, tt.wantLast, result[len(result)-1].Role)
-			}
-			// Defensive copy: distinct backing array
-			if len(tt.turns) > 0 && len(result) > 0 {
-				assert.NotSame(t, &tt.turns[0], &result[0])
-			}
-		})
-	}
-}
-
-func TestKeepLastN_ReturnsDefensiveCopyWhenNoCompactionNeeded(t *testing.T) {
-	turns := []state.Turn{{Role: state.RoleUser}, {Role: state.RoleAssistant}}
-	k := KeepLastN{N: 5}
-	result, err := k.Compact(context.Background(), turns)
-	require.NoError(t, err)
-	assert.Equal(t, turns, result)
-	assert.NotSame(t, &turns[0], &result[0])
 }
 
 func TestTokenUsageTrigger(t *testing.T) {
@@ -240,11 +156,23 @@ func (e errorStrategy) Compact(_ context.Context, _ []state.Turn) ([]state.Turn,
 	return nil, errors.New(e.msg)
 }
 
+// dropFirstN is a test double that drops the first N turns.
+type dropFirstN struct {
+	n int
+}
+
+func (d dropFirstN) Compact(_ context.Context, turns []state.Turn) ([]state.Turn, error) {
+	if d.n >= len(turns) {
+		return turns, nil
+	}
+	return turns[d.n:], nil
+}
+
 func TestMaybeCompact_MultipleStrategies(t *testing.T) {
 	c := New(
 		WithTrigger(TurnCountTrigger{N: 3}),
-		WithStrategy(KeepLastN{N: 3}),
-		WithStrategy(KeepLastN{N: 1}),
+		WithStrategy(dropFirstN{n: 2}),
+		WithStrategy(dropFirstN{n: 2}),
 	)
 	turns := []state.Turn{
 		{Role: state.RoleSystem},
@@ -263,7 +191,7 @@ func TestMaybeCompact_MultipleStrategies(t *testing.T) {
 func TestMaybeCompact_MultipleStrategies_ErrorPropagation(t *testing.T) {
 	c := New(
 		WithTrigger(TurnCountTrigger{N: 0}),
-		WithStrategy(KeepLastN{N: 3}),
+		WithStrategy(dropFirstN{n: 2}),
 		WithStrategy(errorStrategy{msg: "second strategy failed"}),
 	)
 	turns := []state.Turn{
@@ -281,7 +209,7 @@ func TestWithStrategy_NilIgnored(t *testing.T) {
 	c := New(
 		WithTrigger(TurnCountTrigger{N: 0}),
 		WithStrategy(nil),
-		WithStrategy(KeepLastN{N: 1}),
+		WithStrategy(dropFirstN{n: 1}),
 	)
 	turns := []state.Turn{
 		{Role: state.RoleUser},
@@ -307,7 +235,7 @@ func TestMaybeCompact_TriggerOnly_NeverCompacts(t *testing.T) {
 func TestForceCompact_BypassesTrigger(t *testing.T) {
 	c := New(
 		WithTrigger(TurnCountTrigger{N: 100}), // trigger won't fire
-		WithStrategy(KeepLastN{N: 2}),
+		WithStrategy(dropFirstN{n: 1}),
 	)
 	turns := []state.Turn{
 		{Role: state.RoleSystem},
@@ -335,11 +263,11 @@ func TestForceCompact_NoStrategies(t *testing.T) {
 
 func TestForceCompact_StrategyError(t *testing.T) {
 	c := New(
-		WithStrategy(KeepLastN{N: 0}),
+		WithStrategy(errorStrategy{msg: "strategy error"}),
 	)
 	turns := []state.Turn{{Role: state.RoleUser}}
 	_, _, err := c.ForceCompact(context.Background(), turns)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "KeepLastN.N must be > 0")
+	assert.Contains(t, err.Error(), "strategy error")
 }
 
