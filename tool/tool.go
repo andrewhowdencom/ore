@@ -50,6 +50,14 @@ type Tool struct {
 	// MarkdownRenderer / LLMRenderer). When nil, conduits fall back to
 	// raw JSON Arguments.
 	DisplayHint func(map[string]any) any
+	// MaxBytes is a hard ceiling on the serialized output size in bytes.
+	// If the tool's JSON result exceeds this limit, the framework truncates
+	// the content and appends a formatted truncation hint. Zero means no
+	// limit.
+	MaxBytes int
+	// TruncationHint is a template string appended when MaxBytes is exceeded.
+	// The placeholder ${N} is replaced with the actual total byte count.
+	TruncationHint string
 	// Examples is an optional list of few-shot input/output pairs that
 	// illustrate how the tool should be used. They are not sent to the
 	// provider by default; applications may opt-in via systemprompt

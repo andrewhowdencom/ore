@@ -157,7 +157,7 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 	}
 
 	// Local tool lookup
-	fn, ok := h.registry.Lookup(tc.Name)
+	_, fn, ok := h.registry.Lookup(tc.Name)
 	if !ok {
 		e.Emit(ctx, loop.TurnCompleteEvent{
 			Turn: state.Turn{

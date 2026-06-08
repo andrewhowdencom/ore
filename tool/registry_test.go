@@ -189,7 +189,7 @@ func TestRegistry_ConcurrentOverwrite(t *testing.T) {
 	wg.Wait()
 
 	// After all overwrites, the final entry should be one of the registered functions.
-	fn, ok := r.Lookup("test")
+	_, fn, ok := r.Lookup("test")
 	require.True(t, ok)
 	result, err := fn(context.Background(), nil, nil)
 	require.NoError(t, err)
