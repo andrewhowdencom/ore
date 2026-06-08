@@ -113,7 +113,10 @@ func Bash(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error
 var BashTool = tool.Tool{
 	Name: "bash",
 	Description: "Execute a shell command. Returns stdout, stderr, and exit code. " +
-		"Use this to run builds, tests, package managers, git operations, and other shell tasks.",
+		"Use this to run builds, tests, package managers, git operations, and other shell tasks. " +
+		"Returns at most 50000 bytes.",
+	MaxBytes:       50000,
+	TruncationHint: "...truncated (total ${N} bytes). Make it more efficient by using the tool like: bash(command=\"grep -n 'pattern' *.go | head -20\")",
 	Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
