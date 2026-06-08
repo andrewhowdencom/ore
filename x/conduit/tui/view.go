@@ -299,14 +299,14 @@ func compactTokenSegments(segs []conduit.StatusSegment) []conduit.StatusSegment 
 // buildStatusLineFromSegments renders zone-grouped status segments into a
 // wrapped status string. Segments are grouped by zone, zones are sorted by
 // priority (lower value = higher priority), and lower-priority zones are
-// dropped entirely if the result exceeds maxStatusLines (2). The "default"
+// dropped entirely if the result exceeds maxStatusLines (3). The "default"
 // zone renders without brackets for backward compatibility.
 func buildStatusLineFromSegments(segments []conduit.StatusSegment, zonePriorities map[string]int, width int) (string, int) {
 	if len(segments) == 0 {
 		return "", 0
 	}
 
-	const maxStatusLines = 2
+	const maxStatusLines = 3
 
 	// Group segments by zone, filtering out empty values.
 	zones := make(map[string][]conduit.StatusSegment)
