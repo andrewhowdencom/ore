@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -48,7 +47,7 @@ var (
 // pre-computed compact form, and generic blocks truncate to two lines.
 func renderBlockUnified(block renderedBlock, ts time.Time, expanded bool, width int) string {
 	var header string
-	count := utf8.RuneCountInString(block.source)
+	count := len(block.source)
 	if ts.IsZero() {
 		header = fmt.Sprintf("%s · |s| %d", block.title, count)
 	} else {
