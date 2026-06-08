@@ -1,5 +1,5 @@
 // Package telemetry provides an OpenTelemetry metrics callback for ore
-// conversation turns. It records per-artifact, per-role character counts
+// conversation turns. It records per-artifact, per-role byte counts
 // via loop.OnEmit, attributing cost to artifact kinds (text, tool_call,
 // tool_result, reasoning, image) and turn roles (user, assistant, tool, system).
 //
@@ -13,7 +13,7 @@
 //
 // If meter is nil, all recording operations are no-ops.
 //
-// Character counts are computed per artifact:
+// Byte counts are computed per artifact:
 //   - Text: len(Content)
 //   - Reasoning: len(Content)
 //   - ToolCall: len(LLMString())
@@ -23,8 +23,8 @@
 //   - Unknown: len(JSON.Marshal(art))
 //
 // Two counters are recorded:
-//   - "llm.characters.sent" for user, system, and tool turns
-//   - "llm.characters.received" for assistant turns
+//   - "llm.bytes.sent" for user, system, and tool turns
+//   - "llm.bytes.received" for assistant turns
 //
 // Both counters carry attributes:
 //   - "artifact.kind" — the artifact's Kind() string

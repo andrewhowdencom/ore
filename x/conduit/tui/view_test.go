@@ -240,7 +240,7 @@ func TestModel_Update_KeyCtrlO_TogglesReasoningExpansion(t *testing.T) {
 	newM2, _ := mm.Update(turnMsg{turn: turn})
 	mm2 := newM2.(*model)
 
-	// Default: collapsed — completed reasoning shows character count
+	// Default: collapsed — completed reasoning shows byte count
 	output := mm2.buildContent()
 	assert.Contains(t, output, "Thinking · |s| 15")
 	assert.NotContains(t, output, "rendered-reasoning")
@@ -864,7 +864,7 @@ func TestBuildContent_ActiveReasoning_UnicodeCounter(t *testing.T) {
 		{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "日本語"},
 	}
 	output := m.buildContent()
-	assert.Contains(t, output, "Thinking · |s| 3")
+	assert.Contains(t, output, "Thinking · |s| 9")
 	assert.NotContains(t, output, "Thinking...")
 }
 
