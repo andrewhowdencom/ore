@@ -35,6 +35,8 @@ First, analyze the conversation history to identify:
 - Current state and work in progress
 - Pending tasks and next steps required
 
+Do not include system prompt information (identity, guardrails, or application configuration) in the summary. These are added separately by the receiving agent and do not need to be preserved.
+
 Then, output ONLY a structured summary using the following markdown sections. Do not include any analysis, reasoning, introductory text, or commentary outside these sections. The summary must be concise but complete — another agent will resume work from this summary.
 
 ## Primary Goal
