@@ -1,10 +1,6 @@
 package loop
 
-import (
-	"sync"
-
-	"github.com/andrewhowdencom/ore/artifact"
-)
+import "sync"
 
 // subscription tracks a single subscriber's channel and the event kinds it
 // has requested.
@@ -26,24 +22,18 @@ func (s subscription) matches(kind string) bool {
 // FanOut distributes OutputEvent values from a source channel to multiple
 // subscribers, filtered by event kind.
 //
-// Complete, self-contained events (TurnCompleteEvent, PropertiesEvent,
-// LifecycleEvent, ErrorEvent, and non-delta ArtifactEvents) are retained in a
-// bounded replay buffer (default capacity 50). When a new subscriber registers
-// via Subscribe(), buffered events matching the subscriber's kind filter are
-// replayed before live events. Delta events (text_delta, reasoning_delta,
-// tool_call_delta) remain ephemeral and are not buffered — late subscribers do
-// not receive them. This makes the FanOut lossy for streaming chunks but
-// preserves complete event history for late-joining consumers.
+// FanOut is a pure live broadcast dispatcher. Only subscribers that are
+// registered at the time an event is sent receive that event. There is no
+// replay buffer; callers that need historical state must use stream.Turns()
+// or another explicit state mechanism.
 type FanOut struct {
-	src       <-chan outputEventEnvelope
-	subs      []subscription
-	mu        sync.Mutex
-	done      chan struct{}
-	once      sync.Once
-	wg        sync.WaitGroup
-	closed    bool
-	buffer    []OutputEvent
-	bufferCap int
+	src    <-chan outputEventEnvelope
+	subs   []subscription
+	mu     sync.Mutex
+	done   chan struct{}
+	once   sync.Once
+	wg     sync.WaitGroup
+	closed bool
 }
 
 // NewFanOut creates a FanOut that reads from src and distributes events.
@@ -51,10 +41,9 @@ type FanOut struct {
 // closed or the FanOut is closed.
 func NewFanOut(src <-chan outputEventEnvelope) *FanOut {
 	f := &FanOut{
-		src:       src,
-		subs:      make([]subscription, 0),
-		done:      make(chan struct{}),
-		bufferCap: 50,
+		src:  src,
+		subs: make([]subscription, 0),
+		done: make(chan struct{}),
 	}
 	f.wg.Add(1)
 	go f.run()
@@ -85,14 +74,6 @@ func (f *FanOut) run() {
 
 func (f *FanOut) send(event OutputEvent) {
 	f.mu.Lock()
-	if isReplayable(event) {
-		if f.bufferCap > 0 {
-			f.buffer = append(f.buffer, event)
-			if len(f.buffer) > f.bufferCap {
-				f.buffer = f.buffer[len(f.buffer)-f.bufferCap:]
-			}
-		}
-	}
 	subs := make([]subscription, len(f.subs))
 	copy(subs, f.subs)
 	f.mu.Unlock()
@@ -136,6 +117,10 @@ func (f *FanOut) closeAll() {
 // the channel receives all events regardless of kind. The channel is closed
 // when the FanOut is closed.
 //
+// Subscribe subscribes to live events only; it does not replay historical
+// events. Callers that need history must use stream.Turns() or another
+// explicit state mechanism.
+//
 // Events are sent with a fixed buffer of 100000. If a subscriber falls
 // behind and its buffer fills, send() applies backpressure to the entire
 // FanOut rather than dropping events. The caller must read from the channel
@@ -144,12 +129,6 @@ func (f *FanOut) closeAll() {
 // Subscribing to multiple kinds on one channel preserves ordering across
 // those event types — events are delivered in the order they were received
 // from the source.
-//
-// Replay buffer: complete events (TurnCompleteEvent, PropertiesEvent,
-// LifecycleEvent, ErrorEvent, and non-delta ArtifactEvents) are buffered in
-// a bounded ring and replayed to new subscribers before live events. Delta
-// events (text_delta, reasoning_delta, tool_call_delta) remain ephemeral
-// and lossy — late subscribers do not receive them.
 func (f *FanOut) Subscribe(kinds ...string) <-chan OutputEvent {
 	ch := make(chan OutputEvent, 100000)
 	var kindSet map[string]struct{}
@@ -166,28 +145,8 @@ func (f *FanOut) Subscribe(kinds ...string) <-chan OutputEvent {
 		close(ch)
 		return ch
 	}
-	// Replay buffered complete events matching the subscriber's kinds.
-	for _, event := range f.buffer {
-		if sub.matches(event.Kind()) {
-			ch <- event
-		}
-	}
 	f.subs = append(f.subs, sub)
 	return ch
-}
-
-// isReplayable reports whether an event should be retained in the bounded
-// replay buffer for late subscribers. Delta events (text_delta,
-// reasoning_delta, tool_call_delta) are not replayable because they are
-// ephemeral streaming chunks; receiving a partial sequence would produce a
-// broken artifact. All other event types are self-contained and safe to replay.
-func isReplayable(event OutputEvent) bool {
-	ae, ok := event.(ArtifactEvent)
-	if !ok {
-		return true
-	}
-	_, isDelta := ae.Artifact.(artifact.Delta)
-	return !isDelta
 }
 
 // Close stops the FanOut and closes all subscriber channels.

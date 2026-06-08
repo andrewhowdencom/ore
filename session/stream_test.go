@@ -159,15 +159,13 @@ func TestStream_ContextClearedBetweenProcesses(t *testing.T) {
 	assert.Equal(t, "first-provenance", provenance(events1[1].(loop.TurnCompleteEvent).Ctx))
 
 	// Second process without provenance — context should be cleared.
-	// With the replay buffer, the new subscriber also receives the buffered
-	// TurnCompleteEvents from the first process (2 events) plus the live
-	// TurnCompleteEvents from the second process (2 events).
+	// The new subscriber only receives live events (no replay buffer).
 	ch2 := stream.Subscribe("turn_complete")
 	err = stream.Process(context.Background(), UserMessageEvent{Content: "second"})
 	require.NoError(t, err)
 
 	var events2 []loop.OutputEvent
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 2; i++ {
 		select {
 		case event := <-ch2:
 			events2 = append(events2, event)
@@ -175,13 +173,10 @@ func TestStream_ContextClearedBetweenProcesses(t *testing.T) {
 			t.Fatalf("timeout waiting for event %d", i)
 		}
 	}
-	require.Len(t, events2, 4)
-	// First two are replayed from first process.
-	assert.Equal(t, "first-provenance", provenance(events2[0].(loop.TurnCompleteEvent).Ctx))
-	assert.Equal(t, "first-provenance", provenance(events2[1].(loop.TurnCompleteEvent).Ctx))
-	// Next two are live from second process.
-	assert.Empty(t, provenance(events2[2].(loop.TurnCompleteEvent).Ctx))
-	assert.Empty(t, provenance(events2[3].(loop.TurnCompleteEvent).Ctx))
+	require.Len(t, events2, 2)
+	// Both events are live from the second process with cleared context.
+	assert.Empty(t, provenance(events2[0].(loop.TurnCompleteEvent).Ctx))
+	assert.Empty(t, provenance(events2[1].(loop.TurnCompleteEvent).Ctx))
 }
 
 func TestStream_InterruptEvent_ContextPropagation(t *testing.T) {
@@ -221,7 +216,7 @@ type testCustomEvent struct {
 	Ctx   context.Context
 }
 
-func (e testCustomEvent) Kind() string          { return "test_custom" }
+func (e testCustomEvent) Kind() string             { return "test_custom" }
 func (e testCustomEvent) Context() context.Context { return e.Ctx }
 
 func TestStream_Emit_DeliversToSubscribers(t *testing.T) {
@@ -403,12 +398,12 @@ type saveErrStore struct {
 	inner Store
 }
 
-func (s *saveErrStore) Create() (*Thread, error)                    { return s.inner.Create() }
-func (s *saveErrStore) Get(id string) (*Thread, bool)               { return s.inner.Get(id) }
-func (s *saveErrStore) GetBy(key, value string) (*Thread, bool)    { return s.inner.GetBy(key, value) }
-func (s *saveErrStore) Save(*Thread) error                         { return errors.New("save failed") }
-func (s *saveErrStore) Delete(id string) bool                             { return s.inner.Delete(id) }
-func (s *saveErrStore) List() ([]*Thread, error)                   { return s.inner.List() }
+func (s *saveErrStore) Create() (*Thread, error)                { return s.inner.Create() }
+func (s *saveErrStore) Get(id string) (*Thread, bool)           { return s.inner.Get(id) }
+func (s *saveErrStore) GetBy(key, value string) (*Thread, bool) { return s.inner.GetBy(key, value) }
+func (s *saveErrStore) Save(*Thread) error                      { return errors.New("save failed") }
+func (s *saveErrStore) Delete(id string) bool                   { return s.inner.Delete(id) }
+func (s *saveErrStore) List() ([]*Thread, error)                { return s.inner.List() }
 
 func TestStream_Process_EmitsLifecycleEvent_WithSaveError(t *testing.T) {
 	store := &saveErrStore{inner: NewMemoryStore()}
@@ -555,7 +550,7 @@ func TestStream_Submit_NonBlocking(t *testing.T) {
 		}
 	}
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, sleepyProcessor())
 
 	stream, err := mgr.Create()
@@ -583,7 +578,7 @@ func TestStream_Submit_NonBlocking(t *testing.T) {
 func TestStream_Submit_FIFOOrder(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, nopProcessor())
 
 	stream, err := mgr.Create()
@@ -609,7 +604,7 @@ func TestStream_Submit_FIFOOrder(t *testing.T) {
 func TestStream_Submit_InterruptClearsQueue(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &blockingProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
@@ -666,7 +661,7 @@ func TestStream_Submit_InterruptClearsQueue(t *testing.T) {
 func TestStream_ProcessAndSubmit_Mixed(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
