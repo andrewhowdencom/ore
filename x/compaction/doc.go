@@ -25,18 +25,12 @@
 //
 // # Built-in Strategies
 //
-// KeepLastN drops all but the last N turns. It is provider-agnostic and
-// fast, making it suitable as a safety margin before more expensive
-// strategies.
-//
-// SummarizeStrategy is a token-aware strategy that calls an LLM provider to
-// summarize conversation history. It walks backwards from the last turn,
-// preserving the suffix that fits within MaxTokens, and replaces the prefix
-// with a single synthetic system summary turn. If the entire history fits,
-// it returns a defensive copy without calling the provider. Token estimation
-// is a rough heuristic (len(text)/4) with no external dependencies.
-// The summary turn uses RoleSystem because it is injected context about
-// prior conversation, not a real assistant response.
+// SummarizeStrategy is a strategy that calls an LLM provider to summarize
+// conversation history, replacing all turns with a single synthetic system
+// summary turn. The provider is called with the full history loaded into a
+// temporary state.Buffer, followed by a user prompt asking for a concise
+// summary. The summary turn uses RoleSystem because it is injected context
+// about prior conversation, not a real assistant response.
 //
 // SummarizeStrategy only collects artifact.Text responses from the provider.
 // Other artifact types (Usage, Reasoning, ToolCall, etc.) are silently
@@ -49,9 +43,8 @@
 // compaction occurs, the application must call buf.LoadTurns():
 //
 //	compactor := compaction.New(
-//	    compaction.WithTrigger(compaction.TurnCountTrigger{N: 20}),
-//	    compaction.WithStrategy(compaction.KeepLastN{N: 10}),
-//	    compaction.WithStrategy(compaction.SummarizeStrategy{Provider: prov, MaxTokens: 8000}),
+//	    compaction.WithTrigger(compaction.TokenUsageTrigger{MaxTokens: 8000}),
+//	    compaction.WithStrategy(compaction.SummarizeStrategy{Provider: prov}),
 //	)
 //
 // WithStrategy accumulates; each call appends another strategy to the
@@ -75,9 +68,8 @@
 // # Defensive composition
 //
 // Applications should protect against provider failures and context overflow
-// by chaining strategies or setting trigger thresholds with safety margins.
-// For example, keep the last N turns before summarizing, or set MaxTokens
-// well below the provider's hard limit.
+// by setting trigger thresholds with safety margins. For example, set
+// MaxTokens well below the provider's hard limit.
 //
 // Compaction must be called from the same goroutine as step.Turn().
 // state.Buffer is not safe for concurrent use.
