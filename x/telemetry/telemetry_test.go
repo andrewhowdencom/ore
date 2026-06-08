@@ -94,35 +94,35 @@ func findDataPoint(t *testing.T, points []metricdata.DataPoint[int64], expected 
 }
 
 func TestCountChars_Text(t *testing.T) {
-	assert.Equal(t, int64(5), countChars(artifact.Text{Content: "hello"}))
+	assert.Equal(t, int64(5), countBytes(artifact.Text{Content: "hello"}))
 }
 
 func TestCountChars_Reasoning(t *testing.T) {
-	assert.Equal(t, int64(5), countChars(artifact.Reasoning{Content: "think"}))
+	assert.Equal(t, int64(5), countBytes(artifact.Reasoning{Content: "think"}))
 }
 
 func TestCountChars_ToolCall(t *testing.T) {
 	tc := artifact.ToolCall{ID: "1", Name: "test", Arguments: `{"x":1}`}
-	assert.Equal(t, int64(len(tc.LLMString())), countChars(tc))
+	assert.Equal(t, int64(len(tc.LLMString())), countBytes(tc))
 }
 
 func TestCountChars_ToolResult(t *testing.T) {
 	tr := artifact.ToolResult{ToolCallID: "1", Content: "result"}
-	assert.Equal(t, int64(len(tr.LLMString())), countChars(tr))
+	assert.Equal(t, int64(len(tr.LLMString())), countBytes(tr))
 }
 
 func TestCountChars_Image(t *testing.T) {
-	assert.Equal(t, int64(12), countChars(artifact.Image{URL: "http://a.b/c"}))
+	assert.Equal(t, int64(12), countBytes(artifact.Image{URL: "http://a.b/c"}))
 }
 
 func TestCountChars_Usage(t *testing.T) {
-	assert.Equal(t, int64(0), countChars(artifact.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15}))
+	assert.Equal(t, int64(0), countBytes(artifact.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15}))
 }
 
 func TestCountChars_UnknownType(t *testing.T) {
 	ta := testArtifact{KindVal: "custom", Content: "hello"}
 	expected, _ := json.Marshal(ta)
-	assert.Equal(t, int64(len(expected)), countChars(ta))
+	assert.Equal(t, int64(len(expected)), countBytes(ta))
 }
 
 func TestCountChars_ToolCallWithValue(t *testing.T) {
@@ -132,7 +132,7 @@ func TestCountChars_ToolCallWithValue(t *testing.T) {
 		Arguments: `{"x":1}`,
 		Value:     map[string]any{"x": 1},
 	}
-	assert.Equal(t, int64(len(`{"x":1}`)), countChars(tc))
+	assert.Equal(t, int64(len(`{"x":1}`)), countBytes(tc))
 }
 
 func TestCountChars_ToolResultWithValue(t *testing.T) {
@@ -142,7 +142,7 @@ func TestCountChars_ToolResultWithValue(t *testing.T) {
 		Value:      map[string]any{"result": "ok"},
 	}
 	expected := `{"result":"ok"}`
-	assert.Equal(t, int64(len(expected)), countChars(tr))
+	assert.Equal(t, int64(len(expected)), countBytes(tr))
 }
 
 func TestNew_NilMeter_IsNoOp(t *testing.T) {
@@ -179,7 +179,7 @@ func TestOnEmit_SentCounter_UserRole(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "llm.characters.sent")
+	sum, ok := findMetric(t, rm, "llm.bytes.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 1)
 	assert.Equal(t, int64(5), sum.DataPoints[0].Value)
@@ -188,7 +188,7 @@ func TestOnEmit_SentCounter_UserRole(t *testing.T) {
 		"role":          "user",
 	}, attrsMap(sum.DataPoints[0].Attributes))
 
-	_, ok = findMetric(t, rm, "llm.characters.received")
+	_, ok = findMetric(t, rm, "llm.bytes.received")
 	assert.False(t, ok)
 }
 
@@ -208,7 +208,7 @@ func TestOnEmit_SentCounter_SystemRole(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "llm.characters.sent")
+	sum, ok := findMetric(t, rm, "llm.bytes.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 1)
 	assert.Equal(t, int64(3), sum.DataPoints[0].Value)
@@ -234,7 +234,7 @@ func TestOnEmit_SentCounter_ToolRole(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "llm.characters.sent")
+	sum, ok := findMetric(t, rm, "llm.bytes.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 1)
 	assert.Equal(t, map[string]string{
@@ -242,7 +242,7 @@ func TestOnEmit_SentCounter_ToolRole(t *testing.T) {
 		"role":          "tool",
 	}, attrsMap(sum.DataPoints[0].Attributes))
 
-	_, ok = findMetric(t, rm, "llm.characters.received")
+	_, ok = findMetric(t, rm, "llm.bytes.received")
 	assert.False(t, ok)
 }
 
@@ -265,11 +265,11 @@ func TestOnEmit_ReceivedCounter_AssistantRole(t *testing.T) {
 	rm := collectMetrics(t, reader)
 
 	// Sent should not be present
-	_, ok := findMetric(t, rm, "llm.characters.sent")
+	_, ok := findMetric(t, rm, "llm.bytes.sent")
 	assert.False(t, ok)
 
 	// Received should have two data points (text + reasoning)
-	sum, ok := findMetric(t, rm, "llm.characters.received")
+	sum, ok := findMetric(t, rm, "llm.bytes.received")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 2)
 
@@ -290,9 +290,9 @@ func TestOnEmit_NonTurnCompleteEvent_Ignored(t *testing.T) {
 	cb(ctx, loop.PropertiesEvent{Properties: map[string]string{"key": "val"}})
 
 	rm := collectMetrics(t, reader)
-	_, ok := findMetric(t, rm, "llm.characters.sent")
+	_, ok := findMetric(t, rm, "llm.bytes.sent")
 	assert.False(t, ok)
-	_, ok = findMetric(t, rm, "llm.characters.received")
+	_, ok = findMetric(t, rm, "llm.bytes.received")
 	assert.False(t, ok)
 }
 
@@ -312,7 +312,7 @@ func TestOnEmit_ZeroChars_Skipped(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	_, ok := findMetric(t, rm, "llm.characters.received")
+	_, ok := findMetric(t, rm, "llm.bytes.received")
 	assert.False(t, ok)
 }
 
@@ -333,7 +333,7 @@ func TestOnEmit_MultipleArtifacts_MultipleDataPoints(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "llm.characters.sent")
+	sum, ok := findMetric(t, rm, "llm.bytes.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 2)
 
@@ -383,7 +383,7 @@ func TestOnEmit_IntegrationWithMockMeter(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "llm.characters.sent")
+	sum, ok := findMetric(t, rm, "llm.bytes.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 1)
 	assert.Equal(t, int64(2), sum.DataPoints[0].Value)
@@ -415,7 +415,7 @@ func TestOnEmit_DifferentTurns_SameCounter(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "llm.characters.sent")
+	sum, ok := findMetric(t, rm, "llm.bytes.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 1)
 	assert.Equal(t, int64(3), sum.DataPoints[0].Value)
@@ -438,7 +438,7 @@ func TestOnEmit_AssistantTurnWithToolCall(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "llm.characters.received")
+	sum, ok := findMetric(t, rm, "llm.bytes.received")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 2)
 
@@ -479,7 +479,7 @@ func TestOnEmit_ToolResultWithLLMStringValue(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "llm.characters.sent")
+	sum, ok := findMetric(t, rm, "llm.bytes.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 1)
 	assert.Equal(t, int64(len(`{"result":"ok"}`)), sum.DataPoints[0].Value)
@@ -503,7 +503,7 @@ func TestOnEmit_UnknownArtifactType(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "llm.characters.sent")
+	sum, ok := findMetric(t, rm, "llm.bytes.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 1)
 	expectedJSON, _ := json.Marshal(testArtifact{KindVal: "custom", Content: "hello"})
@@ -528,7 +528,7 @@ func TestOnEmit_EmptyArtifacts_NoMetrics(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	_, ok := findMetric(t, rm, "llm.characters.sent")
+	_, ok := findMetric(t, rm, "llm.bytes.sent")
 	assert.False(t, ok)
 }
 
@@ -549,7 +549,7 @@ func TestOnEmit_MixedArtifactsWithZeroAndNonZero(t *testing.T) {
 	})
 
 	rm := collectMetrics(t, reader)
-	sum, ok := findMetric(t, rm, "llm.characters.sent")
+	sum, ok := findMetric(t, rm, "llm.bytes.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 1)
 	assert.Equal(t, int64(2), sum.DataPoints[0].Value)
