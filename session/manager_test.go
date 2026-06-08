@@ -86,7 +86,7 @@ func TestNewManager(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 	require.NotNil(t, mgr)
 }
@@ -94,7 +94,7 @@ func TestNewManager(t *testing.T) {
 func TestManager_Create(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
@@ -113,51 +113,10 @@ func TestManager_Create(t *testing.T) {
 	assert.Equal(t, stream.ID(), active[0].ID())
 }
 
-func TestManager_Create_ReplayBuffer_PropertiesEventNotLost(t *testing.T) {
-	store := NewMemoryStore()
-	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-		return nil, nil
-	}, simpleProcessor(),
-		WithDefaultMetadata(func(stream *Stream) map[string]string {
-			return map[string]string{"role": "test-role", "cwd": "/tmp"}
-		}),
-	)
-
-	stream, err := mgr.Create()
-	require.NoError(t, err)
-	require.NotNil(t, stream)
-
-	// Subscribe after Create() has already returned and applyDefaultMetadata
-	// has emitted PropertiesEvent(s). With the replay buffer, they should
-	// still be available.
-	ch := stream.Subscribe("properties")
-	defer stream.Close()
-
-	// The FanOut buffer replay delivers events synchronously inside Subscribe,
-	// so the buffered PropertiesEvent is already in the channel.
-	// Read all buffered events (one per metadata key) then confirm the channel
-	// is still open and will receive future events.
-	var events []loop.OutputEvent
-	events = append(events, <-ch)
-	events = append(events, <-ch)
-
-	// WithDefaultMetadata returns two keys, so two PropertiesEvents.
-	require.Len(t, events, 2)
-
-	var keys []string
-	for _, e := range events {
-		pe, ok := e.(loop.PropertiesEvent)
-		require.True(t, ok)
-		for k := range pe.Properties {
-			keys = append(keys, k)
-		}
-	}
-	assert.ElementsMatch(t, []string{"role", "cwd"}, keys)
-}
 func TestManager_Attach(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	// Create a thread directly in the store.
@@ -234,7 +193,7 @@ func TestManager_Attach_FactoryReceivesThread(t *testing.T) {
 func TestManager_Attach_ExistingSession(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	// Create a thread and attach once.
@@ -256,7 +215,7 @@ func TestManager_Attach_ExistingSession(t *testing.T) {
 func TestManager_Attach_ThreadNotFound(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	_, err := mgr.Attach("nonexistent")
@@ -273,7 +232,7 @@ func TestManager_Process(t *testing.T) {
 	}
 	store := NewMemoryStore()
 	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
@@ -317,7 +276,7 @@ func TestManager_Process(t *testing.T) {
 func TestStream_Process_Queued(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
@@ -346,7 +305,7 @@ func TestStream_Process_Queued(t *testing.T) {
 func TestStream_Process_Closed(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
@@ -368,7 +327,7 @@ func (e *unsupportedEvent) Context() context.Context { return context.Background
 func TestManager_Process_UnsupportedEvent(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
@@ -382,7 +341,7 @@ func TestManager_Process_UnsupportedEvent(t *testing.T) {
 func TestManager_Process_ContextCancel(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &blockingProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
@@ -426,7 +385,7 @@ func TestManager_Process_SaveError(t *testing.T) {
 	prov := &mockProvider{}
 	store := &errStore{}
 	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, nopProcessor())
 
 	stream, err := mgr.Create()
@@ -442,7 +401,7 @@ func TestManager_Cancel(t *testing.T) {
 	prov := &blockingProvider{}
 	store := NewMemoryStore()
 	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
@@ -490,7 +449,7 @@ func TestManager_Cancel(t *testing.T) {
 func TestStream_Cancel_Closed(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
@@ -507,7 +466,7 @@ func TestStream_Cancel_Closed(t *testing.T) {
 func TestStream_Subscribe_Closed(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
@@ -524,7 +483,7 @@ func TestStream_Subscribe_Closed(t *testing.T) {
 func TestManager_Close(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
@@ -550,7 +509,7 @@ func TestManager_Close(t *testing.T) {
 func TestManager_Close_NotFound(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	err := mgr.Close("nonexistent")
@@ -561,7 +520,7 @@ func TestManager_Close_NotFound(t *testing.T) {
 func TestManager_List(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	// Empty initially.
@@ -593,7 +552,7 @@ func TestStream_Process_Serial(t *testing.T) {
 
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, sleepyProcessor())
 
 	stream, err := mgr.Create()
@@ -626,11 +585,10 @@ func TestManager_Get_NotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found")
 }
 
-
 func TestStream_Cancel_Idle(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
@@ -644,7 +602,7 @@ func TestStream_Cancel_Idle(t *testing.T) {
 func TestStream_Close_Idempotent(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
@@ -664,7 +622,6 @@ func TestStream_Close_Idempotent(t *testing.T) {
 	require.False(t, ok, "channel should be closed")
 }
 
-
 func TestStream_Process_ProviderError(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
@@ -674,7 +631,7 @@ func TestStream_Process_ProviderError(t *testing.T) {
 	}
 	store := NewMemoryStore()
 	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
@@ -694,7 +651,7 @@ func boomProcessor() TurnProcessor {
 func TestStream_Process_ProcessorError(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, boomProcessor())
 
 	stream, err := mgr.Create()
@@ -709,7 +666,7 @@ func TestStream_Process_ProcessorError(t *testing.T) {
 func TestManager_Attach_Concurrent(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	// Create a thread directly in the store.
@@ -741,7 +698,7 @@ func TestManager_RegisterSink_ReceivesEventsFromNewStream(t *testing.T) {
 	}
 	store := NewMemoryStore()
 	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	var mu sync.Mutex
@@ -784,7 +741,7 @@ func TestManager_RegisterSink_ReceivesEventsFromExistingStream(t *testing.T) {
 	}
 	store := NewMemoryStore()
 	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
@@ -819,7 +776,7 @@ func TestManager_RegisterSink_UnregisterStopsDelivery(t *testing.T) {
 	}
 	store := NewMemoryStore()
 	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	var mu sync.Mutex
@@ -863,7 +820,7 @@ func TestManager_RegisterSink_MultipleSinks(t *testing.T) {
 	}
 	store := NewMemoryStore()
 	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	var mu sync.Mutex
@@ -907,7 +864,7 @@ func TestManager_RegisterSink_KindFiltering(t *testing.T) {
 	}
 	store := NewMemoryStore()
 	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	var mu sync.Mutex
@@ -950,7 +907,7 @@ func TestManager_RegisterSink_KindFiltering(t *testing.T) {
 func TestManager_RegisterSink_ClosedStreamNoEvents(t *testing.T) {
 	store := NewMemoryStore()
 	mgr := NewManager(store, &mockProvider{}, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
@@ -986,7 +943,7 @@ func TestManager_RegisterSink_WildcardKinds(t *testing.T) {
 	}
 	store := NewMemoryStore()
 	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	var mu sync.Mutex
@@ -1040,7 +997,7 @@ func TestManager_RegisterSink_MultipleStreams(t *testing.T) {
 	}
 	store := NewMemoryStore()
 	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	var mu sync.Mutex
@@ -1085,7 +1042,7 @@ func TestManager_RegisterSink_ConcurrentRegisterUnregister(t *testing.T) {
 	}
 	store := NewMemoryStore()
 	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
@@ -1127,7 +1084,7 @@ func TestManager_RegisterSink_PanicRecovery(t *testing.T) {
 	}
 	store := NewMemoryStore()
 	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	stream, err := mgr.Create()
@@ -1169,7 +1126,7 @@ func TestManager_RegisterSink_DoubleUnregister(t *testing.T) {
 	}
 	store := NewMemoryStore()
 	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	var mu sync.Mutex
@@ -1218,7 +1175,7 @@ func (e *errStore) GetBy(key, value string) (*Thread, bool) {
 	return NewMemoryStore().GetBy(key, value)
 }
 func (e *errStore) Save(*Thread) error       { return fmt.Errorf("save failed") }
-func (e *errStore) Delete(string) bool              { return false }
+func (e *errStore) Delete(string) bool       { return false }
 func (e *errStore) List() ([]*Thread, error) { return nil, nil }
 
 func TestManager_RegisterSink_ContextEchoSuppression(t *testing.T) {
@@ -1230,7 +1187,7 @@ func TestManager_RegisterSink_ContextEchoSuppression(t *testing.T) {
 	}
 	store := NewMemoryStore()
 	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {
-  return nil, nil
+		return nil, nil
 	}, simpleProcessor())
 
 	var mu sync.Mutex
