@@ -742,3 +742,48 @@ func TestReadFile_CapWithLimit(t *testing.T) {
 	resultStr := result.(string)
 	require.LessOrEqual(t, len(resultStr), 100_000, "cap should win over limit")
 }
+
+func TestSearchFiles_BudgetWithinLimit(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	// Create 10 files with 1 matching line each.
+	for i := 0; i < 10; i++ {
+		p := filepath.Join(dir, fmt.Sprintf("file%d.txt", i))
+		require.NoError(t, os.WriteFile(p, []byte("match\n"), 0o644))
+	}
+
+	result, err := SearchFiles(context.Background(), nil, map[string]any{
+		"path":  dir,
+		"query": "match",
+	})
+	require.NoError(t, err)
+
+	results := result.([]SearchResult)
+	assert.Len(t, results, 10)
+}
+
+func TestSearchFiles_BudgetExceeded(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	// Create 50 files, each with 10 matching lines.
+	for i := 0; i < 50; i++ {
+		p := filepath.Join(dir, fmt.Sprintf("file%d.txt", i))
+		var content strings.Builder
+		for j := 0; j < 10; j++ {
+			content.WriteString("match\n")
+		}
+		require.NoError(t, os.WriteFile(p, []byte(content.String()), 0o644))
+	}
+
+	result, err := SearchFiles(context.Background(), nil, map[string]any{
+		"path":  dir,
+		"query": "match",
+	})
+	require.NoError(t, err)
+
+	results := result.([]SearchResult)
+	// 50 files * 10 matches = 500 matches. Budget is 50000 bytes.
+	// Each match is ~115 bytes (path + content + overhead).
+	// 500 * 115 = 57500 > 50000. So results should be truncated.
+	assert.Less(t, len(results), 500)
+}
