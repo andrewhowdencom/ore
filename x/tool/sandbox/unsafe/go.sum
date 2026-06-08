@@ -1,7 +1,9 @@
 github.com/andrewhowdencom/ore v0.7.0 h1:r6+9aKHuh28tObSOLbpTPLvg8eMrsQ6Ny6Ig9M18BSg=
 github.com/andrewhowdencom/ore v0.7.0/go.mod h1:21KoIj06hHnZ7SPrV6chXMdU4oRjHheaCI+/kasHIFc=
 github.com/andrewhowdencom/ore/x/tool/bash v0.3.2 h1:nePnsHF2CBReQ98s+p3VTxiVv1bXiO/SJ3BaAhnfmao=
+github.com/andrewhowdencom/ore/x/tool/bash v0.3.2/go.mod h1:n0hdp3tjHwp599it6Z52Omq6zSie3yZg8+SPTMekD6E=
 github.com/andrewhowdencom/ore/x/tool/filesystem v0.4.2 h1:+m57qmbo/NmVF0X3DU33o25/ikDHOUQjROu9aayM/ho=
+github.com/andrewhowdencom/ore/x/tool/filesystem v0.4.2/go.mod h1:5SJOmA6dhWQnQYe4qfBMK0kzHlDL2si3S0cmbn2NghM=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
