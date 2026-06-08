@@ -2,7 +2,10 @@ package tool
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Sandbox is the base interface for all sandbox implementations.
@@ -81,4 +84,31 @@ type RemoteSource interface {
 	Tools() []Tool
 	// Call invokes a tool by name with the given arguments.
 	Call(ctx context.Context, name string, args map[string]any) (any, error)
+}
+
+// TruncateContent truncates content to a valid UTF-8 boundary so that the
+// total length (truncated content + formatted hint) does not exceed maxBytes.
+// If maxBytes is 0 or len(content) <= maxBytes, content is returned unchanged.
+// The hintTemplate may contain ${N} which is replaced with totalBytes.
+func TruncateContent(content string, maxBytes int, totalBytes int, hintTemplate string) string {
+	if maxBytes <= 0 || len(content) <= maxBytes {
+		return content
+	}
+	hint := strings.ReplaceAll(hintTemplate, "${N}", fmt.Sprintf("%d", totalBytes))
+	maxContent := maxBytes - len(hint)
+	if maxContent <= 0 {
+		return hint
+	}
+	truncated := truncateToValidUTF8(content, maxContent)
+	return truncated + hint
+}
+
+func truncateToValidUTF8(s string, maxBytes int) string {
+	if maxBytes >= len(s) {
+		return s
+	}
+	for maxBytes > 0 && !utf8.ValidString(s[:maxBytes]) {
+		maxBytes--
+	}
+	return s[:maxBytes]
 }
