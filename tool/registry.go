@@ -11,8 +11,9 @@ type Registry interface {
 	Register(t Tool, fn ToolFunc) error
 	// Tools returns a merged list of all registered tools.
 	Tools() []Tool
-	// Lookup returns the tool function and true if the tool is registered locally.
-	Lookup(name string) (ToolFunc, bool)
+	// Lookup returns the tool descriptor, the tool function, and true if the
+	// tool is registered locally.
+	Lookup(name string) (Tool, ToolFunc, bool)
 	// LookupRemoteSource finds a remote source by its namespace prefix.
 	LookupRemoteSource(namespace string) RemoteSource
 }
@@ -121,11 +122,13 @@ func (r *registry) Tools() []Tool {
 	for _, rs := range r.remoteSources {
 		for _, rt := range rs.Tools() {
 			tools = append(tools, Tool{
-				Name:        rs.Name() + "/" + rt.Name,
-				Description: rt.Description,
-				Schema:      rt.Schema,
-				DisplayHint: rt.DisplayHint,
-				Examples:    rt.Examples,
+				Name:           rs.Name() + "/" + rt.Name,
+				Description:    rt.Description,
+				Schema:         rt.Schema,
+				DisplayHint:    rt.DisplayHint,
+				Examples:       rt.Examples,
+				MaxBytes:       rt.MaxBytes,
+				TruncationHint: rt.TruncationHint,
 			})
 		}
 	}
@@ -133,15 +136,15 @@ func (r *registry) Tools() []Tool {
 	return tools
 }
 
-// Lookup returns the tool function and true if found.
-func (r *registry) Lookup(name string) (ToolFunc, bool) {
+// Lookup returns the tool descriptor, the tool function, and true if found.
+func (r *registry) Lookup(name string) (Tool, ToolFunc, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	lt, ok := r.localTools[name]
 	if !ok {
-		return nil, false
+		return Tool{}, nil, false
 	}
-	return lt.fn, true
+	return lt.tool, lt.fn, true
 }
 
 // LookupRemoteSource finds a remote source by its namespace prefix.

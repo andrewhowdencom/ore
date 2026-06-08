@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -189,7 +190,7 @@ func TestRegistry_ConcurrentOverwrite(t *testing.T) {
 	wg.Wait()
 
 	// After all overwrites, the final entry should be one of the registered functions.
-	fn, ok := r.Lookup("test")
+	_, fn, ok := r.Lookup("test")
 	require.True(t, ok)
 	result, err := fn(context.Background(), nil, nil)
 	require.NoError(t, err)
@@ -361,4 +362,39 @@ func TestRegistry_Tools_RemoteExamplesPreserved(t *testing.T) {
 	assert.Equal(t, map[string]any{"path": "hello.go"}, tools[0].Examples[0].Input)
 	assert.Equal(t, "package main\n", tools[0].Examples[0].Output)
 	assert.Equal(t, "Basic file read", tools[0].Examples[0].Explanation)
+}
+
+func TestTruncateContent_NoBudget(t *testing.T) {
+	content := "hello world"
+	result := TruncateContent(content, 0, len(content), "...truncated")
+	assert.Equal(t, content, result)
+}
+
+func TestTruncateContent_WithinBudget(t *testing.T) {
+	content := "hello world"
+	result := TruncateContent(content, 100, len(content), "...truncated")
+	assert.Equal(t, content, result)
+}
+
+func TestTruncateContent_ExceedsBudget(t *testing.T) {
+	content := "hello world this is a very long string indeed"
+	hint := "...truncated (total ${N} bytes)"
+	// Content is 45 bytes. MaxBytes is 40. Formatted hint is 30 bytes.
+	// maxContent = 40 - 30 = 10. Result should be 10 + 30 = 40 bytes.
+	result := TruncateContent(content, 40, 45, hint)
+	assert.Equal(t, "hello world...truncated (total 45 bytes)", result)
+	assert.Equal(t, 40, len(result))
+}
+
+func TestTruncateContent_UTF8Boundary(t *testing.T) {
+	content := "你好世界你好世界"
+	hint := "...truncated"
+	// Content is 24 bytes. MaxBytes is 20. Hint is 12 bytes.
+	// maxContent = 20 - 12 = 8 bytes.
+	// s[:8] = 你 + 好 + 世 (first two bytes). Invalid.
+	// Should walk back to 你 + 好 (6 bytes).
+	result := TruncateContent(content, 20, 24, hint)
+	assert.Equal(t, "你好"+hint, result)
+	assert.Equal(t, 18, len(result))
+	assert.True(t, utf8.ValidString(result))
 }
