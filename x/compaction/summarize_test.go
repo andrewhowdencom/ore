@@ -51,8 +51,7 @@ func TestSummarizeStrategy_ReducesTurns(t *testing.T) {
 	}
 
 	strategy := SummarizeStrategy{
-		Provider:  prov,
-		MaxTokens: 3,
+		Provider: prov,
 	}
 
 	turns := []state.Turn{
@@ -65,58 +64,13 @@ func TestSummarizeStrategy_ReducesTurns(t *testing.T) {
 	result, err := strategy.Compact(context.Background(), turns)
 	require.NoError(t, err)
 	assert.True(t, prov.called)
-	require.Len(t, result, 4)
+	require.Len(t, result, 1)
 
 	assert.Equal(t, state.RoleSystem, result[0].Role)
 	require.Len(t, result[0].Artifacts, 1)
 	text, ok := result[0].Artifacts[0].(artifact.Text)
 	require.True(t, ok)
 	assert.Equal(t, "Summary of earlier discussion.", text.Content)
-
-	assert.Equal(t, state.RoleAssistant, result[1].Role)
-	assert.Equal(t, state.RoleUser, result[2].Role)
-	assert.Equal(t, state.RoleAssistant, result[3].Role)
-}
-
-func TestSummarizeStrategy_NoOpWhenUnderBudget(t *testing.T) {
-	prov := &mockProvider{}
-
-	strategy := SummarizeStrategy{
-		Provider:  prov,
-		MaxTokens: 5,
-	}
-
-	turns := []state.Turn{
-		textTurn(state.RoleUser, "aaaa"),
-		textTurn(state.RoleAssistant, "aaaa"),
-	}
-
-	result, err := strategy.Compact(context.Background(), turns)
-	require.NoError(t, err)
-	assert.False(t, prov.called)
-	assert.Len(t, result, 2)
-	assert.NotSame(t, &turns[0], &result[0])
-}
-
-func TestSummarizeStrategy_NoOpExactBudget(t *testing.T) {
-	prov := &mockProvider{}
-
-	strategy := SummarizeStrategy{
-		Provider:  prov,
-		MaxTokens: 3,
-	}
-
-	turns := []state.Turn{
-		textTurn(state.RoleUser, "aaaa"),
-		textTurn(state.RoleAssistant, "aaaa"),
-		textTurn(state.RoleUser, "aaaa"),
-	}
-
-	result, err := strategy.Compact(context.Background(), turns)
-	require.NoError(t, err)
-	assert.False(t, prov.called)
-	assert.Len(t, result, 3)
-	assert.NotSame(t, &turns[0], &result[0])
 }
 
 func TestSummarizeStrategy_PropagatesProviderError(t *testing.T) {
@@ -124,8 +78,7 @@ func TestSummarizeStrategy_PropagatesProviderError(t *testing.T) {
 	prov := &mockProvider{err: wantErr}
 
 	strategy := SummarizeStrategy{
-		Provider:  prov,
-		MaxTokens: 2,
+		Provider: prov,
 	}
 
 	turns := []state.Turn{
@@ -151,8 +104,7 @@ func TestSummarizeStrategy_IgnoresNonTextArtifacts(t *testing.T) {
 	}
 
 	strategy := SummarizeStrategy{
-		Provider:  prov,
-		MaxTokens: 1,
+		Provider: prov,
 	}
 
 	turns := []state.Turn{
@@ -171,14 +123,12 @@ func TestSummarizeStrategy_IgnoresNonTextArtifacts(t *testing.T) {
 	result, err := strategy.Compact(context.Background(), turns)
 	require.NoError(t, err)
 	assert.True(t, prov.called)
-	require.Len(t, result, 2)
+	require.Len(t, result, 1)
 
 	require.Len(t, result[0].Artifacts, 1)
 	text, ok := result[0].Artifacts[0].(artifact.Text)
 	require.True(t, ok)
 	assert.Equal(t, "Actual summary.", text.Content)
-
-	assert.Equal(t, state.RoleAssistant, result[1].Role)
 }
 
 func TestSummarizeStrategy_MultipleTextArtifactsConcatenated(t *testing.T) {
@@ -190,8 +140,7 @@ func TestSummarizeStrategy_MultipleTextArtifactsConcatenated(t *testing.T) {
 	}
 
 	strategy := SummarizeStrategy{
-		Provider:  prov,
-		MaxTokens: 1,
+		Provider: prov,
 	}
 
 	turns := []state.Turn{
@@ -203,65 +152,19 @@ func TestSummarizeStrategy_MultipleTextArtifactsConcatenated(t *testing.T) {
 	result, err := strategy.Compact(context.Background(), turns)
 	require.NoError(t, err)
 	assert.True(t, prov.called)
-	require.Len(t, result, 2)
+	require.Len(t, result, 1)
 
 	require.Len(t, result[0].Artifacts, 1)
 	text, ok := result[0].Artifacts[0].(artifact.Text)
 	require.True(t, ok)
 	assert.Equal(t, "Part one. Part two.", text.Content)
-
-	assert.Equal(t, state.RoleUser, result[1].Role)
-}
-
-func TestSummarizeStrategy_ZeroMaxTokens(t *testing.T) {
-	strategy := SummarizeStrategy{
-		Provider:  &mockProvider{},
-		MaxTokens: 0,
-	}
-
-	turns := []state.Turn{textTurn(state.RoleUser, "aaaa")}
-	_, err := strategy.Compact(context.Background(), turns)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "MaxTokens must be > 0")
-}
-
-func TestSummarizeStrategy_LastTurnAloneExceedsBudget(t *testing.T) {
-	prov := &mockProvider{
-		artifacts: []artifact.Artifact{
-			artifact.Text{Content: "Summary of turn 0."},
-		},
-	}
-
-	strategy := SummarizeStrategy{
-		Provider:  prov,
-		MaxTokens: 3,
-	}
-
-	turns := []state.Turn{
-		textTurn(state.RoleUser, "aaaa"),
-		textTurn(state.RoleAssistant, "aaaaaaaaaaaaaaaa"),
-	}
-
-	result, err := strategy.Compact(context.Background(), turns)
-	require.NoError(t, err)
-	assert.True(t, prov.called)
-	require.Len(t, result, 2)
-
-	assert.Equal(t, state.RoleSystem, result[0].Role)
-	require.Len(t, result[0].Artifacts, 1)
-	text, ok := result[0].Artifacts[0].(artifact.Text)
-	require.True(t, ok)
-	assert.Equal(t, "Summary of turn 0.", text.Content)
-
-	assert.Equal(t, state.RoleAssistant, result[1].Role)
 }
 
 func TestSummarizeStrategy_EmptyTurns(t *testing.T) {
 	prov := &mockProvider{}
 
 	strategy := SummarizeStrategy{
-		Provider:  prov,
-		MaxTokens: 5,
+		Provider: prov,
 	}
 
 	result, err := strategy.Compact(context.Background(), []state.Turn{})
@@ -270,12 +173,15 @@ func TestSummarizeStrategy_EmptyTurns(t *testing.T) {
 	assert.Empty(t, result)
 }
 
-func TestSummarizeStrategy_SingleTurnUnderBudget(t *testing.T) {
-	prov := &mockProvider{}
+func TestSummarizeStrategy_SingleTurn(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "Summary."},
+		},
+	}
 
 	strategy := SummarizeStrategy{
-		Provider:  prov,
-		MaxTokens: 5,
+		Provider: prov,
 	}
 
 	turns := []state.Turn{
@@ -284,49 +190,12 @@ func TestSummarizeStrategy_SingleTurnUnderBudget(t *testing.T) {
 
 	result, err := strategy.Compact(context.Background(), turns)
 	require.NoError(t, err)
-	assert.False(t, prov.called)
-	assert.Len(t, result, 1)
-	assert.Equal(t, state.RoleUser, result[0].Role)
-	assert.NotSame(t, &turns[0], &result[0])
+	assert.True(t, prov.called)
+	require.Len(t, result, 1)
+	assert.Equal(t, state.RoleSystem, result[0].Role)
 }
 
-func TestEstimateTokens(t *testing.T) {
-	tests := []struct {
-		name     string
-		turns    []state.Turn
-		expected int
-	}{
-		{"empty turns", []state.Turn{}, 0},
-		{"single turn 4 chars", []state.Turn{textTurn(state.RoleUser, "aaaa")}, 1},
-		{"single turn 8 chars", []state.Turn{textTurn(state.RoleUser, "aaaaaaaa")}, 2},
-		{"single turn 3 chars", []state.Turn{textTurn(state.RoleUser, "aaa")}, 0},
-		{"multiple turns", []state.Turn{
-			textTurn(state.RoleUser, "aaaa"),
-			textTurn(state.RoleAssistant, "aaaaaaaa"),
-		}, 3},
-		{"non-text artifacts ignored", []state.Turn{{
-			Role: state.RoleUser,
-			Artifacts: []artifact.Artifact{
-				artifact.Usage{TotalTokens: 1000},
-				artifact.Text{Content: "aaaa"},
-				artifact.Reasoning{Content: "think"},
-			},
-		}}, 1},
-		{"empty text", []state.Turn{textTurn(state.RoleUser, "")}, 0},
-		{"mixed text lengths", []state.Turn{
-			textTurn(state.RoleUser, "aaaa"),     // 1
-			textTurn(state.RoleAssistant, "aaa"), // 0
-			textTurn(state.RoleUser, "aaaaaaaa"), // 2
-		}, 3},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, estimateTokens(tt.turns))
-		})
-	}
-}
-
-func TestSummarizeStrategy_PassesCorrectPrefix(t *testing.T) {
+func TestSummarizeStrategy_PassesAllTurns(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "Summary."},
@@ -334,62 +203,68 @@ func TestSummarizeStrategy_PassesCorrectPrefix(t *testing.T) {
 	}
 
 	strategy := SummarizeStrategy{
-		Provider:  prov,
-		MaxTokens: 2,
+		Provider: prov,
 	}
 
 	turns := []state.Turn{
-		textTurn(state.RoleUser, "aaaa"),        // 1 token
-		textTurn(state.RoleAssistant, "aaaa"),     // 1 token
-		textTurn(state.RoleUser, "aaaa"),        // 1 token
-		textTurn(state.RoleAssistant, "aaaa"),     // 1 token
+		textTurn(state.RoleUser, "aaaa"),
+		textTurn(state.RoleAssistant, "aaaa"),
+		textTurn(state.RoleUser, "aaaa"),
+		textTurn(state.RoleAssistant, "aaaa"),
 	}
 
 	result, err := strategy.Compact(context.Background(), turns)
 	require.NoError(t, err)
 	assert.True(t, prov.called)
 
-	// Provider receives toSummarize + appended user prompt
-	require.Len(t, prov.receivedTurns, 3)
+	// Provider receives all turns + appended user prompt
+	require.Len(t, prov.receivedTurns, 5)
 	assert.Equal(t, state.RoleUser, prov.receivedTurns[0].Role)
 	assert.Equal(t, state.RoleAssistant, prov.receivedTurns[1].Role)
 	assert.Equal(t, state.RoleUser, prov.receivedTurns[2].Role)
+	assert.Equal(t, state.RoleAssistant, prov.receivedTurns[3].Role)
+	assert.Equal(t, state.RoleUser, prov.receivedTurns[4].Role)
 
-	// Result: summary + preserved suffix (turns[2:])
-	require.Len(t, result, 3)
+	// Result: single summary turn
+	require.Len(t, result, 1)
 	assert.Equal(t, state.RoleSystem, result[0].Role)
-	assert.Equal(t, state.RoleUser, result[1].Role)
-	assert.Equal(t, state.RoleAssistant, result[2].Role)
 }
 
-func TestSummarizeStrategy_EmptyTextTurn(t *testing.T) {
+func TestSummarizeStrategy_NilProvider(t *testing.T) {
+	strategy := SummarizeStrategy{}
+	turns := []state.Turn{
+		textTurn(state.RoleUser, "hello"),
+	}
+	_, err := strategy.Compact(context.Background(), turns)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Provider must not be nil")
+}
+
+func TestSummarizeStrategy_NoTextArtifacts(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
-			artifact.Text{Content: "Summary."},
+			artifact.Usage{TotalTokens: 42},
+			artifact.Reasoning{Content: "thinking..."},
+			artifact.ToolCall{Name: "test"},
 		},
 	}
 
 	strategy := SummarizeStrategy{
-		Provider:  prov,
-		MaxTokens: 1,
+		Provider: prov,
 	}
 
-	// 3 turns: 1 token, 0 tokens, 1 token
 	turns := []state.Turn{
-		textTurn(state.RoleUser, "aaaa"),         // 1 token
-		textTurn(state.RoleAssistant, ""),          // 0 tokens
-		textTurn(state.RoleUser, "aaaa"),         // 1 token
+		textTurn(state.RoleUser, "aaaa"),
+		textTurn(state.RoleAssistant, "bbbb"),
 	}
 
 	result, err := strategy.Compact(context.Background(), turns)
 	require.NoError(t, err)
 	assert.True(t, prov.called)
-
-	// Total = 2 > 1
-	// toPreserve = turns[1:] (turns 1, 2 — 1 token total due to empty text)
-	// toSummarize = turns[:1] (turn 0)
-	require.Len(t, result, 3)
+	require.Len(t, result, 1)
 	assert.Equal(t, state.RoleSystem, result[0].Role)
-	assert.Equal(t, state.RoleAssistant, result[1].Role) // empty text turn preserved
-	assert.Equal(t, state.RoleUser, result[2].Role)
+	require.Len(t, result[0].Artifacts, 1)
+	text, ok := result[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Empty(t, text.Content)
 }
