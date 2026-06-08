@@ -332,3 +332,81 @@ func TestSummarizeStrategy_UsesCustomPrompt(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "Custom override prompt", text.Content)
 }
+
+func TestSummarizeStrategy_TextDeltaArtifacts(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Summary part one. "},
+			artifact.TextDelta{Content: "Summary part two."},
+		},
+	}
+
+	strategy := SummarizeStrategy{
+		Provider: prov,
+	}
+
+	turns := []state.Turn{
+		textTurn(state.RoleUser, "aaaa"),
+		textTurn(state.RoleAssistant, "aaaa"),
+	}
+
+	result, err := strategy.Compact(context.Background(), turns)
+	require.NoError(t, err)
+	assert.True(t, prov.called)
+	require.Len(t, result, 1)
+
+	require.Len(t, result[0].Artifacts, 1)
+	text, ok := result[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "Summary part one. Summary part two.", text.Content)
+}
+
+func TestSummarizeStrategy_MixedTextAndTextDelta(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "Part A. "},
+			artifact.TextDelta{Content: "Part B."},
+		},
+	}
+
+	strategy := SummarizeStrategy{
+		Provider: prov,
+	}
+
+	turns := []state.Turn{
+		textTurn(state.RoleUser, "aaaa"),
+		textTurn(state.RoleAssistant, "aaaa"),
+	}
+
+	result, err := strategy.Compact(context.Background(), turns)
+	require.NoError(t, err)
+	assert.True(t, prov.called)
+	require.Len(t, result, 1)
+
+	require.Len(t, result[0].Artifacts, 1)
+	text, ok := result[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "Part A. Part B.", text.Content)
+}
+
+func TestSummarizeStrategy_TextDeltaTimestampNonZero(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Summary."},
+		},
+	}
+
+	strategy := SummarizeStrategy{
+		Provider: prov,
+	}
+
+	turns := []state.Turn{
+		textTurn(state.RoleUser, "aaaa"),
+		textTurn(state.RoleAssistant, "aaaa"),
+	}
+
+	result, err := strategy.Compact(context.Background(), turns)
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	assert.False(t, result[0].Timestamp.IsZero())
+}
