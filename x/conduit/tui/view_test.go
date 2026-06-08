@@ -1084,18 +1084,18 @@ func TestBuildStatusLine_ZoneGrouping(t *testing.T) {
 func TestBuildStatusLine_PriorityTruncation(t *testing.T) {
 	segments := []conduit.StatusSegment{
 		{Label: "phase", Value: "streaming very deeply and considering all possibilities", Zone: "lifecycle"},
-		{Label: "model", Value: "gpt-4o-really-long-model-name", Zone: "context"},
+		{Label: "model", Value: "gpt-4", Zone: "context"},
 	}
 	priorities := map[string]int{
 		"lifecycle": 0,
 		"context":   1,
 	}
-	// At width 40, both zones together exceed maxStatusLines. The lower-
-	// priority "context" zone should be dropped.
+	// At width 40, both zones together fit within maxStatusLines (3). The lower-
+	// priority "context" zone should now be included.
 	str, _ := buildStatusLineFromSegments(segments, priorities, 40)
 	assert.Contains(t, str, "phase: streaming")
-	// Context zone should be dropped due to lower priority.
-	assert.NotContains(t, str, "model:")
+	// Context zone should be included now that maxStatusLines is 3.
+	assert.Contains(t, str, "model:")
 }
 
 func TestBuildStatusLine_UnmappedKeysDefaultZone(t *testing.T) {
