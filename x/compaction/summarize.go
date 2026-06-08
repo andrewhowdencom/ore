@@ -21,7 +21,36 @@ import (
 // limitation.
 type SummarizeStrategy struct {
 	Provider provider.Provider
+	// Prompt is an optional custom summarization prompt. When empty, a default
+	// structured handoff prompt is used.
+	Prompt string
 }
+
+const defaultPrompt = `You are creating a context handoff summary for another agent that will resume this conversation.
+
+First, analyze the conversation history to identify:
+- The primary goal or task the user is trying to accomplish
+- Key decisions, constraints, preferences, and rules established
+- Completed work and successful outcomes
+- Current state and work in progress
+- Pending tasks and next steps required
+
+Then, output ONLY a structured summary using the following markdown sections. Do not include any analysis, reasoning, introductory text, or commentary outside these sections. The summary must be concise but complete — another agent will resume work from this summary.
+
+## Primary Goal
+[What the user is trying to accomplish]
+
+## Key Decisions & Constraints
+[Important rules, preferences, architectural choices, or constraints established]
+
+## Completed Work
+[What has already been successfully done]
+
+## Current State / Work in Progress
+[What is actively being worked on, including any in-progress decisions or partial results]
+
+## Pending Tasks & Next Steps
+[What still needs to be done to complete the goal]`
 
 // Compact loads all turns into a temporary buffer, calls the provider to
 // generate a summary, and returns a single synthetic RoleSystem turn containing
@@ -41,9 +70,12 @@ func (s SummarizeStrategy) Compact(ctx context.Context, turns []state.Turn) ([]s
 
 	buf := &state.Buffer{}
 	buf.LoadTurns(turns)
-	buf.Append(state.RoleUser, artifact.Text{
-		Content: "Summarize the above conversation concisely, preserving all key facts, decisions, and context.",
-	})
+
+	prompt := s.Prompt
+	if prompt == "" {
+		prompt = defaultPrompt
+	}
+	buf.Append(state.RoleUser, artifact.Text{Content: prompt})
 
 	ch := make(chan artifact.Artifact, 100)
 	var texts []string
