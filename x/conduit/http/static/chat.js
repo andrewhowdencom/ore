@@ -60,6 +60,42 @@ function setStatus(text) {
     document.getElementById('status').textContent = text || '';
 }
 
+function fetchHistory(sessionId) {
+    return fetch('/sessions/' + sessionId + '/turns')
+        .then(r => {
+            if (!r.ok) throw new Error('Failed to fetch history (' + r.status + ')');
+            return r.json();
+        })
+        .then(turns => {
+            const chat = document.getElementById('chat');
+            chat.innerHTML = '';
+            for (const turn of turns) {
+                if (turn.role === 'user') {
+                    for (const artifact of turn.artifacts) {
+                        if (artifact.kind === 'text') {
+                            renderUserMessage(artifact.content);
+                        }
+                    }
+                } else if (turn.role === 'assistant') {
+                    for (const artifact of turn.artifacts) {
+                        if (artifact.kind === 'text') {
+                            renderTextBlock(artifact.content);
+                        } else if (artifact.kind === 'reasoning') {
+                            renderReasoningBlock(artifact.content);
+                        } else if (artifact.kind === 'tool_call') {
+                            renderToolCallBlock(artifact.id, artifact.name, artifact.arguments, artifact.display);
+                        } else if (artifact.kind === 'tool_result') {
+                            renderToolResultBlock(artifact.tool_call_id, artifact.content, artifact.is_error);
+                        }
+                    }
+                }
+            }
+        })
+        .catch(err => {
+            console.error('History fetch failed:', err);
+        });
+}
+
 function attachToThread(threadId) {
     setStatus('Attaching to thread...');
     fetch('/sessions', {
@@ -75,6 +111,7 @@ function attachToThread(threadId) {
         .then(data => {
             sessionId = data.id;
             setStatus('Ready');
+            return fetchHistory(sessionId);
         })
         .catch(err => {
             setStatus('Error: ' + err.message);
