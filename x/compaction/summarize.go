@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/provider"
@@ -87,8 +88,11 @@ func (s SummarizeStrategy) Compact(ctx context.Context, turns []state.Turn) ([]s
 	go func() {
 		defer wg.Done()
 		for art := range ch {
-			if t, ok := art.(artifact.Text); ok {
-				texts = append(texts, t.Content)
+			switch a := art.(type) {
+			case artifact.Text:
+				texts = append(texts, a.Content)
+			case artifact.TextDelta:
+				texts = append(texts, a.Content)
 			}
 		}
 	}()
@@ -105,6 +109,7 @@ func (s SummarizeStrategy) Compact(ctx context.Context, turns []state.Turn) ([]s
 	summaryTurn := state.Turn{
 		Role:      state.RoleSystem,
 		Artifacts: []artifact.Artifact{artifact.Text{Content: summary}},
+		Timestamp: time.Now(),
 	}
 
 	return []state.Turn{summaryTurn}, nil
