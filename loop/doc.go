@@ -72,6 +72,11 @@
 // controls whether an artifact is persisted to state; it does NOT filter
 // event-stream visibility. All artifacts are forwarded to subscribers.
 //
+// Subscribe is live-only: it delivers events from the point of subscription
+// onward and does not replay historical events. Conduits that need historical
+// state should fetch it directly from the bound state.State (via Turns() or
+// the store) rather than relying on the event stream.
+//
 // Output event taxonomy:
 //   - ArtifactEvent wraps a provider artifact (text, reasoning, tool_call,
 //     etc.) and is emitted for every chunk received from the provider.
