@@ -183,9 +183,9 @@ func previewSnippet(thr *session.Thread, maxLen int) string {
 
 // ServeMux returns an http.ServeMux with all HTTP conduit routes registered.
 // Routes include POST /sessions, DELETE /sessions/{id}, POST /messages,
-// GET /events, and GET /threads. When WithUI() is enabled, GET /chat and
-// GET /chat.js are also registered for the embedded web client, and GET /
-// renders a thread-list landing page.
+// GET /events, GET /sessions/{id}/turns, and GET /threads. When WithUI() is
+// enabled, GET /chat and GET /chat.js are also registered for the embedded
+// web client, and GET / renders a thread-list landing page.
 // This method is exported primarily for table-driven unit tests; most
 // callers should use Start(ctx) which creates and runs the server internally.
 func (h *Handler) ServeMux() *stdhttp.ServeMux {
@@ -194,6 +194,7 @@ func (h *Handler) ServeMux() *stdhttp.ServeMux {
 	mux.HandleFunc("DELETE /sessions/{id}", h.deleteSession)
 	mux.HandleFunc("POST /sessions/{id}/messages", h.sendMessage)
 	mux.HandleFunc("GET /sessions/{id}/events", h.sessionEvents)
+	mux.HandleFunc("GET /sessions/{id}/turns", h.sessionTurns)
 	mux.HandleFunc("GET /threads", h.listThreads)
 	if h.withUI {
 		mux.HandleFunc("GET /", h.serveLanding)
@@ -456,6 +457,23 @@ func (h *Handler) sessionEvents(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 			return
 		}
 	}
+}
+
+// sessionTurns handles GET /sessions/{id}/turns by returning the thread's
+// turn history as a JSON array. Each turn includes role, artifacts, and timestamp.
+func (h *Handler) sessionTurns(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+	id := r.PathValue("id")
+
+	stream, err := h.mgr.Get(id)
+	if err != nil {
+		w.WriteHeader(stdhttp.StatusNotFound)
+		return
+	}
+
+	turns := stream.Turns()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(turns)
 }
 
 // serveUI serves the embedded static files (index.html and chat.js) for the

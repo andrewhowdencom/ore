@@ -208,6 +208,7 @@ func TestHandler_ServeMux_Routing(t *testing.T) {
 		{"delete session not found", "DELETE", "/sessions/abc-123", 404},
 		{"send message not found", "POST", "/sessions/abc-123/messages", 404},
 		{"session events not found", "GET", "/sessions/abc-123/events", 404},
+		{"session turns not found", "GET", "/sessions/abc-123/turns", 404},
 		{"list threads", "GET", "/threads", 200},
 		{"get sessions method not allowed", "GET", "/sessions", 405},
 		{"post to session root method not allowed", "POST", "/sessions/abc-123", 405},
@@ -678,6 +679,93 @@ func TestHandler_SessionEvents_ContextCancel(t *testing.T) {
 	assert.Equal(t, "text/event-stream", rr.Header().Get("Content-Type"))
 	assert.Equal(t, "no-cache", rr.Header().Get("Cache-Control"))
 	assert.Equal(t, "keep-alive", rr.Header().Get("Connection"))
+}
+
+func TestHandler_SessionTurns(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.TextDelta{Content: "Hello"},
+			artifact.TextDelta{Content: " world"},
+		},
+	}
+	store := session.NewMemoryStore()
+	mgr := session.NewManager(store, prov, func(stream *session.Stream) ([]loop.Option, error) {
+		return nil, nil
+	}, simpleProcessor())
+	h := newTestHandler(t, mgr)
+
+	// Create a session.
+	createReq := httptest.NewRequest("POST", "/sessions", nil)
+	createRr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(createRr, createReq)
+	require.Equal(t, 201, createRr.Code)
+
+	var createResp map[string]string
+	require.NoError(t, json.Unmarshal(createRr.Body.Bytes(), &createResp))
+	sessionID := createResp["id"]
+
+	// Send a message to populate turns.
+	body := `{"content": "hi", "kinds": ["text_delta", "turn_complete"]}`
+	sendReq := httptest.NewRequest("POST", "/sessions/"+sessionID+"/messages", strings.NewReader(body))
+	sendRr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(sendRr, sendReq)
+	require.Equal(t, 200, sendRr.Code)
+
+	// Get turns.
+	turnsReq := httptest.NewRequest("GET", "/sessions/"+sessionID+"/turns", nil)
+	turnsRr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(turnsRr, turnsReq)
+
+	require.Equal(t, 200, turnsRr.Code)
+	assert.Equal(t, "application/json", turnsRr.Header().Get("Content-Type"))
+
+	var turns []map[string]interface{}
+	require.NoError(t, json.Unmarshal(turnsRr.Body.Bytes(), &turns))
+	require.Len(t, turns, 2)
+
+	assert.Equal(t, "user", turns[0]["role"])
+	assert.Equal(t, "assistant", turns[1]["role"])
+}
+
+func TestHandler_SessionTurns_NotFound(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	h := newTestHandler(t, mgr)
+
+	req := httptest.NewRequest("GET", "/sessions/nonexistent/turns", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	assert.Equal(t, 404, rr.Code)
+}
+
+func TestHandler_SessionTurns_Empty(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	h := newTestHandler(t, mgr)
+
+	// Create a session without sending any messages.
+	createReq := httptest.NewRequest("POST", "/sessions", nil)
+	createRr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(createRr, createReq)
+	require.Equal(t, 201, createRr.Code)
+
+	var createResp map[string]string
+	require.NoError(t, json.Unmarshal(createRr.Body.Bytes(), &createResp))
+	sessionID := createResp["id"]
+
+	req := httptest.NewRequest("GET", "/sessions/"+sessionID+"/turns", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	require.Equal(t, 200, rr.Code)
+	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+
+	var turns []map[string]interface{}
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &turns))
+	assert.Empty(t, turns)
 }
 
 func TestHandler_ListThreads(t *testing.T) {
