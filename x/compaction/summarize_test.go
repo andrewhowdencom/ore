@@ -229,3 +229,42 @@ func TestSummarizeStrategy_PassesAllTurns(t *testing.T) {
 	require.Len(t, result, 1)
 	assert.Equal(t, state.RoleSystem, result[0].Role)
 }
+
+func TestSummarizeStrategy_NilProvider(t *testing.T) {
+	strategy := SummarizeStrategy{}
+	turns := []state.Turn{
+		textTurn(state.RoleUser, "hello"),
+	}
+	_, err := strategy.Compact(context.Background(), turns)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Provider must not be nil")
+}
+
+func TestSummarizeStrategy_NoTextArtifacts(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Usage{TotalTokens: 42},
+			artifact.Reasoning{Content: "thinking..."},
+			artifact.ToolCall{Name: "test"},
+		},
+	}
+
+	strategy := SummarizeStrategy{
+		Provider: prov,
+	}
+
+	turns := []state.Turn{
+		textTurn(state.RoleUser, "aaaa"),
+		textTurn(state.RoleAssistant, "bbbb"),
+	}
+
+	result, err := strategy.Compact(context.Background(), turns)
+	require.NoError(t, err)
+	assert.True(t, prov.called)
+	require.Len(t, result, 1)
+	assert.Equal(t, state.RoleSystem, result[0].Role)
+	require.Len(t, result[0].Artifacts, 1)
+	text, ok := result[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Empty(t, text.Content)
+}

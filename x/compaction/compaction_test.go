@@ -70,6 +70,20 @@ func TestMaybeCompact_StrategyError(t *testing.T) {
 	assert.Contains(t, err.Error(), "strategy error")
 }
 
+func TestMaybeCompact_NilTrigger_WithStrategy(t *testing.T) {
+	c := New(
+		WithStrategy(dropFirstN{n: 1}),
+	)
+	turns := []state.Turn{
+		{Role: state.RoleUser},
+		{Role: state.RoleAssistant},
+	}
+	result, didCompact, err := c.MaybeCompact(context.Background(), turns)
+	require.NoError(t, err)
+	assert.False(t, didCompact)
+	assert.Equal(t, turns, result)
+}
+
 func TestTurnCountTrigger(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -32,6 +32,9 @@ type SummarizeStrategy struct {
 // The summary turn uses RoleSystem because it is injected context about prior
 // conversation, not a real assistant response.
 func (s SummarizeStrategy) Compact(ctx context.Context, turns []state.Turn) ([]state.Turn, error) {
+	if s.Provider == nil {
+		return nil, fmt.Errorf("SummarizeStrategy.Provider must not be nil")
+	}
 	if len(turns) == 0 {
 		return []state.Turn{}, nil
 	}
