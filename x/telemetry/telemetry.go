@@ -24,12 +24,12 @@ func New(meter metric.Meter) *Telemetry {
 		return &Telemetry{}
 	}
 
-	sent, err := meter.Int64Counter("llm.characters.sent")
+	sent, err := meter.Int64Counter("llm.bytes.sent")
 	if err != nil {
 		return &Telemetry{}
 	}
 
-	received, err := meter.Int64Counter("llm.characters.received")
+	received, err := meter.Int64Counter("llm.bytes.received")
 	if err != nil {
 		return &Telemetry{}
 	}
@@ -68,7 +68,7 @@ func (t *Telemetry) OnEmit() loop.OnEmit {
 		}
 
 		for _, art := range tc.Turn.Artifacts {
-			n := countChars(art)
+			n := countBytes(art)
 			if n == 0 {
 				continue
 			}
@@ -81,7 +81,7 @@ func (t *Telemetry) OnEmit() loop.OnEmit {
 	}
 }
 
-func countChars(art artifact.Artifact) int64 {
+func countBytes(art artifact.Artifact) int64 {
 	switch a := art.(type) {
 	case artifact.Text:
 		return int64(len(a.Content))
