@@ -192,7 +192,7 @@ func run() error {
 
 	// Bind slash commands after the manager is created so handlers can
 	// capture the manager in their closures.
-	slashReg.Bind("new", "Create a new session", func(ctx context.Context, cmd slash.Command) (slash.Result, error) {
+	slashReg.Bind("new", "Create a new session", func(ctx context.Context, emitter loop.Emitter, cmd slash.Command) (slash.Result, error) {
 		// Create a new session and emit a SessionSwitchEvent to notify
 		// all conduits subscribed to the current stream that the user
 		// wants to navigate to a new session.
@@ -207,7 +207,9 @@ func run() error {
 		}}, nil
 	})
 
-	slashReg.Bind("compact", "Compact conversation history", func(ctx context.Context, cmd slash.Command) (slash.Result, error) {
+	slashReg.Bind("compact", "Compact conversation history", func(ctx context.Context, emitter loop.Emitter, cmd slash.Command) (slash.Result, error) {
+		emitter.Emit(ctx, loop.ActivityEvent{Active: true, Description: "compacting", Ctx: ctx})
+		defer emitter.Emit(ctx, loop.ActivityEvent{Active: false, Description: "compacting", Ctx: ctx})
 		slog.Info("slash command: /compact", "args", slash.Fields(cmd.Input))
 		return slash.Result{}, nil
 	})
