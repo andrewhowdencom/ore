@@ -143,6 +143,9 @@ type model struct {
 	// for zone-aware rendering. If nil, a default formatter is used.
 	zoneFormatter conduit.StatusFormatter
 
+	// statusLabels maps metadata keys to display labels for the status bar.
+	statusLabels map[string]string
+
 	// zonePriorities maps zone names to priority values (lower = higher
 	// priority). Zones not in this map get a default priority.
 	zonePriorities map[string]int
@@ -249,6 +252,13 @@ func (m *model) statusLine() (string, int) {
 		}
 	}
 	segments := formatter(m.status)
+	if m.statusLabels != nil {
+		for i := range segments {
+			if label, ok := m.statusLabels[segments[i].Label]; ok {
+				segments[i].Label = label
+			}
+		}
+	}
 	return buildStatusLineFromSegments(segments, m.zonePriorities, m.width)
 }
 
