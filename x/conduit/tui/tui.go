@@ -51,6 +51,7 @@ type TUI struct {
 	name           string
 	zoneFormatter  conduit.StatusFormatter
 	zonePriorities map[string]int
+	statusLabels   map[string]string
 	tracer         trace.Tracer
 }
 
@@ -97,6 +98,16 @@ func WithStatusZones(mapping map[string]string) Option {
 			"context":   1,
 			"default":   99,
 		}
+	}
+}
+
+// WithStatusLabels maps metadata keys to display labels in the status bar.
+// When a key is present in the mapping, the specified label is rendered in
+// place of the raw key name. This is useful for shortening or prettifying
+// long or namespaced keys (e.g. "workshop.role" → "role").
+func WithStatusLabels(mapping map[string]string) Option {
+	return func(t *TUI) {
+		t.statusLabels = mapping
 	}
 }
 
@@ -161,6 +172,7 @@ func (t *TUI) initModel(eventsCh chan session.Event, stream *session.Stream) mod
 		md:             newGlamourMarkdownRenderer(),
 		name:           t.name,
 		zoneFormatter:  t.zoneFormatter,
+		statusLabels:   t.statusLabels,
 		zonePriorities: t.zonePriorities,
 	}
 
