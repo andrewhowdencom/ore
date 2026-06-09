@@ -140,6 +140,43 @@ func (e ErrorEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(o)
 }
 
+// ActivityEvent signals that long-running operational work is happening.
+// It is orthogonal to the inference lifecycle and is used for slash commands,
+// tool execution, or any other background work that conduits should surface.
+type ActivityEvent struct {
+	Active      bool
+	Description string
+
+	// Ctx carries routing metadata for the event, such as provenance
+	// information for echo suppression.
+	Ctx context.Context
+}
+
+// Kind returns the event kind identifier.
+func (e ActivityEvent) Kind() string { return "activity" }
+
+// Context returns the event context.
+func (e ActivityEvent) Context() context.Context { return e.Ctx }
+
+// MarshalJSON serializes the event to JSON.
+func (e ActivityEvent) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind        string                 `json:"kind"`
+		Active      bool                   `json:"active"`
+		Description string                 `json:"description"`
+		Context     map[string]interface{} `json:"context,omitempty"`
+	}
+	o := output{
+		Kind:        "activity",
+		Active:      e.Active,
+		Description: e.Description,
+	}
+	if ctx := marshalEventContext(e.Ctx); ctx != nil {
+		o.Context = ctx
+	}
+	return json.Marshal(o)
+}
+
 // LifecycleEvent is emitted at structural boundaries of a single inference
 // turn to signal phase transitions. Phases are linear per-pipeline:
 //   - "submitted": the user message has been accepted and the provider call
