@@ -1279,6 +1279,48 @@ func TestModel_Update_Status_Merges(t *testing.T) {
 	assert.Equal(t, "thinking...", mm2.status["phase"], "phase should be overwritten")
 }
 
+func TestModel_Update_Status_LabelRewriting(t *testing.T) {
+	m := newTestModel()
+	m.width = 80
+	m.statusLabels = map[string]string{"workshop.role": "role"}
+
+	newM, _ := m.Update(statusMsg{status: map[string]string{"workshop.role": "reviewer"}})
+	mm := newM.(*model)
+
+	str, _ := mm.statusLine()
+	assert.Contains(t, str, "role: reviewer", "label should be rewritten to display label")
+	assert.NotContains(t, str, "workshop.role: reviewer", "raw key should not appear in output")
+}
+
+func TestModel_Update_Status_ZoneFormatter_LabelRewriting(t *testing.T) {
+	m := newTestModel()
+	m.width = 80
+	m.zoneFormatter = func(status map[string]string) []conduit.StatusSegment {
+		var segments []conduit.StatusSegment
+		for k, v := range status {
+			segments = append(segments, conduit.StatusSegment{
+				Label: k,
+				Value: v,
+				Zone:  "context",
+			})
+		}
+		return segments
+	}
+	m.zonePriorities = map[string]int{"context": 1}
+	m.statusLabels = map[string]string{"workshop.role": "role"}
+
+	newM, _ := m.Update(statusMsg{status: map[string]string{
+		"workshop.role": "reviewer",
+		"phase":         "done",
+	}})
+	mm := newM.(*model)
+
+	str, _ := mm.statusLine()
+	assert.Contains(t, str, "role: reviewer", "label should be rewritten in zone context")
+	assert.NotContains(t, str, "workshop.role: reviewer", "raw key should not appear in output")
+	assert.Contains(t, str, "phase: done", "unmapped key should render unchanged")
+}
+
 func TestModel_Update_Status_ZoneFormatter(t *testing.T) {
 	m := newTestModel()
 	m.width = 80
