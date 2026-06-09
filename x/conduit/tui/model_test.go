@@ -285,9 +285,9 @@ func TestModel_View_ContainsTurn(t *testing.T) {
 	}
 	m.syncViewport()
 	output := m.View().Content
-	assert.Contains(t, output, "You · |s|")
+	assert.Contains(t, output, "You")
 	assert.Contains(t, output, "hello")
-	idxLabel := strings.Index(output, "You · |s|")
+	idxLabel := strings.Index(output, "You")
 	idxContent := strings.Index(output, "hello")
 	assert.Greater(t, idxContent, idxLabel, "content should appear after label")
 	segment := output[idxLabel:idxContent]
@@ -302,9 +302,9 @@ func TestModel_View_ContainsAssistantTurn(t *testing.T) {
 	}
 	m.syncViewport()
 	output := m.View().Content
-	assert.Contains(t, output, "Assistant · |s|")
+	assert.Contains(t, output, "Assistant")
 	assert.Contains(t, output, "world")
-	idxLabel := strings.Index(output, "Assistant · |s|")
+	idxLabel := strings.Index(output, "Assistant")
 	idxContent := strings.Index(output, "world")
 	assert.Greater(t, idxContent, idxLabel, "content should appear after label")
 	segment := output[idxLabel:idxContent]
@@ -319,9 +319,9 @@ func TestModel_View_ContainsToolTurn(t *testing.T) {
 	}
 	m.syncViewport()
 	output := m.View().Content
-	assert.Contains(t, output, "Tool · |s|")
+	assert.Contains(t, output, "Tool")
 	assert.Contains(t, output, "result")
-	idxLabel := strings.Index(output, "Tool · |s|")
+	idxLabel := strings.Index(output, "Tool")
 	idxContent := strings.Index(output, "result")
 	assert.Greater(t, idxContent, idxLabel, "content should appear after label")
 	segment := output[idxLabel:idxContent]
@@ -544,7 +544,7 @@ func TestModel_View_WrapsLongTurn(t *testing.T) {
 	// Find the label line
 	labelIdx := -1
 	for i, line := range lines {
-		if strings.HasPrefix(line, "You · |s|") {
+		if strings.HasPrefix(line, "You") {
 			labelIdx = i
 			break
 		}
@@ -677,7 +677,7 @@ func TestModel_View_AssistantTurn_RenderError_FallbackToPlainText(t *testing.T) 
 	newM2, _ := mm.Update(turnMsg{turn: turn})
 	mm2 := newM2.(*model)
 	output := mm2.View().Content
-	assert.Contains(t, output, "Assistant · |s|")
+	assert.Contains(t, output, "Assistant")
 	assert.Contains(t, output, "plain fallback text")
 }
 
@@ -766,7 +766,7 @@ func TestModel_Update_Turn_Assistant_EmptyText(t *testing.T) {
 	assert.Equal(t, "mock-empty-output", mm2.turns[0].blocks[0].rendered)
 	// View should not crash with empty text.
 	output := mm2.View().Content
-	assert.Contains(t, output, "Assistant · |s|")
+	assert.Contains(t, output, "Assistant")
 }
 
 // --- Critical coverage gap tests (added per testing agent review) ---
@@ -1185,7 +1185,7 @@ func TestModel_Update_KeyCtrlO_WhilePending(t *testing.T) {
 
 	// View should still show the pending placeholder
 	output := mm.View().Content
-	assert.Contains(t, output, "Assistant · |s|")
+	assert.Contains(t, output, "Assistant")
 	assert.Contains(t, output, "...")
 }
 
@@ -1422,7 +1422,7 @@ func TestModel_View_ContainsCurrentTurn(t *testing.T) {
 	m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "in-progress"}})
 	m.Update(renderTickMsg{})
 	output := m.View().Content
-	assert.Contains(t, output, "Assistant · |s|")
+	assert.Contains(t, output, "Assistant")
 	assert.Contains(t, output, "in-progress")
 }
 
