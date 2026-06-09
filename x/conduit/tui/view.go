@@ -11,7 +11,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/cellbuf"
@@ -107,7 +106,7 @@ func compactGeneric(content string, width int) string {
 //
 // The result is memoized: when contentDirty is false and cachedContent is
 // non-empty, the cached string is returned immediately without recomputing.
-// Callers that mutate visual state (turns, pending, expandLatestDetails)
+// Callers that mutate visual state (turns, pending, expandAllDetails)
 // must set contentDirty = true before the next buildContent call so the
 // cache is rebuilt. In practice Update() does this via syncViewport().
 func (m *model) buildContent() string {
@@ -118,23 +117,10 @@ func (m *model) buildContent() string {
 	var b strings.Builder
 	width := m.viewport.Width()
 
-	// Find the last assistant turn index.
-	lastAssistantIdx := -1
-	for i, turn := range m.turns {
-		if turn.role == state.RoleAssistant {
-			lastAssistantIdx = i
-		}
-	}
-
 	// Render conversation history.
-	for turnIdx, turn := range m.turns {
-		isLatestAssistant := turn.role == state.RoleAssistant && turnIdx == lastAssistantIdx
-		isAfterLatestAssistant := turnIdx > lastAssistantIdx
+	for _, turn := range m.turns {
 		for i, block := range turn.blocks {
-			expanded := block.expandedByDefault
-			if !block.expandedByDefault && (isLatestAssistant || isAfterLatestAssistant) {
-				expanded = m.expandLatestDetails
-			}
+			expanded := block.expandedByDefault || m.expandAllDetails
 			b.WriteString(renderBlockUnified(block, turn.timestamp, expanded, width))
 			if i < len(turn.blocks)-1 {
 				b.WriteString("\n\n")
@@ -146,7 +132,7 @@ func (m *model) buildContent() string {
 	// Render the in-progress assistant turn accumulated from ArtifactEvents.
 	if len(m.currentTurn.blocks) > 0 {
 		for i, block := range m.currentTurn.blocks {
-			expanded := m.expandLatestDetails || block.expandedByDefault
+			expanded := block.expandedByDefault || m.expandAllDetails
 			b.WriteString(renderBlockUnified(block, time.Time{}, expanded, width))
 			if i < len(m.currentTurn.blocks)-1 {
 				b.WriteString("\n\n")
