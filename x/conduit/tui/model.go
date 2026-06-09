@@ -107,10 +107,9 @@ type renderedBlock struct {
 
 // The TUI aims to keep the conversation view concise. Tool calls and their
 // results can be verbose, so we render them in a one-line "compact" form by
-// default. Users can press Ctrl+O to temporarily expand the latest assistant
-// turn's tool interactions, inspecting full arguments or error messages.
-// The state is scoped to the most recent turn to avoid cluttering older
-// history.
+// default. Users can press Ctrl+O to toggle "expand all" vs "collapse all"
+// for all non-text blocks across all turns, including historical ones.
+// The state is global so the user can scroll back and read full tool traces.
 //
 // model implements tea.Model. All state mutation happens in Update,
 // which runs on Bubble Tea's single goroutine, so no locks are needed.
@@ -128,12 +127,12 @@ type model struct {
 	// pending indicates an assistant response is in flight.
 	pending bool
 
-	// expandLatestDetails controls whether the latest assistant turn's
-	// details (tool calls, tool results, and reasoning) are shown expanded
-	// or compact.
-	// The flag is toggled by Ctrl+O and automatically cleared after
-	// the next assistant turn is received, restoring the default compact view.
-	expandLatestDetails bool
+	// expandAllDetails controls whether all non-text blocks (tool calls,
+	// tool results, and reasoning) across all turns are shown expanded or
+	// compact.
+	// The flag is toggled by Ctrl+O and persists across assistant turns,
+	// so the user's chosen view is not reset.
+	expandAllDetails bool
 
 	// Status map carries structured key-value metadata pairs received from
 	// PropertiesEvent output events (e.g. thread_id, state).
@@ -477,7 +476,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.currentTurn.timestamp = msg.turn.Timestamp
 			m.turns = append(m.turns, m.currentTurn)
 			m.currentTurn = renderedTurn{}
-			m.expandLatestDetails = false
 		} else {
 			// User and tool turns do not emit individual ArtifactEvents;
 			// build the turn from the full Turn content.
@@ -693,7 +691,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Ctrl+O
 		if msg.Key().Code == 'o' && msg.Key().Mod.Contains(tea.ModCtrl) {
-			m.expandLatestDetails = !m.expandLatestDetails
+			m.expandAllDetails = !m.expandAllDetails
 			m.contentDirty = true
 			m.syncViewport()
 			m.viewport.GotoBottom()
