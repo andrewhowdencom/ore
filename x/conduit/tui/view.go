@@ -41,17 +41,34 @@ var (
 )
 
 // renderBlockUnified renders a single block with the consistent header format:
-// "<Timestamp> <Title> · |s| <rune_count>" followed by compact or expanded body.
+// "<Title> <compact_byte_count> B" (right-aligned) followed by compact or expanded body.
 // The expansion is controlled by the expanded parameter; when false, reasoning
 // blocks render header-only (the count is sufficient), tool blocks use their
 // pre-computed compact form, and generic blocks truncate to two lines.
 func renderBlockUnified(block renderedBlock, ts time.Time, expanded bool, width int) string {
 	var header string
 	count := len(block.source)
+	countStr := compactNumber(strconv.Itoa(count)) + " B"
+
+	var title string
 	if ts.IsZero() {
-		header = fmt.Sprintf("%s · |s| %d", block.title, count)
+		title = block.title
 	} else {
-		header = fmt.Sprintf("%s %s · |s| %d", ts.Format("15:04:05"), block.title, count)
+		title = ts.Format("15:04:05") + " " + block.title
+	}
+
+	if width > 0 {
+		titleW := ansi.StringWidth(title)
+		countW := ansi.StringWidth(countStr)
+		if titleW+1+countW <= width {
+			header = title + strings.Repeat(" ", width-titleW-countW) + countStr
+		} else if titleW <= width {
+			header = title
+		} else {
+			header = truncateString(title, width)
+		}
+	} else {
+		header = title + " " + countStr
 	}
 
 	styledHeader := block.style.Render(header)
