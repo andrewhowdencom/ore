@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,7 +16,7 @@ import (
 func TestRegistry_BindAndMatch(t *testing.T) {
 	r := NewRegistry()
 	called := false
-	r.Bind("new", "Create a new session", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("new", "Create a new session", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		called = true
 		assert.Equal(t, "new", cmd.Name)
 		assert.Empty(t, cmd.Input)
@@ -23,7 +24,7 @@ func TestRegistry_BindAndMatch(t *testing.T) {
 	})
 
 	event := session.UserMessageEvent{Content: "/new"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
@@ -32,13 +33,13 @@ func TestRegistry_BindAndMatch(t *testing.T) {
 
 func TestRegistry_UnknownCommand(t *testing.T) {
 	r := NewRegistry()
-	r.Bind("new", "Create a new session", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("new", "Create a new session", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		t.Fatal("handler should not be called for unknown command")
 		return Result{}, nil
 	})
 
 	event := session.UserMessageEvent{Content: "/other"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed for unknown command")
@@ -50,12 +51,12 @@ func TestRegistry_UnknownCommand(t *testing.T) {
 func TestRegistry_HandlerError(t *testing.T) {
 	r := NewRegistry()
 	expectedErr := errors.New("handler error")
-	r.Bind("fail", "Fail intentionally", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("fail", "Fail intentionally", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		return Result{}, expectedErr
 	})
 
 	event := session.UserMessageEvent{Content: "/fail"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.Error(t, err)
 	assert.Equal(t, expectedErr, err)
@@ -66,13 +67,13 @@ func TestRegistry_HandlerError(t *testing.T) {
 func TestRegistry_RawInputParsing(t *testing.T) {
 	r := NewRegistry()
 	var capturedCmd Command
-	r.Bind("include", "Include a file", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("include", "Include a file", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		capturedCmd = cmd
 		return Result{}, nil
 	})
 
 	event := session.UserMessageEvent{Content: "/include /path/with spaces"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
@@ -87,14 +88,14 @@ func TestRegistry_Fields(t *testing.T) {
 
 func TestRegistry_Feedback(t *testing.T) {
 	r := NewRegistry()
-	r.Bind("status", "Show status", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("status", "Show status", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		return Result{
 			Feedback: artifact.Text{Content: "System status: OK"},
 		}, nil
 	})
 
 	event := session.UserMessageEvent{Content: "/status"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
@@ -104,7 +105,7 @@ func TestRegistry_Feedback(t *testing.T) {
 
 func TestRegistry_FeedbackWithReplace(t *testing.T) {
 	r := NewRegistry()
-	r.Bind("switch", "Switch session", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("switch", "Switch session", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		return Result{
 			Replace:  session.SessionSwitchEvent{SessionID: "new-session-123", Ctx: context.Background()},
 			Feedback: artifact.Text{Content: "Switched to session new-session-123"},
@@ -112,7 +113,7 @@ func TestRegistry_FeedbackWithReplace(t *testing.T) {
 	})
 
 	event := session.UserMessageEvent{Content: "/switch"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	require.NotNil(t, result.Event)
@@ -126,13 +127,13 @@ func TestRegistry_FeedbackWithReplace(t *testing.T) {
 
 func TestRegistry_NonUserMessage(t *testing.T) {
 	r := NewRegistry()
-	r.Bind("new", "Create a new session", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("new", "Create a new session", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		t.Fatal("handler should not be called for non-UserMessageEvent")
 		return Result{}, nil
 	})
 
 	event := session.InterruptEvent{Ctx: context.Background()}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, event, result.Event, "expected event to pass through")
@@ -141,13 +142,13 @@ func TestRegistry_NonUserMessage(t *testing.T) {
 
 func TestRegistry_NoSlashPrefix(t *testing.T) {
 	r := NewRegistry()
-	r.Bind("new", "Create a new session", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("new", "Create a new session", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		t.Fatal("handler should not be called for text without slash prefix")
 		return Result{}, nil
 	})
 
 	event := session.UserMessageEvent{Content: "new"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, event, result.Event, "expected event to pass through")
@@ -156,13 +157,13 @@ func TestRegistry_NoSlashPrefix(t *testing.T) {
 
 func TestRegistry_EmptyContent(t *testing.T) {
 	r := NewRegistry()
-	r.Bind("new", "Create a new session", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("new", "Create a new session", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		t.Fatal("handler should not be called for empty content")
 		return Result{}, nil
 	})
 
 	event := session.UserMessageEvent{Content: ""}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, event, result.Event, "expected event to pass through")
@@ -171,7 +172,7 @@ func TestRegistry_EmptyContent(t *testing.T) {
 
 func TestRegistry_HandlerReturnsEvent(t *testing.T) {
 	r := NewRegistry()
-	r.Bind("new", "Create a new session", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("new", "Create a new session", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		return Result{
 			Replace: session.SessionSwitchEvent{
 				SessionID: "new-session-123",
@@ -181,7 +182,7 @@ func TestRegistry_HandlerReturnsEvent(t *testing.T) {
 	})
 
 	event := session.UserMessageEvent{Content: "/new"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	require.NotNil(t, result.Event, "expected event to be replaced, not consumed")
@@ -194,15 +195,15 @@ func TestRegistry_HandlerReturnsEvent(t *testing.T) {
 
 func TestRegistry_Help(t *testing.T) {
 	r := NewRegistry()
-	r.Bind("new", "Create a new session", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("new", "Create a new session", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		return Result{}, nil
 	})
-	r.Bind("compact", "Compact conversation history", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("compact", "Compact conversation history", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		return Result{}, nil
 	})
 
 	event := session.UserMessageEvent{Content: "/help"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
@@ -223,7 +224,7 @@ func TestRegistry_HelpExcludesUnbound(t *testing.T) {
 	// Only /help is auto-registered; no other commands.
 
 	event := session.UserMessageEvent{Content: "/help"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	require.Len(t, result.Feedback, 1)
@@ -244,14 +245,14 @@ func TestRegistry_CompileTimeAssertion(t *testing.T) {
 func TestRegistry_PostSlashWhitespace(t *testing.T) {
 	r := NewRegistry()
 	var capturedCmd Command
-	r.Bind("help", "Show help", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("help", "Show help", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		capturedCmd = cmd
 		return Result{}, nil
 	})
 
 	// Multiple spaces after the slash — command should be parsed correctly.
 	event := session.UserMessageEvent{Content: "/   help"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
@@ -262,14 +263,14 @@ func TestRegistry_PostSlashWhitespace(t *testing.T) {
 func TestRegistry_PostSlashWhitespace_WithInput(t *testing.T) {
 	r := NewRegistry()
 	var capturedCmd Command
-	r.Bind("include", "Include a file", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("include", "Include a file", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		capturedCmd = cmd
 		return Result{}, nil
 	})
 
 	// Multiple spaces after slash and between command and input.
 	event := session.UserMessageEvent{Content: "/   include   /path/with spaces"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
@@ -280,16 +281,16 @@ func TestRegistry_PostSlashWhitespace_WithInput(t *testing.T) {
 func TestRegistry_DuplicateBind_Overwrites(t *testing.T) {
 	r := NewRegistry()
 	firstCalled := false
-	r.Bind("test", "First test", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("test", "First test", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		firstCalled = true
 		return Result{}, nil
 	})
-	r.Bind("test", "Second test", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("test", "Second test", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		return Result{Feedback: artifact.Text{Content: "second handler"}}, nil
 	})
 
 	event := session.UserMessageEvent{Content: "/test"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	assert.False(t, firstCalled, "first handler should not be called")
@@ -299,16 +300,16 @@ func TestRegistry_DuplicateBind_Overwrites(t *testing.T) {
 
 func TestRegistry_DuplicateBind_UpdatesDescription(t *testing.T) {
 	r := NewRegistry()
-	r.Bind("cmd", "Original cmd", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("cmd", "Original cmd", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		return Result{}, nil
 	})
-	r.Bind("cmd", "Updated cmd", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("cmd", "Updated cmd", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		return Result{}, nil
 	})
 
 	// Verify /help shows the updated description.
 	event := session.UserMessageEvent{Content: "/help"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	require.Len(t, result.Feedback, 1)
@@ -320,12 +321,12 @@ func TestRegistry_DuplicateBind_UpdatesDescription(t *testing.T) {
 
 func TestRegistry_MixedCase(t *testing.T) {
 	r := NewRegistry()
-	r.Bind("help", "Show help", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("help", "Show help", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		return Result{}, nil
 	})
 
 	event := session.UserMessageEvent{Content: "/HeLp"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event)
@@ -335,12 +336,12 @@ func TestRegistry_MixedCase(t *testing.T) {
 
 func TestRegistry_EmptyFeedback(t *testing.T) {
 	r := NewRegistry()
-	r.Bind("silent", "Silent command", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("silent", "Silent command", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		return Result{Feedback: artifact.Text{Content: ""}}, nil
 	})
 
 	event := session.UserMessageEvent{Content: "/silent"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
@@ -356,7 +357,7 @@ func TestRegistry_FieldsWhitespace(t *testing.T) {
 
 func TestRegistry_Isolation(t *testing.T) {
 	r1 := NewRegistry()
-	r1.Bind("foo", "Foo command", func(ctx context.Context, cmd Command) (Result, error) {
+	r1.Bind("foo", "Foo command", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		return Result{}, nil
 	})
 
@@ -364,7 +365,7 @@ func TestRegistry_Isolation(t *testing.T) {
 	r2 := NewRegistry()
 
 	event := session.UserMessageEvent{Content: "/foo"}
-	result, err := r2.Intercept(context.Background(), event)
+	result, err := r2.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event)
@@ -375,13 +376,13 @@ func TestRegistry_Isolation(t *testing.T) {
 func TestRegistry_LeadingWhitespace(t *testing.T) {
 	r := NewRegistry()
 	var capturedCmd Command
-	r.Bind("help", "Show help", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("help", "Show help", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		capturedCmd = cmd
 		return Result{}, nil
 	})
 
 	event := session.UserMessageEvent{Content: "   /help"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
@@ -391,7 +392,7 @@ func TestRegistry_LeadingWhitespace(t *testing.T) {
 
 func TestRegistry_MultipleFeedback(t *testing.T) {
 	r := NewRegistry()
-	r.Bind("multi", "Multiple feedback", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("multi", "Multiple feedback", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		return Result{
 			Feedback: artifact.Text{Content: "first"},
 		}, nil
@@ -402,7 +403,7 @@ func TestRegistry_MultipleFeedback(t *testing.T) {
 	// multiple feedback items by having a single handler return one item.
 	// This test verifies that the single feedback item is correctly passed through.
 	event := session.UserMessageEvent{Content: "/multi"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
@@ -412,13 +413,13 @@ func TestRegistry_MultipleFeedback(t *testing.T) {
 
 func TestRegistry_CaseSensitive(t *testing.T) {
 	r := NewRegistry()
-	r.Bind("help", "Show help", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("help", "Show help", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		return Result{}, nil
 	})
 
 	// Uppercase HELP should be treated as unknown command.
 	event := session.UserMessageEvent{Content: "/HELP"}
-	result, err := r.Intercept(context.Background(), event)
+	result, err := r.Intercept(context.Background(), event, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed for unknown command")

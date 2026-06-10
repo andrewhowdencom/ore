@@ -36,6 +36,9 @@ var (
 	systemStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#C678DD"))
 	// toolResultStyle styles successful tool results in green.
 	toolResultStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#98C379"))
+	// spinnerStyle styles the activity indicator line shown when long-running
+	// work is active (e.g., slash commands like /compact).
+	spinnerStyle = lipgloss.NewStyle().Faint(true).Italic(true)
 	// zoneLabelStyle styles zone names (Lifecycle, Context) bold in the status bar.
 	zoneLabelStyle = lipgloss.NewStyle().Bold(true)
 )
@@ -506,7 +509,11 @@ func (m *model) View() tea.View {
 	view := m.viewport.View()
 	if view != "" {
 		var parts []string
-		parts = append(parts, view, separator, m.textarea.View())
+		parts = append(parts, view, separator)
+		if m.working && m.workingDescription != "" {
+			parts = append(parts, spinnerStyle.Render("⚙ "+m.workingDescription))
+		}
+		parts = append(parts, m.textarea.View())
 		if statusLines > 0 {
 			parts = append(parts, separator, statusStr)
 		}

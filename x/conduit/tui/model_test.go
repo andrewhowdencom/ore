@@ -2073,3 +2073,18 @@ func TestModel_Update_FeedbackMsg(t *testing.T) {
 	// Pending should NOT be reset (feedback is not an error).
 	assert.True(t, mm.pending, "pending should remain unchanged for feedback")
 }
+
+func TestModel_Update_ActivityMsg_SetsWorkingAndDescription(t *testing.T) {
+	m := newTestModel()
+	newM, _ := m.Update(activityMsg{active: true, description: "compacting"})
+	mm := newM.(*model)
+	assert.True(t, mm.working, "activityMsg should set working=true")
+	assert.Equal(t, "compacting", mm.workingDescription, "activityMsg should set description")
+
+	// Turn off activity
+	newM2, _ := mm.Update(activityMsg{active: false, description: ""})
+	mm2 := newM2.(*model)
+	assert.False(t, mm2.working, "activityMsg should clear working")
+	assert.Empty(t, mm2.workingDescription, "activityMsg should clear description")
+}
+
