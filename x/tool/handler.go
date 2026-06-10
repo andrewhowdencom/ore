@@ -100,15 +100,6 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 			return nil
 		}
 
-		// Find remote tool descriptor for budget enforcement.
-		var remoteTool toolpkg.Tool
-		for _, t := range source.Tools() {
-			if t.Name == name {
-				remoteTool = t
-				break
-			}
-		}
-
 		result, err := source.Call(ctx, name, args)
 		if err != nil {
 			if span != nil {
@@ -128,7 +119,7 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 					Role: state.RoleTool,
 					Artifacts: []artifact.Artifact{artifact.ToolResult{
 						ToolCallID: tc.ID,
-						Content:    toolpkg.TruncateContent(content, remoteTool.MaxBytes, len(content), remoteTool.TruncationHint),
+						Content:    content,
 						Value:      value,
 						IsError:    true,
 					}},
@@ -157,7 +148,7 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 				Role: state.RoleTool,
 				Artifacts: []artifact.Artifact{artifact.ToolResult{
 					ToolCallID: tc.ID,
-					Content:    toolpkg.TruncateContent(string(content), remoteTool.MaxBytes, len(content), remoteTool.TruncationHint),
+					Content:    string(content),
 					Value:      result,
 				}},
 			},
@@ -166,7 +157,7 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 	}
 
 	// Local tool lookup
-	toolDescriptor, fn, ok := h.registry.Lookup(tc.Name)
+	_, fn, ok := h.registry.Lookup(tc.Name)
 	if !ok {
 		e.Emit(ctx, loop.TurnCompleteEvent{
 			Turn: state.Turn{
@@ -215,7 +206,7 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 				Role: state.RoleTool,
 				Artifacts: []artifact.Artifact{artifact.ToolResult{
 					ToolCallID: tc.ID,
-					Content:    toolpkg.TruncateContent(content, toolDescriptor.MaxBytes, len(content), toolDescriptor.TruncationHint),
+					Content:    content,
 					Value:      value,
 					IsError:    true,
 				}},
@@ -244,7 +235,7 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 			Role: state.RoleTool,
 			Artifacts: []artifact.Artifact{artifact.ToolResult{
 				ToolCallID: tc.ID,
-				Content:    toolpkg.TruncateContent(string(content), toolDescriptor.MaxBytes, len(content), toolDescriptor.TruncationHint),
+				Content:    string(content),
 				Value:      result,
 			}},
 		},

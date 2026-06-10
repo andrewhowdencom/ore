@@ -18,16 +18,6 @@
 // event stream as other artifacts, allowing UI conduits to render them
 // without special-casing. Unknown tools are refused with an error result.
 //
-// The Handler enforces the tool output budget after JSON serialization. After
-// executing a tool and serializing its result to JSON, the Handler checks the
-// serialized byte count against the Tool's MaxBytes limit. If the limit is
-// exceeded, the Handler truncates the Content string to a valid UTF-8 boundary,
-// appends the formatted TruncationHint (with ${N} replaced by the actual total
-// bytes), and emits the truncated result. This safety net applies universally to
-// both local tools and remote tools (MCP sources), ensuring no tool path can
-// bypass the budget. The budget is a hard safety rail, not a configurable dial:
-// tool descriptions are updated to mention the limit so the LLM is aware of the
-// constraint, but it cannot override it.
 //
 // Tool calling composes three mechanisms:
 //
