@@ -102,7 +102,6 @@ type renderedBlock struct {
 	title             string         // display title for the unified header
 	style             lipgloss.Style // color/style applied to the header
 	expandedByDefault bool           // whether this block type defaults to expanded body
-	isError           bool           // whether this block represents an error state
 }
 
 // rerenderableKinds lists block kinds that may be re-rendered when the
@@ -358,7 +357,6 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role) renderedB
 			title:             fmt.Sprintf("Tool Result (%s)", hashToolCallID(a.ToolCallID)),
 			style:             toolResultStyle,
 			expandedByDefault: false,
-			isError:           a.IsError,
 		}
 		rendered, err := m.renderMarkdown(source, m.viewport.Width())
 		if err == nil {

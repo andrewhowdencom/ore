@@ -359,7 +359,7 @@ func TestRenderBlockUnified_NegativeWidth(t *testing.T) {
 }
 
 func TestRenderBlockUnified_ToolResultErrorStyle(t *testing.T) {
-	block := renderedBlock{kind: "tool_result", source: "Error: failed", title: "Tool Result", style: errorStyle, expandedByDefault: false, isError: true}
+	block := renderedBlock{kind: "tool_result", source: "Error: failed", title: "Tool Result", style: errorStyle, expandedByDefault: false}
 	ts := time.Date(2024, 1, 1, 12, 30, 45, 0, time.UTC)
 	output := renderBlockUnified(block, ts, false, 80)
 	assert.Contains(t, output, "Tool Result")
