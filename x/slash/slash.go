@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 )
 
@@ -24,11 +25,12 @@ type Result struct {
 }
 
 // Handler is a slash command handler. It receives the parsed command and
-// returns a Result. A nil Result.Replace with nil error means the event is
-// consumed (no LLM processing). A non-nil Result.Replace means the event is
-// replaced with the returned one. Result.Feedback emits an ephemeral UI
-// message that is not persisted to state.
-type Handler func(ctx context.Context, cmd Command) (Result, error)
+// a loop.Emitter for signaling activity. It returns a Result.
+// A nil Result.Replace with nil error means the event is consumed (no LLM
+// processing). A non-nil Result.Replace means the event is replaced with the
+// returned one. Result.Feedback emits an ephemeral UI message that is not
+// persisted to state.
+type Handler func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error)
 
 // Fields is a convenience helper that splits the raw command input on
 // whitespace. Callers can bring their own parser (e.g. cobra, shlex) when
@@ -40,7 +42,7 @@ func Fields(input string) []string {
 // Registry is the slash command registry interface.
 type Registry interface {
 	Bind(name string, description string, handler Handler)
-	Intercept(ctx context.Context, event session.Event) (session.InterceptResult, error)
+	Intercept(ctx context.Context, event session.Event, emitter loop.Emitter) (session.InterceptResult, error)
 }
 
 // Compile-time assertion that registry implements session.Interceptor.
@@ -59,7 +61,7 @@ func NewRegistry() Registry {
 		commands:     make(map[string]Handler),
 		descriptions: make(map[string]string),
 	}
-	r.Bind("help", "Show available slash commands", func(ctx context.Context, cmd Command) (Result, error) {
+	r.Bind("help", "Show available slash commands", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		r.mu.RLock()
 		defer r.mu.RUnlock()
 		var lines []string
@@ -94,7 +96,7 @@ func (r *registry) Bind(name string, description string, handler Handler) {
 // invoked and the event is consumed or replaced. If no command matches, the
 // event passes through unchanged. Non-UserMessageEvent types are always passed
 // through unchanged.
-func (r *registry) Intercept(ctx context.Context, event session.Event) (session.InterceptResult, error) {
+func (r *registry) Intercept(ctx context.Context, event session.Event, emitter loop.Emitter) (session.InterceptResult, error) {
 	ume, ok := event.(session.UserMessageEvent)
 	if !ok {
 		return session.InterceptResult{Event: event}, nil
@@ -136,7 +138,7 @@ func (r *registry) Intercept(ctx context.Context, event session.Event) (session.
 		}, nil
 	}
 
-	result, err := handler(ctx, Command{Name: command, Input: input})
+	result, err := handler(ctx, emitter, Command{Name: command, Input: input})
 	if err != nil {
 		return session.InterceptResult{Event: event}, err
 	}

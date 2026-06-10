@@ -1734,3 +1734,61 @@ func TestFeedbackEvent_MarshalJSON_OmitEmptyContext(t *testing.T) {
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"kind":"feedback","content":"help text"}`, string(data))
 }
+
+func TestActivityEvent_Kind(t *testing.T) {
+	event := ActivityEvent{Active: true, Description: "compacting"}
+	assert.Equal(t, "activity", event.Kind())
+}
+
+func TestActivityEvent_Context(t *testing.T) {
+	ctx := WithProvenance(context.Background(), "tui")
+	event := ActivityEvent{Active: true, Description: "compacting", Ctx: ctx}
+	name, _ := ProvenanceFrom(event.Context())
+	assert.Equal(t, "tui", name)
+}
+
+func TestActivityEvent_MarshalJSON(t *testing.T) {
+	ctx := WithProvenance(context.Background(), "test")
+	event := ActivityEvent{Active: true, Description: "compacting", Ctx: ctx}
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"activity","active":true,"description":"compacting","context":{"provenance":"test"}}`, string(data))
+}
+
+func TestActivityEvent_MarshalJSON_Inactive(t *testing.T) {
+	ctx := WithProvenance(context.Background(), "test")
+	event := ActivityEvent{Active: false, Description: "compacting", Ctx: ctx}
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"activity","active":false,"description":"compacting","context":{"provenance":"test"}}`, string(data))
+}
+
+func TestActivityEvent_MarshalJSON_OmitEmptyContext(t *testing.T) {
+	event := ActivityEvent{Active: true, Description: "compacting"}
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "context")
+	assert.NotContains(t, string(data), "provenance")
+}
+
+func TestActivityEvent_EmitAndReceive(t *testing.T) {
+	s := New()
+	ch := s.Subscribe("activity")
+
+	ctx := WithProvenance(context.Background(), "tui")
+	s.Emit(ctx, ActivityEvent{Active: true, Description: "compacting", Ctx: ctx})
+	s.Emit(ctx, ActivityEvent{Active: false, Description: "compacting", Ctx: ctx})
+
+	events := collectEvents(ch, 100*time.Millisecond)
+	require.Len(t, events, 2)
+
+	active, ok := events[0].(ActivityEvent)
+	require.True(t, ok)
+	assert.True(t, active.Active)
+	assert.Equal(t, "compacting", active.Description)
+
+	inactive, ok := events[1].(ActivityEvent)
+	require.True(t, ok)
+	assert.False(t, inactive.Active)
+	assert.Equal(t, "compacting", inactive.Description)
+}

@@ -1177,3 +1177,27 @@ func TestCompactNumber(t *testing.T) {
 		})
 	}
 }
+
+func TestModel_View_ActivitySpinner(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.width = 80
+
+	// No activity: spinner should not appear.
+	output := m.View().Content
+	assert.NotContains(t, output, "⚙")
+	assert.NotContains(t, output, "compacting")
+
+	// Activity active: spinner should appear with description.
+	newM, _ := m.Update(activityMsg{active: true, description: "compacting"})
+	mm := newM.(*model)
+	output = mm.View().Content
+	assert.Contains(t, output, "⚙ compacting")
+
+	// Activity inactive: spinner should disappear.
+	newM2, _ := mm.Update(activityMsg{active: false, description: ""})
+	mm2 := newM2.(*model)
+	output = mm2.View().Content
+	assert.NotContains(t, output, "⚙ compacting")
+}
+
