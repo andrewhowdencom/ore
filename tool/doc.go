@@ -24,20 +24,6 @@
 // SandboxRegistry to resolve sandboxes per tool call. If the registry does not
 // implement SandboxRegistry, all tool calls receive a nil sandbox.
 //
-// Tool Output Budget
-//
-// The Tool struct exposes a MaxBytes field that defines a hard ceiling on the
-// serialized JSON output size in bytes, and a TruncationHint template string
-// that is appended when the limit is exceeded. MaxBytes is a framework-level
-// safety rail: when a tool's JSON result exceeds the limit, the framework
-// truncates the Content string to a valid UTF-8 boundary and appends the formatted
-// hint, with the ${N} placeholder replaced by the actual total byte count.
-// This prevents unbounded token consumption from tools that can return arbitrarily
-// large output (e.g. recursive directory searches). Tools may also implement
-// cooperative truncation by respecting the same budget during their own execution.
-// The TruncateContent helper function is available for tools that want to measure
-// and cap their own output before returning.
-//
 // Concrete tool implementations, discovery mechanisms, and the loop.Handler
 // bridge live in the x/tool/ extension packages. This package defines only
 // the contracts that core packages (cognitive/, session/, loop/) can import
