@@ -596,9 +596,10 @@ func TestModel_Update_Turn_Assistant_PopulatesRendered(t *testing.T) {
 	assert.NotEmpty(t, mm2.turns[0].blocks[0].rendered, "assistant turn should have rendered Markdown")
 }
 
-func TestModel_Update_Turn_User_LeavesRenderedEmpty(t *testing.T) {
+func TestModel_Update_Turn_User_RendersMarkdown(t *testing.T) {
 	m := model{
 		viewport: viewport.New(viewport.WithWidth(80), viewport.WithHeight(20)),
+		md:       mockMarkdownRenderer{output: "rendered hello world"},
 	}
 	turn := state.Turn{
 		Role: state.RoleUser,
@@ -610,7 +611,7 @@ func TestModel_Update_Turn_User_LeavesRenderedEmpty(t *testing.T) {
 	mm := newM.(*model)
 	require.Len(t, mm.turns, 1)
 	require.Len(t, mm.turns[0].blocks, 1)
-	assert.Empty(t, mm.turns[0].blocks[0].rendered, "user turn should not have rendered Markdown")
+	assert.Equal(t, "rendered hello world", mm.turns[0].blocks[0].rendered, "user turn should be markdown rendered")
 }
 
 func TestModel_Update_WindowSize_RerendersAssistantTurns(t *testing.T) {
@@ -1777,6 +1778,7 @@ func TestModel_LoadHistory(t *testing.T) {
 	t.Run("user turn", func(t *testing.T) {
 		m := newTestModel()
 		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+		m.md = mockMarkdownRenderer{output: "rendered hello world"}
 		m.loadHistory([]state.Turn{
 			{
 				Role:      state.RoleUser,
@@ -1788,7 +1790,7 @@ func TestModel_LoadHistory(t *testing.T) {
 		require.Len(t, m.turns[0].blocks, 1)
 		assert.Equal(t, "text", m.turns[0].blocks[0].kind)
 		assert.Equal(t, "hello world", m.turns[0].blocks[0].source)
-		assert.Empty(t, m.turns[0].blocks[0].rendered, "user turn should not be markdown rendered")
+		assert.Equal(t, "rendered hello world", m.turns[0].blocks[0].rendered, "user turn should be markdown rendered")
 		assert.True(t, m.contentDirty)
 	})
 

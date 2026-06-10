@@ -109,7 +109,22 @@ type renderedBlock struct {
 	title             string         // display title for the unified header
 	style             lipgloss.Style // color/style applied to the header
 	expandedByDefault bool           // whether this block type defaults to expanded body
-	isError           bool           // whether this block represents an error state
+}
+
+// rerenderableKinds lists block kinds that may be re-rendered when the
+// viewport width changes or a render tick fires.  Centralized so all
+// update handlers use the same set.
+var rerenderableKinds = []string{"text", "reasoning", "tool_call", "tool_result"}
+
+// isRerenderableKind reports whether a block kind should be re-rendered
+// on width changes or debounced render ticks.
+func isRerenderableKind(kind string) bool {
+	for _, k := range rerenderableKinds {
+		if k == kind {
+			return true
+		}
+	}
+	return false
 }
 
 // The TUI aims to keep the conversation view concise. Tool calls and their
@@ -282,10 +297,9 @@ func (m *model) syncViewport() {
 	m.viewport.SetContent(m.buildContent())
 }
 
-// When shouldRenderMarkdown is true, text, reasoning, tool_call, and
-// tool_result artifacts are processed through the Markdown renderer;
-// this is appropriate for assistant and tool turns.
-func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRenderMarkdown bool) renderedBlock {
+// renderArtifact converts an artifact into a renderedBlock. Markdown rendering is
+// applied unconditionally for all text-bearing block kinds so the pipeline is role-agnostic.
+func (m *model) renderArtifact(art artifact.Artifact, role state.Role) renderedBlock {
 	switch a := art.(type) {
 	case artifact.Text:
 		block := renderedBlock{kind: "text", source: a.Content}
@@ -304,11 +318,9 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRen
 			block.style = systemStyle
 		}
 		block.expandedByDefault = true
-		if shouldRenderMarkdown {
-			rendered, err := m.renderMarkdown(a.Content, m.viewport.Width())
-			if err == nil {
-				block.rendered = rendered
-			}
+		rendered, err := m.renderMarkdown(a.Content, m.viewport.Width())
+		if err == nil {
+			block.rendered = rendered
 		}
 		return block
 	case artifact.Reasoning:
@@ -319,11 +331,9 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRen
 			style:             thinkingStyle,
 			expandedByDefault: false,
 		}
-		if shouldRenderMarkdown {
-			rendered, err := m.renderMarkdown(a.Content, m.viewport.Width())
-			if err == nil {
-				block.rendered = rendered
-			}
+		rendered, err := m.renderMarkdown(a.Content, m.viewport.Width())
+		if err == nil {
+			block.rendered = rendered
 		}
 		return block
 	case artifact.ToolCall:
@@ -343,11 +353,9 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRen
 			style:             assistantStyle,
 			expandedByDefault: false,
 		}
-		if shouldRenderMarkdown {
-			rendered, err := m.renderMarkdown(source, m.viewport.Width())
-			if err == nil {
-				block.rendered = rendered
-			}
+		rendered, err := m.renderMarkdown(source, m.viewport.Width())
+		if err == nil {
+			block.rendered = rendered
 		}
 		return block
 	case artifact.ToolResult:
@@ -362,13 +370,10 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRen
 			title:             fmt.Sprintf("Tool Result (%s)", hashToolCallID(a.ToolCallID)),
 			style:             toolResultStyle,
 			expandedByDefault: false,
-			isError:           a.IsError,
 		}
-		if shouldRenderMarkdown {
-			rendered, err := m.renderMarkdown(source, m.viewport.Width())
-			if err == nil {
-				block.rendered = rendered
-			}
+		rendered, err := m.renderMarkdown(source, m.viewport.Width())
+		if err == nil {
+			block.rendered = rendered
 		}
 		// Derive compact from rendered Markdown output, falling back to raw
 		// source when rendering is unavailable (e.g. user turns or errors).
@@ -385,6 +390,24 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role, shouldRen
 	return renderedBlock{}
 }
 
+// renderPlainBlock constructs a renderedBlock for plain text (e.g. error or
+// feedback) and runs it through the same Markdown + header pipeline so it
+// participates in the unified rendering path.
+func (m *model) renderPlainBlock(kind, source, title string, style lipgloss.Style) renderedBlock {
+	block := renderedBlock{
+		kind:              kind,
+		source:            source,
+		title:             title,
+		style:             style,
+		expandedByDefault: true,
+	}
+	rendered, err := m.renderMarkdown(source, m.viewport.Width())
+	if err == nil {
+		block.rendered = rendered
+	}
+	return block
+}
+
 // loadHistory pre-populates the model's turn slice from a stream's
 // historical conversation state. It is called once during TUI startup
 // when resuming an existing thread. The supplied turns are expected to be
@@ -393,7 +416,7 @@ func (m *model) loadHistory(turns []state.Turn) {
 	for _, turn := range turns {
 		var blocks []renderedBlock
 		for _, art := range turn.Artifacts {
-			block := m.renderArtifact(art, turn.Role, turn.Role == state.RoleAssistant || turn.Role == state.RoleTool)
+			block := m.renderArtifact(art, turn.Role)
 			if block.kind != "" {
 				blocks = append(blocks, block)
 			}
@@ -454,7 +477,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.currentTurn.blocks = append(m.currentTurn.blocks, renderedBlock{kind: "reasoning", source: a.Content, title: "Thinking", style: thinkingStyle, expandedByDefault: false})
 			}
 		default:
-			block := m.renderArtifact(msg.artifact, state.RoleAssistant, true)
+			block := m.renderArtifact(msg.artifact, state.RoleAssistant)
 			if block.kind != "" {
 				m.currentTurn.blocks = append(m.currentTurn.blocks, block)
 			}
@@ -475,7 +498,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// moving them into the permanent conversation history.
 			for j := range m.currentTurn.blocks {
 				block := &m.currentTurn.blocks[j]
-				if (block.kind == "text" || block.kind == "reasoning" || block.kind == "tool_call" || block.kind == "tool_result") && block.source != "" {
+				if isRerenderableKind(block.kind) && block.source != "" {
 					rendered, err := m.renderMarkdown(block.source, m.viewport.Width())
 					if err == nil {
 						block.rendered = rendered
@@ -496,7 +519,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// build the turn from the full Turn content.
 			var blocks []renderedBlock
 			for _, art := range msg.turn.Artifacts {
-				block := m.renderArtifact(art, msg.turn.Role, msg.turn.Role == state.RoleAssistant || msg.turn.Role == state.RoleTool)
+				block := m.renderArtifact(art, msg.turn.Role)
 				if block.kind != "" {
 					blocks = append(blocks, block)
 				}
@@ -599,11 +622,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = make(map[string]string)
 		}
 		m.status["phase"] = "error"
+		block := m.renderPlainBlock("error", msg.err.Error(), "System", errorStyle)
 		m.turns = append(m.turns, renderedTurn{
-			role: state.RoleSystem,
-			blocks: []renderedBlock{
-				{kind: "error", source: msg.err.Error(), title: "System", style: errorStyle, expandedByDefault: true},
-			},
+			role:   state.RoleSystem,
+			blocks: []renderedBlock{block},
 		})
 		m.contentDirty = true
 		m.recalcLayout()
@@ -614,11 +636,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case feedbackMsg:
 		wasAtBottom := m.viewport.AtBottom()
+		block := m.renderPlainBlock("feedback", msg.content, "System", systemStyle)
 		m.turns = append(m.turns, renderedTurn{
-			role: state.RoleSystem,
-			blocks: []renderedBlock{
-				{kind: "feedback", source: msg.content, title: "System", style: systemStyle, expandedByDefault: true},
-			},
+			role:   state.RoleSystem,
+			blocks: []renderedBlock{block},
 		})
 		m.contentDirty = true
 		m.syncViewport()
@@ -632,7 +653,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		for j := range m.currentTurn.blocks {
 			block := &m.currentTurn.blocks[j]
-			if (block.kind == "text" || block.kind == "reasoning" || block.kind == "tool_call" || block.kind == "tool_result") && block.source != "" {
+			if isRerenderableKind(block.kind) && block.source != "" {
 				rendered, err := m.renderMarkdown(block.source, m.viewport.Width())
 				if err == nil {
 					block.rendered = rendered
@@ -757,7 +778,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i, turn := range m.turns {
 			if turn.role == state.RoleAssistant {
 				for j, block := range turn.blocks {
-					if (block.kind == "text" || block.kind == "tool_call" || block.kind == "tool_result") && block.source != "" {
+					if isRerenderableKind(block.kind) && block.source != "" {
 						rendered, err := m.renderMarkdown(block.source, m.viewport.Width())
 						if err == nil {
 							m.turns[i].blocks[j].rendered = rendered
@@ -768,7 +789,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Also re-render the in-progress currentTurn blocks.
 		for j, block := range m.currentTurn.blocks {
-			if (block.kind == "text" || block.kind == "tool_call" || block.kind == "tool_result") && block.source != "" {
+			if isRerenderableKind(block.kind) && block.source != "" {
 				rendered, err := m.renderMarkdown(block.source, m.viewport.Width())
 				if err == nil {
 					m.currentTurn.blocks[j].rendered = rendered

@@ -359,7 +359,7 @@ func TestRenderBlockUnified_NegativeWidth(t *testing.T) {
 }
 
 func TestRenderBlockUnified_ToolResultErrorStyle(t *testing.T) {
-	block := renderedBlock{kind: "tool_result", source: "Error: failed", title: "Tool Result", style: errorStyle, expandedByDefault: false, isError: true}
+	block := renderedBlock{kind: "tool_result", source: "Error: failed", title: "Tool Result", style: errorStyle, expandedByDefault: false}
 	ts := time.Date(2024, 1, 1, 12, 30, 45, 0, time.UTC)
 	output := renderBlockUnified(block, ts, false, 80)
 	assert.Contains(t, output, "Tool Result")
@@ -923,7 +923,7 @@ func TestRenderArtifact_ToolCall_MarkdownRenderer(t *testing.T) {
 		Arguments: `{"command":"go test ./..."}`,
 		Value:     mockMarkdownValue{output: "```bash\n$ go test ./...\n```"},
 	}
-	block := m.renderArtifact(tc, state.RoleAssistant, false)
+	block := m.renderArtifact(tc, state.RoleAssistant)
 	assert.Equal(t, "tool_call", block.kind)
 	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "```bash\n$ go test ./...\n```", block.source)
@@ -939,7 +939,7 @@ func TestRenderArtifact_ToolCall_FallbackToArguments(t *testing.T) {
 		Name:      "search",
 		Arguments: `{"q":"hello"}`,
 	}
-	block := m.renderArtifact(tc, state.RoleAssistant, false)
+	block := m.renderArtifact(tc, state.RoleAssistant)
 	assert.Equal(t, "tool_call", block.kind)
 	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "Calling: search({\"q\":\"hello\"})", block.source)
@@ -948,59 +948,67 @@ func TestRenderArtifact_ToolCall_FallbackToArguments(t *testing.T) {
 func TestRenderArtifact_ToolResult_MarkdownRenderer(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.md = mockMarkdownRenderer{output: "# Custom Markdown"}
 	tr := artifact.ToolResult{
 		ToolCallID: "call_1",
 		Content:    `{"raw":"json"}`,
 		Value:      mockMarkdownValue{output: "# Custom Markdown"},
 	}
-	block := m.renderArtifact(tr, state.RoleTool, false)
+	block := m.renderArtifact(tr, state.RoleTool)
 	assert.Equal(t, "tool_result", block.kind)
 	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "# Custom Markdown", block.source)
+	assert.Equal(t, "# Custom Markdown", block.rendered)
 	assert.Equal(t, "# Custom Markdown", block.compact)
 }
 
 func TestRenderArtifact_ToolResult_JSONFallback(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.md = mockMarkdownRenderer{output: "```json\n\"json value\"\n```"}
 	tr := artifact.ToolResult{
 		ToolCallID: "call_1",
 		Content:    "fallback",
 		Value:      "json value",
 	}
-	block := m.renderArtifact(tr, state.RoleTool, false)
+	block := m.renderArtifact(tr, state.RoleTool)
 	assert.Equal(t, "tool_result", block.kind)
 	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "```json\n\"json value\"\n```", block.source)
+	assert.Equal(t, "```json\n\"json value\"\n```", block.rendered)
 	assert.Equal(t, "```json\n\"json value\"\n```", block.compact)
 }
 
 func TestRenderArtifact_ToolResult_Error(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.md = mockMarkdownRenderer{output: "Error: failed"}
 	tr := artifact.ToolResult{
 		ToolCallID: "call_1",
 		Content:    "failed",
 		IsError:    true,
 	}
-	block := m.renderArtifact(tr, state.RoleTool, false)
+	block := m.renderArtifact(tr, state.RoleTool)
 	assert.Equal(t, "tool_result", block.kind)
 	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "Error: failed", block.source)
+	assert.Equal(t, "Error: failed", block.rendered)
 	assert.Equal(t, "Error: failed", block.compact)
 }
 
 func TestRenderArtifact_ToolResult_ContentFallback(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.md = mockMarkdownRenderer{output: "plain content"}
 	tr := artifact.ToolResult{
 		ToolCallID: "call_1",
 		Content:    "plain content",
 	}
-	block := m.renderArtifact(tr, state.RoleTool, false)
+	block := m.renderArtifact(tr, state.RoleTool)
 	assert.Equal(t, "tool_result", block.kind)
 	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "plain content", block.source)
+	assert.Equal(t, "plain content", block.rendered)
 	assert.Equal(t, "plain content", block.compact)
 }
 
@@ -1012,7 +1020,7 @@ func TestRenderArtifact_ToolResult_CompactFromRendered(t *testing.T) {
 		ToolCallID: "call_1",
 		Content:    "raw result",
 	}
-	block := m.renderArtifact(tr, state.RoleTool, true)
+	block := m.renderArtifact(tr, state.RoleTool)
 	assert.Equal(t, "tool_result", block.kind)
 	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "raw result", block.source)
