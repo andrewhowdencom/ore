@@ -63,9 +63,7 @@ func ReadSkillDisplayHint(args map[string]any) any {
 // ReadSkillTool is the tool.Tool descriptor for read_skill.
 var ReadSkillTool = tool.Tool{
 	Name:        "read_skill",
-	Description: "Read the full SKILL.md content for a named skill. Use this to load the detailed instructions for a skill. Returns at most 30000 bytes.",
-	MaxBytes:       30000,
-	TruncationHint: "...truncated (total ${N} bytes). Make it more efficient by using the tool like: read_skill(name=\"go\")",
+	Description: "Read the full SKILL.md content for a named skill. Use this to load the detailed instructions for a skill.",
 	Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
