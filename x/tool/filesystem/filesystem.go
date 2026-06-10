@@ -3,7 +3,6 @@ package filesystem
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -24,13 +23,6 @@ var (
 	_ tool.ToolFunc = SearchFiles
 )
 
-const (
-	readFileMaxBytes      = 100000
-	searchFilesMaxBytes   = 50000
-	listDirectoryMaxBytes = 10000
-)
-
-var errBudgetExceeded = errors.New("budget exceeded")
 
 // resolvePath resolves a path through a sandbox when available. If sb is nil
 // or does not implement FileSandbox, the path is returned as-is (allowing
@@ -89,7 +81,6 @@ func ReadFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, e
 	var result strings.Builder
 	lineNum := 0
 	linesEmitted := 0
-	const maxBytes = readFileMaxBytes
 
 	for {
 		line, readErr := reader.ReadString('\n')
@@ -119,10 +110,6 @@ func ReadFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, e
 		}
 
 		formatted := fmt.Sprintf("%d|%s\n", lineNum, line)
-		if result.Len()+len(formatted) > maxBytes {
-			break
-		}
-
 		result.WriteString(formatted)
 		linesEmitted++
 
@@ -140,9 +127,7 @@ func ReadFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, e
 // ReadFileTool is the tool.Tool descriptor for ReadFile.
 var ReadFileTool = tool.Tool{
 	Name:        "read_file",
-	Description: "Read the contents of a file. Returns the file contents with line-number prefixes. Optionally specify an offset (1-based starting line) and limit (maximum number of lines to return). Returns at most 100000 bytes.",
-	MaxBytes:       readFileMaxBytes,
-	TruncationHint: "...truncated (total ${N} bytes). Make it more efficient by using the tool like: read_file(path=\"file.go\", offset=1, limit=100)",
+	Description: "Read the contents of a file. Returns the file contents with line-number prefixes. Optionally specify an offset (1-based starting line) and limit (maximum number of lines to return).",
 	Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -201,7 +186,6 @@ func WriteFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, 
 var WriteFileTool = tool.Tool{
 	Name:        "write_file",
 	Description: "Create or overwrite a file with the specified content.",
-	MaxBytes:       0,
 	Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -268,7 +252,6 @@ func EditFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, e
 var EditFileTool = tool.Tool{
 	Name:        "edit_file",
 	Description: "Edit an existing file by replacing the first exact occurrence of old_string with new_string. Fails if old_string is empty or not found.",
-	MaxBytes:       0,
 	Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -335,9 +318,7 @@ func ListDirectory(ctx context.Context, sb tool.Sandbox, args map[string]any) (a
 // ListDirectoryTool is the tool.Tool descriptor for ListDirectory.
 var ListDirectoryTool = tool.Tool{
 	Name:        "list_directory",
-	Description: "List the immediate non-hidden entries in a directory. Returns entry names. Hidden entries (names starting with '.') are excluded. Returns at most 10000 bytes.",
-	MaxBytes:       listDirectoryMaxBytes,
-	TruncationHint: "...truncated (total ${N} bytes). Make it more efficient by using the tool like: list_directory(path=\"src\")",
+	Description: "List the immediate non-hidden entries in a directory. Returns entry names. Hidden entries (names starting with '.') are excluded.",
 	Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -391,7 +372,6 @@ func SearchFiles(ctx context.Context, sb tool.Sandbox, args map[string]any) (any
 	}
 
 	results := make([]SearchResult, 0)
-	estimatedBytes := 0
 
 	info, err := os.Stat(path)
 	if err != nil {
@@ -404,11 +384,6 @@ func SearchFiles(ctx context.Context, sb tool.Sandbox, args map[string]any) (any
 			return nil, err
 		}
 		for _, match := range matches {
-			matchBytes := len(match.Path) + len(match.Content) + 50
-			if estimatedBytes+matchBytes > searchFilesMaxBytes {
-				break
-			}
-			estimatedBytes += matchBytes
 			results = append(results, match)
 		}
 	} else {
@@ -430,16 +405,11 @@ func SearchFiles(ctx context.Context, sb tool.Sandbox, args map[string]any) (any
 				return nil // Skip files we cannot read.
 			}
 			for _, match := range matches {
-				matchBytes := len(match.Path) + len(match.Content) + 50
-				if estimatedBytes+matchBytes > searchFilesMaxBytes {
-					return errBudgetExceeded
-				}
-				estimatedBytes += matchBytes
 				results = append(results, match)
 			}
 			return nil
 		})
-		if err != nil && !errors.Is(err, errBudgetExceeded) {
+		if err != nil {
 			return nil, fmt.Errorf("failed to walk directory: %w", err)
 		}
 	}
@@ -478,9 +448,7 @@ func searchFile(path string, re *regexp.Regexp) ([]SearchResult, error) {
 // SearchFilesTool is the tool.Tool descriptor for SearchFiles.
 var SearchFilesTool = tool.Tool{
 	Name:        "search_files",
-	Description: "Search files for lines matching a regex query. Returns matches with file path, line number, and matching line content. If the path is a directory, searches recursively. Hidden files and directories are skipped. Returns at most 50000 bytes.",
-	MaxBytes:       searchFilesMaxBytes,
-	TruncationHint: "...truncated (total ${N} bytes). Make it more efficient by using the tool like: search_files(path=\"src\", query=\"func ReadFile\") or list_directory(path=\"src\")",
+	Description: "Search files for lines matching a regex query. Returns matches with file path, line number, and matching line content. If the path is a directory, searches recursively. Hidden files and directories are skipped.",
 	Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{

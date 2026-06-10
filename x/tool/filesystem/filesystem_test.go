@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/andrewhowdencom/ore/tool"
@@ -687,103 +686,4 @@ func TestReadFile_BinaryRejection(t *testing.T) {
 	assert.Contains(t, err.Error(), p)
 }
 
-func TestReadFile_TotalCharacterCap(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	p := filepath.Join(dir, "large.txt")
 
-	var content strings.Builder
-	for i := 0; i < 2000; i++ {
-		content.WriteString(strings.Repeat("x", 60))
-		content.WriteByte('\n')
-	}
-	require.NoError(t, os.WriteFile(p, []byte(content.String()), 0o644))
-
-	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p})
-	require.NoError(t, err)
-	resultStr := result.(string)
-	require.LessOrEqual(t, len(resultStr), 100_000, "result should be capped at 100k chars")
-	require.True(t, strings.HasSuffix(resultStr, "\n"), "truncation should occur at line boundary")
-}
-
-func TestReadFile_StreamingTruncationWithOffset(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	p := filepath.Join(dir, "large.txt")
-
-	var content strings.Builder
-	for i := 0; i < 2000; i++ {
-		content.WriteString(strings.Repeat("x", 60))
-		content.WriteByte('\n')
-	}
-	require.NoError(t, os.WriteFile(p, []byte(content.String()), 0o644))
-
-	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p, "offset": 500})
-	require.NoError(t, err)
-	resultStr := result.(string)
-	require.True(t, strings.HasPrefix(resultStr, "500|"), "result should start at offset line 500")
-	require.LessOrEqual(t, len(resultStr), 100_000, "result should still respect the 100k cap")
-}
-
-func TestReadFile_CapWithLimit(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	p := filepath.Join(dir, "large.txt")
-
-	var content strings.Builder
-	for i := 0; i < 2000; i++ {
-		content.WriteString(strings.Repeat("x", 60))
-		content.WriteByte('\n')
-	}
-	require.NoError(t, os.WriteFile(p, []byte(content.String()), 0o644))
-
-	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p, "offset": 1, "limit": 2000})
-	require.NoError(t, err)
-	resultStr := result.(string)
-	require.LessOrEqual(t, len(resultStr), 100_000, "cap should win over limit")
-}
-
-func TestSearchFiles_BudgetWithinLimit(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	// Create 10 files with 1 matching line each.
-	for i := 0; i < 10; i++ {
-		p := filepath.Join(dir, fmt.Sprintf("file%d.txt", i))
-		require.NoError(t, os.WriteFile(p, []byte("match\n"), 0o644))
-	}
-
-	result, err := SearchFiles(context.Background(), nil, map[string]any{
-		"path":  dir,
-		"query": "match",
-	})
-	require.NoError(t, err)
-
-	results := result.([]SearchResult)
-	assert.Len(t, results, 10)
-}
-
-func TestSearchFiles_BudgetExceeded(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	// Create 50 files, each with 10 matching lines.
-	for i := 0; i < 50; i++ {
-		p := filepath.Join(dir, fmt.Sprintf("file%d.txt", i))
-		var content strings.Builder
-		for j := 0; j < 10; j++ {
-			content.WriteString("match\n")
-		}
-		require.NoError(t, os.WriteFile(p, []byte(content.String()), 0o644))
-	}
-
-	result, err := SearchFiles(context.Background(), nil, map[string]any{
-		"path":  dir,
-		"query": "match",
-	})
-	require.NoError(t, err)
-
-	results := result.([]SearchResult)
-	// 50 files * 10 matches = 500 matches. Budget is 50000 bytes.
-	// Each match is ~115 bytes (path + content + overhead).
-	// 500 * 115 = 57500 > 50000. So results should be truncated.
-	assert.Less(t, len(results), 500)
-}
