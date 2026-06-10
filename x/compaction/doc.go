@@ -62,7 +62,13 @@
 //	for {
 //		turns, didCompact, err := compactor.MaybeCompact(ctx, buf.Turns())
 //		if err != nil {
-//			// handle error
+//			// Strategies are run in-place against the provided slice. On error, the
+//			// original turns are returned unchanged and didCompact is false. This
+//			// prevents callers from accidentally passing a nil slice to LoadTurns or
+//			// ReloadHistory, which would wipe the conversation history.
+//			//
+//			// Log the error and continue without replacing the state buffer.
+//			continue
 //		}
 //		if didCompact {
 //			buf.LoadTurns(turns)
@@ -76,7 +82,13 @@
 //
 // # Defensive composition
 //
-// Applications should protect against provider failures and context overflow
+// On strategy error, MaybeCompact and ForceCompact return the original turn
+// slice unchanged with didCompact false. This preserves the caller's history
+// so a downstream LoadTurns or ReloadHistory call does not accidentally wipe
+// the conversation with a nil slice. Log or surface the error at the call site
+// and continue without replacing the state buffer.
+//
+// Applications should also protect against provider failures and context overflow
 // by setting trigger thresholds with safety margins. For example, set
 // MaxTokens well below the provider's hard limit.
 //
