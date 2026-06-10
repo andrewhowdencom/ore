@@ -19,10 +19,11 @@
 // so the Bubble Tea program is running.
 //
 // Keyboard shortcuts:
-//   Ctrl+O — toggle expansion of latest assistant turn's tool blocks
-//            (compact by default; resets after each new turn)
-//   Ctrl+C — quit
-//   Shift+Enter — insert newline in the input box
+//
+//	Ctrl+O — toggle expansion of latest assistant turn's tool blocks
+//	         (compact by default; resets after each new turn)
+//	Ctrl+C — quit
+//	Shift+Enter — insert newline in the input box
 package tui
 
 import (
@@ -30,14 +31,14 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/andrewhowdencom/ore/x/conduit"
-	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/session"
-	"github.com/andrewhowdencom/ore/state"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/x/conduit"
 	"go.opentelemetry.io/otel/trace"
 )
 
