@@ -64,11 +64,12 @@ func (c *Compactor) MaybeCompact(ctx context.Context, turns []state.Turn) ([]sta
 	if !c.trigger.ShouldCompact(turns) {
 		return turns, false, nil
 	}
+	originalTurns := turns
 	var err error
 	for _, s := range c.strategies {
 		turns, err = s.Compact(ctx, turns)
 		if err != nil {
-			return nil, false, fmt.Errorf("compaction strategy failed: %w", err)
+			return originalTurns, false, fmt.Errorf("compaction strategy failed: %w", err)
 		}
 	}
 	return turns, true, nil
@@ -82,11 +83,12 @@ func (c *Compactor) ForceCompact(ctx context.Context, turns []state.Turn) ([]sta
 	if len(c.strategies) == 0 {
 		return turns, false, nil
 	}
+	originalTurns := turns
 	var err error
 	for _, s := range c.strategies {
 		turns, err = s.Compact(ctx, turns)
 		if err != nil {
-			return nil, false, fmt.Errorf("compaction strategy failed: %w", err)
+			return originalTurns, false, fmt.Errorf("compaction strategy failed: %w", err)
 		}
 	}
 	return turns, true, nil

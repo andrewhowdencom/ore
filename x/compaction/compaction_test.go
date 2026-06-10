@@ -65,9 +65,11 @@ func TestMaybeCompact_StrategyError(t *testing.T) {
 		WithStrategy(errorStrategy{msg: "strategy error"}),
 	)
 	turns := []state.Turn{{Role: state.RoleUser}}
-	_, _, err := c.MaybeCompact(context.Background(), turns)
+	result, didCompact, err := c.MaybeCompact(context.Background(), turns)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "strategy error")
+	assert.False(t, didCompact)
+	assert.Equal(t, turns, result)
 }
 
 func TestMaybeCompact_NilTrigger_WithStrategy(t *testing.T) {
@@ -166,8 +168,8 @@ type errorStrategy struct {
 	msg string
 }
 
-func (e errorStrategy) Compact(_ context.Context, _ []state.Turn) ([]state.Turn, error) {
-	return nil, errors.New(e.msg)
+func (e errorStrategy) Compact(_ context.Context, turns []state.Turn) ([]state.Turn, error) {
+	return turns, errors.New(e.msg)
 }
 
 // dropFirstN is a test double that drops the first N turns.
@@ -213,10 +215,12 @@ func TestMaybeCompact_MultipleStrategies_ErrorPropagation(t *testing.T) {
 		{Role: state.RoleUser},
 		{Role: state.RoleAssistant},
 	}
-	_, _, err := c.MaybeCompact(context.Background(), turns)
+	result, didCompact, err := c.MaybeCompact(context.Background(), turns)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "compaction strategy failed")
 	assert.Contains(t, err.Error(), "second strategy failed")
+	assert.False(t, didCompact)
+	assert.Equal(t, turns, result)
 }
 
 func TestWithStrategy_NilIgnored(t *testing.T) {
@@ -280,8 +284,10 @@ func TestForceCompact_StrategyError(t *testing.T) {
 		WithStrategy(errorStrategy{msg: "strategy error"}),
 	)
 	turns := []state.Turn{{Role: state.RoleUser}}
-	_, _, err := c.ForceCompact(context.Background(), turns)
+	result, didCompact, err := c.ForceCompact(context.Background(), turns)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "strategy error")
+	assert.False(t, didCompact)
+	assert.Equal(t, turns, result)
 }
 
