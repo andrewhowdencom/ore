@@ -74,6 +74,13 @@ type feedbackMsg struct {
 	content string
 }
 
+// activityMsg carries an activity indicator update from the conduit to
+// the UI model. It signals when long-running work starts and stops.
+type activityMsg struct {
+	active      bool
+	description string
+}
+
 // renderTickMsg triggers a debounced markdown re-render of the current
 // assistant turn's text and reasoning blocks.
 type renderTickMsg struct{}
@@ -173,6 +180,12 @@ type model struct {
 
 	// renderScheduled is true when a debounced render tick is pending.
 	renderScheduled bool
+
+	// working indicates a long-running activity (e.g., slash command) is in progress.
+	working bool
+
+	// workingDescription is a short label describing the current activity (e.g., "compacting").
+	workingDescription string
 }
 
 // renderedTurn represents a single turn in the conversation history.
@@ -534,6 +547,19 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status["phase"] = msg.phase
 		m.contentDirty = true
 		m.recalcLayout()
+		m.syncViewport()
+		if wasAtBottom {
+			m.viewport.GotoBottom()
+		}
+	case activityMsg:
+		wasAtBottom := m.viewport.AtBottom()
+		m.working = msg.active
+		if msg.active {
+			m.workingDescription = msg.description
+		} else {
+			m.workingDescription = ""
+		}
+		m.contentDirty = true
 		m.syncViewport()
 		if wasAtBottom {
 			m.viewport.GotoBottom()
