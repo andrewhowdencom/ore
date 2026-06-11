@@ -291,7 +291,11 @@ func TestModel_View_ContainsTurn(t *testing.T) {
 	idxContent := strings.Index(output, "hello")
 	assert.Greater(t, idxContent, idxLabel, "content should appear after label")
 	segment := output[idxLabel:idxContent]
-	assert.Contains(t, segment, "\n", "label and content should be on separate lines")
+	// The segment from the label to the body must contain exactly one
+	// newline — proving the header and body are on consecutive lines
+	// (no blank row), but tolerating ANSI codes / padding from lipgloss
+	// style emission that may sit between the label and the newline.
+	assert.Equal(t, 1, strings.Count(segment, "\n"), "label and body should be separated by exactly one newline")
 }
 
 func TestModel_View_ContainsAssistantTurn(t *testing.T) {
@@ -308,7 +312,7 @@ func TestModel_View_ContainsAssistantTurn(t *testing.T) {
 	idxContent := strings.Index(output, "world")
 	assert.Greater(t, idxContent, idxLabel, "content should appear after label")
 	segment := output[idxLabel:idxContent]
-	assert.Contains(t, segment, "\n", "label and content should be on separate lines")
+	assert.Equal(t, 1, strings.Count(segment, "\n"), "label and body should be separated by exactly one newline")
 }
 
 func TestModel_View_ContainsToolTurn(t *testing.T) {
@@ -325,7 +329,7 @@ func TestModel_View_ContainsToolTurn(t *testing.T) {
 	idxContent := strings.Index(output, "result")
 	assert.Greater(t, idxContent, idxLabel, "content should appear after label")
 	segment := output[idxLabel:idxContent]
-	assert.Contains(t, segment, "\n", "label and content should be on separate lines")
+	assert.Equal(t, 1, strings.Count(segment, "\n"), "label and body should be separated by exactly one newline")
 }
 
 func TestModel_View_StatusBarFixedBelowInput(t *testing.T) {
@@ -2089,4 +2093,3 @@ func TestModel_Update_ActivityMsg_SetsWorkingAndDescription(t *testing.T) {
 	assert.False(t, mm2.working, "activityMsg should clear working")
 	assert.Empty(t, mm2.workingDescription, "activityMsg should clear description")
 }
-
