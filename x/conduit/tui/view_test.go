@@ -290,6 +290,8 @@ func TestRenderBlockUnified_HeaderWithTimestamp(t *testing.T) {
 	assert.Contains(t, output, "Assistant")
 	assert.Contains(t, output, "· |s| 5")
 	assert.Contains(t, output, "hello")
+	// No blank line between header and body.
+	assert.NotContains(t, output, "\n\n", "header and body must not be separated by a blank line")
 }
 
 func TestRenderBlockUnified_HeaderWithoutTimestamp(t *testing.T) {
@@ -297,6 +299,26 @@ func TestRenderBlockUnified_HeaderWithoutTimestamp(t *testing.T) {
 	output := renderBlockUnified(block, time.Time{}, true, 80)
 	assert.Contains(t, output, "Assistant · |s| 5")
 	assert.Contains(t, output, "hello")
+	// No blank line between header and body.
+	assert.NotContains(t, output, "\n\n", "header and body must not be separated by a blank line")
+}
+
+// TestRenderBlockUnified_NoBlankLineBetweenHeaderAndBody locks in the
+// header-to-body spacing: the line immediately after the header is body
+// content, and no double-newline appears anywhere in the output.
+func TestRenderBlockUnified_NoBlankLineBetweenHeaderAndBody(t *testing.T) {
+	block := renderedBlock{kind: "text", source: "hello", title: "You", style: lipgloss.NewStyle(), expandedByDefault: true}
+	ts := time.Date(2024, 1, 1, 12, 30, 45, 0, time.UTC)
+	output := renderBlockUnified(block, ts, true, 80)
+
+	// (a) The line immediately after the header must be body content —
+	// i.e. "hello", not the empty string left by a blank row.
+	lines := strings.Split(output, "\n")
+	require.GreaterOrEqual(t, len(lines), 2, "output should have at least header + body line")
+	assert.Equal(t, "hello", lines[1], "first body line must be body content, not a blank line")
+
+	// (b) No double-newline anywhere — header-to-body must be a single "\n".
+	assert.Equal(t, 0, strings.Count(output, "\n\n"), "no double-newline may appear in the block output")
 }
 
 func TestRenderBlockUnified_CompactReasoning(t *testing.T) {
@@ -330,7 +352,10 @@ func TestRenderBlockUnified_EmptyBody(t *testing.T) {
 	ts := time.Date(2024, 1, 1, 12, 30, 45, 0, time.UTC)
 	output := renderBlockUnified(block, ts, true, 80)
 	assert.Contains(t, output, "Assistant")
-	assert.NotContains(t, output, "\n")
+	// Empty body early-returns the header alone — no trailing newline.
+	assert.NotContains(t, output, "\n", "empty body should produce header-only output")
+	// The header (with timestamp) is the entire output.
+	assert.Equal(t, "12:30:45 Assistant · |s| 0", output)
 }
 
 func TestRenderBlockUnified_WrapsContent(t *testing.T) {
@@ -340,6 +365,11 @@ func TestRenderBlockUnified_WrapsContent(t *testing.T) {
 	output := renderBlockUnified(block, ts, true, 20)
 	lines := strings.Split(output, "\n")
 	assert.Greater(t, len(lines), 2, "long text should wrap to multiple lines")
+	// First line is the header, second line is body content (not blank).
+	assert.Contains(t, lines[0], "Assistant")
+	assert.NotEmpty(t, lines[1], "first body line after header should be non-blank")
+	// No double-newlines anywhere — header-to-body must be tight.
+	assert.NotContains(t, output, "\n\n", "header and body must not be separated by a blank line")
 }
 
 func TestRenderBlockUnified_Unicode(t *testing.T) {
@@ -1208,4 +1238,3 @@ func TestModel_View_ActivitySpinner(t *testing.T) {
 	output = mm2.View().Content
 	assert.NotContains(t, output, "⚙ compacting")
 }
-
