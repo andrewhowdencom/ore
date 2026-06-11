@@ -65,6 +65,28 @@ func WithReasoningEffort(effort string) provider.InvokeOption {
 	return reasoningEffortOption{effort: effort}
 }
 
+// reasoningIncludeOption is a build-time option that explicitly controls
+// whether the OpenAI provider requests reasoning traces from the upstream
+// API by injecting `reasoning: {include: true}` into the request body.
+type reasoningIncludeOption struct {
+	include bool
+}
+
+// WithReasoningInclude returns an Option that explicitly sets whether the
+// provider should opt into receiving reasoning traces via the
+// `reasoning.include` request body field. This is the OpenRouter extension
+// that controls whether the upstream model forwards `reasoning_content` in
+// its SSE stream. When this option is set, it overrides any default
+// auto-detection based on the configured base URL. Pass `true` to force
+// inclusion (e.g., on OpenRouter-compatible hosts that are not detected by
+// the default heuristic), or `false` to suppress inclusion even on
+// OpenRouter.
+func WithReasoningInclude(include bool) Option {
+	return func(c *config) {
+		c.reasoningInclude = &include
+	}
+}
+
 // maxTokensOption is a per-invocation option that sets the maximum number of
 // tokens the model may generate in the response.
 type maxTokensOption struct {
@@ -82,11 +104,12 @@ func WithMaxTokens(n int64) provider.InvokeOption {
 
 // config holds the build-time configuration for the Provider.
 type config struct {
-	apiKey     string
-	model      string
-	baseURL    string
-	httpClient option.HTTPClient
-	tracer     trace.Tracer
+	apiKey          string
+	model           string
+	baseURL         string
+	httpClient      option.HTTPClient
+	tracer          trace.Tracer
+	reasoningInclude *bool
 }
 
 // Option configures a Provider via the functional options pattern.
