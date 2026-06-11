@@ -656,6 +656,37 @@ func TestProviderInvoke_WithReasoningEffort(t *testing.T) {
 	}
 }
 
+func TestInvoke_OpenRouterInjectsReasoningInclude(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(simpleSSE("ok")),
+	}
+
+	p, err := New(
+		WithAPIKey("test-key"),
+		WithModel("deepseek/deepseek-r1"),
+		WithBaseURL("https://openrouter.ai/api/v1"),
+		WithHTTPClient(mockClient(transport)),
+	)
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	_ = p.Invoke(t.Context(), mem, ch)
+	close(ch)
+	for range ch {
+	}
+
+	require.NotNil(t, transport.request)
+	body, _ := io.ReadAll(transport.request.Body)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+
+	reasoning, ok := reqBody["reasoning"].(map[string]any)
+	require.True(t, ok, "reasoning field should be present in OpenRouter request body")
+	assert.Equal(t, true, reasoning["include"])
+}
+
 func TestProviderInvoke_MixedAssistantTextAndToolCalls(t *testing.T) {
 	transport := &mockTransport{
 		response: mockResponseSSE(simpleSSE("ok")),
