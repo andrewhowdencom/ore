@@ -2,10 +2,7 @@ package tool
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"time"
-	"unicode/utf8"
 )
 
 // Sandbox is the base interface for all sandbox implementations.
@@ -53,14 +50,6 @@ type Tool struct {
 	// MarkdownRenderer / LLMRenderer). When nil, conduits fall back to
 	// raw JSON Arguments.
 	DisplayHint func(map[string]any) any
-	// MaxBytes is a hard ceiling on the serialized output size in bytes.
-	// If the tool's JSON result exceeds this limit, the framework truncates
-	// the content and appends a formatted truncation hint. Zero means no
-	// limit.
-	MaxBytes int
-	// TruncationHint is a template string appended when MaxBytes is exceeded.
-	// The placeholder ${N} is replaced with the actual total byte count.
-	TruncationHint string
 	// Examples is an optional list of few-shot input/output pairs that
 	// illustrate how the tool should be used. They are not sent to the
 	// provider by default; applications may opt-in via systemprompt
@@ -86,29 +75,4 @@ type RemoteSource interface {
 	Call(ctx context.Context, name string, args map[string]any) (any, error)
 }
 
-// TruncateContent truncates content to a valid UTF-8 boundary so that the
-// total length (truncated content + formatted hint) does not exceed maxBytes.
-// If maxBytes is 0 or len(content) <= maxBytes, content is returned unchanged.
-// The hintTemplate may contain ${N} which is replaced with totalBytes.
-func TruncateContent(content string, maxBytes int, totalBytes int, hintTemplate string) string {
-	if maxBytes <= 0 || len(content) <= maxBytes {
-		return content
-	}
-	hint := strings.ReplaceAll(hintTemplate, "${N}", fmt.Sprintf("%d", totalBytes))
-	maxContent := maxBytes - len(hint)
-	if maxContent <= 0 {
-		return hint
-	}
-	truncated := truncateToValidUTF8(content, maxContent)
-	return truncated + hint
-}
 
-func truncateToValidUTF8(s string, maxBytes int) string {
-	if maxBytes >= len(s) {
-		return s
-	}
-	for maxBytes > 0 && !utf8.ValidString(s[:maxBytes]) {
-		maxBytes--
-	}
-	return s[:maxBytes]
-}
