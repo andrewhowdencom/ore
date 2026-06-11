@@ -122,13 +122,11 @@ func (r *registry) Tools() []Tool {
 	for _, rs := range r.remoteSources {
 		for _, rt := range rs.Tools() {
 			tools = append(tools, Tool{
-				Name:           rs.Name() + "/" + rt.Name,
-				Description:    rt.Description,
-				Schema:         rt.Schema,
-				DisplayHint:    rt.DisplayHint,
-				Examples:       rt.Examples,
-				MaxBytes:       rt.MaxBytes,
-				TruncationHint: rt.TruncationHint,
+				Name:        rs.Name() + "/" + rt.Name,
+				Description: rt.Description,
+				Schema:      rt.Schema,
+				DisplayHint: rt.DisplayHint,
+				Examples:    rt.Examples,
 			})
 		}
 	}
