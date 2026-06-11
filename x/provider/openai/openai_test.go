@@ -656,35 +656,88 @@ func TestProviderInvoke_WithReasoningEffort(t *testing.T) {
 	}
 }
 
-func TestInvoke_OpenRouterInjectsReasoningInclude(t *testing.T) {
-	transport := &mockTransport{
-		response: mockResponseSSE(simpleSSE("ok")),
+// TestInvoke_ReasoningIncludeField covers all four quadrants of the
+// reasoning-include decision matrix: OpenAI (no field), OpenRouter
+// (auto-detected), OpenAI with explicit opt-in, and OpenRouter with
+// explicit opt-out (the escape hatch).
+func TestInvoke_ReasoningIncludeField(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		baseURL   string
+		option    Option
+		wantField bool
+	}{
+		{
+			name:      "openai base url, no override",
+			baseURL:   "https://api.openai.com/v1",
+			option:    nil,
+			wantField: false,
+		},
+		{
+			name:      "openrouter base url, auto-detected",
+			baseURL:   "https://openrouter.ai/api/v1",
+			option:    nil,
+			wantField: true,
+		},
+		{
+			name:      "openai base url, explicit opt-in",
+			baseURL:   "https://api.openai.com/v1",
+			option:    WithReasoningInclude(true),
+			wantField: true,
+		},
+		{
+			name:      "openrouter base url, explicit opt-out",
+			baseURL:   "https://openrouter.ai/api/v1",
+			option:    WithReasoningInclude(false),
+			wantField: false,
+		},
 	}
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("deepseek/deepseek-r1"),
-		WithBaseURL("https://openrouter.ai/api/v1"),
-		WithHTTPClient(mockClient(transport)),
-	)
-	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch)
-	close(ch)
-	for range ch {
+			transport := &mockTransport{
+				response: mockResponseSSE(simpleSSE("ok")),
+			}
+
+			opts := []Option{
+				WithAPIKey("test-key"),
+				WithModel("deepseek/deepseek-r1"),
+				WithBaseURL(tt.baseURL),
+				WithHTTPClient(mockClient(transport)),
+			}
+			if tt.option != nil {
+				opts = append(opts, tt.option)
+			}
+
+			p, err := New(opts...)
+			require.NoError(t, err)
+			mem := &state.Buffer{}
+			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+			ch := make(chan artifact.Artifact, 10)
+			_ = p.Invoke(t.Context(), mem, ch)
+			close(ch)
+			for range ch {
+			}
+
+			require.NotNil(t, transport.request)
+			body, _ := io.ReadAll(transport.request.Body)
+			var reqBody map[string]any
+			require.NoError(t, json.Unmarshal(body, &reqBody))
+
+			reasoning, ok := reqBody["reasoning"].(map[string]any)
+			if !tt.wantField {
+				assert.False(t, ok, "reasoning field should be absent; got %v", reqBody["reasoning"])
+				return
+			}
+			require.True(t, ok, "reasoning field should be present in request body")
+			assert.Equal(t, true, reasoning["include"])
+		})
 	}
-
-	require.NotNil(t, transport.request)
-	body, _ := io.ReadAll(transport.request.Body)
-	var reqBody map[string]any
-	require.NoError(t, json.Unmarshal(body, &reqBody))
-
-	reasoning, ok := reqBody["reasoning"].(map[string]any)
-	require.True(t, ok, "reasoning field should be present in OpenRouter request body")
-	assert.Equal(t, true, reasoning["include"])
 }
 
 func TestProviderInvoke_MixedAssistantTextAndToolCalls(t *testing.T) {
