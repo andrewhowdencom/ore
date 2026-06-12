@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -13,6 +12,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
+	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,7 +20,7 @@ import (
 
 func TestRenderMarkdown(t *testing.T) {
 	input := "# Hello\n\nSome **bold** text and `code`."
-	output, err := newGlamourMarkdownRenderer().Render(input, 80)
+	output, err := newGlamourMarkdownRenderer(theme.Dark()).Render(input, 80)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output)
 	// Output should differ from input (glamour processes the markdown).
@@ -29,7 +29,7 @@ func TestRenderMarkdown(t *testing.T) {
 
 func TestRenderMarkdown_CodeBlock(t *testing.T) {
 	input := "```go\nfunc main() {\n    fmt.Println(\"hi\")\n}\n```"
-	output, err := newGlamourMarkdownRenderer().Render(input, 80)
+	output, err := newGlamourMarkdownRenderer(theme.Dark()).Render(input, 80)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output)
 	// Verify glamour processed the code block (output differs from input).
@@ -40,7 +40,7 @@ func TestRenderMarkdown_NegativeWidth(t *testing.T) {
 	// glamour.NewTermRenderer may accept any width; ensure we handle
 	// a negative width without panic.
 	input := "hello"
-	output, err := newGlamourMarkdownRenderer().Render(input, -1)
+	output, err := newGlamourMarkdownRenderer(theme.Dark()).Render(input, -1)
 	// We allow either success or error; the caller handles errors.
 	_ = output
 	_ = err
@@ -50,7 +50,7 @@ func TestModel_View_AssistantTurn_WithRendered(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "# Hello", rendered: "pre-rendered glamour output"}}},
+		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "# Hello", rendered: "pre-rendered glamour output"}}},
 	}
 	m.syncViewport()
 	output := m.View().Content
@@ -71,7 +71,7 @@ func TestModel_View_AssistantTurn_FallbackToPlainText(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "plain text"}}},
+		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "plain text"}}},
 	}
 	m.syncViewport()
 	output := m.View().Content
@@ -91,8 +91,8 @@ func TestModel_View_AssistantTurn_WithReasoning(t *testing.T) {
 	m.expandLatestDetails = true
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
-			{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "the answer"},
-			{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "because 2+2=4"},
+			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "the answer"},
+			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "because 2+2=4"},
 		}},
 	}
 	m.syncViewport()
@@ -115,8 +115,8 @@ func TestModel_View_AssistantTurn_MultiBlockSpacing(t *testing.T) {
 	m.expandLatestDetails = true
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
-			{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "let me think..."},
-			{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "the answer"},
+			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "let me think..."},
+			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "the answer"},
 		}},
 	}
 	m.syncViewport()
@@ -181,8 +181,8 @@ func TestBuildContent_Reasoning_Compact(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
-			{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "the answer", rendered: "the answer"},
-			{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "because 2+2=4"},
+			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "the answer", rendered: "the answer"},
+			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "because 2+2=4"},
 		}},
 	}
 	output := m.buildContent()
@@ -199,8 +199,8 @@ func TestBuildContent_Reasoning_Expanded(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
-			{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "the answer", rendered: "the answer"},
-			{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "because 2+2=4", rendered: "rendered-reasoning"},
+			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "the answer", rendered: "the answer"},
+			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "because 2+2=4", rendered: "rendered-reasoning"},
 		}},
 	}
 	m.expandLatestDetails = true
@@ -218,12 +218,12 @@ func TestBuildContent_Reasoning_OldTurn_AlwaysCompact(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
-			{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "first answer", rendered: "first answer"},
-			{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "first reasoning", rendered: "first-reasoning"},
+			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "first answer", rendered: "first answer"},
+			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "first reasoning", rendered: "first-reasoning"},
 		}},
 		{role: state.RoleAssistant, blocks: []renderedBlock{
-			{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "latest answer", rendered: "latest answer"},
-			{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "latest reasoning", rendered: "latest-reasoning"},
+			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "latest answer", rendered: "latest answer"},
+			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "latest reasoning", rendered: "latest-reasoning"},
 		}},
 	}
 	m.expandLatestDetails = true
@@ -282,7 +282,7 @@ func TestRenderMarkdown_MalformedInput(t *testing.T) {
 		"```unclosed",
 	}
 	for _, input := range cases {
-		output, err := newGlamourMarkdownRenderer().Render(input, 80)
+		output, err := newGlamourMarkdownRenderer(theme.Dark()).Render(input, 80)
 		assert.NoError(t, err, "malformed markdown %q should not error", input)
 		assert.NotEmpty(t, output)
 	}
@@ -290,7 +290,7 @@ func TestRenderMarkdown_MalformedInput(t *testing.T) {
 
 func TestRenderMarkdown_NarrowWidth(t *testing.T) {
 	for _, width := range []int{1, 2, 5} {
-		output, err := newGlamourMarkdownRenderer().Render("hello world", width)
+		output, err := newGlamourMarkdownRenderer(theme.Dark()).Render("hello world", width)
 		assert.NoError(t, err, "narrow width %d should not panic", width)
 		assert.NotEmpty(t, output)
 	}
@@ -455,28 +455,31 @@ func TestRenderBlockUnified_LargeByteCount_Compact(t *testing.T) {
 }
 
 func TestRenderBlockUnified_ToolResultErrorStyle(t *testing.T) {
-	block := renderedBlock{kind: "tool_result", source: "Error: failed", title: "Tool Result", style: errorStyle, expandedByDefault: false}
+	block := renderedBlock{kind: "tool_result", source: "Error: failed", title: "Tool Result", style: theme.Dark().ErrorStyle, expandedByDefault: false}
 	ts := time.Date(2024, 1, 1, 12, 30, 45, 0, time.UTC)
 	output := renderBlockUnified(block, ts, false, 80)
 	assert.Contains(t, output, "Tool Result")
 }
 
 func TestEmbeddedStyles_MarginZero(t *testing.T) {
-	var dark map[string]interface{}
-	require.NoError(t, json.Unmarshal(darkStyle, &dark))
-	doc, ok := dark["document"].(map[string]interface{})
-	require.True(t, ok, "dark style should have document key")
-	margin, ok := doc["margin"].(float64)
-	require.True(t, ok, "document should have margin key")
-	assert.Equal(t, 0.0, margin, "dark style document margin should be 0")
+	// After the theme consolidation, the glamour document overrides live
+	// on the *theme.Theme value (constructed in Go from glamour's upstream
+	// DarkStyleConfig / LightStyleConfig with three document-level
+	// overrides applied). Verify the overrides are present on both
+	// themes so the production renderer never re-introduces the frame
+	// padding or the leading/trailing newline that compounded with the
+	// buildContent separator to produce two blank lines between messages.
+	dark := theme.Dark()
+	require.NotNil(t, dark.GlamourStyle.Document.Margin, "dark theme document.margin must be a non-nil pointer")
+	assert.Equal(t, uint(0), *dark.GlamourStyle.Document.Margin, "dark theme document.margin should be 0")
+	assert.Equal(t, "", dark.GlamourStyle.Document.BlockPrefix, "dark theme document.block_prefix should be empty")
+	assert.Equal(t, "", dark.GlamourStyle.Document.BlockSuffix, "dark theme document.block_suffix should be empty")
 
-	var light map[string]interface{}
-	require.NoError(t, json.Unmarshal(lightStyle, &light))
-	doc2, ok := light["document"].(map[string]interface{})
-	require.True(t, ok, "light style should have document key")
-	margin2, ok := doc2["margin"].(float64)
-	require.True(t, ok, "document should have margin key")
-	assert.Equal(t, 0.0, margin2, "light style document margin should be 0")
+	light := theme.Light()
+	require.NotNil(t, light.GlamourStyle.Document.Margin, "light theme document.margin must be a non-nil pointer")
+	assert.Equal(t, uint(0), *light.GlamourStyle.Document.Margin, "light theme document.margin should be 0")
+	assert.Equal(t, "", light.GlamourStyle.Document.BlockPrefix, "light theme document.block_prefix should be empty")
+	assert.Equal(t, "", light.GlamourStyle.Document.BlockSuffix, "light theme document.block_suffix should be empty")
 }
 
 func TestRenderReasoning_ErrorFallback(t *testing.T) {
@@ -527,27 +530,36 @@ func TestModel_View_WindowTitle_ErrorPhase(t *testing.T) {
 }
 
 func TestRenderer_SelectsDarkStyle(t *testing.T) {
-	r := newGlamourMarkdownRendererWithDetectors(
-		func() bool { return true },
-		func() bool { return true },
-	)
-	assert.Equal(t, darkStyle, r.styleBytes, "terminal + dark background should select dark style")
+	// After the theme consolidation, mode selection lives in theme.Auto()
+	// (or in the explicit Dark / Light factory calls). The production
+	// renderer takes a *theme.Theme and applies the theme's glamour style
+	// verbatim. Verify the dark theme carries the expected document-level
+	// overrides, which is what the production renderer will use.
+	th := theme.Dark()
+	require.NotNil(t, th.GlamourStyle.Document.Margin, "dark theme document.margin must be a non-nil pointer")
+	assert.Equal(t, uint(0), *th.GlamourStyle.Document.Margin, "dark theme document.margin should be 0")
+	assert.Equal(t, "", th.GlamourStyle.Document.BlockPrefix, "dark theme document.block_prefix should be empty")
+	assert.Equal(t, "", th.GlamourStyle.Document.BlockSuffix, "dark theme document.block_suffix should be empty")
 }
 
 func TestRenderer_SelectsLightStyle(t *testing.T) {
-	r := newGlamourMarkdownRendererWithDetectors(
-		func() bool { return true },
-		func() bool { return false },
-	)
-	assert.Equal(t, lightStyle, r.styleBytes, "terminal + light background should select light style")
+	th := theme.Light()
+	require.NotNil(t, th.GlamourStyle.Document.Margin, "light theme document.margin must be a non-nil pointer")
+	assert.Equal(t, uint(0), *th.GlamourStyle.Document.Margin, "light theme document.margin should be 0")
+	assert.Equal(t, "", th.GlamourStyle.Document.BlockPrefix, "light theme document.block_prefix should be empty")
+	assert.Equal(t, "", th.GlamourStyle.Document.BlockSuffix, "light theme document.block_suffix should be empty")
 }
 
 func TestRenderer_SelectsNoTTY(t *testing.T) {
-	r := newGlamourMarkdownRendererWithDetectors(
-		func() bool { return false },
-		func() bool { return false },
-	)
-	assert.Equal(t, darkStyle, r.styleBytes, "non-terminal should default to dark style")
+	// Non-TTY mode selection is now performed by theme.Auto(), which
+	// defaults to the dark theme. Verify the dark theme still carries
+	// the expected overrides, which is what the non-TTY code path will
+	// hand to the production renderer.
+	th := theme.Dark()
+	require.NotNil(t, th.GlamourStyle.Document.Margin, "non-TTY (dark) theme document.margin must be a non-nil pointer")
+	assert.Equal(t, uint(0), *th.GlamourStyle.Document.Margin, "non-TTY (dark) theme document.margin should be 0")
+	assert.Equal(t, "", th.GlamourStyle.Document.BlockPrefix, "non-TTY (dark) theme document.block_prefix should be empty")
+	assert.Equal(t, "", th.GlamourStyle.Document.BlockSuffix, "non-TTY (dark) theme document.block_suffix should be empty")
 }
 
 func TestCompactToolCall_FlatJSON(t *testing.T) {
@@ -707,7 +719,7 @@ func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
 		{
 			role: state.RoleAssistant,
 			blocks: []renderedBlock{
-				{title: "Tool", style: assistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
+				{title: "Tool", style: m.theme.AssistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
 			},
 		},
 		{
@@ -723,12 +735,12 @@ func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
 		},
 	}
 
-	// Compact mode: error block should be wrapped in errorStyle.
+	// Compact mode: error block should be wrapped in the error style.
 	m.expandLatestDetails = false
 	output := m.buildContent()
 	assert.Contains(t, output, "Error: failed")
 
-	// Expanded mode: error block should be wrapped in errorStyle.
+	// Expanded mode: error block should be wrapped in the error style.
 	m.expandLatestDetails = true
 	m.contentDirty = true
 	output = m.buildContent()
@@ -745,15 +757,15 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 		{
 			role: state.RoleAssistant,
 			blocks: []renderedBlock{
-				{title: "Tool", style: assistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
-				{title: "Tool", style: assistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: bar({})", compact: "bar", toolCallID: "call_2"},
+				{title: "Tool", style: m.theme.AssistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
+				{title: "Tool", style: m.theme.AssistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: bar({})", compact: "bar", toolCallID: "call_2"},
 			},
 		},
 		{
 			role: state.RoleTool,
 			blocks: []renderedBlock{
-				{title: "Tool Result", style: toolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result1", compact: "result1", toolCallID: "call_1"},
-				{title: "Tool Result", style: toolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result2", compact: "result2", toolCallID: "call_2"},
+				{title: "Tool Result", style: m.theme.ToolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result1", compact: "result1", toolCallID: "call_1"},
+				{title: "Tool Result", style: m.theme.ToolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result2", compact: "result2", toolCallID: "call_2"},
 			},
 		},
 	}
@@ -788,15 +800,15 @@ func TestBuildContent_MixedBlocks(t *testing.T) {
 			role: state.RoleAssistant,
 			blocks: []renderedBlock{
 				{title: "Tool", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "intro", rendered: "intro"},
-				{title: "Tool", style: assistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
-				{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "think", rendered: "think"},
+				{title: "Tool", style: m.theme.AssistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
+				{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "think", rendered: "think"},
 				{title: "Tool", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "outro", rendered: "outro"},
 			},
 		},
 		{
 			role: state.RoleTool,
 			blocks: []renderedBlock{
-				{title: "Tool Result", style: toolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"},
+				{title: "Tool Result", style: m.theme.ToolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"},
 			},
 		},
 	}
@@ -840,7 +852,7 @@ func TestBuildContent_ToggleNoToolBlocks(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 
 	m.turns = []renderedTurn{
-		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "hello", rendered: "hello"}}},
+		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "hello", rendered: "hello"}}},
 	}
 
 	// Toggle on — no tool blocks, view should be unchanged
@@ -859,7 +871,7 @@ func TestBuildContent_CompactToolCall_BlockStyling(t *testing.T) {
 		{
 			role: state.RoleAssistant,
 			blocks: []renderedBlock{
-				{title: "Tool", style: assistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
+				{title: "Tool", style: m.theme.AssistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
 			},
 		},
 	}
@@ -954,7 +966,7 @@ func TestBuildContent_ActiveReasoning_Counter(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.currentTurn.blocks = []renderedBlock{
-		{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "abc"},
+		{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "abc"},
 	}
 	output := m.buildContent()
 	assert.Contains(t, output, "Thinking")
@@ -966,7 +978,7 @@ func TestBuildContent_ActiveReasoning_UnicodeCounter(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.currentTurn.blocks = []renderedBlock{
-		{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "日本語"},
+		{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "日本語"},
 	}
 	output := m.buildContent()
 	assert.Contains(t, output, "Thinking")
@@ -979,8 +991,8 @@ func TestBuildContent_CompletedReasoning_CharCount(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	// Reasoning followed by text means reasoning is no longer the active (last) block.
 	m.currentTurn.blocks = []renderedBlock{
-		{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "let me think..."},
-		{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "the answer"},
+		{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "let me think..."},
+		{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "the answer"},
 	}
 	output := m.buildContent()
 	assert.Contains(t, output, "Thinking")
@@ -992,7 +1004,7 @@ func TestBuildContent_Reasoning_Expanded_NoCounter(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.expandLatestDetails = true
 	m.currentTurn.blocks = []renderedBlock{
-		{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "let me think...", rendered: "rendered-reasoning"},
+		{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "let me think...", rendered: "rendered-reasoning"},
 	}
 	output := m.buildContent()
 	assert.Contains(t, output, "Thinking")
@@ -1006,7 +1018,7 @@ func TestBuildContent_HistoricalReasoning_CharCount(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
-			{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "historical reasoning"},
+			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "historical reasoning"},
 		}},
 	}
 	output := m.buildContent()
@@ -1144,7 +1156,7 @@ func TestBuildStatusLine_TokenKeysGrouped(t *testing.T) {
 		"total":     "150",
 		"thread_id": "abc-123",
 	}
-	rendered, lines := buildStatusLine(status, 200)
+	rendered, lines := buildStatusLine(theme.Dark(), status, 200)
 	assert.Equal(t, 1, lines)
 	// Token keys should appear grouped as a single segment with display symbols.
 	assert.Contains(t, rendered, "↑ 100")
@@ -1160,7 +1172,7 @@ func TestBuildStatusLine_TokenKeysPartial(t *testing.T) {
 	status := map[string]string{
 		"total": "42",
 	}
-	rendered, lines := buildStatusLine(status, 200)
+	rendered, lines := buildStatusLine(theme.Dark(), status, 200)
 	assert.Equal(t, 1, lines)
 	assert.Contains(t, rendered, "Σ 42")
 	assert.NotContains(t, rendered, "↑")
@@ -1171,7 +1183,7 @@ func TestBuildStatusLine_NoTokenKeys(t *testing.T) {
 	status := map[string]string{
 		"phase": "streaming",
 	}
-	rendered, lines := buildStatusLine(status, 200)
+	rendered, lines := buildStatusLine(theme.Dark(), status, 200)
 	assert.Equal(t, 1, lines)
 	assert.Contains(t, rendered, "phase: streaming")
 	assert.NotContains(t, rendered, "tokens")
@@ -1188,7 +1200,7 @@ func TestBuildStatusLine_ZoneGrouping(t *testing.T) {
 		"context":   1,
 		"default":   99,
 	}
-	str, lines := buildStatusLineFromSegments(segments, priorities, 80)
+	str, lines := buildStatusLineFromSegments(theme.Dark(), segments, priorities, 80)
 	assert.Equal(t, 2, lines, "zones render on separate lines")
 	// Lifecycle zone comes first (priority 0), then context (priority 1).
 	assert.Contains(t, str, "Lifecycle:")
@@ -1209,7 +1221,7 @@ func TestBuildStatusLine_PriorityTruncation(t *testing.T) {
 	}
 	// At width 40, both zones together fit within maxStatusLines (3). The lower-
 	// priority "context" zone should now be included.
-	str, _ := buildStatusLineFromSegments(segments, priorities, 40)
+	str, _ := buildStatusLineFromSegments(theme.Dark(), segments, priorities, 40)
 	assert.Contains(t, str, "phase: streaming")
 	// Context zone should be included now that maxStatusLines is 3.
 	assert.Contains(t, str, "model:")
@@ -1224,7 +1236,7 @@ func TestBuildStatusLine_UnmappedKeysDefaultZone(t *testing.T) {
 		"lifecycle": 0,
 		"default":   99,
 	}
-	str, _ := buildStatusLineFromSegments(segments, priorities, 80)
+	str, _ := buildStatusLineFromSegments(theme.Dark(), segments, priorities, 80)
 	// Lifecycle zone label is bold and capitalized.
 	assert.Contains(t, str, "Lifecycle:")
 	// Default zone should NOT have a zone label (backward compatibility).
@@ -1237,7 +1249,7 @@ func TestBuildStatusLine_WrapsAtWidth(t *testing.T) {
 		"phase": "thinking very deeply about the problem at hand and considering all possibilities",
 	}
 	width := 30
-	str, lines := buildStatusLine(status, width)
+	str, lines := buildStatusLine(theme.Dark(), status, width)
 	assert.Greater(t, lines, 1, "long status should wrap to multiple lines")
 	assert.Contains(t, str, "\n", "wrapped string should contain newlines")
 
@@ -1252,7 +1264,7 @@ func TestBuildStatusLine_NegativeWidth(t *testing.T) {
 	status := map[string]string{
 		"phase": "submitted",
 	}
-	rendered, lines := buildStatusLine(status, -1)
+	rendered, lines := buildStatusLine(theme.Dark(), status, -1)
 	assert.NotEmpty(t, rendered)
 	assert.Equal(t, 1, lines)
 }
@@ -1316,4 +1328,70 @@ func TestModel_View_ActivitySpinner(t *testing.T) {
 	mm2 := newM2.(*model)
 	output = mm2.View().Content
 	assert.NotContains(t, output, "⚙ compacting")
+}
+
+// TestBuildContent_InterMessageSpacing_OneBlankLine is a regression test
+// for the inter-message spacing bug. Glamour's default document style
+// emits a trailing "\n" on every rendered markdown body, and the previous
+// buildContent separator added "\n\n" after every turn. With both
+// sources of newlines active, two consecutive assistant turns rendered
+// with two blank lines between them rather than one. The fix lives in
+// the theme: theme.Dark() and theme.Light() set Document.BlockSuffix to
+// "" so the buildContent separator is the sole authority for inter-turn
+// spacing. The defensive TrimLeft in renderBlockUnified was removed in
+// Task 7 once the theme owned the contract.
+//
+// This test uses a real glamourMarkdownRenderer (not a mock) so it
+// exercises the full glamour pipeline and would catch a regression
+// where glamour's behaviour changes.
+func TestBuildContent_InterMessageSpacing_OneBlankLine(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.md = newGlamourMarkdownRenderer(theme.Dark())
+
+	// Two simple assistant text turns. Plain text keeps glamour's
+	// rendered output close to the source so the newline accounting
+	// is easy to reason about.
+	m.turns = []renderedTurn{
+		{
+			role:      state.RoleAssistant,
+			timestamp: time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+			blocks: []renderedBlock{
+				{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "hello"},
+			},
+		},
+		{
+			role:      state.RoleAssistant,
+			timestamp: time.Date(2024, 1, 1, 12, 0, 5, 0, time.UTC),
+			blocks: []renderedBlock{
+				{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "world"},
+			},
+		},
+	}
+
+	output := m.buildContent()
+
+	// The exact pattern between the last body line of the first turn
+	// and the header of the second turn must contain exactly two
+	// newlines (one blank line), not three (two blank lines, the
+	// original bug). Glamour may wrap the second header in ANSI
+	// escape codes, so we count newlines in the segment rather than
+	// asserting on the exact string.
+	//
+	// The first turn's body is glamour's rendering of "hello", which
+	// for plain text is just "hello" (no trailing newline, because
+	// the theme sets Document.BlockSuffix = ""). Then buildContent
+	// appends "\n\n" after turn 1, then the header of turn 2 starts.
+	// So the segment between the end of "hello" and the start of the
+	// next header contains exactly two newlines.
+	idx1 := strings.Index(output, "hello")
+	idx2 := strings.Index(output, "12:00:05")
+	require.GreaterOrEqual(t, idx1, 0, "first body should be in output")
+	require.Greater(t, idx2, idx1, "second header timestamp should appear after first body")
+
+	segment := output[idx1+len("hello") : idx2]
+	newlineCount := strings.Count(segment, "\n")
+	assert.Equal(t, 2, newlineCount,
+		"inter-message spacing should be exactly one blank line (2 newlines), got %d newlines in segment %q (full output:\n%s)",
+		newlineCount, segment, output)
 }

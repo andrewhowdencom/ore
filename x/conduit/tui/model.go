@@ -18,6 +18,7 @@ import (
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
+	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
 )
 
 // artifactMsg is a Bubble Tea message that carries a single artifact
@@ -186,6 +187,13 @@ type model struct {
 	// production this is a glamourMarkdownRenderer; tests may inject a mock.
 	md markdownRenderer
 
+	// theme is the consolidated style configuration for the TUI. It owns
+	// the glamour StyleConfig used by the markdown renderer and the
+	// lipgloss styles used for chrome (headers, role labels, status
+	// line, activity indicator). Task 3 adds the field; later tasks wire
+	// it into the renderArtifact role mapping and the TUI constructor.
+	theme *theme.Theme
+
 	// name is the application name shown in the terminal window title.
 	name string
 
@@ -228,7 +236,7 @@ func (m *model) renderMarkdown(text string, width int) (string, error) {
 	// If no renderer was supplied (e.g. in tests), fall back to the
 	// production glamour renderer.
 	if m.md == nil {
-		m.md = newGlamourMarkdownRenderer()
+		m.md = newGlamourMarkdownRenderer(theme.Dark())
 	}
 	return m.md.Render(text, width)
 }
@@ -287,7 +295,7 @@ func (m *model) statusLine() (string, int) {
 			}
 		}
 	}
-	return buildStatusLineFromSegments(segments, m.zonePriorities, m.width)
+	return buildStatusLineFromSegments(m.theme, segments, m.zonePriorities, m.width)
 }
 
 // syncViewport rebuilds the cached content string if stale and pushes it to
@@ -306,16 +314,16 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role) renderedB
 		switch role {
 		case state.RoleAssistant:
 			block.title = "Assistant"
-			block.style = assistantStyle
+			block.style = m.theme.AssistantStyle
 		case state.RoleUser:
 			block.title = "You"
-			block.style = userStyle
+			block.style = m.theme.UserStyle
 		case state.RoleTool:
 			block.title = "Tool"
-			block.style = toolResultStyle
+			block.style = m.theme.ToolResultStyle
 		case state.RoleSystem:
 			block.title = "System"
-			block.style = systemStyle
+			block.style = m.theme.SystemStyle
 		}
 		block.expandedByDefault = true
 		rendered, err := m.renderMarkdown(a.Content, m.viewport.Width())
@@ -328,7 +336,7 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role) renderedB
 			kind:              "reasoning",
 			source:            a.Content,
 			title:             "Thinking",
-			style:             thinkingStyle,
+			style:             m.theme.ThinkingStyle,
 			expandedByDefault: false,
 		}
 		rendered, err := m.renderMarkdown(a.Content, m.viewport.Width())
@@ -350,7 +358,7 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role) renderedB
 			compact:           compact,
 			toolCallID:        a.ID,
 			title:             fmt.Sprintf("Assistant · Call %s (%s)", a.Name, hashToolCallID(a.ID)),
-			style:             assistantStyle,
+			style:             m.theme.AssistantStyle,
 			expandedByDefault: false,
 		}
 		rendered, err := m.renderMarkdown(source, m.viewport.Width())
@@ -368,7 +376,7 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role) renderedB
 			source:            source,
 			toolCallID:        a.ToolCallID,
 			title:             fmt.Sprintf("Tool Result (%s)", hashToolCallID(a.ToolCallID)),
-			style:             toolResultStyle,
+			style:             m.theme.ToolResultStyle,
 			expandedByDefault: false,
 		}
 		rendered, err := m.renderMarkdown(source, m.viewport.Width())
@@ -383,7 +391,7 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role) renderedB
 			block.compact = compactToolResult(source, m.viewport.Width())
 		}
 		if a.IsError {
-			block.style = errorStyle
+			block.style = m.theme.ErrorStyle
 		}
 		return block
 	}
@@ -458,7 +466,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			if !found {
-				m.currentTurn.blocks = append(m.currentTurn.blocks, renderedBlock{kind: "text", source: a.Content, title: "Assistant", style: assistantStyle, expandedByDefault: true})
+				m.currentTurn.blocks = append(m.currentTurn.blocks, renderedBlock{kind: "text", source: a.Content, title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true})
 			}
 		case artifact.ReasoningDelta:
 			if a.Content == "" {
@@ -474,7 +482,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			if !found {
-				m.currentTurn.blocks = append(m.currentTurn.blocks, renderedBlock{kind: "reasoning", source: a.Content, title: "Thinking", style: thinkingStyle, expandedByDefault: false})
+				m.currentTurn.blocks = append(m.currentTurn.blocks, renderedBlock{kind: "reasoning", source: a.Content, title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false})
 			}
 		default:
 			block := m.renderArtifact(msg.artifact, state.RoleAssistant)
@@ -622,7 +630,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = make(map[string]string)
 		}
 		m.status["phase"] = "error"
-		block := m.renderPlainBlock("error", msg.err.Error(), "System", errorStyle)
+		block := m.renderPlainBlock("error", msg.err.Error(), "System", m.theme.ErrorStyle)
 		m.turns = append(m.turns, renderedTurn{
 			role:   state.RoleSystem,
 			blocks: []renderedBlock{block},
@@ -636,7 +644,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case feedbackMsg:
 		wasAtBottom := m.viewport.AtBottom()
-		block := m.renderPlainBlock("feedback", msg.content, "System", systemStyle)
+		block := m.renderPlainBlock("feedback", msg.content, "System", m.theme.SystemStyle)
 		m.turns = append(m.turns, renderedTurn{
 			role:   state.RoleSystem,
 			blocks: []renderedBlock{block},
