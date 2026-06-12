@@ -196,10 +196,22 @@ func (t ToolResult) MarshalJSON() ([]byte, error) {
 }
 
 // Usage represents token consumption metadata from a provider response.
+//
+// CacheReadTokens and CacheWriteTokens are populated by providers that support
+// prompt caching. On OpenAI native, CacheReadTokens is set from
+// usage.prompt_tokens_details.cached_tokens. On Anthropic-style hosts (and
+// Anthropic-via-OpenRouter), CacheReadTokens and CacheWriteTokens are set from
+// usage.cache_read_input_tokens and usage.cache_creation_input_tokens
+// respectively. Providers that do not report cache metadata leave both fields
+// at their zero value; the `omitempty` tags keep them out of the JSON payload
+// in that case so consumers can distinguish "no cache reported" from
+// "explicitly zero".
 type Usage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
 	TotalTokens      int `json:"total_tokens"`
+	CacheReadTokens  int `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
 }
 
 // Kind returns the artifact kind identifier.
@@ -212,12 +224,16 @@ func (u Usage) MarshalJSON() ([]byte, error) {
 		PromptTokens     int    `json:"prompt_tokens"`
 		CompletionTokens int    `json:"completion_tokens"`
 		TotalTokens      int    `json:"total_tokens"`
+		CacheReadTokens  int    `json:"cache_read_tokens,omitempty"`
+		CacheWriteTokens int    `json:"cache_write_tokens,omitempty"`
 	}
 	return json.Marshal(output{
 		Kind:             "usage",
 		PromptTokens:     u.PromptTokens,
 		CompletionTokens: u.CompletionTokens,
 		TotalTokens:      u.TotalTokens,
+		CacheReadTokens:  u.CacheReadTokens,
+		CacheWriteTokens: u.CacheWriteTokens,
 	})
 }
 
