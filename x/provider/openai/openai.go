@@ -384,13 +384,6 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		}
 	}
 
-	// sessionID and cacheControl are consumed below when the request body is
-	// built (Task 3 wires them into params.PromptCacheKey and the
-	// Anthropic-style cache_control blocks, respectively). The blank
-	// references keep this hermetic build green until then.
-	_ = sessionID
-	_ = cacheControl
-
 	params := openai.ChatCompletionNewParams{
 		Model:         openai.ChatModel(p.model),
 		Messages:      messages,
@@ -408,17 +401,39 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	if maxTokens > 0 {
 		params.MaxTokens = param.NewOpt(maxTokens)
 	}
+	if sessionID != "" {
+		// OpenAI native uses this for prefix-cache affinity; on other hosts
+		// it is informational or ignored.
+		params.PromptCacheKey = param.NewOpt(sessionID)
+	}
 
-	// Inject `reasoning: {include: true}` when talking to OpenRouter (or when
-	// the caller has explicitly opted in via WithReasoningInclude). Without
-	// this field, OpenRouter silently drops `delta.reasoning_content` from
-	// the SSE stream, which would defeat the read-side handling at the
-	// bottom of this function. The field is only emitted on resolve at
-	// construction, so other OpenAI-compatible providers never see it.
+	// Build the per-host extra fields. Multiple concerns share the same
+	// SetExtraFields bucket because the SDK's metadata implementation
+	// replaces the whole extra map on each call, so we collect them here
+	// and dispatch once.
+	extra := map[string]any{}
+	if cacheControl {
+		mutMsgs, mutTools, err := applyCacheControl(messages, params.Tools)
+		if err != nil {
+			return fmt.Errorf("apply cache control: %w", err)
+		}
+		extra["messages"] = mutMsgs
+		if mutTools != nil {
+			extra["tools"] = mutTools
+		}
+	}
 	if p.includeReasoning {
-		params.SetExtraFields(map[string]any{
-			"reasoning": map[string]any{"include": true},
-		})
+		// Inject `reasoning: {include: true}` when talking to OpenRouter
+		// (or when the caller has explicitly opted in via
+		// WithReasoningInclude). Without this field, OpenRouter silently
+		// drops `delta.reasoning_content` from the SSE stream, which
+		// would defeat the read-side handling at the bottom of this
+		// function. The field is only emitted on resolve at construction,
+		// so other OpenAI-compatible providers never see it.
+		extra["reasoning"] = map[string]any{"include": true}
+	}
+	if len(extra) > 0 {
+		params.SetExtraFields(extra)
 	}
 
 	stream := p.client.Chat.Completions.NewStreaming(ctx, params)
@@ -502,4 +517,117 @@ func (p *Provider) serializeTools(tools []tool.Tool) []openai.ChatCompletionTool
 		}
 	}
 	return toolParams
+}
+
+// cacheControlEphemeral is the Anthropic-style cache-control block value. It
+// is the only value the hosts (OpenRouter, Anthropic-via-OpenRouter) honor
+// for prompt caching today. Stored as a package-level constant so the
+// mutation helpers below reference a single source of truth.
+var cacheControlEphemeral = map[string]any{"type": "ephemeral"}
+
+// applyCacheControl mutates the marshaled messages and tools slices to add
+// Anthropic-style cache_control:{type:ephemeral} blocks at the three
+// locations the pi reference implementation targets: the system message,
+// the last tool definition, and the last user/assistant text content part.
+// It returns the mutated slices in a form that can be passed to
+// params.SetExtraFields to override the SDK's typed Messages and Tools
+// fields (the openai-go v1.12 SDK does not model cache_control, so the
+// typed path cannot carry the blocks).
+//
+// If the input marshaling fails, the function returns the error and the
+// caller should propagate it. The mutation is conservative: it only
+// touches the targeted locations and leaves every other field unchanged.
+// If a target is absent (no system message, no tools, no text-bearing
+// user/assistant turn) that stamp is silently skipped.
+func applyCacheControl(messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (mutatedMessages []any, mutatedTools []any, err error) {
+	// Marshal the typed messages slice to JSON, then unmarshal to a
+	// mutable []any / map[string]any shape. The round-trip is the only
+	// way to take ownership of the SDK's union types for mutation.
+	msgBytes, err := json.Marshal(messages)
+	if err != nil {
+		return nil, nil, fmt.Errorf("marshal messages: %w", err)
+	}
+	var msgAny []any
+	if err := json.Unmarshal(msgBytes, &msgAny); err != nil {
+		return nil, nil, fmt.Errorf("unmarshal messages: %w", err)
+	}
+
+	// Stamp the system message. There is conventionally at most one; we
+	// stamp the first match and break.
+	for _, m := range msgAny {
+		mm, ok := m.(map[string]any)
+		if !ok {
+			continue
+		}
+		if mm["role"] == "system" {
+			if content, ok := mm["content"].(string); ok {
+				mm["content"] = []any{
+					map[string]any{
+						"type":         "text",
+						"text":         content,
+						"cache_control": cacheControlEphemeral,
+					},
+				}
+			}
+			break
+		}
+	}
+
+	// Walk back from the end to find the last user/assistant message
+	// that carries non-empty text content. Tool messages and assistant
+	// tool-call-only messages are skipped; assistant messages that
+	// contain both text and tool calls still count, because their
+	// `content` field is the text. The first match wins; the loop
+	// terminates immediately after stamping.
+	for i := len(msgAny) - 1; i >= 0; i-- {
+		m, ok := msgAny[i].(map[string]any)
+		if !ok {
+			continue
+		}
+		role, _ := m["role"].(string)
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		// Assistant messages that are tool-call-only (no text content)
+		// leave `content` absent or null in the marshaled JSON; the
+		// type assertion below handles both cases.
+		content, _ := m["content"].(string)
+		if content == "" {
+			continue
+		}
+		m["content"] = []any{
+			map[string]any{
+				"type":         "text",
+				"text":         content,
+				"cache_control": cacheControlEphemeral,
+			},
+		}
+		break
+	}
+
+	mutatedMessages = msgAny
+
+	// Stamp the last tool definition's `function` block. If no tools
+	// are present, leave the tools override unset so SetExtraFields
+	// does not include an empty `tools` key in the request body.
+	if len(tools) > 0 {
+		toolBytes, err := json.Marshal(tools)
+		if err != nil {
+			return nil, nil, fmt.Errorf("marshal tools: %w", err)
+		}
+		var toolAny []any
+		if err := json.Unmarshal(toolBytes, &toolAny); err != nil {
+			return nil, nil, fmt.Errorf("unmarshal tools: %w", err)
+		}
+		if n := len(toolAny); n > 0 {
+			if last, ok := toolAny[n-1].(map[string]any); ok {
+				if fn, ok := last["function"].(map[string]any); ok {
+					fn["cache_control"] = cacheControlEphemeral
+				}
+			}
+		}
+		mutatedTools = toolAny
+	}
+
+	return mutatedMessages, mutatedTools, nil
 }
