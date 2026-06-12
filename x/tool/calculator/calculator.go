@@ -30,7 +30,7 @@ func Multiply(ctx context.Context, _ tool.Sandbox, args map[string]any) (any, er
 // AddTool is the tool.Tool descriptor (including JSON schema) for Add.
 var AddTool = tool.Tool{
 	Name:        "add",
-	Description: "Add two numbers together",
+	Description: "Add two numbers together. Returns the numeric sum (no truncation needed; output is a single number).",
 	Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -44,12 +44,20 @@ var AddTool = tool.Tool{
 		b := ToFloat64(args["b"])
 		return fmt.Sprintf("%.0f + %.0f = ?", a, b)
 	},
+	Format: tool.Format{
+		// Calculator outputs are intentionally small (a single
+		// float64). The zero-value caps trigger the framework
+		// default (50 KB / 2000 lines) at handler-application
+		// time, which is large enough that a float64 result
+		// never gets truncated. The Format declaration is
+		// present for documentation and consistency.
+	},
 }
 
 // MultiplyTool is the tool.Tool descriptor (including JSON schema) for Multiply.
 var MultiplyTool = tool.Tool{
 	Name:        "multiply",
-	Description: "Multiply two numbers together",
+	Description: "Multiply two numbers together. Returns the numeric product (no truncation needed; output is a single number).",
 	Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -62,6 +70,9 @@ var MultiplyTool = tool.Tool{
 		a := ToFloat64(args["a"])
 		b := ToFloat64(args["b"])
 		return fmt.Sprintf("%.0f × %.0f = ?", a, b)
+	},
+	Format: tool.Format{
+		// See AddTool.Format for rationale.
 	},
 }
 
