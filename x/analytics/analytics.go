@@ -31,17 +31,45 @@ type statsKey struct {
 	source string
 }
 
-// sourceFor returns the Source identifier for an artifact. For
-// tool_call artifacts, the Source is the artifact's Name (the tool
-// the call is targeting). For all other kinds, the Source is empty.
-// tool_result resolution is intentionally not handled here — it
-// requires a same-turn ToolCallID→Name map and lands in a follow-up
-// commit.
-func sourceFor(art artifact.Artifact) string {
-	if tc, ok := art.(artifact.ToolCall); ok {
-		return tc.Name
+// orphanToolSource is the Source identifier used for tool_result
+// artifacts whose ToolCallID has no matching ToolCall in the same
+// turn. It is a private constant because the label is a presentation
+// choice internal to the analytics package; callers that want to
+// detect orphans can compare against this value.
+const orphanToolSource = "(unknown)"
+
+// toolNamesInTurn builds a ToolCallID→Name map for the given turn's
+// tool_call artifacts. The map is consulted by sourceFor to resolve
+// tool_result Sources. The map is intentionally scoped to a single
+// turn: cross-turn resolution is out of scope.
+func toolNamesInTurn(turn state.Turn) map[string]string {
+	m := make(map[string]string)
+	for _, art := range turn.Artifacts {
+		if tc, ok := art.(artifact.ToolCall); ok {
+			m[tc.ID] = tc.Name
+		}
 	}
-	return ""
+	return m
+}
+
+// sourceFor returns the Source identifier for an artifact. For
+// tool_call artifacts, the Source is the artifact's Name. For
+// tool_result artifacts, the Source is the Name of the originating
+// tool_call looked up by ToolCallID in nameByID; if no such
+// tool_call exists, the Source is orphanToolSource. For all other
+// kinds, the Source is empty.
+func sourceFor(art artifact.Artifact, nameByID map[string]string) string {
+	switch a := art.(type) {
+	case artifact.ToolCall:
+		return a.Name
+	case artifact.ToolResult:
+		if name, ok := nameByID[a.ToolCallID]; ok {
+			return name
+		}
+		return orphanToolSource
+	default:
+		return ""
+	}
 }
 
 // AnalyzeTurns aggregates per-(Kind, Source) statistics over a slice
@@ -51,8 +79,9 @@ func AnalyzeTurns(turns []state.Turn) []Stats {
 	stats := make(map[statsKey]*Stats)
 
 	for _, turn := range turns {
+		nameByID := toolNamesInTurn(turn)
 		for _, art := range turn.Artifacts {
-			key := statsKey{kind: art.Kind(), source: sourceFor(art)}
+			key := statsKey{kind: art.Kind(), source: sourceFor(art, nameByID)}
 			s, ok := stats[key]
 			if !ok {
 				s = &Stats{Kind: key.kind, Source: key.source}
@@ -100,8 +129,9 @@ func AnalyzeStore(store session.Store) ([]Stats, error) {
 			continue
 		}
 		for _, turn := range th.State.Turns() {
+			nameByID := toolNamesInTurn(turn)
 			for _, art := range turn.Artifacts {
-				key := statsKey{kind: art.Kind(), source: sourceFor(art)}
+				key := statsKey{kind: art.Kind(), source: sourceFor(art, nameByID)}
 				s, ok := merged[key]
 				if !ok {
 					s = &Stats{Kind: key.kind, Source: key.source}
