@@ -1,11 +1,8 @@
 package tui
 
 import (
-	"os"
-
+	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
 	"github.com/charmbracelet/glamour"
-	"github.com/muesli/termenv"
-	"golang.org/x/term"
 )
 
 // markdownRenderer converts Markdown source text into ANSI-styled terminal
@@ -21,41 +18,26 @@ type markdownRenderer interface {
 // glamour renderers are not safe for concurrent reuse and the Bubble Tea model
 // runs on a single goroutine anyway.
 //
-// The renderer loads one of two embedded style files (darkStyle or lightStyle)
-// which are tweaked copies of glamour's built-in themes with document.margin
-// set to 0. Style selection is performed at construction time based on runtime
-// terminal detection: non-terminal defaults to dark; terminal with dark
-// background selects dark; otherwise light.
+// The glamour StyleConfig comes from the supplied *theme.Theme, so the
+// theme is the single source of truth for both the structural rules of
+// markdown rendering and the colour palette. Mode selection (dark vs
+// light) is performed by the caller via theme.Auto() or one of the
+// explicit factory functions (theme.Dark, theme.Light).
 type glamourMarkdownRenderer struct {
-	styleBytes []byte
+	theme *theme.Theme
 }
 
-// newGlamourMarkdownRenderer creates a renderer with auto-detected style.
-// It uses term.IsTerminal on os.Stdout and termenv.HasDarkBackground to
-// decide between the embedded dark and light styles.
-func newGlamourMarkdownRenderer() *glamourMarkdownRenderer {
-	return newGlamourMarkdownRendererWithDetectors(
-		func() bool { return term.IsTerminal(int(os.Stdout.Fd())) },
-		termenv.HasDarkBackground,
-	)
-}
-
-func newGlamourMarkdownRendererWithDetectors(isTerminal func() bool, hasDarkBackground func() bool) *glamourMarkdownRenderer {
-	var style []byte
-	if !isTerminal() {
-		// Not a terminal; default to dark style.
-		style = darkStyle
-	} else if hasDarkBackground() {
-		style = darkStyle
-	} else {
-		style = lightStyle
-	}
-	return &glamourMarkdownRenderer{styleBytes: style}
+// newGlamourMarkdownRenderer creates a renderer that uses the supplied
+// theme's glamour StyleConfig. The caller is responsible for selecting
+// the appropriate theme (typically via theme.Auto() at construction
+// time, or by accepting a *theme.Theme from tui.WithTheme(...)).
+func newGlamourMarkdownRenderer(th *theme.Theme) *glamourMarkdownRenderer {
+	return &glamourMarkdownRenderer{theme: th}
 }
 
 func (r glamourMarkdownRenderer) Render(text string, width int) (string, error) {
 	rnd, err := glamour.NewTermRenderer(
-		glamour.WithStylesFromJSONBytes(r.styleBytes),
+		glamour.WithStyles(r.theme.GlamourStyle),
 		glamour.WithWordWrap(width),
 	)
 	if err != nil {
