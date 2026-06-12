@@ -57,6 +57,20 @@ func TestTool_ImplementsToolFunc(t *testing.T) {
 	var _ tool.ToolFunc = Tool()
 }
 
+func TestToolDescriptor(t *testing.T) {
+	t.Parallel()
+
+	// The descriptor should be populated with a name, schema,
+	// and Format declaration (the framework contract).
+	assert.Equal(t, "set_title", ToolDescriptor.Name)
+	assert.NotEmpty(t, ToolDescriptor.Description)
+	assert.NotNil(t, ToolDescriptor.Schema)
+	// Format is the zero-value Format{} which triggers the
+	// framework defaults at handler time. The descriptor is
+	// consistent with the rest of the tool layer.
+	assert.Equal(t, tool.Format{}, ToolDescriptor.Format)
+}
+
 // mockEmitter records the last event emitted through the Emitter interface
 // so slash-handler tests can assert what was sent to the session stream.
 type mockEmitter struct {
