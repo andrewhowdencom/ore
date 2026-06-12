@@ -102,11 +102,12 @@ func TestAnalyzeTurns_MixedArtifacts(t *testing.T) {
 		t.Errorf("reasoning bytes: got %d, want 8", s.Bytes)
 	}
 
-	// tool_call: 1 artifact. LLMString() returns t.Arguments = `{"cmd":"ls"}`
-	// len(`{"cmd":"ls"}`) = 13, but json.Marshal may produce compact form.
-	// Update expected value after checking actual output (12).
+	// tool_call: 1 artifact with Name="bash". LLMString() returns
+	// t.Arguments = `{"cmd":"ls"}` of length 12.
 	if s, ok := byKind["tool_call"]; !ok {
 		t.Fatal("missing 'tool_call' kind")
+	} else if s.Source != "bash" {
+		t.Errorf("tool_call source: got %q, want %q", s.Source, "bash")
 	} else if s.Count != 1 {
 		t.Errorf("tool_call count: got %d, want 1", s.Count)
 	} else if s.Bytes != 12 {
@@ -138,6 +139,53 @@ func TestAnalyzeTurns_MixedArtifacts(t *testing.T) {
 		t.Errorf("usage count: got %d, want 1", s.Count)
 	} else if s.Bytes != 0 {
 		t.Errorf("usage bytes: got %d, want 0", s.Bytes)
+	}
+}
+
+// TestAnalyzeTurns_ToolCallBucketedByName exercises the second axis
+// of the per-(Kind, Source) breakdown: multiple tool_call artifacts
+// targeting different tools must produce distinct rows, and two
+// tool_calls targeting the same tool must aggregate into one row.
+func TestAnalyzeTurns_ToolCallBucketedByName(t *testing.T) {
+	turns := []state.Turn{
+		{
+			Role: state.RoleAssistant,
+			Artifacts: []artifact.Artifact{
+				// Two calls target "bash" (different IDs, different args).
+				// The (tool_call, bash) row should aggregate both.
+				artifact.ToolCall{ID: "1", Name: "bash", Arguments: `{"cmd":"ls"}`},
+				artifact.ToolCall{ID: "2", Name: "file_read", Arguments: `{"path":"/tmp/x"}`},
+				artifact.ToolCall{ID: "3", Name: "bash", Arguments: `{"cmd":"pwd"}`},
+			},
+		},
+	}
+
+	got := analytics.AnalyzeTurns(turns)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 (kind, source) buckets, got %d: %+v", len(got), got)
+	}
+
+	// Sorted lexicographically: "bash" < "file_read".
+	if got[0].Kind != "tool_call" || got[0].Source != "bash" {
+		t.Errorf("got[0]: got (%q, %q), want (tool_call, bash)", got[0].Kind, got[0].Source)
+	}
+	if got[0].Count != 2 {
+		t.Errorf("bash count: got %d, want 2", got[0].Count)
+	}
+	// Bytes: len(`{"cmd":"ls"}`) + len(`{"cmd":"pwd"}`) = 12 + 13 = 25.
+	if got[0].Bytes != 25 {
+		t.Errorf("bash bytes: got %d, want 25", got[0].Bytes)
+	}
+
+	if got[1].Kind != "tool_call" || got[1].Source != "file_read" {
+		t.Errorf("got[1]: got (%q, %q), want (tool_call, file_read)", got[1].Kind, got[1].Source)
+	}
+	if got[1].Count != 1 {
+		t.Errorf("file_read count: got %d, want 1", got[1].Count)
+	}
+	// Bytes: len(`{"path":"/tmp/x"}`) = 17.
+	if got[1].Bytes != 17 {
+		t.Errorf("file_read bytes: got %d, want 17", got[1].Bytes)
 	}
 }
 
@@ -409,13 +457,19 @@ func TestAnalyzeStore_AfterJSONRoundTrip(t *testing.T) {
 	want["tool_call"] = int64(len(`{"cmd":"ls"}`))
 
 	byKind := make(map[string]int64, len(got))
+	bySource := make(map[string]string, len(got))
 	for _, s := range got {
 		byKind[s.Kind] = s.Bytes
+		bySource[s.Kind] = s.Source
 	}
 	for kind, expected := range want {
 		if byKind[kind] != expected {
 			t.Errorf("%s bytes: got %d, want %d", kind, byKind[kind], expected)
 		}
+	}
+	// tool_call is bucketed by its Name after JSON round-trip.
+	if bySource["tool_call"] != "bash" {
+		t.Errorf("tool_call source: got %q, want %q", bySource["tool_call"], "bash")
 	}
 }
 
