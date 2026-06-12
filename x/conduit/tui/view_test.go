@@ -12,8 +12,8 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1328,4 +1328,70 @@ func TestModel_View_ActivitySpinner(t *testing.T) {
 	mm2 := newM2.(*model)
 	output = mm2.View().Content
 	assert.NotContains(t, output, "⚙ compacting")
+}
+
+// TestBuildContent_InterMessageSpacing_OneBlankLine is a regression test
+// for the inter-message spacing bug. Glamour's default document style
+// emits a trailing "\n" on every rendered markdown body, and the previous
+// buildContent separator added "\n\n" after every turn. With both
+// sources of newlines active, two consecutive assistant turns rendered
+// with two blank lines between them rather than one. The fix lives in
+// the theme: theme.Dark() and theme.Light() set Document.BlockSuffix to
+// "" so the buildContent separator is the sole authority for inter-turn
+// spacing. The defensive TrimLeft in renderBlockUnified was removed in
+// Task 7 once the theme owned the contract.
+//
+// This test uses a real glamourMarkdownRenderer (not a mock) so it
+// exercises the full glamour pipeline and would catch a regression
+// where glamour's behaviour changes.
+func TestBuildContent_InterMessageSpacing_OneBlankLine(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.md = newGlamourMarkdownRenderer(theme.Dark())
+
+	// Two simple assistant text turns. Plain text keeps glamour's
+	// rendered output close to the source so the newline accounting
+	// is easy to reason about.
+	m.turns = []renderedTurn{
+		{
+			role:      state.RoleAssistant,
+			timestamp: time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+			blocks: []renderedBlock{
+				{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "hello"},
+			},
+		},
+		{
+			role:      state.RoleAssistant,
+			timestamp: time.Date(2024, 1, 1, 12, 0, 5, 0, time.UTC),
+			blocks: []renderedBlock{
+				{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "world"},
+			},
+		},
+	}
+
+	output := m.buildContent()
+
+	// The exact pattern between the last body line of the first turn
+	// and the header of the second turn must contain exactly two
+	// newlines (one blank line), not three (two blank lines, the
+	// original bug). Glamour may wrap the second header in ANSI
+	// escape codes, so we count newlines in the segment rather than
+	// asserting on the exact string.
+	//
+	// The first turn's body is glamour's rendering of "hello", which
+	// for plain text is just "hello" (no trailing newline, because
+	// the theme sets Document.BlockSuffix = ""). Then buildContent
+	// appends "\n\n" after turn 1, then the header of turn 2 starts.
+	// So the segment between the end of "hello" and the start of the
+	// next header contains exactly two newlines.
+	idx1 := strings.Index(output, "hello")
+	idx2 := strings.Index(output, "12:00:05")
+	require.GreaterOrEqual(t, idx1, 0, "first body should be in output")
+	require.Greater(t, idx2, idx1, "second header timestamp should appear after first body")
+
+	segment := output[idx1+len("hello") : idx2]
+	newlineCount := strings.Count(segment, "\n")
+	assert.Equal(t, 2, newlineCount,
+		"inter-message spacing should be exactly one blank line (2 newlines), got %d newlines in segment %q (full output:\n%s)",
+		newlineCount, segment, output)
 }
