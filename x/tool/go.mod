@@ -3,8 +3,8 @@ module github.com/andrewhowdencom/ore/x/tool
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.7.4
-	github.com/andrewhowdencom/ore/x/tool/truncate v0.0.0-00010101000000-000000000000
+	github.com/andrewhowdencom/ore v0.8.0
+	github.com/andrewhowdencom/ore/x/tool/truncate v0.1.0
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/sdk v1.44.0
