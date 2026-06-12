@@ -13,11 +13,12 @@
 // artifact to JSON and reports the envelope length — best-effort, but
 // never wrong about the *minimum* the LLM sees.
 //
-// Artifacts constructed by application code may be value types
-// (artifact.Text{Content: "hi"}) or pointer types
-// (&artifact.Text{Content: "hi"}). The session/serialize.go
-// round-trip path always produces pointer types. Both shapes are
-// supported.
+// The framework guarantees that artifacts reaching this function are
+// value-typed: session/serialize.go's unmarshalArtifacts dereferences
+// the factory pointer before storing into the returned slice, so the
+// round-trip path and the in-memory path produce the same concrete
+// type at the slice boundary. Pointer-typed artifacts are therefore
+// not expected here.
 package llmbytes
 
 import (
@@ -36,27 +37,15 @@ func Of(art artifact.Artifact) int64 {
 	switch a := art.(type) {
 	case artifact.Text:
 		return int64(len(a.Content))
-	case *artifact.Text:
-		return int64(len(a.Content))
 	case artifact.Reasoning:
-		return int64(len(a.Content))
-	case *artifact.Reasoning:
 		return int64(len(a.Content))
 	case artifact.ToolCall:
 		return int64(len(a.LLMString()))
-	case *artifact.ToolCall:
-		return int64(len(a.LLMString()))
 	case artifact.ToolResult:
-		return int64(len(a.LLMString()))
-	case *artifact.ToolResult:
 		return int64(len(a.LLMString()))
 	case artifact.Image:
 		return int64(len(a.URL))
-	case *artifact.Image:
-		return int64(len(a.URL))
 	case artifact.Usage:
-		return 0
-	case *artifact.Usage:
 		return 0
 	default:
 		if b, err := json.Marshal(art); err == nil {

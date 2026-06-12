@@ -246,12 +246,18 @@ func TestAnalyzeStore_Error(t *testing.T) {
 // TestAnalyzeThread_AfterJSONRoundTrip guards against the regression
 // described in https://github.com/andrewhowdencom/ore/issues/416: the
 // production read path for any session.Store implementation is "load
-// from disk", which means artifacts are *pointers* to concrete types
-// (e.g. *artifact.Text) once they pass through session/serialize.go's
-// unmarshalArtifacts factory.
+// from disk", and the byte counts observed after a round-trip must
+// match the in-memory baseline. Before the fix, session/serialize.go
+// handed back *pointer* artifacts (e.g. *artifact.Text), which fell
+// through the value-only type switch in x/llmbytes.Of and reported
+// the JSON envelope length instead of the LLM payload.
 //
-// In-memory threads use value-type artifacts, but round-tripped ones do
-// not. The byte counts must be identical in both cases.
+// The fix in unmarshalArtifacts dereferences the factory pointer
+// before storing into the returned slice, so the round-tripped shape
+// is identical to what in-memory construction produces. This test
+// asserts that contract end-to-end: if a future change reintroduces a
+// pointer at the boundary, the test will catch it before the byte
+// counter silently regresses.
 func TestAnalyzeThread_AfterJSONRoundTrip(t *testing.T) {
 	// Build a thread that exercises every kind the analytics layer knows
 	// about, so a regression in any single case branch is visible.
@@ -309,24 +315,28 @@ func TestAnalyzeThread_AfterJSONRoundTrip(t *testing.T) {
 		t.Fatalf("Get(%q) returned not-found", thr.ID)
 	}
 
-	// Every artifact loaded from disk is a pointer, not a value. Verify
-	// that — the bug fix is only meaningful if this is actually true.
-	allPointers := true
+	// Every artifact loaded from disk is a value, not a pointer —
+	// the session fix dereferences the factory pointer in
+	// unmarshalArtifacts. If this assertion ever fires the test is
+	// no longer exercising the post-fix invariant, and the bug from
+	// issue #416 could silently return via a regression in
+	// session/serialize.go.
+	allValues := true
 	for _, turn := range loaded.State.Turns() {
 		for _, a := range turn.Artifacts {
 			switch a.(type) {
-			case *artifact.Text, *artifact.Reasoning,
-				*artifact.ToolCall, *artifact.ToolResult,
-				*artifact.Image, *artifact.Usage:
-				// pointer
+			case artifact.Text, artifact.Reasoning,
+				artifact.ToolCall, artifact.ToolResult,
+				artifact.Image, artifact.Usage:
+				// value — matches the in-memory shape.
 			default:
-				allPointers = false
+				allValues = false
 			}
 		}
 	}
-	if !allPointers {
-		t.Fatal("expected every round-tripped artifact to be a pointer; if " +
-			"this changes, the round-trip test no longer exercises the bug")
+	if !allValues {
+		t.Fatal("expected every round-tripped artifact to be a value; if " +
+			"this changes, the round-trip test no longer exercises the post-fix invariant")
 	}
 
 	// And the killer assertion: bytes must match the in-memory baseline.
