@@ -114,9 +114,13 @@ func TestAnalyzeTurns_MixedArtifacts(t *testing.T) {
 		t.Errorf("tool_call bytes: got %d, want 12", s.Bytes)
 	}
 
-	// tool_result: 1 artifact, len(LLMString()) = len("ok") = 2
+	// tool_result: 1 artifact, len(LLMString()) = len("ok") = 2.
+	// Source is resolved by joining ToolCallID="1" against the
+	// tool_call{Name="bash", ID="1"} in the same turn.
 	if s, ok := byKind["tool_result"]; !ok {
 		t.Fatal("missing 'tool_result' kind")
+	} else if s.Source != "bash" {
+		t.Errorf("tool_result source: got %q, want %q", s.Source, "bash")
 	} else if s.Count != 1 {
 		t.Errorf("tool_result count: got %d, want 1", s.Count)
 	} else if s.Bytes != 2 {
@@ -186,6 +190,82 @@ func TestAnalyzeTurns_ToolCallBucketedByName(t *testing.T) {
 	// Bytes: len(`{"path":"/tmp/x"}`) = 17.
 	if got[1].Bytes != 17 {
 		t.Errorf("file_read bytes: got %d, want 17", got[1].Bytes)
+	}
+}
+
+// TestAnalyzeTurns_ToolResultResolvedByToolCall exercises the
+// same-turn join: a tool_result's Source is the originating
+// tool_call's Name, looked up by ToolCallID.
+func TestAnalyzeTurns_ToolResultResolvedByToolCall(t *testing.T) {
+	turns := []state.Turn{
+		{
+			Role: state.RoleAssistant,
+			Artifacts: []artifact.Artifact{
+				artifact.ToolCall{ID: "1", Name: "bash", Arguments: `{"cmd":"ls"}`},
+				artifact.ToolResult{ToolCallID: "1", Content: "ok"},
+			},
+		},
+	}
+
+	got := analytics.AnalyzeTurns(turns)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 (kind, source) buckets, got %d: %+v", len(got), got)
+	}
+
+	// Sort: "bash" sorts before "" only if it's strictly less.
+	// In ASCII, '(' (0x28) sorts before 'b' (0x62), so
+	// (tool_call, bash) sorts after (tool_result, bash). Wait:
+	// within the same Kind, the sort is purely on Source, so for
+	// tool_call we have ("bash") and for tool_result we have
+	// ("bash") — they're separate kinds. Cross-kind, the sort is
+	// by Kind: "tool_call" < "tool_result".
+	if got[0].Kind != "tool_call" || got[0].Source != "bash" {
+		t.Errorf("got[0]: got (%q, %q), want (tool_call, bash)", got[0].Kind, got[0].Source)
+	}
+	if got[0].Count != 1 || got[0].Bytes != 12 {
+		t.Errorf("tool_call: got (count=%d, bytes=%d), want (1, 12)", got[0].Count, got[0].Bytes)
+	}
+	if got[1].Kind != "tool_result" || got[1].Source != "bash" {
+		t.Errorf("got[1]: got (%q, %q), want (tool_result, bash)", got[1].Kind, got[1].Source)
+	}
+	if got[1].Count != 1 || got[1].Bytes != 2 {
+		t.Errorf("tool_result: got (count=%d, bytes=%d), want (1, 2)", got[1].Count, got[1].Bytes)
+	}
+}
+
+// TestAnalyzeTurns_ToolResultOrphan covers the case where a
+// tool_result's ToolCallID has no matching tool_call in the same
+// turn. The result should bucket under the Source "(unknown)" so
+// the gap is visible in the report.
+func TestAnalyzeTurns_ToolResultOrphan(t *testing.T) {
+	turns := []state.Turn{
+		{
+			Role: state.RoleAssistant,
+			Artifacts: []artifact.Artifact{
+				// An unrelated tool_call, deliberately with a
+				// different ID than the orphan's ToolCallID.
+				artifact.ToolCall{ID: "1", Name: "file_read", Arguments: `{"path":"/tmp/x"}`},
+				// Orphan: no tool_call in this turn has ID "missing".
+				artifact.ToolResult{ToolCallID: "missing", Content: "ok"},
+			},
+		},
+	}
+
+	got := analytics.AnalyzeTurns(turns)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 (kind, source) buckets, got %d: %+v", len(got), got)
+	}
+
+	// Sort order: "tool_call" < "tool_result".
+	if got[0].Kind != "tool_call" || got[0].Source != "file_read" {
+		t.Errorf("got[0]: got (%q, %q), want (tool_call, file_read)", got[0].Kind, got[0].Source)
+	}
+
+	if got[1].Kind != "tool_result" || got[1].Source != "(unknown)" {
+		t.Errorf("got[1]: got (%q, %q), want (tool_result, \"(unknown)\")", got[1].Kind, got[1].Source)
+	}
+	if got[1].Count != 1 || got[1].Bytes != 2 {
+		t.Errorf("orphan tool_result: got (count=%d, bytes=%d), want (1, 2)", got[1].Count, got[1].Bytes)
 	}
 }
 
@@ -467,9 +547,13 @@ func TestAnalyzeStore_AfterJSONRoundTrip(t *testing.T) {
 			t.Errorf("%s bytes: got %d, want %d", kind, byKind[kind], expected)
 		}
 	}
-	// tool_call is bucketed by its Name after JSON round-trip.
+	// tool_call and tool_result are bucketed by the originating
+	// tool's Name after JSON round-trip.
 	if bySource["tool_call"] != "bash" {
 		t.Errorf("tool_call source: got %q, want %q", bySource["tool_call"], "bash")
+	}
+	if bySource["tool_result"] != "bash" {
+		t.Errorf("tool_result source: got %q, want %q", bySource["tool_result"], "bash")
 	}
 }
 
