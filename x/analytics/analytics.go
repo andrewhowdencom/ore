@@ -8,26 +8,30 @@ import (
 	"github.com/andrewhowdencom/ore/x/llmbytes"
 )
 
-// KindStats holds per-artifact-kind statistics: the kind name,
-// the count of artifacts of that kind, and their aggregate byte size
-// as seen by the LLM provider.
-type KindStats struct {
-	Kind  string
-	Count int
-	Bytes int64
+// Stats holds per-(Kind, Source) statistics: the artifact kind, the
+// source identifier (the tool name for tool_call and tool_result
+// artifacts; empty for all other kinds), the count of artifacts in
+// the bucket, and their aggregate byte size as seen by the LLM
+// provider.
+type Stats struct {
+	Kind   string
+	Source string
+	Count  int
+	Bytes  int64
 }
 
-// AnalyzeTurns aggregates per-kind statistics over a slice of turns.
-// It returns a sorted (by Kind) slice of KindStats.
-func AnalyzeTurns(turns []state.Turn) []KindStats {
-	stats := make(map[string]*KindStats)
+// AnalyzeTurns aggregates per-(Kind, Source) statistics over a slice
+// of turns. It returns a slice of Stats sorted lexicographically by
+// (Kind, Source).
+func AnalyzeTurns(turns []state.Turn) []Stats {
+	stats := make(map[string]*Stats)
 
 	for _, turn := range turns {
 		for _, art := range turn.Artifacts {
 			k := art.Kind()
 			s, ok := stats[k]
 			if !ok {
-				s = &KindStats{Kind: k}
+				s = &Stats{Kind: k}
 				stats[k] = s
 			}
 			s.Count++
@@ -35,19 +39,22 @@ func AnalyzeTurns(turns []state.Turn) []KindStats {
 		}
 	}
 
-	out := make([]KindStats, 0, len(stats))
+	out := make([]Stats, 0, len(stats))
 	for _, s := range stats {
 		out = append(out, *s)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		return out[i].Kind < out[j].Kind
+		if out[i].Kind != out[j].Kind {
+			return out[i].Kind < out[j].Kind
+		}
+		return out[i].Source < out[j].Source
 	})
 	return out
 }
 
 // AnalyzeThread is a convenience wrapper that aggregates statistics
 // for all turns in the given thread.
-func AnalyzeThread(t *session.Thread) []KindStats {
+func AnalyzeThread(t *session.Thread) []Stats {
 	if t == nil || t.State == nil {
 		return nil
 	}
@@ -55,15 +62,15 @@ func AnalyzeThread(t *session.Thread) []KindStats {
 }
 
 // AnalyzeStore aggregates statistics across all threads in the store.
-// It returns a merged, sorted slice of KindStats.
-func AnalyzeStore(store session.Store) ([]KindStats, error) {
+// It returns a merged, sorted slice of Stats.
+func AnalyzeStore(store session.Store) ([]Stats, error) {
 	threads, err := store.List()
 	if err != nil {
 		return nil, err
 	}
 
 	// Merge results from all threads into a single map.
-	merged := make(map[string]*KindStats)
+	merged := make(map[string]*Stats)
 	for _, th := range threads {
 		if th == nil || th.State == nil {
 			continue
@@ -73,7 +80,7 @@ func AnalyzeStore(store session.Store) ([]KindStats, error) {
 				k := art.Kind()
 				s, ok := merged[k]
 				if !ok {
-					s = &KindStats{Kind: k}
+					s = &Stats{Kind: k}
 					merged[k] = s
 				}
 				s.Count++
@@ -82,12 +89,15 @@ func AnalyzeStore(store session.Store) ([]KindStats, error) {
 		}
 	}
 
-	out := make([]KindStats, 0, len(merged))
+	out := make([]Stats, 0, len(merged))
 	for _, s := range merged {
 		out = append(out, *s)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		return out[i].Kind < out[j].Kind
+		if out[i].Kind != out[j].Kind {
+			return out[i].Kind < out[j].Kind
+		}
+		return out[i].Source < out[j].Source
 	})
 	return out, nil
 }
