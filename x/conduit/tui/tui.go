@@ -39,6 +39,7 @@ import (
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
+	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -54,6 +55,7 @@ type TUI struct {
 	zonePriorities map[string]int
 	statusLabels   map[string]string
 	tracer         trace.Tracer
+	theme          *theme.Theme
 }
 
 // Option configures a TUI.
@@ -121,6 +123,28 @@ func WithTracer(tracer trace.Tracer) Option {
 	}
 }
 
+// WithTheme configures a custom theme for the TUI. When omitted, the
+// TUI calls theme.Auto() at startup to select dark or light based on
+// the terminal's reported background. Pass a theme from the
+// x/conduit/tui/theme package (e.g. theme.Dark(), theme.Light(), or
+// a custom *theme.Theme) to override the default.
+func WithTheme(th *theme.Theme) Option {
+	return func(t *TUI) {
+		t.theme = th
+	}
+}
+
+// themeOrAuto returns the configured theme or, if none was supplied via
+// WithTheme, the result of theme.Auto() for the current terminal. It
+// caches the auto-detected theme on the TUI so the renderer and model
+// agree on the same instance.
+func (t *TUI) themeOrAuto() *theme.Theme {
+	if t.theme == nil {
+		t.theme = theme.Auto()
+	}
+	return t.theme
+}
+
 // Descriptor enumerates the capabilities of the TUI conduit.
 // CapAudioNotification is included because the TUI satisfies the
 // AudioNotifier contract using the terminal bell (\a), the only
@@ -170,7 +194,8 @@ func (t *TUI) initModel(eventsCh chan session.Event, stream *session.Stream) mod
 		eventsCh:       eventsCh,
 		viewport:       viewport.New(),
 		textarea:       ta,
-		md:             newGlamourMarkdownRenderer(),
+		md:             newGlamourMarkdownRenderer(t.themeOrAuto()),
+		theme:          t.themeOrAuto(),
 		name:           t.name,
 		zoneFormatter:  t.zoneFormatter,
 		statusLabels:   t.statusLabels,
