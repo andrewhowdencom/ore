@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http/httptrace"
+	"strings"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
@@ -14,8 +15,8 @@ import (
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/openai/openai-go"
-	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/option"
+	"github.com/openai/openai-go/packages/param"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -28,6 +29,11 @@ type Provider struct {
 	client openai.Client
 	model  string
 	tracer trace.Tracer
+	// includeReasoning is the resolved decision about whether to opt into
+	// upstream reasoning traces via `reasoning: {include: true}` in the
+	// request body. Resolved once at construction from the explicit
+	// override and the base-URL heuristic so Invoke doesn't re-walk options.
+	includeReasoning bool
 }
 
 // WithTools returns an InvokeOption that configures the set of available tools
@@ -65,6 +71,42 @@ func WithReasoningEffort(effort string) provider.InvokeOption {
 	return reasoningEffortOption{effort: effort}
 }
 
+// WithReasoningInclude returns an Option that explicitly sets whether the
+// provider should opt into receiving reasoning traces via the
+// `reasoning.include` request body field. This is the OpenRouter extension
+// that controls whether the upstream model forwards `reasoning_content` in
+// its SSE stream. When this option is set, it overrides any default
+// auto-detection based on the configured base URL. Pass `true` to force
+// inclusion (e.g., on OpenRouter-compatible hosts that are not detected by
+// the default heuristic), or `false` to suppress inclusion even on
+// OpenRouter.
+func WithReasoningInclude(include bool) Option {
+	return func(c *config) {
+		c.reasoningInclude = &include
+	}
+}
+
+// isOpenRouter reports whether the configured base URL targets OpenRouter.
+// Detection is intentionally a substring match because the provider
+// publishes only that domain (and its subdomains), so a stricter URL
+// parser would add complexity without meaningfully reducing false
+// positives.
+func isOpenRouter(baseURL string) bool {
+	return strings.Contains(baseURL, "openrouter.ai")
+}
+
+// wantsReasoningInclude resolves the final decision about whether to inject
+// `reasoning: {include: true}` into the request body. The explicit override
+// wins when set, including the `false` value (the escape hatch to suppress
+// the field even on OpenRouter). When the override is unset, the decision
+// falls back to base-URL auto-detection.
+func wantsReasoningInclude(cfg *config) bool {
+	if cfg.reasoningInclude != nil {
+		return *cfg.reasoningInclude
+	}
+	return isOpenRouter(cfg.baseURL)
+}
+
 // maxTokensOption is a per-invocation option that sets the maximum number of
 // tokens the model may generate in the response.
 type maxTokensOption struct {
@@ -82,11 +124,12 @@ func WithMaxTokens(n int64) provider.InvokeOption {
 
 // config holds the build-time configuration for the Provider.
 type config struct {
-	apiKey     string
-	model      string
-	baseURL    string
-	httpClient option.HTTPClient
-	tracer     trace.Tracer
+	apiKey           string
+	model            string
+	baseURL          string
+	httpClient       option.HTTPClient
+	tracer           trace.Tracer
+	reasoningInclude *bool
 }
 
 // Option configures a Provider via the functional options pattern.
@@ -151,9 +194,10 @@ func New(opts ...Option) (*Provider, error) {
 	}
 
 	return &Provider{
-		client: openai.NewClient(sdkOpts...),
-		model:  cfg.model,
-		tracer: cfg.tracer,
+		client:           openai.NewClient(sdkOpts...),
+		model:            cfg.model,
+		tracer:           cfg.tracer,
+		includeReasoning: wantsReasoningInclude(cfg),
 	}, nil
 }
 
@@ -311,6 +355,18 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		params.MaxTokens = param.NewOpt(maxTokens)
 	}
 
+	// Inject `reasoning: {include: true}` when talking to OpenRouter (or when
+	// the caller has explicitly opted in via WithReasoningInclude). Without
+	// this field, OpenRouter silently drops `delta.reasoning_content` from
+	// the SSE stream, which would defeat the read-side handling at the
+	// bottom of this function. The field is only emitted on resolve at
+	// construction, so other OpenAI-compatible providers never see it.
+	if p.includeReasoning {
+		params.SetExtraFields(map[string]any{
+			"reasoning": map[string]any{"include": true},
+		})
+	}
+
 	stream := p.client.Chat.Completions.NewStreaming(ctx, params)
 
 	for stream.Next() {
@@ -374,8 +430,6 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 
 	return nil
 }
-
-
 
 // serializeTools converts provider-agnostic tool definitions into OpenAI SDK
 // tool parameters.
