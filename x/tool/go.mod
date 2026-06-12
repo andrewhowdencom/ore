@@ -4,6 +4,7 @@ go 1.26.2
 
 require (
 	github.com/andrewhowdencom/ore v0.7.4
+	github.com/andrewhowdencom/ore/x/tool/truncate v0.0.0-00010101000000-000000000000
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
@@ -18,3 +19,6 @@ require (
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/andrewhowdencom/ore => ../..
+replace github.com/andrewhowdencom/ore/x/tool/truncate => ../tool/truncate
