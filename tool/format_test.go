@@ -8,7 +8,7 @@ func TestFormat_ResolvedTruncateConfig_ZeroFallsBackToDefaults(t *testing.T) {
 	t.Parallel()
 
 	var f Format
-	got := f.resolvedTruncateConfig()
+	got := f.ResolvedTruncateConfig()
 
 	if got.MaxBytes != FrameworkDefaultMaxBytes {
 		t.Errorf("MaxBytes = %d, want %d", got.MaxBytes, FrameworkDefaultMaxBytes)
@@ -22,7 +22,7 @@ func TestFormat_ResolvedTruncateConfig_PartialOverride(t *testing.T) {
 	t.Parallel()
 
 	f := Format{Truncate: TruncateConfig{MaxBytes: 100}}
-	got := f.resolvedTruncateConfig()
+	got := f.ResolvedTruncateConfig()
 
 	if got.MaxBytes != 100 {
 		t.Errorf("MaxBytes = %d, want 100", got.MaxBytes)
@@ -37,7 +37,7 @@ func TestFormat_ResolvedTruncateConfig_ExplicitZeroMaxLinesUsesDefault(t *testin
 
 	// MaxLines: 0 means "use default"; only positive values override.
 	f := Format{Truncate: TruncateConfig{MaxBytes: 200, MaxLines: 0}}
-	got := f.resolvedTruncateConfig()
+	got := f.ResolvedTruncateConfig()
 
 	if got.MaxBytes != 200 {
 		t.Errorf("MaxBytes = %d, want 200", got.MaxBytes)
@@ -51,7 +51,7 @@ func TestFormat_ResolvedTruncateConfig_FullOverride(t *testing.T) {
 	t.Parallel()
 
 	f := Format{Truncate: TruncateConfig{MaxBytes: 10, MaxLines: 5}}
-	got := f.resolvedTruncateConfig()
+	got := f.ResolvedTruncateConfig()
 
 	if got.MaxBytes != 10 {
 		t.Errorf("MaxBytes = %d, want 10", got.MaxBytes)

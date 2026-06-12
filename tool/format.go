@@ -90,9 +90,10 @@ func DefaultTruncateConfig() TruncateConfig {
 	}
 }
 
-// resolvedTruncateConfig returns the effective TruncateConfig for a
-// Format. Zero fields are filled in from the framework defaults.
-func (f Format) resolvedTruncateConfig() TruncateConfig {
+// ResolvedTruncateConfig returns the effective TruncateConfig for a
+// Format. Zero fields are filled in from the framework defaults. The
+// framework handler calls this before invoking the truncator.
+func (f Format) ResolvedTruncateConfig() TruncateConfig {
 	cfg := f.Truncate
 	if cfg.MaxBytes <= 0 {
 		cfg.MaxBytes = FrameworkDefaultMaxBytes
