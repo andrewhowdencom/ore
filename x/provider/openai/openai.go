@@ -541,16 +541,23 @@ var cacheControlEphemeral = map[string]any{"type": "ephemeral"}
 // failure on either Anthropic-style field is treated as zero rather than
 // an error, because a single bad number in a usage chunk should not
 // abort an in-flight stream.
+//
+// Note on presence detection: the openai-go v1.12 apijson decoder marks
+// unmodeled extra fields with status `invalid` whenever the typed
+// respjson.Field cannot consume the JSON value's runtime type (an
+// integer for cache_read_input_tokens, in our case). The raw JSON is
+// still preserved on the field; we therefore use `Raw() != ""` as the
+// presence test rather than `Valid()`.
 func readCacheUsage(usage openai.CompletionUsage) (cacheRead, cacheWrite int) {
 	// Anthropic-via-OpenRouter and raw Anthropic on OpenRouter surface
 	// cache metrics at the top of the usage object. The SDK does not
 	// model these, so they arrive in the JSON extra-fields bucket.
-	if field, ok := usage.JSON.ExtraFields["cache_read_input_tokens"]; ok && field.Valid() {
+	if field, ok := usage.JSON.ExtraFields["cache_read_input_tokens"]; ok && field.Raw() != "" && field.Raw() != "null" {
 		var n int64
 		if err := json.Unmarshal([]byte(field.Raw()), &n); err == nil {
 			cacheRead = int(n)
 		}
-		if field, ok := usage.JSON.ExtraFields["cache_creation_input_tokens"]; ok && field.Valid() {
+		if field, ok := usage.JSON.ExtraFields["cache_creation_input_tokens"]; ok && field.Raw() != "" && field.Raw() != "null" {
 			var n int64
 			if err := json.Unmarshal([]byte(field.Raw()), &n); err == nil {
 				cacheWrite = int(n)
