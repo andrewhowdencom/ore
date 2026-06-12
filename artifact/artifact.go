@@ -137,11 +137,16 @@ type MarkdownRenderer interface {
 // downstream packages (providers, conduits) to apply custom serialization
 // via LLMRenderer or MarkdownRenderer. When Value is nil or its type is
 // not recognized, consumers fall back to Content.
+//
+// Truncation is set by the framework handler when a tool's result was
+// bounded by Format or by the framework defaults. A nil Truncation
+// means the result was not truncated.
 type ToolResult struct {
-	ToolCallID string `json:"tool_call_id"`
-	Content    string `json:"content"`
-	Value      any    `json:"-"`
-	IsError    bool   `json:"is_error"`
+	ToolCallID  string      `json:"tool_call_id"`
+	Content     string      `json:"content"`
+	Value       any         `json:"-"`
+	IsError     bool        `json:"is_error"`
+	Truncation  *Truncation `json:"truncation,omitempty"`
 }
 
 // Kind returns the artifact kind identifier.
@@ -182,16 +187,18 @@ func (t ToolResult) MarkdownString() string {
 // MarshalJSON serializes ToolResult to JSON.
 func (t ToolResult) MarshalJSON() ([]byte, error) {
 	type output struct {
-		Kind       string `json:"kind"`
-		ToolCallID string `json:"tool_call_id"`
-		Content    string `json:"content"`
-		IsError    bool   `json:"is_error"`
+		Kind       string      `json:"kind"`
+		ToolCallID string      `json:"tool_call_id"`
+		Content    string      `json:"content"`
+		IsError    bool        `json:"is_error"`
+		Truncation *Truncation `json:"truncation,omitempty"`
 	}
 	return json.Marshal(output{
 		Kind:       "tool_result",
 		ToolCallID: t.ToolCallID,
 		Content:    t.MarkdownString(),
 		IsError:    t.IsError,
+		Truncation: t.Truncation,
 	})
 }
 
