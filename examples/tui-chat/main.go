@@ -32,7 +32,9 @@ import (
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/x/conduit/tui"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
+	"github.com/andrewhowdencom/ore/x/slash"
 	"github.com/andrewhowdencom/ore/x/telemetry"
+	"github.com/andrewhowdencom/ore/x/tool/set_title"
 	"github.com/andrewhowdencom/ore/x/usage"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -164,6 +166,13 @@ func run() error {
 		return fmt.Errorf("create openai provider: %w", err)
 	}
 
+	// Build the slash command registry and bind the /name command for setting
+	// the conversation title. The slash handler emits a PropertiesEvent
+	// directly so the TUI's status zones (and window title) light up without
+	// going through the tool/LLM pipeline.
+	slashReg := slash.NewRegistry()
+	slashReg.Bind("name", "Set the conversation title", set_title.Slash())
+
 	// Manager now auto-persists state via a default OnEmit callback;
 	// no custom stepFactory needed for basic TUI usage, but we wire the
 	// usage handler so token counts are broadcast via PropertiesEvent.
@@ -173,7 +182,9 @@ func run() error {
 			loop.WithOnEmit(tel.OnEmit()),
 			loop.WithTracer(tracer),
 		}, nil
-	}, cognitive.NewTurnProcessor(cognitive.ReActFactory, tracer))
+	}, cognitive.NewTurnProcessor(cognitive.ReActFactory, tracer),
+		session.WithInterceptor(slashReg),
+	)
 
 	// Create the TUI conduit, passing the thread ID via functional option.
 	// The TUI creates or attaches to the session internally on Start.
