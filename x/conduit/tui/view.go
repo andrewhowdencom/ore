@@ -43,18 +43,41 @@ var (
 	zoneLabelStyle = lipgloss.NewStyle().Bold(true)
 )
 
-// renderBlockUnified renders a single block with the consistent header format:
-// "<Timestamp> <Title> · |s| <rune_count>" followed by compact or expanded body.
-// The expansion is controlled by the expanded parameter; when false, reasoning
-// blocks render header-only (the count is sufficient), tool blocks use their
-// pre-computed compact form, and generic blocks truncate to two lines.
+// renderBlockUnified renders a single block with the consistent header
+// format: "<Timestamp> <Title>" left-aligned with a right-aligned compact
+// byte-count suffix (e.g. "1.5K B") anchored to the right edge of the
+// viewport. When the viewport is too narrow to fit the title and the
+// count with a single space, the count is hidden before the title is
+// truncated. If the viewport width is unknown (width <= 0), the header
+// falls back to "<title> <count>" joined with a single space.
+//
+// The expansion is controlled by the expanded parameter; when false,
+// reasoning blocks render header-only (the count is sufficient), tool
+// blocks use their pre-computed compact form, and generic blocks
+// truncate to two lines.
 func renderBlockUnified(block renderedBlock, ts time.Time, expanded bool, width int) string {
-	var header string
-	count := len(block.source)
+	var title string
 	if ts.IsZero() {
-		header = fmt.Sprintf("%s · |s| %d", block.title, count)
+		title = block.title
 	} else {
-		header = fmt.Sprintf("%s %s · |s| %d", ts.Format("15:04:05"), block.title, count)
+		title = ts.Format("15:04:05") + " " + block.title
+	}
+	countStr := compactNumber(strconv.Itoa(len(block.source))) + " B"
+
+	var header string
+	if width > 0 {
+		titleW := ansi.StringWidth(title)
+		countW := ansi.StringWidth(countStr)
+		switch {
+		case titleW+1+countW <= width:
+			header = title + strings.Repeat(" ", width-titleW-countW) + countStr
+		case titleW <= width:
+			header = title
+		default:
+			header = truncateString(title, width)
+		}
+	} else {
+		header = title + " " + countStr
 	}
 
 	styledHeader := block.style.Render(header)
