@@ -385,9 +385,51 @@ func TestToolResult_MarshalJSON_WithValue(t *testing.T) {
 }
 
 func TestUsage_MarshalJSON(t *testing.T) {
-	data, err := json.Marshal(Usage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30})
-	require.NoError(t, err)
-	assert.JSONEq(t, `{"kind":"usage","prompt_tokens":10,"completion_tokens":20,"total_tokens":30}`, string(data))
+	t.Run("zero cache fields are omitted", func(t *testing.T) {
+		data, err := json.Marshal(Usage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30})
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"kind":"usage","prompt_tokens":10,"completion_tokens":20,"total_tokens":30}`, string(data))
+	})
+
+	t.Run("non-zero cache fields are emitted", func(t *testing.T) {
+		data, err := json.Marshal(Usage{
+			PromptTokens:     10,
+			CompletionTokens: 20,
+			TotalTokens:      30,
+			CacheReadTokens:  8,
+			CacheWriteTokens: 2,
+		})
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"kind":"usage","prompt_tokens":10,"completion_tokens":20,"total_tokens":30,"cache_read_tokens":8,"cache_write_tokens":2}`, string(data))
+	})
+
+	t.Run("cache read only is emitted without write", func(t *testing.T) {
+		data, err := json.Marshal(Usage{
+			PromptTokens:    100,
+			CompletionTokens: 50,
+			TotalTokens:     150,
+			CacheReadTokens: 42,
+		})
+		require.NoError(t, err)
+		// cache_write_tokens is omitted because it is the zero value.
+		assert.JSONEq(t, `{"kind":"usage","prompt_tokens":100,"completion_tokens":50,"total_tokens":150,"cache_read_tokens":42}`, string(data))
+	})
+
+	t.Run("round trips through json marshal and unmarshal", func(t *testing.T) {
+		original := Usage{
+			PromptTokens:     1000,
+			CompletionTokens: 250,
+			TotalTokens:      1250,
+			CacheReadTokens:  800,
+			CacheWriteTokens: 50,
+		}
+		data, err := json.Marshal(original)
+		require.NoError(t, err)
+
+		var roundTripped Usage
+		require.NoError(t, json.Unmarshal(data, &roundTripped))
+		assert.Equal(t, original, roundTripped)
+	})
 }
 
 func TestImage_MarshalJSON(t *testing.T) {
