@@ -9,38 +9,12 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
+	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/cellbuf"
-)
-
-var (
-	// assistantStyle styles assistant output in a subtle blue.
-	assistantStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#6C8EBF"))
-	// statusStyle styles the status line faint and italic.
-	statusStyle = lipgloss.NewStyle().Faint(true).Italic(true)
-	// thinkingStyle styles reasoning/thinking content faint and italic.
-	thinkingStyle = lipgloss.NewStyle().Faint(true).Italic(true)
-	// reasoningExpandedStyle styles the full reasoning content body when
-	// expanded, making it visually subdued so it does not look like normal
-	// assistant text.
-	reasoningExpandedStyle = lipgloss.NewStyle().Faint(true)
-	// errorStyle styles error turns from the harness in red.
-	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
-	// userStyle styles user input in yellow.
-	userStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#E5C07B"))
-	// systemStyle styles system-level messages in purple.
-	systemStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#C678DD"))
-	// toolResultStyle styles successful tool results in green.
-	toolResultStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#98C379"))
-	// spinnerStyle styles the activity indicator line shown when long-running
-	// work is active (e.g., slash commands like /compact).
-	spinnerStyle = lipgloss.NewStyle().Faint(true).Italic(true)
-	// zoneLabelStyle styles zone names (Lifecycle, Context) bold in the status bar.
-	zoneLabelStyle = lipgloss.NewStyle().Bold(true)
 )
 
 // renderBlockUnified renders a single block with the consistent header
@@ -191,7 +165,7 @@ func (m *model) buildContent() string {
 			kind:              "text",
 			source:            "...",
 			title:             "Assistant",
-			style:             assistantStyle,
+			style:             m.theme.AssistantStyle,
 			expandedByDefault: true,
 		}, time.Time{}, true, width))
 		b.WriteString("\n\n")
@@ -239,7 +213,7 @@ func compactNumber(s string) string {
 //
 // It returns the rendered string and the number of display lines it
 // occupies at the given width. Returns 0 lines when all values are empty.
-func buildStatusLine(status map[string]string, width int) (string, int) {
+func buildStatusLine(th *theme.Theme, status map[string]string, width int) (string, int) {
 	if len(status) == 0 {
 		return "", 0
 	}
@@ -284,7 +258,7 @@ func buildStatusLine(status map[string]string, width int) (string, int) {
 	if len(parts) == 0 {
 		return "", 0
 	}
-	rendered := statusStyle.Render(strings.Join(parts, " · "))
+	rendered := th.StatusStyle.Render(strings.Join(parts, " · "))
 	if width <= 0 {
 		return rendered, 1
 	}
@@ -330,7 +304,7 @@ func compactTokenSegments(segs []conduit.StatusSegment) []conduit.StatusSegment 
 // priority (lower value = higher priority), and lower-priority zones are
 // dropped entirely if the result exceeds maxStatusLines (3). The "default"
 // zone renders without brackets for backward compatibility.
-func buildStatusLineFromSegments(segments []conduit.StatusSegment, zonePriorities map[string]int, width int) (string, int) {
+func buildStatusLineFromSegments(th *theme.Theme, segments []conduit.StatusSegment, zonePriorities map[string]int, width int) (string, int) {
 	if len(segments) == 0 {
 		return "", 0
 	}
@@ -394,7 +368,7 @@ func buildStatusLineFromSegments(segments []conduit.StatusSegment, zonePrioritie
 			zoneStr := strings.Join(kvParts, " · ")
 			if zone != "default" {
 				zoneLabel := strings.ToUpper(zone[:1]) + zone[1:] + ":"
-				zoneStr = zoneLabelStyle.Render(zoneLabel) + " " + zoneStr
+				zoneStr = th.ZoneLabelStyle.Render(zoneLabel) + " " + zoneStr
 			}
 			zoneParts = append(zoneParts, zoneStr)
 		}
@@ -403,7 +377,7 @@ func buildStatusLineFromSegments(segments []conduit.StatusSegment, zonePrioritie
 			continue
 		}
 
-		rendered := statusStyle.Render(strings.Join(zoneParts, "\n"))
+		rendered := th.StatusStyle.Render(strings.Join(zoneParts, "\n"))
 		if width <= 0 {
 			return rendered, 1
 		}
@@ -538,7 +512,7 @@ func (m *model) View() tea.View {
 		var parts []string
 		parts = append(parts, view, separator)
 		if m.working && m.workingDescription != "" {
-			parts = append(parts, spinnerStyle.Render("⚙ "+m.workingDescription))
+			parts = append(parts, m.theme.SpinnerStyle.Render("⚙ "+m.workingDescription))
 		}
 		parts = append(parts, m.textarea.View())
 		if statusLines > 0 {

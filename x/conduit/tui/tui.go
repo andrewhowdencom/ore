@@ -172,6 +172,7 @@ func (t *TUI) initModel(eventsCh chan session.Event, stream *session.Stream) mod
 		viewport:       viewport.New(),
 		textarea:       ta,
 		md:             newGlamourMarkdownRenderer(theme.Auto()),
+		theme:          theme.Auto(),
 		name:           t.name,
 		zoneFormatter:  t.zoneFormatter,
 		statusLabels:   t.statusLabels,
