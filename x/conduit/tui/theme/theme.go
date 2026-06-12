@@ -57,21 +57,6 @@ type Theme struct {
 	ZoneLabelStyle lipgloss.Style
 }
 
-// Dark returns a Theme configured for terminals with a dark background.
-// It is a stub in this task; Task 2 fills in the glamour StyleConfig and
-// the lipgloss styles from the project's chosen dark palette.
-func Dark() *Theme { return &Theme{} }
-
-// Light returns a Theme configured for terminals with a light background.
-// It is a stub in this task; Task 2 fills in the glamour StyleConfig and
-// the lipgloss styles from the project's chosen light palette.
-func Light() *Theme { return &Theme{} }
-
-// Auto returns a Theme appropriate for the current terminal. The current
-// implementation is a stub that returns Dark(); Task 2 wires it to the
-// existing terminal detection (term.IsTerminal + termenv.HasDarkBackground).
-func Auto() *Theme { return Dark() }
-
 // StyleForRole returns the lipgloss style appropriate for a conversation
 // role. The mapping is a theme concern, not a renderer concern: a custom
 // theme may emphasise different roles (e.g. a high-contrast theme may
