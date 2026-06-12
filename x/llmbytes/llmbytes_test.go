@@ -18,48 +18,27 @@ type customArtifact struct {
 func (c customArtifact) Kind() string { return "custom" }
 
 func TestOf_Text(t *testing.T) {
-	t.Run("value", func(t *testing.T) {
-		if got, want := llmbytes.Of(artifact.Text{Content: "hello"}), int64(5); got != want {
-			t.Errorf("Of(Text): got %d, want %d", got, want)
-		}
-	})
-	t.Run("pointer", func(t *testing.T) {
-		if got, want := llmbytes.Of(&artifact.Text{Content: "hello"}), int64(5); got != want {
-			t.Errorf("Of(*Text): got %d, want %d", got, want)
-		}
-	})
+	if got, want := llmbytes.Of(artifact.Text{Content: "hello"}), int64(5); got != want {
+		t.Errorf("Of(Text): got %d, want %d", got, want)
+	}
 }
 
 func TestOf_Reasoning(t *testing.T) {
-	t.Run("value", func(t *testing.T) {
-		if got, want := llmbytes.Of(artifact.Reasoning{Content: "think"}), int64(5); got != want {
-			t.Errorf("Of(Reasoning): got %d, want %d", got, want)
-		}
-	})
-	t.Run("pointer", func(t *testing.T) {
-		if got, want := llmbytes.Of(&artifact.Reasoning{Content: "think"}), int64(5); got != want {
-			t.Errorf("Of(*Reasoning): got %d, want %d", got, want)
-		}
-	})
+	if got, want := llmbytes.Of(artifact.Reasoning{Content: "think"}), int64(5); got != want {
+		t.Errorf("Of(Reasoning): got %d, want %d", got, want)
+	}
 }
 
 func TestOf_ToolCall(t *testing.T) {
-	t.Run("value", func(t *testing.T) {
+	t.Run("arguments", func(t *testing.T) {
 		tc := artifact.ToolCall{ID: "1", Name: "test", Arguments: `{"x":1}`}
 		if got, want := llmbytes.Of(tc), int64(len(tc.LLMString())); got != want {
 			t.Errorf("Of(ToolCall): got %d, want %d", got, want)
 		}
 	})
-	t.Run("pointer", func(t *testing.T) {
-		tc := &artifact.ToolCall{ID: "1", Name: "test", Arguments: `{"x":1}`}
-		if got, want := llmbytes.Of(tc), int64(len(tc.LLMString())); got != want {
-			t.Errorf("Of(*ToolCall): got %d, want %d", got, want)
-		}
-	})
-	// ToolCall has a Value variant that, when set, makes LLMString()
-	// return the JSON of Value rather than Arguments. Both code paths
-	// (value and pointer dispatch) must agree.
-	t.Run("value_with_value", func(t *testing.T) {
+	// When Value is set, LLMString() returns the JSON of Value rather
+	// than Arguments. The dispatcher must honour this.
+	t.Run("value_overrides_arguments", func(t *testing.T) {
 		tc := artifact.ToolCall{
 			ID: "1", Name: "test", Arguments: `{"x":1}`,
 			Value: map[string]any{"x": 1},
@@ -68,31 +47,16 @@ func TestOf_ToolCall(t *testing.T) {
 			t.Errorf("Of(ToolCall w/ Value): got %d, want %d", got, want)
 		}
 	})
-	t.Run("pointer_with_value", func(t *testing.T) {
-		tc := &artifact.ToolCall{
-			ID: "1", Name: "test", Arguments: `{"x":1}`,
-			Value: map[string]any{"x": 1},
-		}
-		if got, want := llmbytes.Of(tc), int64(len(`{"x":1}`)); got != want {
-			t.Errorf("Of(*ToolCall w/ Value): got %d, want %d", got, want)
-		}
-	})
 }
 
 func TestOf_ToolResult(t *testing.T) {
-	t.Run("value", func(t *testing.T) {
+	t.Run("content", func(t *testing.T) {
 		tr := artifact.ToolResult{ToolCallID: "1", Content: "result"}
 		if got, want := llmbytes.Of(tr), int64(len(tr.LLMString())); got != want {
 			t.Errorf("Of(ToolResult): got %d, want %d", got, want)
 		}
 	})
-	t.Run("pointer", func(t *testing.T) {
-		tr := &artifact.ToolResult{ToolCallID: "1", Content: "result"}
-		if got, want := llmbytes.Of(tr), int64(len(tr.LLMString())); got != want {
-			t.Errorf("Of(*ToolResult): got %d, want %d", got, want)
-		}
-	})
-	t.Run("value_with_value", func(t *testing.T) {
+	t.Run("value_overrides_content", func(t *testing.T) {
 		tr := artifact.ToolResult{
 			ToolCallID: "1", Content: "raw",
 			Value: map[string]any{"result": "ok"},
@@ -101,41 +65,18 @@ func TestOf_ToolResult(t *testing.T) {
 			t.Errorf("Of(ToolResult w/ Value): got %d, want %d", got, want)
 		}
 	})
-	t.Run("pointer_with_value", func(t *testing.T) {
-		tr := &artifact.ToolResult{
-			ToolCallID: "1", Content: "raw",
-			Value: map[string]any{"result": "ok"},
-		}
-		if got, want := llmbytes.Of(tr), int64(len(`{"result":"ok"}`)); got != want {
-			t.Errorf("Of(*ToolResult w/ Value): got %d, want %d", got, want)
-		}
-	})
 }
 
 func TestOf_Image(t *testing.T) {
-	t.Run("value", func(t *testing.T) {
-		if got, want := llmbytes.Of(artifact.Image{URL: "http://a.b/c"}), int64(12); got != want {
-			t.Errorf("Of(Image): got %d, want %d", got, want)
-		}
-	})
-	t.Run("pointer", func(t *testing.T) {
-		if got, want := llmbytes.Of(&artifact.Image{URL: "http://a.b/c"}), int64(12); got != want {
-			t.Errorf("Of(*Image): got %d, want %d", got, want)
-		}
-	})
+	if got, want := llmbytes.Of(artifact.Image{URL: "http://a.b/c"}), int64(12); got != want {
+		t.Errorf("Of(Image): got %d, want %d", got, want)
+	}
 }
 
 func TestOf_Usage(t *testing.T) {
-	t.Run("value", func(t *testing.T) {
-		if got := llmbytes.Of(artifact.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15}); got != 0 {
-			t.Errorf("Of(Usage): got %d, want 0", got)
-		}
-	})
-	t.Run("pointer", func(t *testing.T) {
-		if got := llmbytes.Of(&artifact.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15}); got != 0 {
-			t.Errorf("Of(*Usage): got %d, want 0", got)
-		}
-	})
+	if got := llmbytes.Of(artifact.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15}); got != 0 {
+		t.Errorf("Of(Usage): got %d, want 0", got)
+	}
 }
 
 func TestOf_Unknown_FallsBackToJSONEnvelope(t *testing.T) {
