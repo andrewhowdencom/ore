@@ -122,6 +122,45 @@ func WithMaxTokens(n int64) provider.InvokeOption {
 	return maxTokensOption{n: n}
 }
 
+// sessionIDOption is a per-invocation option that sets a stable session
+// identifier used by the host for prefix-cache affinity. On OpenAI native
+// this maps to the prompt_cache_key request field; on OpenRouter /
+// Anthropic-via-OpenRouter it is informational (Anthropic-style cache_control
+// blocks are the actual cache primitive on those hosts, and the session id
+// is only useful as a stable key if the host chooses to honor it).
+type sessionIDOption struct {
+	id string
+}
+
+func (sessionIDOption) IsInvokeOption() {}
+
+// WithSessionID returns an InvokeOption that sets the prompt_cache_key on
+// outgoing chat completion requests. A stable session id allows OpenAI
+// native to route subsequent requests to the same prefix cache. On other
+// hosts the field is either a no-op or informational; the value is always
+// safe to set.
+func WithSessionID(id string) provider.InvokeOption {
+	return sessionIDOption{id: id}
+}
+
+// cacheControlOption is a per-invocation option that opts into Anthropic-style
+// cache_control blocks on the request. The presence of the option (it is a
+// zero-sized type) is the signal; the value is irrelevant.
+type cacheControlOption struct{}
+
+func (cacheControlOption) IsInvokeOption() {}
+
+// WithCacheControl returns an InvokeOption that, when supplied, causes the
+// provider to emit Anthropic-style cache_control:{type:ephemeral} blocks on
+// (a) the system message content, (b) the last tool definition, and
+// (c) the last user/assistant text content part of the outgoing request.
+// On hosts that ignore unknown fields (e.g. raw OpenAI) the option is a
+// no-op; on OpenRouter and Anthropic-via-OpenRouter it is honored and
+// produces the full Anthropic prompt-cache discount.
+func WithCacheControl() provider.InvokeOption {
+	return cacheControlOption{}
+}
+
 // config holds the build-time configuration for the Provider.
 type config struct {
 	apiKey           string
@@ -322,6 +361,8 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	var temperature float64
 	var reasoningEffort string
 	var maxTokens int64
+	var sessionID string
+	var cacheControl bool
 	for _, opt := range opts {
 		if to, ok := opt.(provider.ToolsOption); ok {
 			tools = to.Tools(ctx, s)
@@ -335,7 +376,20 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		if mto, ok := opt.(maxTokensOption); ok {
 			maxTokens = mto.n
 		}
+		if sid, ok := opt.(sessionIDOption); ok {
+			sessionID = sid.id
+		}
+		if _, ok := opt.(cacheControlOption); ok {
+			cacheControl = true
+		}
 	}
+
+	// sessionID and cacheControl are consumed below when the request body is
+	// built (Task 3 wires them into params.PromptCacheKey and the
+	// Anthropic-style cache_control blocks, respectively). The blank
+	// references keep this hermetic build green until then.
+	_ = sessionID
+	_ = cacheControl
 
 	params := openai.ChatCompletionNewParams{
 		Model:         openai.ChatModel(p.model),
