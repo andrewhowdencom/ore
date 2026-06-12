@@ -11,7 +11,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/tool"
+	"github.com/andrewhowdencom/ore/x/tool/truncate"
 )
 
 // Compile-time type checks.
@@ -23,6 +25,16 @@ var (
 	_ tool.ToolFunc = SearchFiles
 )
 
+// frameworkDefaultByteCap is the default per-call byte cap
+// applied to the LLM-facing result. Mirrors tool.FrameworkDefaultMaxBytes.
+const frameworkDefaultByteCap = 50_000
+
+// frameworkDefaultMaxRows is the default per-call row cap for
+// list_directory (500) and search_files (1000).
+const (
+	frameworkDefaultListRows = 500
+	frameworkDefaultSearchRows = 1000
+)
 
 // resolvePath resolves a path through a sandbox when available. If sb is nil
 // or does not implement FileSandbox, the path is returned as-is (allowing
@@ -40,7 +52,66 @@ func resolvePath(sb tool.Sandbox, path string) (string, error) {
 	return fsb.ResolvePath(path)
 }
 
-// ReadFile reads a file and returns its contents with line-number prefixes.
+// ReadFileResult carries the bounded line-numbered content of a
+// read_file call, plus optional truncation metadata and the path
+// to a temp file that holds the full file content when the LLM-facing
+// string was truncated.
+type ReadFileResult struct {
+	// Content is the line-numbered, possibly-truncated file
+	// content. Always present; empty if the file is empty or
+	// the offset is past EOF.
+	Content string
+
+	// TempFilePath is the path to a temp file holding the full
+	// file content, set when truncation occurred. Empty when
+	// no truncation occurred.
+	TempFilePath string
+
+	// Truncation is non-nil when the LLM-facing content was
+	// truncated. The Truncation.OriginalBytes reflects the
+	// byte length of the line-numbered output as produced by
+	// the reader (i.e., the size of the bounded string the
+	// user would have seen if no cap was in effect).
+	Truncation *artifact.Truncation
+}
+
+// MarshalLLM returns the LLM-facing string representation. The
+// base content is the bounded, line-numbered text. When
+// truncation occurred, a recovery hint is appended that names the
+// temp file and instructs the model to use offset={next_offset}.
+func (r *ReadFileResult) MarshalLLM() string {
+	if r.Truncation == nil || !r.Truncation.Truncated() {
+		return r.Content
+	}
+	hint := truncate.RenderHint(
+		ReadFileTool.Format.RecoveryHint,
+		*r.Truncation,
+		map[string]string{
+			"path":     r.TempFilePath,
+			"next_offset": fmt.Sprintf("%d", r.Truncation.ShownLines+1),
+		},
+	)
+	var sb strings.Builder
+	sb.WriteString(r.Content)
+	if hint != "" {
+		sb.WriteString("\n\n")
+		sb.WriteString(hint)
+	}
+	sb.WriteString(fmt.Sprintf("\n[%d lines shown of %d total; full content at %s]",
+		r.Truncation.ShownLines, r.Truncation.OriginalLines, r.TempFilePath))
+	return sb.String()
+}
+
+// Compile-time assertion: *ReadFileResult implements LLMRenderer
+// so the framework handler respects the bounded output verbatim.
+var _ artifact.LLMRenderer = (*ReadFileResult)(nil)
+
+// ReadFile reads a file and returns its line-numbered content
+// with byte-cap truncation and temp-file fallback. When the
+// line-numbered output exceeds the cap, the full file is written
+// to a temp file and the result's TempFilePath points to it; the
+// LLM can read the temp file to retrieve the rest.
+//
 // Parameters:
 //   - path (string, required): relative or absolute file path.
 //   - offset (number, optional, default 1): 1-based starting line.
@@ -121,13 +192,74 @@ func ReadFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, e
 		}
 	}
 
-	return result.String(), nil
+	full := result.String()
+	res := &ReadFileResult{Content: full}
+
+	// Apply the tool's Format cap. If the result is small, this
+	// is a no-op. If it exceeds the cap, the line-numbered output
+	// is truncated and a temp file is written with the FULL file
+	// content (so the model can re-read the parts that were
+	// truncated).
+	cfg := ReadFileTool.Format.ResolvedTruncateConfig()
+	style := ReadFileTool.Format.Style
+	if style == 0 {
+		style = tool.StyleHead
+	}
+	out, trunc := truncate.Truncate(full, cfg, style)
+	if trunc.Truncated() {
+		tempPath, ferr := writeFullFileToTemp(path)
+		if ferr == nil {
+			res.TempFilePath = tempPath
+		}
+		// Even if the temp-file write fails, surface the
+		// truncation so the model knows the result was bounded.
+		res.Content = out
+		res.Truncation = &trunc
+	}
+
+	return res, nil
+}
+
+// writeFullFileToTemp copies the full contents of path to a
+// freshly created temp file. The temp file is created via
+// os.CreateTemp and is not removed automatically; the caller
+// passes the path back to the LLM in the recovery hint and the
+// LLM (or a follow-up call) cleans it up.
+func writeFullFileToTemp(path string) (string, error) {
+	src, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open source: %w", err)
+	}
+	defer src.Close()
+
+	dst, err := os.CreateTemp("", "ore-readfile-*.txt")
+	if err != nil {
+		return "", fmt.Errorf("create temp: %w", err)
+	}
+	// Best-effort close; we capture errors below.
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		os.Remove(dst.Name())
+		return "", fmt.Errorf("copy: %w", err)
+	}
+	if err := dst.Close(); err != nil {
+		os.Remove(dst.Name())
+		return "", fmt.Errorf("close temp: %w", err)
+	}
+	return dst.Name(), nil
 }
 
 // ReadFileTool is the tool.Tool descriptor for ReadFile.
 var ReadFileTool = tool.Tool{
-	Name:        "read_file",
-	Description: "Read the contents of a file. Returns the file contents with line-number prefixes. Optionally specify an offset (1-based starting line) and limit (maximum number of lines to return).",
+	Name: "read_file",
+	Description: "Read the contents of a file. Returns line-number-prefixed content.\n\n" +
+		"Output limits: when the line-numbered output exceeds 50 KB / 2000 " +
+		"lines, the full file is written to a temp file and only the head " +
+		"of the line-numbered content is returned.\n\n" +
+		"Recovery: when truncation occurs, the result includes the temp file " +
+		"path. Read the temp file with read_file to access the full content, " +
+		"or use a more specific offset/limit.",
 	Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -150,6 +282,14 @@ var ReadFileTool = tool.Tool{
 	},
 	DisplayHint: func(args map[string]any) any {
 		return fmt.Sprintf("📄 read_file(%s)", toString(args["path"]))
+	},
+	Format: tool.Format{
+		Truncate: tool.TruncateConfig{
+			MaxBytes: frameworkDefaultByteCap,
+			MaxLines: 2000,
+		},
+		Style: tool.StyleHead,
+		RecoveryHint: "Output truncated. Use offset={next_offset} to continue, or read the full file at {path}.",
 	},
 }
 
@@ -185,7 +325,7 @@ func WriteFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, 
 // WriteFileTool is the tool.Tool descriptor for WriteFile.
 var WriteFileTool = tool.Tool{
 	Name:        "write_file",
-	Description: "Create or overwrite a file with the specified content.",
+	Description: "Create or overwrite a file with the specified content. Returns a short acknowledgement.",
 	Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -251,7 +391,7 @@ func EditFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, e
 // EditFileTool is the tool.Tool descriptor for EditFile.
 var EditFileTool = tool.Tool{
 	Name:        "edit_file",
-	Description: "Edit an existing file by replacing the first exact occurrence of old_string with new_string. Fails if old_string is empty or not found.",
+	Description: "Edit an existing file by replacing the first exact occurrence of old_string with new_string. Fails if old_string is empty or not found. Returns a short acknowledgement.",
 	Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -275,9 +415,42 @@ var EditFileTool = tool.Tool{
 	},
 }
 
+// ListDirectoryResult carries the bounded entry list from a
+// list_directory call, plus optional truncation metadata.
+type ListDirectoryResult struct {
+	Entries    []string
+	Truncation *artifact.Truncation
+}
+
+// MarshalLLM returns the LLM-facing string representation. The
+// base content is a newline-separated list of entries. When
+// truncation occurred, a recovery hint is appended that
+// recommends a higher limit.
+func (r *ListDirectoryResult) MarshalLLM() string {
+	if r.Truncation == nil || !r.Truncation.Truncated() {
+		return strings.Join(r.Entries, "\n")
+	}
+	hint := truncate.RenderHint(
+		ListDirectoryTool.Format.RecoveryHint,
+		*r.Truncation,
+	)
+	var sb strings.Builder
+	sb.WriteString(strings.Join(r.Entries, "\n"))
+	if hint != "" {
+		sb.WriteString("\n\n")
+		sb.WriteString(hint)
+	}
+	sb.WriteString(fmt.Sprintf("\n[%d entries shown of %d total]",
+		r.Truncation.ShownLines, r.Truncation.OriginalLines))
+	return sb.String()
+}
+
+var _ artifact.LLMRenderer = (*ListDirectoryResult)(nil)
+
 // ListDirectory returns a shallow listing of non-hidden entries in a directory.
 // Parameters:
-//   - path (string, required): relative or absolute directory path.
+//   - path  (string, required): relative or absolute directory path.
+//   - limit (number, optional, default 500): maximum entries to return.
 func ListDirectory(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error) {
 	path := toString(args["path"])
 	if path == "" {
@@ -303,22 +476,41 @@ func ListDirectory(ctx context.Context, sb tool.Sandbox, args map[string]any) (a
 		return nil, fmt.Errorf("failed to read directory: %w", err)
 	}
 
-	result := make([]string, 0)
+	all := make([]string, 0)
 	for _, entry := range entries {
 		name := entry.Name()
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
-		result = append(result, name)
+		all = append(all, name)
 	}
 
-	return result, nil
+	limit := toInt(args["limit"], frameworkDefaultListRows)
+	res := &ListDirectoryResult{}
+	if limit > 0 && len(all) > limit {
+		res.Entries = all[:limit]
+		res.Truncation = &artifact.Truncation{
+			OriginalBytes: len(strings.Join(all, "\n")),
+			OriginalLines: len(all),
+			ShownBytes:    len(strings.Join(res.Entries, "\n")),
+			ShownLines:    len(res.Entries),
+			Style:         "head",
+		}
+	} else {
+		res.Entries = all
+	}
+
+	return res, nil
 }
 
 // ListDirectoryTool is the tool.Tool descriptor for ListDirectory.
 var ListDirectoryTool = tool.Tool{
 	Name:        "list_directory",
-	Description: "List the immediate non-hidden entries in a directory. Returns entry names. Hidden entries (names starting with '.') are excluded.",
+	Description: "List the immediate non-hidden entries in a directory. Returns entry names. " +
+		"Hidden entries (names starting with '.') are excluded.\n\n" +
+		"Output limits: capped at 500 entries by default. Use the limit " +
+		"parameter to control the cap. When truncated, the result includes a " +
+		"hint to use a higher limit to see more.",
 	Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -326,11 +518,23 @@ var ListDirectoryTool = tool.Tool{
 				"type":        "string",
 				"description": "The relative or absolute path to the directory to list.",
 			},
+			"limit": map[string]any{
+				"type":        "integer",
+				"description": "Maximum number of entries to return. Defaults to 500.",
+				"default":     frameworkDefaultListRows,
+			},
 		},
 		"required": []string{"path"},
 	},
 	DisplayHint: func(args map[string]any) any {
 		return fmt.Sprintf("📁 list_directory(%s)", toString(args["path"]))
+	},
+	Format: tool.Format{
+		Truncate: tool.TruncateConfig{
+			MaxLines: frameworkDefaultListRows,
+		},
+		Style:        tool.StyleHead,
+		RecoveryHint: "Output truncated. Use limit=2N to see more entries, or limit=N to reduce.",
 	},
 }
 
@@ -345,10 +549,46 @@ type SearchResult struct {
 	Content    string `json:"content"`
 }
 
+// SearchFilesResult carries the bounded match list from a
+// search_files call, plus optional truncation metadata.
+type SearchFilesResult struct {
+	Results    []SearchResult
+	Truncation *artifact.Truncation
+}
+
+// MarshalLLM returns the LLM-facing string representation. The
+// base content is one line per match ("path:line: content"). When
+// truncation occurred, a recovery hint is appended recommending
+// a higher limit or a more specific search.
+func (r *SearchFilesResult) MarshalLLM() string {
+	var sb strings.Builder
+	for _, m := range r.Results {
+		sb.WriteString(fmt.Sprintf("%s:%d: %s\n", m.Path, m.LineNumber, m.Content))
+	}
+	if r.Truncation == nil || !r.Truncation.Truncated() {
+		return sb.String()
+	}
+	hint := truncate.RenderHint(
+		SearchFilesTool.Format.RecoveryHint,
+		*r.Truncation,
+	)
+	if hint != "" {
+		sb.WriteString("\n")
+		sb.WriteString(hint)
+		sb.WriteString("\n")
+	}
+	sb.WriteString(fmt.Sprintf("[%d matches shown of %d total]",
+		r.Truncation.ShownLines, r.Truncation.OriginalLines))
+	return sb.String()
+}
+
+var _ artifact.LLMRenderer = (*SearchFilesResult)(nil)
+
 // SearchFiles searches files for lines matching a regex query.
 // Parameters:
 //   - path  (string, required): file or directory path to search.
 //   - query (string, required): regex pattern to match.
+//   - limit (number, optional, default 1000): maximum matches to return.
 func SearchFiles(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error) {
 	path := toString(args["path"])
 	if path == "" {
@@ -383,9 +623,7 @@ func SearchFiles(ctx context.Context, sb tool.Sandbox, args map[string]any) (any
 		if err != nil {
 			return nil, err
 		}
-		for _, match := range matches {
-			results = append(results, match)
-		}
+		results = append(results, matches...)
 	} else {
 		err = filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
 			if err != nil {
@@ -404,9 +642,7 @@ func SearchFiles(ctx context.Context, sb tool.Sandbox, args map[string]any) (any
 			if err != nil {
 				return nil // Skip files we cannot read.
 			}
-			for _, match := range matches {
-				results = append(results, match)
-			}
+			results = append(results, matches...)
 			return nil
 		})
 		if err != nil {
@@ -414,7 +650,34 @@ func SearchFiles(ctx context.Context, sb tool.Sandbox, args map[string]any) (any
 		}
 	}
 
-	return results, nil
+	limit := toInt(args["limit"], frameworkDefaultSearchRows)
+	res := &SearchFilesResult{}
+	if limit > 0 && len(results) > limit {
+		res.Results = results[:limit]
+		res.Truncation = &artifact.Truncation{
+			OriginalBytes: countResultBytes(results),
+			OriginalLines: len(results),
+			ShownBytes:    countResultBytes(res.Results),
+			ShownLines:    len(res.Results),
+			Style:         "head",
+		}
+	} else {
+		res.Results = results
+	}
+
+	return res, nil
+}
+
+// countResultBytes computes the byte length of search-result
+// lines (path:line: content) for use in Truncation metadata.
+func countResultBytes(results []SearchResult) int {
+	total := 0
+	for _, m := range results {
+		total += len(m.Path) + 1 // path + ':'
+		total += len(fmt.Sprintf("%d", m.LineNumber)) + 2 // line + ": "
+		total += len(m.Content) + 1 // content + '\n'
+	}
+	return total
 }
 
 // searchFile scans a single file for lines matching the given regex.
@@ -448,7 +711,10 @@ func searchFile(path string, re *regexp.Regexp) ([]SearchResult, error) {
 // SearchFilesTool is the tool.Tool descriptor for SearchFiles.
 var SearchFilesTool = tool.Tool{
 	Name:        "search_files",
-	Description: "Search files for lines matching a regex query. Returns matches with file path, line number, and matching line content. If the path is a directory, searches recursively. Hidden files and directories are skipped.",
+	Description: "Search files for lines matching a regex query. Returns matches with file path, line number, and matching line content. If the path is a directory, searches recursively. Hidden files and directories are skipped.\n\n" +
+		"Output limits: capped at 1000 matches by default. Use the limit " +
+		"parameter to control the cap. When truncated, the result includes a " +
+		"hint to use a higher limit or a more specific regex.",
 	Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -460,11 +726,23 @@ var SearchFilesTool = tool.Tool{
 				"type":        "string",
 				"description": "The regex pattern to search for.",
 			},
+			"limit": map[string]any{
+				"type":        "integer",
+				"description": "Maximum number of matches to return. Defaults to 1000.",
+				"default":     frameworkDefaultSearchRows,
+			},
 		},
 		"required": []string{"path", "query"},
 	},
 	DisplayHint: func(args map[string]any) any {
 		return fmt.Sprintf("🔍 search_files(%s, %s)", toString(args["path"]), toString(args["query"]))
+	},
+	Format: tool.Format{
+		Truncate: tool.TruncateConfig{
+			MaxLines: frameworkDefaultSearchRows,
+		},
+		Style:        tool.StyleHead,
+		RecoveryHint: "Output truncated. Use limit=2N to see more matches, or refine the regex.",
 	},
 }
 
