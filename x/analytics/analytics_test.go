@@ -79,7 +79,7 @@ func TestAnalyzeTurns_MixedArtifacts(t *testing.T) {
 		t.Fatalf("expected 6 kind entries, got %d", len(got))
 	}
 
-	byKind := make(map[string]*analytics.KindStats, len(got))
+	byKind := make(map[string]*analytics.Stats, len(got))
 	for i := range got {
 		byKind[got[i].Kind] = &got[i]
 	}
