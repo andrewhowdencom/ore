@@ -122,6 +122,45 @@ func WithMaxTokens(n int64) provider.InvokeOption {
 	return maxTokensOption{n: n}
 }
 
+// sessionIDOption is a per-invocation option that sets a stable session
+// identifier used by the host for prefix-cache affinity. On OpenAI native
+// this maps to the prompt_cache_key request field; on OpenRouter /
+// Anthropic-via-OpenRouter it is informational (Anthropic-style cache_control
+// blocks are the actual cache primitive on those hosts, and the session id
+// is only useful as a stable key if the host chooses to honor it).
+type sessionIDOption struct {
+	id string
+}
+
+func (sessionIDOption) IsInvokeOption() {}
+
+// WithSessionID returns an InvokeOption that sets the prompt_cache_key on
+// outgoing chat completion requests. A stable session id allows OpenAI
+// native to route subsequent requests to the same prefix cache. On other
+// hosts the field is either a no-op or informational; the value is always
+// safe to set.
+func WithSessionID(id string) provider.InvokeOption {
+	return sessionIDOption{id: id}
+}
+
+// cacheControlOption is a per-invocation option that opts into Anthropic-style
+// cache_control blocks on the request. The presence of the option (it is a
+// zero-sized type) is the signal; the value is irrelevant.
+type cacheControlOption struct{}
+
+func (cacheControlOption) IsInvokeOption() {}
+
+// WithCacheControl returns an InvokeOption that, when supplied, causes the
+// provider to emit Anthropic-style cache_control:{type:ephemeral} blocks on
+// (a) the system message content, (b) the last tool definition, and
+// (c) the last user/assistant text content part of the outgoing request.
+// On hosts that ignore unknown fields (e.g. raw OpenAI) the option is a
+// no-op; on OpenRouter and Anthropic-via-OpenRouter it is honored and
+// produces the full Anthropic prompt-cache discount.
+func WithCacheControl() provider.InvokeOption {
+	return cacheControlOption{}
+}
+
 // config holds the build-time configuration for the Provider.
 type config struct {
 	apiKey           string
@@ -322,6 +361,8 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	var temperature float64
 	var reasoningEffort string
 	var maxTokens int64
+	var sessionID string
+	var cacheControl bool
 	for _, opt := range opts {
 		if to, ok := opt.(provider.ToolsOption); ok {
 			tools = to.Tools(ctx, s)
@@ -334,6 +375,12 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		}
 		if mto, ok := opt.(maxTokensOption); ok {
 			maxTokens = mto.n
+		}
+		if sid, ok := opt.(sessionIDOption); ok {
+			sessionID = sid.id
+		}
+		if _, ok := opt.(cacheControlOption); ok {
+			cacheControl = true
 		}
 	}
 
@@ -354,17 +401,39 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	if maxTokens > 0 {
 		params.MaxTokens = param.NewOpt(maxTokens)
 	}
+	if sessionID != "" {
+		// OpenAI native uses this for prefix-cache affinity; on other hosts
+		// it is informational or ignored.
+		params.PromptCacheKey = param.NewOpt(sessionID)
+	}
 
-	// Inject `reasoning: {include: true}` when talking to OpenRouter (or when
-	// the caller has explicitly opted in via WithReasoningInclude). Without
-	// this field, OpenRouter silently drops `delta.reasoning_content` from
-	// the SSE stream, which would defeat the read-side handling at the
-	// bottom of this function. The field is only emitted on resolve at
-	// construction, so other OpenAI-compatible providers never see it.
+	// Build the per-host extra fields. Multiple concerns share the same
+	// SetExtraFields bucket because the SDK's metadata implementation
+	// replaces the whole extra map on each call, so we collect them here
+	// and dispatch once.
+	extra := map[string]any{}
+	if cacheControl {
+		mutMsgs, mutTools, err := applyCacheControl(messages, params.Tools)
+		if err != nil {
+			return fmt.Errorf("apply cache control: %w", err)
+		}
+		extra["messages"] = mutMsgs
+		if mutTools != nil {
+			extra["tools"] = mutTools
+		}
+	}
 	if p.includeReasoning {
-		params.SetExtraFields(map[string]any{
-			"reasoning": map[string]any{"include": true},
-		})
+		// Inject `reasoning: {include: true}` when talking to OpenRouter
+		// (or when the caller has explicitly opted in via
+		// WithReasoningInclude). Without this field, OpenRouter silently
+		// drops `delta.reasoning_content` from the SSE stream, which
+		// would defeat the read-side handling at the bottom of this
+		// function. The field is only emitted on resolve at construction,
+		// so other OpenAI-compatible providers never see it.
+		extra["reasoning"] = map[string]any{"include": true}
+	}
+	if len(extra) > 0 {
+		params.SetExtraFields(extra)
 	}
 
 	stream := p.client.Chat.Completions.NewStreaming(ctx, params)
@@ -373,11 +442,14 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		chunk := stream.Current()
 		if len(chunk.Choices) == 0 {
 			if chunk.Usage.TotalTokens > 0 {
+				cacheRead, cacheWrite := readCacheUsage(chunk.Usage)
 				select {
 				case ch <- artifact.Usage{
 					PromptTokens:     int(chunk.Usage.PromptTokens),
 					CompletionTokens: int(chunk.Usage.CompletionTokens),
 					TotalTokens:      int(chunk.Usage.TotalTokens),
+					CacheReadTokens:  cacheRead,
+					CacheWriteTokens: cacheWrite,
 				}:
 				case <-ctx.Done():
 					return ctx.Err()
@@ -448,4 +520,161 @@ func (p *Provider) serializeTools(tools []tool.Tool) []openai.ChatCompletionTool
 		}
 	}
 	return toolParams
+}
+
+// cacheControlEphemeral is the Anthropic-style cache-control block value. It
+// is the only value the hosts (OpenRouter, Anthropic-via-OpenRouter) honor
+// for prompt caching today. Stored as a package-level constant so the
+// mutation helpers below reference a single source of truth.
+var cacheControlEphemeral = map[string]any{"type": "ephemeral"}
+
+// readCacheUsage extracts the cache read and write token counts from a
+// streaming usage chunk. The function prefers Anthropic-style fields
+// (cache_read_input_tokens / cache_creation_input_tokens, surfaced by
+// OpenRouter and Anthropic-via-OpenRouter) when they are present, and
+// falls back to the OpenAI-native field
+// (usage.prompt_tokens_details.cached_tokens) otherwise. Hosts that report
+// neither leave both return values at zero, which the artifact's
+// `omitempty` JSON tag will hide from the wire.
+//
+// The function is tolerant of malformed or non-numeric values: a parse
+// failure on either Anthropic-style field is treated as zero rather than
+// an error, because a single bad number in a usage chunk should not
+// abort an in-flight stream.
+//
+// Note on presence detection: the openai-go v1.12 apijson decoder marks
+// unmodeled extra fields with status `invalid` whenever the typed
+// respjson.Field cannot consume the JSON value's runtime type (an
+// integer for cache_read_input_tokens, in our case). The raw JSON is
+// still preserved on the field; we therefore use `Raw() != ""` as the
+// presence test rather than `Valid()`.
+func readCacheUsage(usage openai.CompletionUsage) (cacheRead, cacheWrite int) {
+	// Anthropic-via-OpenRouter and raw Anthropic on OpenRouter surface
+	// cache metrics at the top of the usage object. The SDK does not
+	// model these, so they arrive in the JSON extra-fields bucket.
+	if field, ok := usage.JSON.ExtraFields["cache_read_input_tokens"]; ok && field.Raw() != "" && field.Raw() != "null" {
+		var n int64
+		if err := json.Unmarshal([]byte(field.Raw()), &n); err == nil {
+			cacheRead = int(n)
+		}
+		if field, ok := usage.JSON.ExtraFields["cache_creation_input_tokens"]; ok && field.Raw() != "" && field.Raw() != "null" {
+			var n int64
+			if err := json.Unmarshal([]byte(field.Raw()), &n); err == nil {
+				cacheWrite = int(n)
+			}
+		}
+		return cacheRead, cacheWrite
+	}
+	// OpenAI native reports cache hits inside prompt_tokens_details.
+	// Prefer the explicit int64 field on the typed struct over the
+	// JSON fallback.
+	cacheRead = int(usage.PromptTokensDetails.CachedTokens)
+	return cacheRead, 0
+}
+
+// applyCacheControl mutates the marshaled messages and tools slices to add
+// Anthropic-style cache_control:{type:ephemeral} blocks at the three
+// locations the pi reference implementation targets: the system message,
+// the last tool definition, and the last user/assistant text content part.
+// It returns the mutated slices in a form that can be passed to
+// params.SetExtraFields to override the SDK's typed Messages and Tools
+// fields (the openai-go v1.12 SDK does not model cache_control, so the
+// typed path cannot carry the blocks).
+//
+// If the input marshaling fails, the function returns the error and the
+// caller should propagate it. The mutation is conservative: it only
+// touches the targeted locations and leaves every other field unchanged.
+// If a target is absent (no system message, no tools, no text-bearing
+// user/assistant turn) that stamp is silently skipped.
+func applyCacheControl(messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (mutatedMessages []any, mutatedTools []any, err error) {
+	// Marshal the typed messages slice to JSON, then unmarshal to a
+	// mutable []any / map[string]any shape. The round-trip is the only
+	// way to take ownership of the SDK's union types for mutation.
+	msgBytes, err := json.Marshal(messages)
+	if err != nil {
+		return nil, nil, fmt.Errorf("marshal messages: %w", err)
+	}
+	var msgAny []any
+	if err := json.Unmarshal(msgBytes, &msgAny); err != nil {
+		return nil, nil, fmt.Errorf("unmarshal messages: %w", err)
+	}
+
+	// Stamp the system message. There is conventionally at most one; we
+	// stamp the first match and break.
+	for _, m := range msgAny {
+		mm, ok := m.(map[string]any)
+		if !ok {
+			continue
+		}
+		if mm["role"] == "system" {
+			if content, ok := mm["content"].(string); ok {
+				mm["content"] = []any{
+					map[string]any{
+						"type":         "text",
+						"text":         content,
+						"cache_control": cacheControlEphemeral,
+					},
+				}
+			}
+			break
+		}
+	}
+
+	// Walk back from the end to find the last user/assistant message
+	// that carries non-empty text content. Tool messages and assistant
+	// tool-call-only messages are skipped; assistant messages that
+	// contain both text and tool calls still count, because their
+	// `content` field is the text. The first match wins; the loop
+	// terminates immediately after stamping.
+	for i := len(msgAny) - 1; i >= 0; i-- {
+		m, ok := msgAny[i].(map[string]any)
+		if !ok {
+			continue
+		}
+		role, _ := m["role"].(string)
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		// Assistant messages that are tool-call-only (no text content)
+		// leave `content` absent or null in the marshaled JSON; the
+		// type assertion below handles both cases.
+		content, _ := m["content"].(string)
+		if content == "" {
+			continue
+		}
+		m["content"] = []any{
+			map[string]any{
+				"type":         "text",
+				"text":         content,
+				"cache_control": cacheControlEphemeral,
+			},
+		}
+		break
+	}
+
+	mutatedMessages = msgAny
+
+	// Stamp the last tool definition's `function` block. If no tools
+	// are present, leave the tools override unset so SetExtraFields
+	// does not include an empty `tools` key in the request body.
+	if len(tools) > 0 {
+		toolBytes, err := json.Marshal(tools)
+		if err != nil {
+			return nil, nil, fmt.Errorf("marshal tools: %w", err)
+		}
+		var toolAny []any
+		if err := json.Unmarshal(toolBytes, &toolAny); err != nil {
+			return nil, nil, fmt.Errorf("unmarshal tools: %w", err)
+		}
+		if n := len(toolAny); n > 0 {
+			if last, ok := toolAny[n-1].(map[string]any); ok {
+				if fn, ok := last["function"].(map[string]any); ok {
+					fn["cache_control"] = cacheControlEphemeral
+				}
+			}
+		}
+		mutatedTools = toolAny
+	}
+
+	return mutatedMessages, mutatedTools, nil
 }

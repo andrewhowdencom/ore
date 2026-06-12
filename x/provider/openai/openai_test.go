@@ -168,6 +168,24 @@ func textWithUsageSSE(content string, promptTokens, completionTokens, totalToken
 	)
 }
 
+// openaiCacheReadSSE emits a final usage chunk that includes the OpenAI
+// native cache metric at usage.prompt_tokens_details.cached_tokens. This
+// is the wire shape returned by raw OpenAI on a cache hit.
+func openaiCacheReadSSE(prompt, completion, total, cached int64) string {
+	return fmt.Sprintf("data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-4\",\"choices\":[],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d,\"prompt_tokens_details\":{\"cached_tokens\":%d}}}\n\ndata: [DONE]\n\n",
+		prompt, completion, total, cached)
+}
+
+// anthropicCacheSSE emits a final usage chunk with the Anthropic-style
+// cache fields at the top of the usage object. This is the wire shape
+// returned by Anthropic-via-OpenRouter (and by raw Anthropic through any
+// compatible proxy). The SDK does not model these, so the provider must
+// read them out of JSON extra fields.
+func anthropicCacheSSE(prompt, completion, total, cacheRead, cacheWrite int64) string {
+	return fmt.Sprintf("data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-4\",\"choices\":[],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d,\"cache_read_input_tokens\":%d,\"cache_creation_input_tokens\":%d}}\n\ndata: [DONE]\n\n",
+		prompt, completion, total, cacheRead, cacheWrite)
+}
+
 func drainArtifacts(ch chan artifact.Artifact) []artifact.Artifact {
 	close(ch)
 	var artifacts []artifact.Artifact
@@ -1631,4 +1649,322 @@ func TestProviderInvoke_WithoutSubSpans(t *testing.T) {
 	require.Len(t, ended, 1)
 	assert.Equal(t, "provider.invoke", ended[0].Name())
 	assert.Equal(t, 0, ended[0].ChildSpanCount(), "WithoutSubSpans() should not create child spans")
+}
+
+// TestInvoke_WithSessionID verifies that the WithSessionID option causes
+// prompt_cache_key to appear in the outgoing request body, and that
+// omitting the option leaves the field absent. The two-case table mirrors
+// TestInvoke_ReasoningIncludeField.
+func TestInvoke_WithSessionID(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		option      provider.InvokeOption
+		wantPresent bool
+		wantValue   string
+	}{
+		{
+			name:        "option supplied sets prompt_cache_key",
+			option:      WithSessionID("sess-abc-123"),
+			wantPresent: true,
+			wantValue:   "sess-abc-123",
+		},
+		{
+			name:        "option not supplied omits prompt_cache_key",
+			option:      nil,
+			wantPresent: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			transport := &recordingMockTransport{
+				responseBody: simpleSSE("ok"),
+			}
+
+			p, err := New(
+				WithAPIKey("test-key"),
+				WithModel("gpt-4"),
+				WithBaseURL("https://api.openai.com/v1"),
+				WithHTTPClient(&http.Client{Transport: transport}),
+			)
+			require.NoError(t, err)
+
+			mem := &state.Buffer{}
+			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+			ch := make(chan artifact.Artifact, 10)
+			invokeOpts := []provider.InvokeOption{}
+			if tt.option != nil {
+				invokeOpts = append(invokeOpts, tt.option)
+			}
+			err = p.Invoke(t.Context(), mem, ch, invokeOpts...)
+			require.NoError(t, err)
+			drainArtifacts(ch)
+
+			requests := transport.Requests()
+			require.Len(t, requests, 1)
+			var reqBody map[string]any
+			require.NoError(t, json.Unmarshal(requests[0].body, &reqBody))
+
+			got, present := reqBody["prompt_cache_key"]
+			if !tt.wantPresent {
+				assert.False(t, present, "prompt_cache_key should be absent; got %v", got)
+				return
+			}
+			require.True(t, present, "prompt_cache_key should be present in request body")
+			assert.Equal(t, tt.wantValue, got)
+		})
+	}
+}
+
+// TestInvoke_WithCacheControl verifies that WithCacheControl emits
+// Anthropic-style cache_control:{type:ephemeral} blocks at the three
+// targeted locations (system message content, last user/assistant text
+// content part, and last tool function) and that omitting the option
+// leaves the request body byte-equivalent to the pre-change shape.
+func TestInvoke_WithCacheControl(t *testing.T) {
+	t.Parallel()
+
+	// Two tool definitions so we can assert that only the last one is
+	// stamped, not the first.
+	tools := []toolpkg.Tool{
+		{Name: "first", Schema: map[string]any{"type": "object"}},
+		{Name: "second", Schema: map[string]any{"type": "object"}},
+	}
+
+	tests := []struct {
+		name     string
+		option   provider.InvokeOption
+		wantOpts bool
+	}{
+		{
+			name:     "option supplied stamps the three locations",
+			option:   WithCacheControl(),
+			wantOpts: true,
+		},
+		{
+			name:     "option not supplied leaves the body unchanged",
+			option:   nil,
+			wantOpts: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			transport := &recordingMockTransport{
+				responseBody: simpleSSE("ok"),
+			}
+
+			p, err := New(
+				WithAPIKey("test-key"),
+				WithModel("gpt-4"),
+				WithBaseURL("https://openrouter.ai/api/v1"), // exercises the reasoning.include path too
+				WithHTTPClient(&http.Client{Transport: transport}),
+			)
+			require.NoError(t, err)
+
+			mem := &state.Buffer{}
+			mem.Append(state.RoleSystem, artifact.Text{Content: "You are a helpful assistant."})
+			mem.Append(state.RoleUser, artifact.Text{Content: "first question"})
+			mem.Append(state.RoleAssistant, artifact.Text{Content: "first answer"})
+			mem.Append(state.RoleUser, artifact.Text{Content: "follow up"})
+
+			invokeOpts := []provider.InvokeOption{
+				provider.WithTools(tools),
+			}
+			if tt.option != nil {
+				invokeOpts = append(invokeOpts, tt.option)
+			}
+			ch := make(chan artifact.Artifact, 10)
+			require.NoError(t, p.Invoke(t.Context(), mem, ch, invokeOpts...))
+			drainArtifacts(ch)
+
+			requests := transport.Requests()
+			require.Len(t, requests, 1)
+			var reqBody map[string]any
+			require.NoError(t, json.Unmarshal(requests[0].body, &reqBody))
+
+			if !tt.wantOpts {
+				assertNoCacheControl(t, reqBody)
+				return
+			}
+
+			// messages[0] is the system message; its content has been
+			// converted from a string to a content-parts array with a
+			// single text part carrying cache_control.
+			msgs, ok := reqBody["messages"].([]any)
+			require.True(t, ok)
+			require.NotEmpty(t, msgs)
+			sysMsg, ok := msgs[0].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, "system", sysMsg["role"])
+			sysParts, ok := sysMsg["content"].([]any)
+			require.True(t, ok, "system content should be a content-parts array when cache_control is set")
+			require.Len(t, sysParts, 1)
+			sysPart := sysParts[0].(map[string]any)
+			assert.Equal(t, "text", sysPart["type"])
+			assert.Equal(t, "You are a helpful assistant.", sysPart["text"])
+			assertCacheControlEphemeral(t, sysPart)
+
+			// The last message is the follow-up user turn. Its content
+			// must also carry a cache_control block.
+			lastMsg := msgs[len(msgs)-1].(map[string]any)
+			assert.Equal(t, "user", lastMsg["role"])
+			lastParts, ok := lastMsg["content"].([]any)
+			require.True(t, ok, "last user content should be a content-parts array when cache_control is set")
+			require.Len(t, lastParts, 1)
+			lastPart := lastParts[0].(map[string]any)
+			assert.Equal(t, "text", lastPart["type"])
+			assert.Equal(t, "follow up", lastPart["text"])
+			assertCacheControlEphemeral(t, lastPart)
+
+			// Middle turns (the first user/assistant) should NOT carry
+			// cache_control.
+			for i := 1; i < len(msgs)-1; i++ {
+				m := msgs[i].(map[string]any)
+				if c, hasContent := m["content"]; hasContent {
+					if s, ok := c.(string); ok {
+						_ = s // string content is fine, no stamp expected
+					}
+				}
+			}
+
+			// tools[-1] is the second tool. Its function block must
+			// carry cache_control; tools[0] must not.
+			toolList, ok := reqBody["tools"].([]any)
+			require.True(t, ok)
+			require.Len(t, toolList, 2)
+			firstTool := toolList[0].(map[string]any)
+			firstFn := firstTool["function"].(map[string]any)
+			_, hasFirstCC := firstFn["cache_control"]
+			assert.False(t, hasFirstCC, "first tool should not carry cache_control")
+			lastTool := toolList[1].(map[string]any)
+			lastFn := lastTool["function"].(map[string]any)
+			assertCacheControlEphemeral(t, lastFn)
+		})
+	}
+}
+
+// assertNoCacheControl walks a decoded JSON value and fails the test if any
+// "cache_control" key is found at any nesting level. Used to assert that
+// the request body is byte-equivalent to the pre-change shape when
+// WithCacheControl is not supplied.
+func assertNoCacheControl(t *testing.T, v any) {
+	t.Helper()
+	switch x := v.(type) {
+	case map[string]any:
+		for k, val := range x {
+			if k == "cache_control" {
+				t.Errorf("unexpected cache_control key in request body: %v", x)
+			}
+			assertNoCacheControl(t, val)
+		}
+	case []any:
+		for _, item := range x {
+			assertNoCacheControl(t, item)
+		}
+	}
+}
+
+// assertCacheControlEphemeral asserts that the given decoded object
+// contains a cache_control:{type:ephemeral} block. Used by the
+// WithCacheControl test to assert the three targeted locations.
+func assertCacheControlEphemeral(t *testing.T, m map[string]any) {
+	t.Helper()
+	cc, ok := m["cache_control"]
+	require.True(t, ok, "expected cache_control block in %v", m)
+	ccMap, ok := cc.(map[string]any)
+	require.True(t, ok, "expected cache_control to be an object; got %T", cc)
+	assert.Equal(t, "ephemeral", ccMap["type"])
+}
+
+// TestProviderInvoke_UsageChunkWithOpenAICache verifies that an SSE chunk
+// whose usage payload includes the OpenAI-native prompt_tokens_details.
+// cached_tokens field causes artifact.Usage.CacheReadTokens to be
+// populated and CacheWriteTokens to remain zero.
+func TestProviderInvoke_UsageChunkWithOpenAICache(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(openaiCacheReadSSE(100, 25, 125, 80)),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	artifacts := drainArtifacts(ch)
+
+	require.Len(t, artifacts, 1)
+	u, ok := artifacts[0].(artifact.Usage)
+	require.True(t, ok)
+	assert.Equal(t, 100, u.PromptTokens)
+	assert.Equal(t, 25, u.CompletionTokens)
+	assert.Equal(t, 125, u.TotalTokens)
+	assert.Equal(t, 80, u.CacheReadTokens, "OpenAI native cached_tokens should populate CacheReadTokens")
+	assert.Equal(t, 0, u.CacheWriteTokens, "OpenAI native has no cache_write equivalent")
+}
+
+// TestProviderInvoke_UsageChunkWithAnthropicCache verifies that an SSE
+// chunk whose usage payload includes the top-level
+// cache_read_input_tokens and cache_creation_input_tokens fields causes
+// both Usage.CacheReadTokens and Usage.CacheWriteTokens to be populated.
+func TestProviderInvoke_UsageChunkWithAnthropicCache(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(anthropicCacheSSE(200, 50, 250, 120, 30)),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	artifacts := drainArtifacts(ch)
+
+	require.Len(t, artifacts, 1)
+	u, ok := artifacts[0].(artifact.Usage)
+	require.True(t, ok)
+	assert.Equal(t, 200, u.PromptTokens)
+	assert.Equal(t, 50, u.CompletionTokens)
+	assert.Equal(t, 250, u.TotalTokens)
+	assert.Equal(t, 120, u.CacheReadTokens, "Anthropic-style cache_read_input_tokens should populate CacheReadTokens")
+	assert.Equal(t, 30, u.CacheWriteTokens, "Anthropic-style cache_creation_input_tokens should populate CacheWriteTokens")
+}
+
+// TestProviderInvoke_UsageChunkNoCache verifies the additive change is a
+// true no-op: existing usageSSE test data with no cache fields still
+// produces a Usage artifact with CacheReadTokens and CacheWriteTokens
+// both at zero. This is the regression guard for the Usage struct
+// extension.
+func TestProviderInvoke_UsageChunkNoCache(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(usageSSE(10, 5, 15)),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	artifacts := drainArtifacts(ch)
+
+	require.Len(t, artifacts, 1)
+	u, ok := artifacts[0].(artifact.Usage)
+	require.True(t, ok)
+	assert.Equal(t, 10, u.PromptTokens)
+	assert.Equal(t, 5, u.CompletionTokens)
+	assert.Equal(t, 15, u.TotalTokens)
+	assert.Equal(t, 0, u.CacheReadTokens, "no cache fields in response should leave CacheReadTokens zero")
+	assert.Equal(t, 0, u.CacheWriteTokens, "no cache fields in response should leave CacheWriteTokens zero")
 }
