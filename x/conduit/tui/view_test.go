@@ -13,6 +13,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -407,6 +408,50 @@ func TestRenderBlockUnified_NegativeWidth(t *testing.T) {
 	block := renderedBlock{kind: "text", source: "hello", title: "Assistant", style: lipgloss.NewStyle(), expandedByDefault: true}
 	output := renderBlockUnified(block, time.Time{}, true, -1)
 	assert.Contains(t, output, "hello")
+}
+
+// TestRenderBlockUnified_NarrowViewport_HidesCount verifies that when the
+// viewport is too narrow to fit both the title and the count with a
+// single space, the count is dropped entirely (preserving the title).
+func TestRenderBlockUnified_NarrowViewport_HidesCount(t *testing.T) {
+	block := renderedBlock{kind: "text", source: "hello", title: "Assistant", style: lipgloss.NewStyle(), expandedByDefault: true}
+	// width=10: titleW=9, countW=3, titleW+1+countW=13 > 10, but titleW=9 < 10,
+	// so the count is hidden and the title is preserved.
+	output := renderBlockUnified(block, time.Time{}, true, 10)
+	assert.Contains(t, output, "Assistant")
+	assert.NotContains(t, output, "5 B")
+}
+
+// TestRenderBlockUnified_NarrowViewport_TruncatesTitle verifies that when
+// the viewport is narrower than the title itself, the title is truncated
+// with the ellipsis suffix and the count is not shown.
+func TestRenderBlockUnified_NarrowViewport_TruncatesTitle(t *testing.T) {
+	block := renderedBlock{kind: "text", source: "x", title: "VeryLongTitle", style: lipgloss.NewStyle(), expandedByDefault: true}
+	// width=8: titleW=13 > 8, so the title is truncated via truncateString.
+	output := renderBlockUnified(block, time.Time{}, true, 8)
+	assert.Contains(t, output, "…")
+	assert.NotContains(t, output, "VeryLongTitle")
+	assert.NotContains(t, output, "1 B")
+}
+
+// TestRenderBlockUnified_LargeByteCount_Compact verifies that sources
+// larger than 1000 bytes are rendered with the compact "<n> B" suffix
+// (e.g. "1.5K B") and remain right-aligned in wide viewports.
+func TestRenderBlockUnified_LargeByteCount_Compact(t *testing.T) {
+	source := strings.Repeat("a", 1500)
+	block := renderedBlock{kind: "text", source: source, title: "Assistant", style: lipgloss.NewStyle(), expandedByDefault: true}
+	output := renderBlockUnified(block, time.Time{}, true, 80)
+	assert.Contains(t, output, "Assistant")
+	assert.Contains(t, output, "1.5K B")
+	// The count should be right-aligned: "Assistant" is at the start, and
+	// "1.5K B" is at the end of the header line.
+	idxTitle := strings.Index(output, "Assistant")
+	idxCount := strings.Index(output, "1.5K B")
+	assert.Greater(t, idxCount, idxTitle, "count should be right of the title on the same line")
+	// The header line should be exactly 80 runes wide.
+	lines := strings.Split(output, "\n")
+	headerLine := lines[0]
+	assert.Equal(t, 80, ansi.StringWidth(headerLine), "header should be padded to viewport width")
 }
 
 func TestRenderBlockUnified_ToolResultErrorStyle(t *testing.T) {
