@@ -1,7 +1,7 @@
-github.com/andrewhowdencom/ore v0.7.0 h1:r6+9aKHuh28tObSOLbpTPLvg8eMrsQ6Ny6Ig9M18BSg=
-github.com/andrewhowdencom/ore v0.7.0/go.mod h1:21KoIj06hHnZ7SPrV6chXMdU4oRjHheaCI+/kasHIFc=
-github.com/andrewhowdencom/ore/x/tool v0.4.3 h1:VqZutAvuQKnKi4+fV11G/j8IhuOtyFAM+f/DlxohChY=
-github.com/andrewhowdencom/ore/x/tool v0.4.3/go.mod h1:UNMkUhA7Xt3wFAmps3PmRRySqBLp8fhlk8IkN6zqBnQ=
+github.com/andrewhowdencom/ore v0.7.4 h1:/I1MqjVueZp8KmuC/GoNAEolhq24E/lxTRbseXuQgOs=
+github.com/andrewhowdencom/ore v0.7.4/go.mod h1:KxKPSd2cTgl0NoUC+E4/Bs8e2T+Fyv46e+TiH54qxHQ=
+github.com/andrewhowdencom/ore/x/tool v0.4.5 h1:1Q7D9Rojr4fe2A3oMA+cddMTw3WBNvzRnv3u8Ha3ExA=
+github.com/andrewhowdencom/ore/x/tool v0.4.5/go.mod h1:L6rcixSO57QWAITBJf+tRQw0+uGUSywOVlmdea39ji8=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
