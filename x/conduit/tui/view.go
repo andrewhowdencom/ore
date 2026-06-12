@@ -85,11 +85,10 @@ func renderBlockUnified(block renderedBlock, ts time.Time, expanded bool, width 
 	if body == "" {
 		return styledHeader
 	}
-	// Trim any leading newline run from the body so the header and the first
-	// body line render on consecutive lines (no blank row). Glamour can
-	// prepend a single leading "\n" to its rendered output, so TrimLeft
-	// (rather than TrimPrefix) handles "\n", "\n\n", etc. defensively.
-	return styledHeader + "\n" + strings.TrimLeft(body, "\n")
+	// The theme (theme.Dark / theme.Light) sets Document.BlockPrefix to
+	// "" so the body never carries a leading newline; no defensive
+	// trim is required here. The header-to-body join is a single "\n".
+	return styledHeader + "\n" + body
 }
 
 // compactGeneric truncates content to at most two lines and maxWidth runes,
