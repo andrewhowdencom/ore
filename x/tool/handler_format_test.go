@@ -10,6 +10,9 @@ import (
 	toolpkg "github.com/andrewhowdencom/ore/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 // bigString returns a string of n bytes. Used to fabricate tool
@@ -265,4 +268,51 @@ func (b *bigRemoteSource) Tools() []toolpkg.Tool {
 }
 func (b *bigRemoteSource) Call(ctx context.Context, name string, args map[string]any) (any, error) {
 	return bigString(10_000_000), nil
+}
+
+func TestHandler_TraceAttributesOnTruncation(t *testing.T) {
+	t.Parallel()
+
+	sr := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
+	defer tp.Shutdown(context.Background())
+
+	r := toolpkg.NewRegistry()
+	require.NoError(t, r.Register(toolpkg.Tool{Name: "big"}, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {
+		return bigString(10_000_000), nil
+	}))
+
+	h := NewHandler(r, WithTracer(tp.Tracer("test")))
+	emitter := &mockEmitter{}
+
+	err := h.Handle(context.Background(), artifact.ToolCall{
+		ID:        "call_1",
+		Name:      "big",
+		Arguments: `{}`,
+	}, emitter)
+	require.NoError(t, err)
+
+	spans := sr.Ended()
+	require.NotEmpty(t, spans, "expected at least one span")
+	// The tool.execute span should have truncation attributes.
+	toolSpan := spans[0]
+	attrs := toolSpan.Attributes()
+
+	hasTruncated := false
+	var originalBytes, shownBytes attribute.Value
+	for _, a := range attrs {
+		switch string(a.Key) {
+		case "tool.truncated":
+			if a.Value.AsBool() {
+				hasTruncated = true
+			}
+		case "tool.truncation.original_bytes":
+			originalBytes = a.Value
+		case "tool.truncation.shown_bytes":
+			shownBytes = a.Value
+		}
+	}
+	assert.True(t, hasTruncated, "tool.truncated should be true")
+	assert.Equal(t, int64(10_000_002), originalBytes.AsInt64(), "original_bytes should reflect the 10 MB string + JSON quotes")
+	assert.LessOrEqual(t, shownBytes.AsInt64(), int64(toolpkg.FrameworkDefaultMaxBytes))
 }
