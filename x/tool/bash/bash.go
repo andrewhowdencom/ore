@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
@@ -94,7 +95,7 @@ func Bash(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error
 		cmd.Dir = workingDir
 	}
 
-	stdout, stderr, stdoutPath, stderrPath, err := runCommand(cmd, ctx, timeout)
+	stdout, stderr, stdoutPath, stderrPath, stdoutTotal, stderrTotal, err := runCommand(cmd, ctx, timeout)
 	result := &Result{
 		Stdout:     stdout,
 		Stderr:     stderr,
@@ -110,7 +111,13 @@ func Bash(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error
 	// temp file). The framework handler additionally consults
 	// the same Format, but the LLMRenderer opt-out in Result
 	// means handler-level truncation is bypassed for this tool.
-	result.applyTruncation()
+	//
+	// stdoutTotal and stderrTotal are the FULL subprocess byte
+	// counts (from BoundedBuffer.TotalBytes), used to populate
+	// the Truncation.OriginalBytes field so the metadata
+	// reflects what the LLM is missing, not just the bounded
+	// tail size.
+	result.applyTruncation(stdoutTotal, stderrTotal)
 
 	if err != nil {
 		if ctx.Err() != nil {
@@ -135,7 +142,15 @@ func Bash(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error
 // StdoutPath / StderrPath fields are preserved (they were set by
 // runCommand) so the recovery hint in MarshalLLM can reference
 // them.
-func (r *Result) applyTruncation() {
+//
+// stdoutTotal and stderrTotal are the FULL subprocess byte counts
+// from BoundedBuffer.TotalBytes(). These are used to populate
+// Truncation.OriginalBytes — the field describes how much output
+// the LLM is missing, not just the bounded tail size. When the
+// total is unknown (e.g., when applyTruncation is called from
+// tests), the truncator's own OriginalBytes is used as a
+// fallback.
+func (r *Result) applyTruncation(stdoutTotal, stderrTotal int64) {
 	cfg := BashTool.Format.ResolvedTruncateConfig()
 	style := BashTool.Format.Style
 	if style == 0 {
@@ -148,12 +163,17 @@ func (r *Result) applyTruncation() {
 		if r.Truncation == nil {
 			r.Truncation = &artifact.Truncation{}
 		}
-		// Track the largest (most truncated) metadata so the
-		// LLM sees the worst case. In practice stdout and
-		// stderr are usually not both truncated.
-		if stdoutMeta.OriginalBytes > r.Truncation.OriginalBytes {
-			r.Truncation.OriginalBytes = stdoutMeta.OriginalBytes
-			r.Truncation.OriginalLines = stdoutMeta.OriginalLines
+		// Use the full subprocess byte count for OriginalBytes
+		// when available; the truncator's value reflects only
+		// the bounded tail. This makes the metadata more
+		// useful for the LLM (it knows how much it's missing).
+		stdoutOriginal := stdoutMeta.OriginalBytes
+		if stdoutTotal > int64(stdoutOriginal) {
+			stdoutOriginal = int(stdoutTotal)
+		}
+		if stdoutOriginal > r.Truncation.OriginalBytes {
+			r.Truncation.OriginalBytes = stdoutOriginal
+			r.Truncation.OriginalLines = countTruncationLines(r.Stdout, stdoutOriginal)
 			r.Truncation.ShownBytes = stdoutMeta.ShownBytes
 			r.Truncation.ShownLines = stdoutMeta.ShownLines
 			r.Truncation.Style = stdoutMeta.Style
@@ -166,14 +186,30 @@ func (r *Result) applyTruncation() {
 		if r.Truncation == nil {
 			r.Truncation = &artifact.Truncation{}
 		}
-		if stderrMeta.OriginalBytes > r.Truncation.OriginalBytes {
-			r.Truncation.OriginalBytes = stderrMeta.OriginalBytes
-			r.Truncation.OriginalLines = stderrMeta.OriginalLines
+		stderrOriginal := stderrMeta.OriginalBytes
+		if stderrTotal > int64(stderrOriginal) {
+			stderrOriginal = int(stderrTotal)
+		}
+		if stderrOriginal > r.Truncation.OriginalBytes {
+			r.Truncation.OriginalBytes = stderrOriginal
+			r.Truncation.OriginalLines = countTruncationLines(r.Stderr, stderrOriginal)
 			r.Truncation.ShownBytes = stderrMeta.ShownBytes
 			r.Truncation.ShownLines = stderrMeta.ShownLines
 			r.Truncation.Style = stderrMeta.Style
 		}
 	}
+}
+
+// countTruncationLines returns an OriginalLines estimate when
+// the full stream is not available to count. We use the byte
+// density of the bounded tail as a heuristic; the exact line
+// count is unknowable without re-reading the temp file.
+func countTruncationLines(bounded string, originalBytes int) int {
+	if len(bounded) == 0 || originalBytes <= len(bounded) {
+		return strings.Count(bounded, "\n")
+	}
+	density := float64(strings.Count(bounded, "\n")) / float64(len(bounded))
+	return int(density * float64(originalBytes))
 }
 
 // BashTool is the tool.Tool descriptor for Bash.
