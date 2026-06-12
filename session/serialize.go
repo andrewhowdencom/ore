@@ -12,6 +12,13 @@ import (
 // artifactRegistry maps artifact Kind() strings to factory functions
 // that produce the corresponding concrete type. It is used during
 // unmarshaling to instantiate the correct artifact struct.
+//
+// Factories return a pointer because json.Unmarshal requires a
+// pointer target. The pointer is dereferenced in unmarshalArtifacts
+// before being stored in the returned slice, so consumers see value
+// types — matching what in-memory construction (e.g. artifact.Text{})
+// produces. This is the single shape observed at every other boundary
+// in the framework.
 var artifactRegistry = map[string]func() artifact.Artifact{
 	"text":        func() artifact.Artifact { return &artifact.Text{} },
 	"tool_call":   func() artifact.Artifact { return &artifact.ToolCall{} },
@@ -63,6 +70,14 @@ func marshalArtifacts(artifacts []artifact.Artifact) ([]byte, error) {
 }
 
 // unmarshalArtifacts deserializes a JSON array into artifacts.
+//
+// Each factory returns a pointer (required by json.Unmarshal), but the
+// returned slice holds the *dereferenced value* so the round-tripped
+// shape is identical to what in-memory code constructs. This means
+// every type assertion in the framework (e.g. .(artifact.Text))
+// succeeds on round-tripped data — the silent failure mode that
+// issue #416 surfaced for the byte counter, and that affected every
+// value-form type assertion in production code, is fixed here.
 func unmarshalArtifacts(data []byte) ([]artifact.Artifact, error) {
 	var wrappers []artifactWrapper
 	if err := json.Unmarshal(data, &wrappers); err != nil {
@@ -79,9 +94,32 @@ func unmarshalArtifacts(data []byte) ([]artifact.Artifact, error) {
 		if err := json.Unmarshal(w.Data, a); err != nil {
 			return nil, fmt.Errorf("unmarshal artifact %q: %w", w.Kind, err)
 		}
-		artifacts[i] = a
+		artifacts[i] = dereferenceArtifact(a)
 	}
 	return artifacts, nil
+}
+
+// dereferenceArtifact unwraps a pointer to an artifact concrete type
+// to its value. For nil or unknown shapes, the input is returned
+// unchanged. This is the boundary that makes "round-tripped" and
+// "in-memory" artifacts observationally identical at the slice level.
+func dereferenceArtifact(a artifact.Artifact) artifact.Artifact {
+	switch v := a.(type) {
+	case *artifact.Text:
+		return *v
+	case *artifact.Reasoning:
+		return *v
+	case *artifact.ToolCall:
+		return *v
+	case *artifact.ToolResult:
+		return *v
+	case *artifact.Image:
+		return *v
+	case *artifact.Usage:
+		return *v
+	default:
+		return a
+	}
 }
 
 // marshalTurns serializes a slice of turns to JSON.

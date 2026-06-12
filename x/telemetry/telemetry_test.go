@@ -16,14 +16,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// testArtifact is a simple artifact type used for testing the unknown-type
-// JSON fallback in countChars.
-type testArtifact struct {
+// customArtifact is a local type used to exercise the JSON-envelope
+// fallback in llmbytes.Of via the OnEmit path. The dispatcher itself
+// is exhaustively tested in x/llmbytes; this test asserts only that
+// the consumer passes the result through to the metric.
+type customArtifact struct {
 	KindVal string `json:"kind"`
 	Content string `json:"content"`
 }
 
-func (t testArtifact) Kind() string { return t.KindVal }
+func (c customArtifact) Kind() string { return c.KindVal }
 
 // setupTelemetry creates a Telemetry backed by a real SDK meter provider
 // with a ManualReader, so tests can collect and inspect recorded metrics.
@@ -91,58 +93,6 @@ func findDataPoint(t *testing.T, points []metricdata.DataPoint[int64], expected 
 		}
 	}
 	return metricdata.DataPoint[int64]{}, false
-}
-
-func TestCountChars_Text(t *testing.T) {
-	assert.Equal(t, int64(5), countBytes(artifact.Text{Content: "hello"}))
-}
-
-func TestCountChars_Reasoning(t *testing.T) {
-	assert.Equal(t, int64(5), countBytes(artifact.Reasoning{Content: "think"}))
-}
-
-func TestCountChars_ToolCall(t *testing.T) {
-	tc := artifact.ToolCall{ID: "1", Name: "test", Arguments: `{"x":1}`}
-	assert.Equal(t, int64(len(tc.LLMString())), countBytes(tc))
-}
-
-func TestCountChars_ToolResult(t *testing.T) {
-	tr := artifact.ToolResult{ToolCallID: "1", Content: "result"}
-	assert.Equal(t, int64(len(tr.LLMString())), countBytes(tr))
-}
-
-func TestCountChars_Image(t *testing.T) {
-	assert.Equal(t, int64(12), countBytes(artifact.Image{URL: "http://a.b/c"}))
-}
-
-func TestCountChars_Usage(t *testing.T) {
-	assert.Equal(t, int64(0), countBytes(artifact.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15}))
-}
-
-func TestCountChars_UnknownType(t *testing.T) {
-	ta := testArtifact{KindVal: "custom", Content: "hello"}
-	expected, _ := json.Marshal(ta)
-	assert.Equal(t, int64(len(expected)), countBytes(ta))
-}
-
-func TestCountChars_ToolCallWithValue(t *testing.T) {
-	tc := artifact.ToolCall{
-		ID:        "1",
-		Name:      "test",
-		Arguments: `{"x":1}`,
-		Value:     map[string]any{"x": 1},
-	}
-	assert.Equal(t, int64(len(`{"x":1}`)), countBytes(tc))
-}
-
-func TestCountChars_ToolResultWithValue(t *testing.T) {
-	tr := artifact.ToolResult{
-		ToolCallID: "1",
-		Content:    "raw",
-		Value:      map[string]any{"result": "ok"},
-	}
-	expected := `{"result":"ok"}`
-	assert.Equal(t, int64(len(expected)), countBytes(tr))
 }
 
 func TestNew_NilMeter_IsNoOp(t *testing.T) {
@@ -490,6 +440,10 @@ func TestOnEmit_ToolResultWithLLMStringValue(t *testing.T) {
 }
 
 func TestOnEmit_UnknownArtifactType(t *testing.T) {
+	// Asserts the OnEmit path correctly delegates to llmbytes.Of for
+	// custom artifact types (which fall through to the JSON envelope
+	// fallback). The dispatcher itself is exercised exhaustively in
+	// x/llmbytes/llmbytes_test.go.
 	telemetry, reader := setupTelemetry(t)
 	cb := telemetry.OnEmit()
 	ctx := context.Background()
@@ -497,7 +451,7 @@ func TestOnEmit_UnknownArtifactType(t *testing.T) {
 	cb(ctx, loop.TurnCompleteEvent{
 		Turn: state.Turn{
 			Role:      state.RoleUser,
-			Artifacts: []artifact.Artifact{testArtifact{KindVal: "custom", Content: "hello"}},
+			Artifacts: []artifact.Artifact{customArtifact{KindVal: "custom", Content: "hello"}},
 			Timestamp: time.Now(),
 		},
 	})
@@ -506,7 +460,7 @@ func TestOnEmit_UnknownArtifactType(t *testing.T) {
 	sum, ok := findMetric(t, rm, "llm.bytes.sent")
 	require.True(t, ok)
 	require.Len(t, sum.DataPoints, 1)
-	expectedJSON, _ := json.Marshal(testArtifact{KindVal: "custom", Content: "hello"})
+	expectedJSON, _ := json.Marshal(customArtifact{KindVal: "custom", Content: "hello"})
 	assert.Equal(t, int64(len(expectedJSON)), sum.DataPoints[0].Value)
 	assert.Equal(t, map[string]string{
 		"artifact.kind": "custom",

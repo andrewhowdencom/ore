@@ -49,12 +49,12 @@ func TestJSONStore_CrossConduitContinuity(t *testing.T) {
 	assert.Equal(t, state.RoleUser, turns[0].Role)
 	require.Len(t, turns[0].Artifacts, 1)
 	assert.Equal(t, "text", turns[0].Artifacts[0].Kind())
-	assert.Equal(t, &artifact.Text{Content: "hello"}, turns[0].Artifacts[0])
+	assert.Equal(t, artifact.Text{Content: "hello"}, turns[0].Artifacts[0])
 
 	assert.Equal(t, state.RoleAssistant, turns[1].Role)
 	require.Len(t, turns[1].Artifacts, 1)
 	assert.Equal(t, "text", turns[1].Artifacts[0].Kind())
-	assert.Equal(t, &artifact.Text{Content: "hi there"}, turns[1].Artifacts[0])
+	assert.Equal(t, artifact.Text{Content: "hi there"}, turns[1].Artifacts[0])
 
 	// Step 6: Verify timestamps and metadata.
 	assert.True(t, createdAt.Equal(got.CreatedAt), "CreatedAt should be preserved")
