@@ -26,17 +26,24 @@ import (
 //     occurred.
 //   - Close() closes the temp file. It is safe to call Close on a
 //     BoundedBuffer that has not spilled.
+//   - TotalBytes() returns the number of bytes that have been
+//     written to the buffer, including bytes that have been
+//     dropped from the in-memory tail. When a spill has
+//     occurred, this is the size of the temp file (and the
+//     total subprocess output); when no spill has occurred,
+//     this equals len(tail).
 //   - The struct is safe for concurrent use. The mutex serializes
 //     access to the tail and the temp file. The bash tool only
 //     writes from a single goroutine (cmd.Stdout), so contention
 //     is not a concern in practice; the lock is defensive.
 type BoundedBuffer struct {
-	mu    sync.Mutex
-	cap   int
-	tail  []byte
-	file  *os.File
-	path  string
-	spill bool
+	mu         sync.Mutex
+	cap        int
+	tail       []byte
+	file       *os.File
+	path       string
+	spill      bool
+	totalBytes int64
 }
 
 // NewBoundedBuffer creates a BoundedBuffer that retains at most
@@ -65,6 +72,13 @@ const frameworkDefaultTailCap = 50_000
 func (b *BoundedBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	// Track the total bytes written across the lifetime of the
+	// buffer, including bytes that have been dropped from the
+	// in-memory tail. This is the byte count of the full
+	// subprocess output (when a spill has occurred) or the
+	// in-memory tail (when no spill has occurred).
+	b.totalBytes += int64(len(p))
 
 	// Append to the in-memory tail.
 	b.tail = append(b.tail, p...)
@@ -127,6 +141,16 @@ func (b *BoundedBuffer) Path() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.path
+}
+
+// TotalBytes returns the total number of bytes written to the
+// buffer, including bytes that have been dropped from the
+// in-memory tail. When a spill has occurred, this equals the
+// size of the temp file (the full subprocess output).
+func (b *BoundedBuffer) TotalBytes() int64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.totalBytes
 }
 
 // Spilled reports whether the buffer has spilled to a temp file.

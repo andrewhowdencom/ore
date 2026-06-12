@@ -16,7 +16,7 @@ import (
 // The returned strings are the bounded tail. The temp file paths
 // are returned separately so the caller can include them in the
 // tool result's recovery hint.
-func runCommand(cmd *exec.Cmd, ctx context.Context, timeout int) (stdout, stderr, stdoutPath, stderrPath string, err error) {
+func runCommand(cmd *exec.Cmd, ctx context.Context, timeout int) (stdout, stderr, stdoutPath, stderrPath string, stdoutTotal, stderrTotal int64, err error) {
 	stdoutBuf := NewBoundedBuffer(frameworkDefaultTailCap)
 	stderrBuf := NewBoundedBuffer(frameworkDefaultTailCap)
 	cmd.Stdout = stdoutBuf
@@ -29,10 +29,13 @@ func runCommand(cmd *exec.Cmd, ctx context.Context, timeout int) (stdout, stderr
 	if runErr := cmd.Run(); runErr != nil {
 		if ctx.Err() != nil {
 			return stdoutBuf.String(), stderrBuf.String(), stdoutBuf.Path(), stderrBuf.Path(),
+				stdoutBuf.TotalBytes(), stderrBuf.TotalBytes(),
 				fmt.Errorf("command timed out after %d seconds: %w", timeout, ctx.Err())
 		}
-		return stdoutBuf.String(), stderrBuf.String(), stdoutBuf.Path(), stderrBuf.Path(), runErr
+		return stdoutBuf.String(), stderrBuf.String(), stdoutBuf.Path(), stderrBuf.Path(),
+			stdoutBuf.TotalBytes(), stderrBuf.TotalBytes(), runErr
 	}
 
-	return stdoutBuf.String(), stderrBuf.String(), stdoutBuf.Path(), stderrBuf.Path(), nil
+	return stdoutBuf.String(), stderrBuf.String(), stdoutBuf.Path(), stderrBuf.Path(),
+		stdoutBuf.TotalBytes(), stderrBuf.TotalBytes(), nil
 }

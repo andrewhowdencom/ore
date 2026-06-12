@@ -24,7 +24,7 @@ import (
 // The returned strings are the bounded tail. The temp file paths
 // are returned separately so the caller can include them in the
 // tool result's recovery hint.
-func runCommand(cmd *exec.Cmd, ctx context.Context, timeout int) (stdout, stderr, stdoutPath, stderrPath string, err error) {
+func runCommand(cmd *exec.Cmd, ctx context.Context, timeout int) (stdout, stderr, stdoutPath, stderrPath string, stdoutTotal, stderrTotal int64, err error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	stdoutBuf := NewBoundedBuffer(frameworkDefaultTailCap)
@@ -41,7 +41,7 @@ func runCommand(cmd *exec.Cmd, ctx context.Context, timeout int) (stdout, stderr
 	}()
 
 	if startErr := cmd.Start(); startErr != nil {
-		return "", "", "", "", fmt.Errorf("failed to start command: %w", startErr)
+		return "", "", "", "", 0, 0, fmt.Errorf("failed to start command: %w", startErr)
 	}
 
 	done := make(chan error, 1)
@@ -53,15 +53,17 @@ func runCommand(cmd *exec.Cmd, ctx context.Context, timeout int) (stdout, stderr
 	case waitErr := <-done:
 		if ctx.Err() != nil && waitErr != nil {
 			return stdoutBuf.String(), stderrBuf.String(), stdoutBuf.Path(), stderrBuf.Path(),
+				stdoutBuf.TotalBytes(), stderrBuf.TotalBytes(),
 				fmt.Errorf("command timed out after %d seconds: %w", timeout, ctx.Err())
 		}
-		return stdoutBuf.String(), stderrBuf.String(), stdoutBuf.Path(), stderrBuf.Path(), waitErr
+		return stdoutBuf.String(), stderrBuf.String(), stdoutBuf.Path(), stderrBuf.Path(),
+			stdoutBuf.TotalBytes(), stderrBuf.TotalBytes(), waitErr
 	case <-ctx.Done():
 		// Kill the process group (negative PID) so all children
 		// are terminated.
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		<-done
-		return "", "", "", "",
+		return "", "", "", "", 0, 0,
 			fmt.Errorf("command timed out after %d seconds: %w", timeout, ctx.Err())
 	}
 }

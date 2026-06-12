@@ -101,7 +101,7 @@ func TestResult_ApplyTruncation_NoOp(t *testing.T) {
 
 	// Small output should pass through unchanged.
 	r := &Result{Stdout: "hi", Stderr: "err", ExitCode: 0}
-	r.applyTruncation()
+	r.applyTruncation(2, 3)
 	if r.Stdout != "hi" {
 		t.Errorf("Stdout = %q, want %q", r.Stdout, "hi")
 	}
@@ -119,7 +119,7 @@ func TestResult_ApplyTruncation_TruncatesLargeStdout(t *testing.T) {
 	// 200 KB of 'a' characters; default cap is 50 KB.
 	big := strings.Repeat("a", 200_000)
 	r := &Result{Stdout: big, Stderr: "", ExitCode: 0}
-	r.applyTruncation()
+	r.applyTruncation(int64(len(big)), 0)
 	if len(r.Stdout) > 50_000 {
 		t.Errorf("Stdout should be ≤ 50 KB after truncation, got %d bytes", len(r.Stdout))
 	}
@@ -141,7 +141,7 @@ func TestResult_ApplyTruncation_TracksLargest(t *testing.T) {
 		Stderr: strings.Repeat("b", 500_000),
 		ExitCode: 0,
 	}
-	r.applyTruncation()
+	r.applyTruncation(100_000, 500_000)
 	if r.Truncation == nil {
 		t.Fatal("Truncation should be non-nil")
 	}
