@@ -2,11 +2,10 @@ package telemetry
 
 import (
 	"context"
-	"encoding/json"
 
-	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/x/llmbytes"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -68,7 +67,7 @@ func (t *Telemetry) OnEmit() loop.OnEmit {
 		}
 
 		for _, art := range tc.Turn.Artifacts {
-			n := countBytes(art)
+			n := llmbytes.Of(art)
 			if n == 0 {
 				continue
 			}
@@ -81,24 +80,6 @@ func (t *Telemetry) OnEmit() loop.OnEmit {
 	}
 }
 
-func countBytes(art artifact.Artifact) int64 {
-	switch a := art.(type) {
-	case artifact.Text:
-		return int64(len(a.Content))
-	case artifact.Reasoning:
-		return int64(len(a.Content))
-	case artifact.ToolCall:
-		return int64(len(a.LLMString()))
-	case artifact.ToolResult:
-		return int64(len(a.LLMString()))
-	case artifact.Image:
-		return int64(len(a.URL))
-	case artifact.Usage:
-		return 0
-	default:
-		if b, err := json.Marshal(art); err == nil {
-			return int64(len(b))
-		}
-		return 0
-	}
-}
+// countBytes was removed in favor of x/llmbytes.Of, the single
+// canonical implementation shared with x/analytics. See the matching
+// note in x/analytics/analytics.go for the rationale.

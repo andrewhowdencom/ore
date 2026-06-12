@@ -1,12 +1,11 @@
 package analytics
 
 import (
-	"encoding/json"
 	"sort"
 
-	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/x/llmbytes"
 )
 
 // KindStats holds per-artifact-kind statistics: the kind name,
@@ -32,7 +31,7 @@ func AnalyzeTurns(turns []state.Turn) []KindStats {
 				stats[k] = s
 			}
 			s.Count++
-			s.Bytes += countBytes(art)
+			s.Bytes += llmbytes.Of(art)
 		}
 	}
 
@@ -78,7 +77,7 @@ func AnalyzeStore(store session.Store) ([]KindStats, error) {
 					merged[k] = s
 				}
 				s.Count++
-				s.Bytes += countBytes(art)
+				s.Bytes += llmbytes.Of(art)
 			}
 		}
 	}
@@ -93,31 +92,12 @@ func AnalyzeStore(store session.Store) ([]KindStats, error) {
 	return out, nil
 }
 
-// countBytes returns the LLM-facing payload byte size for an artifact.
-// Logic is duplicated from x/telemetry/telemetry.go — keep in sync.
+// countBytes was removed in favor of x/llmbytes.Of, which is the
+// single canonical implementation shared with x/telemetry. Keeping
+// the two packages in lockstep by hand was the proximate cause of
+// issue #416 (the pointer-case regression that miscounted bytes for
+// every artifact that had been JSON round-tripped through a
+// session.Store).
 //
-//nolint:staticcheck // QF1012 — cross-reference comment, not a Go reference.
-//
-//	When updating this function, also update x/telemetry/telemetry.go:countBytes
-//	to keep the two implementations consistent.
-func countBytes(art artifact.Artifact) int64 {
-	switch a := art.(type) {
-	case artifact.Text:
-		return int64(len(a.Content))
-	case artifact.Reasoning:
-		return int64(len(a.Content))
-	case artifact.ToolCall:
-		return int64(len(a.LLMString()))
-	case artifact.ToolResult:
-		return int64(len(a.LLMString()))
-	case artifact.Image:
-		return int64(len(a.URL))
-	case artifact.Usage:
-		return 0
-	default:
-		if b, err := json.Marshal(art); err == nil {
-			return int64(len(b))
-		}
-		return 0
-	}
-}
+// The function previously lived here and in x/telemetry/telemetry.go;
+// both copies have been replaced with a call to llmbytes.Of.

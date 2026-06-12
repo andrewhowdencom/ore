@@ -12,6 +12,8 @@ use (
 	./x/conduit/telegram
 	./x/conduit/tui
 	./x/provider/openai
+	./x/analytics
+	./x/llmbytes
 	./x/telemetry
 	./x/tool
 	./x/tool/bash
