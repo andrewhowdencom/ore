@@ -89,6 +89,57 @@ The `tool/` package defines the core tool execution framework. A `ToolFunc` rece
 - `FileSandbox` — extends `Sandbox` with `ResolvePath()` and `WorkingDirectory()` for filesystem constraints.
 - `ExecSandbox` — extends `Sandbox` with `Run()` for process isolation.
 
+### Tool Format and Default Truncation
+
+The `tool.Tool` struct carries a `Format` field that controls how the
+LLM-facing string for the tool's result is rendered. The default
+behavior is **"framework defaults to safe"**: a tool that returns a
+10 MB string is truncated to a bounded size unless the tool
+explicitly opts out. Third-party tools inherit this property.
+
+- `Format.Truncate` is a `TruncateConfig{MaxBytes, MaxLines}`. Zero
+  values are filled in by the handler with the framework defaults
+  (50 KB byte cap, 2000 line cap) at application time via
+  `Format.ResolvedTruncateConfig()`.
+- `Format.Style` selects head or tail truncation. The zero value is
+  `StyleTail`, which matches terminal-output conventions. File reads
+  typically use `StyleHead`.
+- `Format.RecoveryHint` is a template string with `{name}`
+  placeholders. The handler substitutes known placeholders
+  (`{original_bytes}`, `{original_lines}`, `{shown_bytes}`,
+  `{shown_lines}`, `{style}`, `{next_offset}`) plus any keys
+  provided as tool-specific extras (e.g. `{path}` for the temp
+  file path). Unknown placeholders are left as-is so typos are
+  visible rather than failing the render.
+- Tools that want full control over their LLM-facing string
+  implement `artifact.LLMRenderer`. The handler respects this
+  output verbatim; no further truncation is applied. This is the
+  explicit opt-out path. The bash tool uses it to attach the temp
+  file path and recovery hint without double-truncation.
+- `artifact.ToolResult` gains a `Truncation *Truncation` field
+  when truncation occurred. The struct reports
+  Original/Shown bytes and lines, the style, and the rendered
+  recovery hint. A nil Truncation means no truncation.
+
+The default truncator lives in `x/tool/truncate` (alongside the
+framework `Handler`). It is UTF-8 boundary safe and respects both
+byte and line caps; the smaller of the two kept lengths wins.
+
+The bash tool additionally uses a streaming `BoundedBuffer` to
+cap the host process's heap regardless of subprocess output size.
+A 60 MB `dd if=/dev/zero` no longer allocates 60 MB in the host;
+the buffer holds a rolling 2× tail in memory and spills the full
+byte stream to a temp file when the cap is exceeded. The
+`BoundedBuffer.TotalBytes` method reports the full subprocess
+output size; this is what populates `Truncation.OriginalBytes`
+so the metadata reflects what the LLM is missing, not just the
+size of the bounded tail.
+
+Tool descriptions follow a structured form so the model sees a
+consistent pattern: one-line summary, output limits, recovery
+hint. The `BashTool` description and friends are reference
+examples.
+
 ## Implementation Conventions
 
 ### Dependencies

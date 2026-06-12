@@ -51,6 +51,9 @@ includes:
   x-tool-skills:
     taskfile: Taskfile.lib.yml
     dir: x/tool/skills
+  x-tool-truncate:
+    taskfile: Taskfile.lib.yml
+    dir: x/tool/truncate
 
 tasks:
   setup:
@@ -102,6 +105,7 @@ tasks:
       - task x-tool-mcp:validate
       - task x-tool-sandbox-unsafe:validate
       - task x-tool-skills:validate
+      - task x-tool-truncate:validate
 
   release:
     desc: Release all modules with pending changes
