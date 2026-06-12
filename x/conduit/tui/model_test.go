@@ -16,13 +16,15 @@ import (
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
+	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// newTestModel returns a model with a properly initialized textarea widget.
-// Tests that send key messages or call View() must use this helper to avoid
-// panics from the zero-value textarea.
+// newTestModel returns a model with a properly initialized textarea widget
+// and a dark theme (so tests that reference m.theme.*Style have populated
+// values to read). Tests that send key messages or call View() must use
+// this helper to avoid panics from the zero-value textarea.
 func newTestModel() model {
 	ta := textarea.New()
 	ta.ShowLineNumbers = false
@@ -33,6 +35,7 @@ func newTestModel() model {
 	ta.Focus()
 	return model{
 		textarea: ta,
+		theme:    theme.Dark(),
 	}
 }
 
@@ -51,7 +54,7 @@ func TestHashToolCallID(t *testing.T) {
 }
 
 func TestModel_Update_Turn(t *testing.T) {
-	m := model{}
+	m := model{theme: theme.Dark()}
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	// Simulate incremental artifact event arriving before TurnCompleteEvent.
 	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "hello world"}})
@@ -71,6 +74,7 @@ func TestModel_Update_Turn(t *testing.T) {
 func TestModel_Update_Turn_PreservesReasoning(t *testing.T) {
 	m := model{
 		viewport: viewport.New(viewport.WithWidth(80), viewport.WithHeight(20)),
+		theme:    theme.Dark(),
 	}
 	// Simulate incremental artifact events arriving before TurnCompleteEvent.
 	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "the answer is 42"}})
@@ -92,7 +96,7 @@ func TestModel_Update_Turn_PreservesReasoning(t *testing.T) {
 }
 
 func TestModel_Update_LifecycleDone_ClearsPending(t *testing.T) {
-	m := model{}
+	m := model{theme: theme.Dark()}
 	m.pending = true
 
 	newM, _ := m.Update(lifecycleMsg{phase: "done"})
@@ -123,7 +127,7 @@ func TestModel_Update_LifecycleCancelled_ClearsCurrentTurn(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.pending = true
-	m.currentTurn = renderedTurn{blocks: []renderedBlock{{kind: "text", source: "partial", title: "Assistant", style: assistantStyle, expandedByDefault: true}}}
+	m.currentTurn = renderedTurn{blocks: []renderedBlock{{kind: "text", source: "partial", title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true}}}
 
 	newM, _ := m.Update(lifecycleMsg{phase: "cancelled"})
 	mm := newM.(*model)
@@ -134,7 +138,7 @@ func TestModel_Update_LifecycleCancelled_ClearsCurrentTurn(t *testing.T) {
 }
 
 func TestModel_Update_Turn_Interleaved(t *testing.T) {
-	m := model{}
+	m := model{theme: theme.Dark()}
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	// Simulate incremental artifact events for interleaved text/reasoning/text.
 	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "Hello"}})
@@ -157,7 +161,7 @@ func TestModel_Update_Turn_Interleaved(t *testing.T) {
 }
 
 func TestModel_Update_Status(t *testing.T) {
-	m := model{}
+	m := model{theme: theme.Dark()}
 	newM, _ := m.Update(statusMsg{status: map[string]string{"phase": "thinking..."}})
 	mm := newM.(*model)
 	assert.Equal(t, "thinking...", mm.status["phase"])
@@ -303,7 +307,7 @@ func TestModel_View_ContainsAssistantTurn(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "world"}}},
+		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "world"}}},
 	}
 	m.syncViewport()
 	output := m.View().Content
@@ -379,7 +383,7 @@ func TestModel_View_StatusBarWraps(t *testing.T) {
 	m.width = 40
 	// A long status that will wrap at width 40.
 	m.status = map[string]string{"phase": "thinking very deeply about the problem at hand"}
-	_, statusLines := buildStatusLine(m.status, 40)
+	_, statusLines := buildStatusLine(m.theme, m.status, 40)
 	require.Greater(t, statusLines, 1, "status should wrap to multiple lines")
 
 	// Verify the wrapped status appears in the output.
@@ -588,6 +592,7 @@ func (unknownArtifact) Kind() string { return "unknown" }
 func TestModel_Update_Turn_Assistant_PopulatesRendered(t *testing.T) {
 	m := model{
 		viewport: viewport.New(viewport.WithWidth(80), viewport.WithHeight(20)),
+		theme:    theme.Dark(),
 	}
 	// Simulate incremental artifact event with Markdown text.
 	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "# Hello\n\n**bold** text"}})
@@ -606,6 +611,7 @@ func TestModel_Update_Turn_Assistant_PopulatesRendered(t *testing.T) {
 func TestModel_Update_Turn_User_RendersMarkdown(t *testing.T) {
 	m := model{
 		viewport: viewport.New(viewport.WithWidth(80), viewport.WithHeight(20)),
+		theme:    theme.Dark(),
 		md:       mockMarkdownRenderer{output: "rendered hello world"},
 	}
 	turn := state.Turn{
@@ -963,7 +969,7 @@ func TestModel_WindowTitle_Cancelled(t *testing.T) {
 }
 
 func TestModel_Update_LifecycleSubmittedThenDone(t *testing.T) {
-	m := model{}
+	m := model{theme: theme.Dark()}
 
 	newM, _ := m.Update(lifecycleMsg{phase: "submitted"})
 	mm := newM.(*model)
@@ -975,7 +981,7 @@ func TestModel_Update_LifecycleSubmittedThenDone(t *testing.T) {
 }
 
 func TestModel_Update_Turn_User_DoesNotClearPending(t *testing.T) {
-	m := model{}
+	m := model{theme: theme.Dark()}
 	m.pending = true
 
 	turn := state.Turn{
@@ -990,7 +996,7 @@ func TestModel_Update_Turn_User_DoesNotClearPending(t *testing.T) {
 }
 
 func TestModel_Update_ClearPendingMsg(t *testing.T) {
-	m := model{}
+	m := model{theme: theme.Dark()}
 	m.pending = true
 
 	newM, _ := m.Update(clearPendingMsg{})
@@ -1105,7 +1111,7 @@ func TestModel_Update_RenderTickMsg_DoesNotScrollWhenNotAtBottom(t *testing.T) {
 }
 
 func TestUnknownArtifact_Ignored(t *testing.T) {
-	m := model{}
+	m := model{theme: theme.Dark()}
 	turn := state.Turn{
 		Role: state.RoleAssistant,
 		Artifacts: []artifact.Artifact{
@@ -1156,12 +1162,12 @@ func TestModel_Update_UserAfterTool_DoesNotResetExpand(t *testing.T) {
 	// Simulate an assistant turn with a tool call
 	m.turns = append(m.turns, renderedTurn{
 		role:   state.RoleAssistant,
-		blocks: []renderedBlock{{title: "Tool", style: assistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"}},
+		blocks: []renderedBlock{{title: "Tool", style: m.theme.AssistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"}},
 	})
 	// Simulate a tool result turn
 	m.turns = append(m.turns, renderedTurn{
 		role:   state.RoleTool,
-		blocks: []renderedBlock{{title: "Tool Result", style: toolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"}},
+		blocks: []renderedBlock{{title: "Tool Result", style: m.theme.ToolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"}},
 	})
 	m.expandLatestDetails = true
 
@@ -1277,7 +1283,7 @@ func TestModel_Update_ErrorMsg_Empty(t *testing.T) {
 }
 
 func TestModel_Update_Status_Merges(t *testing.T) {
-	m := model{}
+	m := model{theme: theme.Dark()}
 	newM, _ := m.Update(statusMsg{status: map[string]string{"thread_id": "abc", "phase": "ready"}})
 	mm := newM.(*model)
 	assert.Equal(t, "abc", mm.status["thread_id"])
@@ -1374,7 +1380,7 @@ func TestModel_Update_Status_ZoneFormatter(t *testing.T) {
 // --- Incremental artifact rendering tests (issue #217) ---
 
 func TestModel_Update_ArtifactMsg_AccumulatesBlocks(t *testing.T) {
-	m := model{}
+	m := model{theme: theme.Dark()}
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	// First artifact: text block
 	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "hello"}})
@@ -1391,7 +1397,7 @@ func TestModel_Update_ArtifactMsg_AccumulatesBlocks(t *testing.T) {
 }
 
 func TestModel_Update_ArtifactMsg_FinalizedByTurnMsg(t *testing.T) {
-	m := model{}
+	m := model{theme: theme.Dark()}
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "response"}})
 	mm := newM.(*model)
@@ -1409,7 +1415,7 @@ func TestModel_Update_ArtifactMsg_FinalizedByTurnMsg(t *testing.T) {
 }
 
 func TestModel_Update_ArtifactMsg_ClearedByError(t *testing.T) {
-	m := model{}
+	m := model{theme: theme.Dark()}
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.pending = true
 	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "partial"}})

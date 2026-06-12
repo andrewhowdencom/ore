@@ -50,7 +50,7 @@ func TestModel_View_AssistantTurn_WithRendered(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "# Hello", rendered: "pre-rendered glamour output"}}},
+		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "# Hello", rendered: "pre-rendered glamour output"}}},
 	}
 	m.syncViewport()
 	output := m.View().Content
@@ -71,7 +71,7 @@ func TestModel_View_AssistantTurn_FallbackToPlainText(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "plain text"}}},
+		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "plain text"}}},
 	}
 	m.syncViewport()
 	output := m.View().Content
@@ -91,8 +91,8 @@ func TestModel_View_AssistantTurn_WithReasoning(t *testing.T) {
 	m.expandLatestDetails = true
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
-			{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "the answer"},
-			{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "because 2+2=4"},
+			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "the answer"},
+			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "because 2+2=4"},
 		}},
 	}
 	m.syncViewport()
@@ -115,8 +115,8 @@ func TestModel_View_AssistantTurn_MultiBlockSpacing(t *testing.T) {
 	m.expandLatestDetails = true
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
-			{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "let me think..."},
-			{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "the answer"},
+			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "let me think..."},
+			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "the answer"},
 		}},
 	}
 	m.syncViewport()
@@ -181,8 +181,8 @@ func TestBuildContent_Reasoning_Compact(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
-			{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "the answer", rendered: "the answer"},
-			{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "because 2+2=4"},
+			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "the answer", rendered: "the answer"},
+			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "because 2+2=4"},
 		}},
 	}
 	output := m.buildContent()
@@ -199,8 +199,8 @@ func TestBuildContent_Reasoning_Expanded(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
-			{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "the answer", rendered: "the answer"},
-			{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "because 2+2=4", rendered: "rendered-reasoning"},
+			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "the answer", rendered: "the answer"},
+			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "because 2+2=4", rendered: "rendered-reasoning"},
 		}},
 	}
 	m.expandLatestDetails = true
@@ -218,12 +218,12 @@ func TestBuildContent_Reasoning_OldTurn_AlwaysCompact(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
-			{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "first answer", rendered: "first answer"},
-			{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "first reasoning", rendered: "first-reasoning"},
+			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "first answer", rendered: "first answer"},
+			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "first reasoning", rendered: "first-reasoning"},
 		}},
 		{role: state.RoleAssistant, blocks: []renderedBlock{
-			{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "latest answer", rendered: "latest answer"},
-			{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "latest reasoning", rendered: "latest-reasoning"},
+			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "latest answer", rendered: "latest answer"},
+			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "latest reasoning", rendered: "latest-reasoning"},
 		}},
 	}
 	m.expandLatestDetails = true
@@ -455,7 +455,7 @@ func TestRenderBlockUnified_LargeByteCount_Compact(t *testing.T) {
 }
 
 func TestRenderBlockUnified_ToolResultErrorStyle(t *testing.T) {
-	block := renderedBlock{kind: "tool_result", source: "Error: failed", title: "Tool Result", style: errorStyle, expandedByDefault: false}
+	block := renderedBlock{kind: "tool_result", source: "Error: failed", title: "Tool Result", style: theme.Dark().ErrorStyle, expandedByDefault: false}
 	ts := time.Date(2024, 1, 1, 12, 30, 45, 0, time.UTC)
 	output := renderBlockUnified(block, ts, false, 80)
 	assert.Contains(t, output, "Tool Result")
@@ -719,7 +719,7 @@ func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
 		{
 			role: state.RoleAssistant,
 			blocks: []renderedBlock{
-				{title: "Tool", style: assistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
+				{title: "Tool", style: m.theme.AssistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
 			},
 		},
 		{
@@ -735,12 +735,12 @@ func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
 		},
 	}
 
-	// Compact mode: error block should be wrapped in errorStyle.
+	// Compact mode: error block should be wrapped in the error style.
 	m.expandLatestDetails = false
 	output := m.buildContent()
 	assert.Contains(t, output, "Error: failed")
 
-	// Expanded mode: error block should be wrapped in errorStyle.
+	// Expanded mode: error block should be wrapped in the error style.
 	m.expandLatestDetails = true
 	m.contentDirty = true
 	output = m.buildContent()
@@ -757,15 +757,15 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 		{
 			role: state.RoleAssistant,
 			blocks: []renderedBlock{
-				{title: "Tool", style: assistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
-				{title: "Tool", style: assistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: bar({})", compact: "bar", toolCallID: "call_2"},
+				{title: "Tool", style: m.theme.AssistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
+				{title: "Tool", style: m.theme.AssistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: bar({})", compact: "bar", toolCallID: "call_2"},
 			},
 		},
 		{
 			role: state.RoleTool,
 			blocks: []renderedBlock{
-				{title: "Tool Result", style: toolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result1", compact: "result1", toolCallID: "call_1"},
-				{title: "Tool Result", style: toolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result2", compact: "result2", toolCallID: "call_2"},
+				{title: "Tool Result", style: m.theme.ToolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result1", compact: "result1", toolCallID: "call_1"},
+				{title: "Tool Result", style: m.theme.ToolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result2", compact: "result2", toolCallID: "call_2"},
 			},
 		},
 	}
@@ -800,15 +800,15 @@ func TestBuildContent_MixedBlocks(t *testing.T) {
 			role: state.RoleAssistant,
 			blocks: []renderedBlock{
 				{title: "Tool", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "intro", rendered: "intro"},
-				{title: "Tool", style: assistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
-				{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "think", rendered: "think"},
+				{title: "Tool", style: m.theme.AssistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
+				{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "think", rendered: "think"},
 				{title: "Tool", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "outro", rendered: "outro"},
 			},
 		},
 		{
 			role: state.RoleTool,
 			blocks: []renderedBlock{
-				{title: "Tool Result", style: toolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"},
+				{title: "Tool Result", style: m.theme.ToolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"},
 			},
 		},
 	}
@@ -852,7 +852,7 @@ func TestBuildContent_ToggleNoToolBlocks(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 
 	m.turns = []renderedTurn{
-		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "hello", rendered: "hello"}}},
+		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "hello", rendered: "hello"}}},
 	}
 
 	// Toggle on — no tool blocks, view should be unchanged
@@ -871,7 +871,7 @@ func TestBuildContent_CompactToolCall_BlockStyling(t *testing.T) {
 		{
 			role: state.RoleAssistant,
 			blocks: []renderedBlock{
-				{title: "Tool", style: assistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
+				{title: "Tool", style: m.theme.AssistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
 			},
 		},
 	}
@@ -966,7 +966,7 @@ func TestBuildContent_ActiveReasoning_Counter(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.currentTurn.blocks = []renderedBlock{
-		{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "abc"},
+		{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "abc"},
 	}
 	output := m.buildContent()
 	assert.Contains(t, output, "Thinking")
@@ -978,7 +978,7 @@ func TestBuildContent_ActiveReasoning_UnicodeCounter(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.currentTurn.blocks = []renderedBlock{
-		{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "日本語"},
+		{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "日本語"},
 	}
 	output := m.buildContent()
 	assert.Contains(t, output, "Thinking")
@@ -991,8 +991,8 @@ func TestBuildContent_CompletedReasoning_CharCount(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	// Reasoning followed by text means reasoning is no longer the active (last) block.
 	m.currentTurn.blocks = []renderedBlock{
-		{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "let me think..."},
-		{title: "Assistant", style: assistantStyle, expandedByDefault: true, kind: "text", source: "the answer"},
+		{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "let me think..."},
+		{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "the answer"},
 	}
 	output := m.buildContent()
 	assert.Contains(t, output, "Thinking")
@@ -1004,7 +1004,7 @@ func TestBuildContent_Reasoning_Expanded_NoCounter(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.expandLatestDetails = true
 	m.currentTurn.blocks = []renderedBlock{
-		{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "let me think...", rendered: "rendered-reasoning"},
+		{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "let me think...", rendered: "rendered-reasoning"},
 	}
 	output := m.buildContent()
 	assert.Contains(t, output, "Thinking")
@@ -1018,7 +1018,7 @@ func TestBuildContent_HistoricalReasoning_CharCount(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
-			{title: "Thinking", style: thinkingStyle, expandedByDefault: false, kind: "reasoning", source: "historical reasoning"},
+			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "historical reasoning"},
 		}},
 	}
 	output := m.buildContent()
@@ -1156,7 +1156,7 @@ func TestBuildStatusLine_TokenKeysGrouped(t *testing.T) {
 		"total":     "150",
 		"thread_id": "abc-123",
 	}
-	rendered, lines := buildStatusLine(status, 200)
+	rendered, lines := buildStatusLine(theme.Dark(), status, 200)
 	assert.Equal(t, 1, lines)
 	// Token keys should appear grouped as a single segment with display symbols.
 	assert.Contains(t, rendered, "↑ 100")
@@ -1172,7 +1172,7 @@ func TestBuildStatusLine_TokenKeysPartial(t *testing.T) {
 	status := map[string]string{
 		"total": "42",
 	}
-	rendered, lines := buildStatusLine(status, 200)
+	rendered, lines := buildStatusLine(theme.Dark(), status, 200)
 	assert.Equal(t, 1, lines)
 	assert.Contains(t, rendered, "Σ 42")
 	assert.NotContains(t, rendered, "↑")
@@ -1183,7 +1183,7 @@ func TestBuildStatusLine_NoTokenKeys(t *testing.T) {
 	status := map[string]string{
 		"phase": "streaming",
 	}
-	rendered, lines := buildStatusLine(status, 200)
+	rendered, lines := buildStatusLine(theme.Dark(), status, 200)
 	assert.Equal(t, 1, lines)
 	assert.Contains(t, rendered, "phase: streaming")
 	assert.NotContains(t, rendered, "tokens")
@@ -1200,7 +1200,7 @@ func TestBuildStatusLine_ZoneGrouping(t *testing.T) {
 		"context":   1,
 		"default":   99,
 	}
-	str, lines := buildStatusLineFromSegments(segments, priorities, 80)
+	str, lines := buildStatusLineFromSegments(theme.Dark(), segments, priorities, 80)
 	assert.Equal(t, 2, lines, "zones render on separate lines")
 	// Lifecycle zone comes first (priority 0), then context (priority 1).
 	assert.Contains(t, str, "Lifecycle:")
@@ -1221,7 +1221,7 @@ func TestBuildStatusLine_PriorityTruncation(t *testing.T) {
 	}
 	// At width 40, both zones together fit within maxStatusLines (3). The lower-
 	// priority "context" zone should now be included.
-	str, _ := buildStatusLineFromSegments(segments, priorities, 40)
+	str, _ := buildStatusLineFromSegments(theme.Dark(), segments, priorities, 40)
 	assert.Contains(t, str, "phase: streaming")
 	// Context zone should be included now that maxStatusLines is 3.
 	assert.Contains(t, str, "model:")
@@ -1236,7 +1236,7 @@ func TestBuildStatusLine_UnmappedKeysDefaultZone(t *testing.T) {
 		"lifecycle": 0,
 		"default":   99,
 	}
-	str, _ := buildStatusLineFromSegments(segments, priorities, 80)
+	str, _ := buildStatusLineFromSegments(theme.Dark(), segments, priorities, 80)
 	// Lifecycle zone label is bold and capitalized.
 	assert.Contains(t, str, "Lifecycle:")
 	// Default zone should NOT have a zone label (backward compatibility).
@@ -1249,7 +1249,7 @@ func TestBuildStatusLine_WrapsAtWidth(t *testing.T) {
 		"phase": "thinking very deeply about the problem at hand and considering all possibilities",
 	}
 	width := 30
-	str, lines := buildStatusLine(status, width)
+	str, lines := buildStatusLine(theme.Dark(), status, width)
 	assert.Greater(t, lines, 1, "long status should wrap to multiple lines")
 	assert.Contains(t, str, "\n", "wrapped string should contain newlines")
 
@@ -1264,7 +1264,7 @@ func TestBuildStatusLine_NegativeWidth(t *testing.T) {
 	status := map[string]string{
 		"phase": "submitted",
 	}
-	rendered, lines := buildStatusLine(status, -1)
+	rendered, lines := buildStatusLine(theme.Dark(), status, -1)
 	assert.NotEmpty(t, rendered)
 	assert.Equal(t, 1, lines)
 }
