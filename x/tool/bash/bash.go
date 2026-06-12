@@ -8,13 +8,21 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/tool"
+	"github.com/andrewhowdencom/ore/x/tool/truncate"
 )
 
 // Compile-time type check.
 var _ tool.ToolFunc = Bash
 
-// Bash executes a shell command and returns its stdout, stderr, and exit code.
+// Bash executes a shell command and returns its stdout, stderr, and
+// exit code. Output is captured by a streaming, bounded accumulator
+// (BoundedBuffer) that retains a rolling 2*frameworkDefaultTailCap
+// tail in memory and spills the full byte stream to a temp file
+// when the cap is exceeded. The temp file path is included in the
+// result so the LLM can read the full output via read_file.
+//
 // Parameters:
 //   - command (string, required): the shell command to execute.
 //   - working_directory (string, optional): the directory to execute the command in.
@@ -36,7 +44,10 @@ func Bash(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error
 		timeout = 30
 	}
 
-	// Delegate to ExecSandbox if available.
+	// Delegate to ExecSandbox if available. The exec sandbox
+	// runs the command in its own environment; it returns strings
+	// (not bounded buffers) and may not support streaming. We
+	// wrap the result in a Result with no spilling.
 	if execSb, ok := sb.(tool.ExecSandbox); ok {
 		dir := workingDir
 		if dir == "" {
@@ -83,37 +94,99 @@ func Bash(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error
 		cmd.Dir = workingDir
 	}
 
-	stdout, stderr, err := runCommand(cmd, ctx, timeout)
+	stdout, stderr, stdoutPath, stderrPath, err := runCommand(cmd, ctx, timeout)
+	result := &Result{
+		Stdout:     stdout,
+		Stderr:     stderr,
+		ExitCode:   0,
+		StdoutPath: stdoutPath,
+		StderrPath: stderrPath,
+	}
+
+	// Apply framework-default truncation to the result. The
+	// tool's Format declaration controls the cap; we honor it
+	// here so the Result's Stdout/Stderr are already bounded
+	// (and MarshalLLM has the recovery hint to point to the
+	// temp file). The framework handler additionally consults
+	// the same Format, but the LLMRenderer opt-out in Result
+	// means handler-level truncation is bypassed for this tool.
+	result.applyTruncation()
 
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, fmt.Errorf("command timed out after %d seconds: %w", timeout, ctx.Err())
+			return result, fmt.Errorf("command timed out after %d seconds: %w", timeout, ctx.Err())
 		}
 
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return &Result{
-				Stdout:   stdout,
-				Stderr:   stderr,
-				ExitCode: exitErr.ExitCode(),
-			}, fmt.Errorf("command exited with code %d", exitErr.ExitCode())
+			result.ExitCode = exitErr.ExitCode()
+			return result, fmt.Errorf("command exited with code %d", exitErr.ExitCode())
 		}
 
-		return nil, fmt.Errorf("command execution failed: %w", err)
+		return result, fmt.Errorf("command execution failed: %w", err)
 	}
 
-	return &Result{
-		Stdout:   stdout,
-		Stderr:   stderr,
-		ExitCode: 0,
-	}, nil
+	return result, nil
+}
+
+// applyTruncation runs the framework's truncator over the
+// Result's stdout and stderr, replacing each with the bounded
+// tail and recording the Truncation metadata on the result. The
+// StdoutPath / StderrPath fields are preserved (they were set by
+// runCommand) so the recovery hint in MarshalLLM can reference
+// them.
+func (r *Result) applyTruncation() {
+	cfg := BashTool.Format.ResolvedTruncateConfig()
+	style := BashTool.Format.Style
+	if style == 0 {
+		style = tool.StyleTail
+	}
+
+	stdoutOut, stdoutMeta := truncate.Truncate(r.Stdout, cfg, style)
+	r.Stdout = stdoutOut
+	if stdoutMeta.Truncated() {
+		if r.Truncation == nil {
+			r.Truncation = &artifact.Truncation{}
+		}
+		// Track the largest (most truncated) metadata so the
+		// LLM sees the worst case. In practice stdout and
+		// stderr are usually not both truncated.
+		if stdoutMeta.OriginalBytes > r.Truncation.OriginalBytes {
+			r.Truncation.OriginalBytes = stdoutMeta.OriginalBytes
+			r.Truncation.OriginalLines = stdoutMeta.OriginalLines
+			r.Truncation.ShownBytes = stdoutMeta.ShownBytes
+			r.Truncation.ShownLines = stdoutMeta.ShownLines
+			r.Truncation.Style = stdoutMeta.Style
+		}
+	}
+
+	stderrOut, stderrMeta := truncate.Truncate(r.Stderr, cfg, style)
+	r.Stderr = stderrOut
+	if stderrMeta.Truncated() {
+		if r.Truncation == nil {
+			r.Truncation = &artifact.Truncation{}
+		}
+		if stderrMeta.OriginalBytes > r.Truncation.OriginalBytes {
+			r.Truncation.OriginalBytes = stderrMeta.OriginalBytes
+			r.Truncation.OriginalLines = stderrMeta.OriginalLines
+			r.Truncation.ShownBytes = stderrMeta.ShownBytes
+			r.Truncation.ShownLines = stderrMeta.ShownLines
+			r.Truncation.Style = stderrMeta.Style
+		}
+	}
 }
 
 // BashTool is the tool.Tool descriptor for Bash.
 var BashTool = tool.Tool{
 	Name: "bash",
-	Description: "Execute a shell command. Returns stdout, stderr, and exit code. " +
-		"Use this to run builds, tests, package managers, git operations, and other shell tasks.",
+	Description: "Execute a shell command. Returns stdout, stderr, and exit code.\n\n" +
+		"Output limits: stdout and stderr are each captured by a streaming, " +
+		"bounded-memory accumulator. When a stream exceeds the cap, the full " +
+		"output is written to a temp file (path included in the result) and " +
+		"only the tail is returned.\n\n" +
+		"Recovery: when truncation occurs, the result includes the temp file " +
+		"path. Use read_file on the path to read the full output, or use " +
+		"grep/tail/head on it to extract the relevant lines.",
 	Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -134,6 +207,18 @@ var BashTool = tool.Tool{
 		"required": []string{"command"},
 	},
 	DisplayHint: BashDisplayHint,
+	Format: tool.Format{
+		// Apply framework default truncation to the result. The
+		// BoundedBuffer already bounds in-memory retention; this
+		// truncator bounds the LLM-facing string so that
+		// the per-turn cost from a multi-MB tool result is
+		// predictable. The temp file path is the recovery
+		// channel; the LLM can use read_file to read more.
+		Truncate: tool.TruncateConfig{
+			MaxBytes: 50_000,
+			MaxLines: 2_000,
+		},
+	},
 }
 
 // bashDisplay renders a bash tool call as a Markdown code block.
@@ -188,3 +273,5 @@ func toInt(v any, def int) int {
 	}
 	return def
 }
+
+
