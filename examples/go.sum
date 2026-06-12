@@ -12,14 +12,14 @@ github.com/alecthomas/chroma/v2 v2.20.0 h1:sfIHpxPyR07/Oylvmcai3X/exDlE8+FA820NT
 github.com/alecthomas/chroma/v2 v2.20.0/go.mod h1:e7tViK0xh/Nf4BYHl00ycY6rV7b8iXBksI9E359yNmA=
 github.com/alecthomas/repr v0.5.1 h1:E3G4t2QbHTSNpPKBgMTln5KLkZHLOcU7r37J4pXBuIg=
 github.com/alecthomas/repr v0.5.1/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
-github.com/andrewhowdencom/ore v0.7.2 h1:NXCSKrDeDkdCX5jNirGCgA7JlAVrqVEeaDrXPmgHumk=
-github.com/andrewhowdencom/ore v0.7.2/go.mod h1:KxKPSd2cTgl0NoUC+E4/Bs8e2T+Fyv46e+TiH54qxHQ=
+github.com/andrewhowdencom/ore v0.7.3 h1:J1sGL0li/jH9KA8pMsiz73qI5SkHggPFVHA1oFOxA74=
+github.com/andrewhowdencom/ore v0.7.3/go.mod h1:KxKPSd2cTgl0NoUC+E4/Bs8e2T+Fyv46e+TiH54qxHQ=
 github.com/andrewhowdencom/ore/x/conduit v0.1.3 h1:ulhVcLr0zVWbbwS32JfDWRK2Tlgrsr5+J4gqFboOljs=
 github.com/andrewhowdencom/ore/x/conduit v0.1.3/go.mod h1:83aDeFABkaP1x98A9jxkqIr3zN4XsiprPnpAxHGpPFw=
 github.com/andrewhowdencom/ore/x/conduit/http v0.7.1 h1:6zIEOs4gSmVutW73L9gqok21s64yACVCpWhTZ0NO/yQ=
 github.com/andrewhowdencom/ore/x/conduit/http v0.7.1/go.mod h1:n/ULGvQMEyZXmwMgLhuKMl0b8A3dsHlSkiJVXTWV8cw=
-github.com/andrewhowdencom/ore/x/conduit/tui v0.8.2 h1:4MY3QRVg7rWedCkEC8Fkxe4OKBRMSW0vWEqwf4YbdgU=
-github.com/andrewhowdencom/ore/x/conduit/tui v0.8.2/go.mod h1:kI5AqsWEjvButvRaNaaYJye854hffPyqjgpAq+QpubI=
+github.com/andrewhowdencom/ore/x/conduit/tui v0.8.4 h1:Azz99nUCJrmpu4NpXD/ofLJqq5ImtbFBDcXXUM2us2k=
+github.com/andrewhowdencom/ore/x/conduit/tui v0.8.4/go.mod h1:3IgfwBeZavnK56H7HBHDDT7REYqZHSOcSaiFShk7KvY=
 github.com/andrewhowdencom/ore/x/provider/openai v0.4.4 h1:8150zzOcQNA7sxFT8EgSvEGLxxa1jCo0kzxWfvKbajs=
 github.com/andrewhowdencom/ore/x/provider/openai v0.4.4/go.mod h1:ZygFA5AGknrk/HHgO0ApD8dXKbeHOHx+/BaSLTxK6tU=
 github.com/andrewhowdencom/ore/x/telemetry v0.1.1 h1:iojQ91KU238NDOBvZNyFDn3vjurF5a9jcHCM1fjQ8E0=
@@ -30,6 +30,8 @@ github.com/andrewhowdencom/ore/x/tool/calculator v0.2.3 h1:8ZlPBtjrJdAMgXqDCLAqz
 github.com/andrewhowdencom/ore/x/tool/calculator v0.2.3/go.mod h1:0V5i6Rdpam7DwVxN4oK3n3Wft7awc4bO6oIClF1+s+8=
 github.com/andrewhowdencom/ore/x/tool/filesystem v0.4.3 h1:6SCBfsCzihvb//RNV/VIKI7XJMhpulkbw667XMejuss=
 github.com/andrewhowdencom/ore/x/tool/filesystem v0.4.3/go.mod h1:tfr5RUCzGz8Zx892yTNNiKLSfSL+AE+tN+JSxOS3X/4=
+github.com/andrewhowdencom/ore/x/tool/set_title v0.1.0 h1:OJA0Qgz0r8MS5UYOJfmynk6+dklBgTFYzEpMU89cxbA=
+github.com/andrewhowdencom/ore/x/tool/set_title v0.1.0/go.mod h1:fWtm0B6BE38+HXSYvbR+HyJNyQVZgx+z4Wd8bleqZqs=
 github.com/andrewhowdencom/ore/x/usage v0.1.3 h1:FgpfL6ktRWXqtQtBG0C9F8aJVYYAFqMDynZvKr3qA5U=
 github.com/andrewhowdencom/ore/x/usage v0.1.3/go.mod h1:6E6BoskPW21dlDXpc5ivNqJ1bxkTmOnneUhc97ixoFE=
 github.com/andrewhowdencom/ore/x/verifier v0.1.1 h1:RkRd3gFkX/Pd1pJuXmNpO23ZHVorgaqXEnKQuHzTN0M=
