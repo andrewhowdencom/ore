@@ -39,6 +39,7 @@ import (
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
+	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -170,7 +171,7 @@ func (t *TUI) initModel(eventsCh chan session.Event, stream *session.Stream) mod
 		eventsCh:       eventsCh,
 		viewport:       viewport.New(),
 		textarea:       ta,
-		md:             newGlamourMarkdownRenderer(),
+		md:             newGlamourMarkdownRenderer(theme.Auto()),
 		name:           t.name,
 		zoneFormatter:  t.zoneFormatter,
 		statusLabels:   t.statusLabels,

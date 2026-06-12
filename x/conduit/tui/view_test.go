@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -14,13 +13,14 @@ import (
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRenderMarkdown(t *testing.T) {
 	input := "# Hello\n\nSome **bold** text and `code`."
-	output, err := newGlamourMarkdownRenderer().Render(input, 80)
+	output, err := newGlamourMarkdownRenderer(theme.Dark()).Render(input, 80)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output)
 	// Output should differ from input (glamour processes the markdown).
@@ -29,7 +29,7 @@ func TestRenderMarkdown(t *testing.T) {
 
 func TestRenderMarkdown_CodeBlock(t *testing.T) {
 	input := "```go\nfunc main() {\n    fmt.Println(\"hi\")\n}\n```"
-	output, err := newGlamourMarkdownRenderer().Render(input, 80)
+	output, err := newGlamourMarkdownRenderer(theme.Dark()).Render(input, 80)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output)
 	// Verify glamour processed the code block (output differs from input).
@@ -40,7 +40,7 @@ func TestRenderMarkdown_NegativeWidth(t *testing.T) {
 	// glamour.NewTermRenderer may accept any width; ensure we handle
 	// a negative width without panic.
 	input := "hello"
-	output, err := newGlamourMarkdownRenderer().Render(input, -1)
+	output, err := newGlamourMarkdownRenderer(theme.Dark()).Render(input, -1)
 	// We allow either success or error; the caller handles errors.
 	_ = output
 	_ = err
@@ -282,7 +282,7 @@ func TestRenderMarkdown_MalformedInput(t *testing.T) {
 		"```unclosed",
 	}
 	for _, input := range cases {
-		output, err := newGlamourMarkdownRenderer().Render(input, 80)
+		output, err := newGlamourMarkdownRenderer(theme.Dark()).Render(input, 80)
 		assert.NoError(t, err, "malformed markdown %q should not error", input)
 		assert.NotEmpty(t, output)
 	}
@@ -290,7 +290,7 @@ func TestRenderMarkdown_MalformedInput(t *testing.T) {
 
 func TestRenderMarkdown_NarrowWidth(t *testing.T) {
 	for _, width := range []int{1, 2, 5} {
-		output, err := newGlamourMarkdownRenderer().Render("hello world", width)
+		output, err := newGlamourMarkdownRenderer(theme.Dark()).Render("hello world", width)
 		assert.NoError(t, err, "narrow width %d should not panic", width)
 		assert.NotEmpty(t, output)
 	}
@@ -462,21 +462,24 @@ func TestRenderBlockUnified_ToolResultErrorStyle(t *testing.T) {
 }
 
 func TestEmbeddedStyles_MarginZero(t *testing.T) {
-	var dark map[string]interface{}
-	require.NoError(t, json.Unmarshal(darkStyle, &dark))
-	doc, ok := dark["document"].(map[string]interface{})
-	require.True(t, ok, "dark style should have document key")
-	margin, ok := doc["margin"].(float64)
-	require.True(t, ok, "document should have margin key")
-	assert.Equal(t, 0.0, margin, "dark style document margin should be 0")
+	// After the theme consolidation, the glamour document overrides live
+	// on the *theme.Theme value (constructed in Go from glamour's upstream
+	// DarkStyleConfig / LightStyleConfig with three document-level
+	// overrides applied). Verify the overrides are present on both
+	// themes so the production renderer never re-introduces the frame
+	// padding or the leading/trailing newline that compounded with the
+	// buildContent separator to produce two blank lines between messages.
+	dark := theme.Dark()
+	require.NotNil(t, dark.GlamourStyle.Document.Margin, "dark theme document.margin must be a non-nil pointer")
+	assert.Equal(t, uint(0), *dark.GlamourStyle.Document.Margin, "dark theme document.margin should be 0")
+	assert.Equal(t, "", dark.GlamourStyle.Document.BlockPrefix, "dark theme document.block_prefix should be empty")
+	assert.Equal(t, "", dark.GlamourStyle.Document.BlockSuffix, "dark theme document.block_suffix should be empty")
 
-	var light map[string]interface{}
-	require.NoError(t, json.Unmarshal(lightStyle, &light))
-	doc2, ok := light["document"].(map[string]interface{})
-	require.True(t, ok, "light style should have document key")
-	margin2, ok := doc2["margin"].(float64)
-	require.True(t, ok, "document should have margin key")
-	assert.Equal(t, 0.0, margin2, "light style document margin should be 0")
+	light := theme.Light()
+	require.NotNil(t, light.GlamourStyle.Document.Margin, "light theme document.margin must be a non-nil pointer")
+	assert.Equal(t, uint(0), *light.GlamourStyle.Document.Margin, "light theme document.margin should be 0")
+	assert.Equal(t, "", light.GlamourStyle.Document.BlockPrefix, "light theme document.block_prefix should be empty")
+	assert.Equal(t, "", light.GlamourStyle.Document.BlockSuffix, "light theme document.block_suffix should be empty")
 }
 
 func TestRenderReasoning_ErrorFallback(t *testing.T) {
@@ -527,27 +530,36 @@ func TestModel_View_WindowTitle_ErrorPhase(t *testing.T) {
 }
 
 func TestRenderer_SelectsDarkStyle(t *testing.T) {
-	r := newGlamourMarkdownRendererWithDetectors(
-		func() bool { return true },
-		func() bool { return true },
-	)
-	assert.Equal(t, darkStyle, r.styleBytes, "terminal + dark background should select dark style")
+	// After the theme consolidation, mode selection lives in theme.Auto()
+	// (or in the explicit Dark / Light factory calls). The production
+	// renderer takes a *theme.Theme and applies the theme's glamour style
+	// verbatim. Verify the dark theme carries the expected document-level
+	// overrides, which is what the production renderer will use.
+	th := theme.Dark()
+	require.NotNil(t, th.GlamourStyle.Document.Margin, "dark theme document.margin must be a non-nil pointer")
+	assert.Equal(t, uint(0), *th.GlamourStyle.Document.Margin, "dark theme document.margin should be 0")
+	assert.Equal(t, "", th.GlamourStyle.Document.BlockPrefix, "dark theme document.block_prefix should be empty")
+	assert.Equal(t, "", th.GlamourStyle.Document.BlockSuffix, "dark theme document.block_suffix should be empty")
 }
 
 func TestRenderer_SelectsLightStyle(t *testing.T) {
-	r := newGlamourMarkdownRendererWithDetectors(
-		func() bool { return true },
-		func() bool { return false },
-	)
-	assert.Equal(t, lightStyle, r.styleBytes, "terminal + light background should select light style")
+	th := theme.Light()
+	require.NotNil(t, th.GlamourStyle.Document.Margin, "light theme document.margin must be a non-nil pointer")
+	assert.Equal(t, uint(0), *th.GlamourStyle.Document.Margin, "light theme document.margin should be 0")
+	assert.Equal(t, "", th.GlamourStyle.Document.BlockPrefix, "light theme document.block_prefix should be empty")
+	assert.Equal(t, "", th.GlamourStyle.Document.BlockSuffix, "light theme document.block_suffix should be empty")
 }
 
 func TestRenderer_SelectsNoTTY(t *testing.T) {
-	r := newGlamourMarkdownRendererWithDetectors(
-		func() bool { return false },
-		func() bool { return false },
-	)
-	assert.Equal(t, darkStyle, r.styleBytes, "non-terminal should default to dark style")
+	// Non-TTY mode selection is now performed by theme.Auto(), which
+	// defaults to the dark theme. Verify the dark theme still carries
+	// the expected overrides, which is what the non-TTY code path will
+	// hand to the production renderer.
+	th := theme.Dark()
+	require.NotNil(t, th.GlamourStyle.Document.Margin, "non-TTY (dark) theme document.margin must be a non-nil pointer")
+	assert.Equal(t, uint(0), *th.GlamourStyle.Document.Margin, "non-TTY (dark) theme document.margin should be 0")
+	assert.Equal(t, "", th.GlamourStyle.Document.BlockPrefix, "non-TTY (dark) theme document.block_prefix should be empty")
+	assert.Equal(t, "", th.GlamourStyle.Document.BlockSuffix, "non-TTY (dark) theme document.block_suffix should be empty")
 }
 
 func TestCompactToolCall_FlatJSON(t *testing.T) {

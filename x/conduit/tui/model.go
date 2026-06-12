@@ -18,6 +18,7 @@ import (
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
+	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
 )
 
 // artifactMsg is a Bubble Tea message that carries a single artifact
@@ -186,6 +187,13 @@ type model struct {
 	// production this is a glamourMarkdownRenderer; tests may inject a mock.
 	md markdownRenderer
 
+	// theme is the consolidated style configuration for the TUI. It owns
+	// the glamour StyleConfig used by the markdown renderer and the
+	// lipgloss styles used for chrome (headers, role labels, status
+	// line, activity indicator). Task 3 adds the field; later tasks wire
+	// it into the renderArtifact role mapping and the TUI constructor.
+	theme *theme.Theme
+
 	// name is the application name shown in the terminal window title.
 	name string
 
@@ -228,7 +236,7 @@ func (m *model) renderMarkdown(text string, width int) (string, error) {
 	// If no renderer was supplied (e.g. in tests), fall back to the
 	// production glamour renderer.
 	if m.md == nil {
-		m.md = newGlamourMarkdownRenderer()
+		m.md = newGlamourMarkdownRenderer(theme.Dark())
 	}
 	return m.md.Render(text, width)
 }
