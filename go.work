@@ -4,6 +4,7 @@ use (
 	.
 	./examples
 	./examples/verifier-chat
+	./x/analytics
 	./x/compaction
 	./x/conduit
 	./x/conduit/http
@@ -11,9 +12,8 @@ use (
 	./x/conduit/stdio
 	./x/conduit/telegram
 	./x/conduit/tui
-	./x/provider/openai
-	./x/analytics
 	./x/llmbytes
+	./x/provider/openai
 	./x/telemetry
 	./x/tool
 	./x/tool/bash
@@ -23,6 +23,7 @@ use (
 	./x/tool/sandbox/unsafe
 	./x/tool/set_title
 	./x/tool/skills
+	./x/tool/truncate
 	./x/usage
 	./x/verifier
 )

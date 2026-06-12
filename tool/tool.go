@@ -55,6 +55,13 @@ type Tool struct {
 	// provider by default; applications may opt-in via systemprompt
 	// transforms or other middleware.
 	Examples []Example
+	// Format declares how the tool's result should be rendered for the
+	// LLM. The zero value instructs the framework handler to apply
+	// default truncation (50 KB / 2000 lines, tail style) and no
+	// recovery hint. Tools that implement artifact.LLMRenderer opt
+	// out of Format entirely; the handler respects their output
+	// as-is.
+	Format Format
 }
 
 // ToolFunc is a callable tool implementation. It receives a resolved sandbox

@@ -2,8 +2,11 @@ package skills
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,7 +21,57 @@ func TestToolkit_ReadSkill(t *testing.T) {
 	})
 	result, err := tk.ReadSkill(context.Background(), nil, map[string]any{"name": "test"})
 	require.NoError(t, err)
-	assert.Equal(t, "full content", result)
+	r := result.(*ReadSkillResult)
+	assert.Equal(t, "full content", r.Content)
+	assert.Nil(t, r.Truncation)
+	assert.Empty(t, r.TempFilePath)
+}
+
+func TestToolkit_ReadSkill_Truncated(t *testing.T) {
+	t.Parallel()
+	// Build a skill content larger than the default 50 KB cap.
+	big := strings.Repeat("a", 100_000)
+	tk := NewToolkit(&mockDiscoverer{
+		meta: []SkillMeta{
+			{Name: "big", Description: "big skill"},
+		},
+		reads: map[string]string{"big": big},
+	})
+	result, err := tk.ReadSkill(context.Background(), nil, map[string]any{"name": "big"})
+	require.NoError(t, err)
+	r := result.(*ReadSkillResult)
+	require.NotNil(t, r.Truncation, "Truncation should be non-nil for 100 KB output")
+	assert.LessOrEqual(t, len(r.Content), 50_000)
+	assert.NotEmpty(t, r.TempFilePath)
+	t.Cleanup(func() { os.Remove(r.TempFilePath) })
+	contents, err := os.ReadFile(r.TempFilePath)
+	require.NoError(t, err)
+	assert.Equal(t, big, string(contents))
+}
+
+func TestReadSkillResult_MarshalLLM_NoTruncation(t *testing.T) {
+	t.Parallel()
+	r := &ReadSkillResult{Content: "hello"}
+	assert.Equal(t, "hello", r.MarshalLLM())
+}
+
+func TestReadSkillResult_MarshalLLM_Truncated(t *testing.T) {
+	t.Parallel()
+	r := &ReadSkillResult{
+		Content:      "head",
+		TempFilePath: "/tmp/ore-skill-abc.md",
+		Truncation: &artifact.Truncation{
+			OriginalBytes: 100_000,
+			OriginalLines: 2000,
+			ShownBytes:    4,
+			ShownLines:    1,
+			Style:         "head",
+		},
+	}
+	got := r.MarshalLLM()
+	assert.Contains(t, got, "head")
+	assert.Contains(t, got, "/tmp/ore-skill-abc.md")
+	assert.Contains(t, got, "lines shown of")
 }
 
 func TestToolkit_ReadSkill_MissingName(t *testing.T) {

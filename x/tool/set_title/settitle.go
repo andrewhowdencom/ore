@@ -59,6 +59,37 @@ func Tool() tool.ToolFunc {
 	}
 }
 
+// ToolDescriptor is the tool.Tool descriptor for the set_title
+// tool. The slash command (Slash) operates independently of the
+// tool layer; the descriptor is provided for callers that want
+// to register set_title as a regular tool.Tool.
+//
+// The Format is populated with the framework default
+// configuration (zero caps). The output of the tool is a single
+// title string (carried by TitleUpdate), which is far smaller
+// than the default 50 KB cap; the Format declaration is
+// present for documentation and consistency.
+var ToolDescriptor = tool.Tool{
+	Name: "set_title",
+	Description: "Set the conversation title. The title is broadcast to all " +
+		"subscribers via PropertiesEvent. Prefer issue tracker IDs (e.g., #234, " +
+		"ABC-12345) when available; otherwise use the branch name.\n\n" +
+		"Output: a single title string (no truncation needed).",
+	Schema: map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"title": map[string]any{
+				"type":        "string",
+				"description": "The conversation title to set.",
+			},
+		},
+		"required": []string{"title"},
+	},
+	Format: tool.Format{
+		// See AddTool in x/tool/calculator for rationale.
+	},
+}
+
 // Slash returns a slash.Handler that sets the conversation title. The
 // handler validates the command input (non-empty after trimming) and, when
 // valid, emits a loop.PropertiesEvent directly so the slash path does not

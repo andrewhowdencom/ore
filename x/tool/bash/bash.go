@@ -6,15 +6,24 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/tool"
+	"github.com/andrewhowdencom/ore/x/tool/truncate"
 )
 
 // Compile-time type check.
 var _ tool.ToolFunc = Bash
 
-// Bash executes a shell command and returns its stdout, stderr, and exit code.
+// Bash executes a shell command and returns its stdout, stderr, and
+// exit code. Output is captured by a streaming, bounded accumulator
+// (BoundedBuffer) that retains a rolling 2*frameworkDefaultTailCap
+// tail in memory and spills the full byte stream to a temp file
+// when the cap is exceeded. The temp file path is included in the
+// result so the LLM can read the full output via read_file.
+//
 // Parameters:
 //   - command (string, required): the shell command to execute.
 //   - working_directory (string, optional): the directory to execute the command in.
@@ -36,7 +45,10 @@ func Bash(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error
 		timeout = 30
 	}
 
-	// Delegate to ExecSandbox if available.
+	// Delegate to ExecSandbox if available. The exec sandbox
+	// runs the command in its own environment; it returns strings
+	// (not bounded buffers) and may not support streaming. We
+	// wrap the result in a Result with no spilling.
 	if execSb, ok := sb.(tool.ExecSandbox); ok {
 		dir := workingDir
 		if dir == "" {
@@ -83,37 +95,134 @@ func Bash(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, error
 		cmd.Dir = workingDir
 	}
 
-	stdout, stderr, err := runCommand(cmd, ctx, timeout)
+	stdout, stderr, stdoutPath, stderrPath, stdoutTotal, stderrTotal, err := runCommand(cmd, ctx, timeout)
+	result := &Result{
+		Stdout:     stdout,
+		Stderr:     stderr,
+		ExitCode:   0,
+		StdoutPath: stdoutPath,
+		StderrPath: stderrPath,
+	}
+
+	// Apply framework-default truncation to the result. The
+	// tool's Format declaration controls the cap; we honor it
+	// here so the Result's Stdout/Stderr are already bounded
+	// (and MarshalLLM has the recovery hint to point to the
+	// temp file). The framework handler additionally consults
+	// the same Format, but the LLMRenderer opt-out in Result
+	// means handler-level truncation is bypassed for this tool.
+	//
+	// stdoutTotal and stderrTotal are the FULL subprocess byte
+	// counts (from BoundedBuffer.TotalBytes), used to populate
+	// the Truncation.OriginalBytes field so the metadata
+	// reflects what the LLM is missing, not just the bounded
+	// tail size.
+	result.applyTruncation(stdoutTotal, stderrTotal)
 
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, fmt.Errorf("command timed out after %d seconds: %w", timeout, ctx.Err())
+			return result, fmt.Errorf("command timed out after %d seconds: %w", timeout, ctx.Err())
 		}
 
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return &Result{
-				Stdout:   stdout,
-				Stderr:   stderr,
-				ExitCode: exitErr.ExitCode(),
-			}, fmt.Errorf("command exited with code %d", exitErr.ExitCode())
+			result.ExitCode = exitErr.ExitCode()
+			return result, fmt.Errorf("command exited with code %d", exitErr.ExitCode())
 		}
 
-		return nil, fmt.Errorf("command execution failed: %w", err)
+		return result, fmt.Errorf("command execution failed: %w", err)
 	}
 
-	return &Result{
-		Stdout:   stdout,
-		Stderr:   stderr,
-		ExitCode: 0,
-	}, nil
+	return result, nil
+}
+
+// applyTruncation runs the framework's truncator over the
+// Result's stdout and stderr, replacing each with the bounded
+// tail and recording the Truncation metadata on the result. The
+// StdoutPath / StderrPath fields are preserved (they were set by
+// runCommand) so the recovery hint in MarshalLLM can reference
+// them.
+//
+// stdoutTotal and stderrTotal are the FULL subprocess byte counts
+// from BoundedBuffer.TotalBytes(). These are used to populate
+// Truncation.OriginalBytes — the field describes how much output
+// the LLM is missing, not just the bounded tail size. When the
+// total is unknown (e.g., when applyTruncation is called from
+// tests), the truncator's own OriginalBytes is used as a
+// fallback.
+func (r *Result) applyTruncation(stdoutTotal, stderrTotal int64) {
+	cfg := BashTool.Format.ResolvedTruncateConfig()
+	style := BashTool.Format.Style
+	if style == 0 {
+		style = tool.StyleTail
+	}
+
+	stdoutOut, stdoutMeta := truncate.Truncate(r.Stdout, cfg, style)
+	r.Stdout = stdoutOut
+	if stdoutMeta.Truncated() {
+		if r.Truncation == nil {
+			r.Truncation = &artifact.Truncation{}
+		}
+		// Use the full subprocess byte count for OriginalBytes
+		// when available; the truncator's value reflects only
+		// the bounded tail. This makes the metadata more
+		// useful for the LLM (it knows how much it's missing).
+		stdoutOriginal := stdoutMeta.OriginalBytes
+		if stdoutTotal > int64(stdoutOriginal) {
+			stdoutOriginal = int(stdoutTotal)
+		}
+		if stdoutOriginal > r.Truncation.OriginalBytes {
+			r.Truncation.OriginalBytes = stdoutOriginal
+			r.Truncation.OriginalLines = countTruncationLines(r.Stdout, stdoutOriginal)
+			r.Truncation.ShownBytes = stdoutMeta.ShownBytes
+			r.Truncation.ShownLines = stdoutMeta.ShownLines
+			r.Truncation.Style = stdoutMeta.Style
+		}
+	}
+
+	stderrOut, stderrMeta := truncate.Truncate(r.Stderr, cfg, style)
+	r.Stderr = stderrOut
+	if stderrMeta.Truncated() {
+		if r.Truncation == nil {
+			r.Truncation = &artifact.Truncation{}
+		}
+		stderrOriginal := stderrMeta.OriginalBytes
+		if stderrTotal > int64(stderrOriginal) {
+			stderrOriginal = int(stderrTotal)
+		}
+		if stderrOriginal > r.Truncation.OriginalBytes {
+			r.Truncation.OriginalBytes = stderrOriginal
+			r.Truncation.OriginalLines = countTruncationLines(r.Stderr, stderrOriginal)
+			r.Truncation.ShownBytes = stderrMeta.ShownBytes
+			r.Truncation.ShownLines = stderrMeta.ShownLines
+			r.Truncation.Style = stderrMeta.Style
+		}
+	}
+}
+
+// countTruncationLines returns an OriginalLines estimate when
+// the full stream is not available to count. We use the byte
+// density of the bounded tail as a heuristic; the exact line
+// count is unknowable without re-reading the temp file.
+func countTruncationLines(bounded string, originalBytes int) int {
+	if len(bounded) == 0 || originalBytes <= len(bounded) {
+		return strings.Count(bounded, "\n")
+	}
+	density := float64(strings.Count(bounded, "\n")) / float64(len(bounded))
+	return int(density * float64(originalBytes))
 }
 
 // BashTool is the tool.Tool descriptor for Bash.
 var BashTool = tool.Tool{
 	Name: "bash",
-	Description: "Execute a shell command. Returns stdout, stderr, and exit code. " +
-		"Use this to run builds, tests, package managers, git operations, and other shell tasks.",
+	Description: "Execute a shell command. Returns stdout, stderr, and exit code.\n\n" +
+		"Output limits: stdout and stderr are each captured by a streaming, " +
+		"bounded-memory accumulator. When a stream exceeds the cap, the full " +
+		"output is written to a temp file (path included in the result) and " +
+		"only the tail is returned.\n\n" +
+		"Recovery: when truncation occurs, the result includes the temp file " +
+		"path. Use read_file on the path to read the full output, or use " +
+		"grep/tail/head on it to extract the relevant lines.",
 	Schema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -134,6 +243,18 @@ var BashTool = tool.Tool{
 		"required": []string{"command"},
 	},
 	DisplayHint: BashDisplayHint,
+	Format: tool.Format{
+		// Apply framework default truncation to the result. The
+		// BoundedBuffer already bounds in-memory retention; this
+		// truncator bounds the LLM-facing string so that
+		// the per-turn cost from a multi-MB tool result is
+		// predictable. The temp file path is the recovery
+		// channel; the LLM can use read_file to read more.
+		Truncate: tool.TruncateConfig{
+			MaxBytes: 50_000,
+			MaxLines: 2_000,
+		},
+	},
 }
 
 // bashDisplay renders a bash tool call as a Markdown code block.
@@ -188,3 +309,5 @@ func toInt(v any, def int) int {
 	}
 	return def
 }
+
+

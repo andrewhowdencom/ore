@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,7 +22,10 @@ func TestReadFile_HappyPath(t *testing.T) {
 
 	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p})
 	require.NoError(t, err)
-	assert.Equal(t, "1|line one\n2|line two\n3|line three\n", result)
+	r := result.(*ReadFileResult)
+	assert.Equal(t, "1|line one\n2|line two\n3|line three\n", r.Content)
+	assert.Nil(t, r.Truncation)
+	assert.Empty(t, r.TempFilePath)
 }
 
 func TestReadFile_OffsetAndLimit(t *testing.T) {
@@ -35,7 +40,8 @@ func TestReadFile_OffsetAndLimit(t *testing.T) {
 		"limit":  2.0,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "2|line two\n3|line three\n", result)
+	r := result.(*ReadFileResult)
+	assert.Equal(t, "2|line two\n3|line three\n", r.Content)
 }
 
 func TestReadFile_OffsetZero(t *testing.T) {
@@ -46,7 +52,8 @@ func TestReadFile_OffsetZero(t *testing.T) {
 
 	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p, "offset": 0})
 	require.NoError(t, err)
-	assert.Equal(t, "1|line one\n2|line two\n", result)
+	r := result.(*ReadFileResult)
+	assert.Equal(t, "1|line one\n2|line two\n", r.Content)
 }
 
 func TestReadFile_OffsetBeyondEOF(t *testing.T) {
@@ -57,7 +64,8 @@ func TestReadFile_OffsetBeyondEOF(t *testing.T) {
 
 	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p, "offset": 10})
 	require.NoError(t, err)
-	assert.Equal(t, "", result)
+	r := result.(*ReadFileResult)
+	assert.Equal(t, "", r.Content)
 }
 
 func TestReadFile_LimitZero(t *testing.T) {
@@ -68,7 +76,8 @@ func TestReadFile_LimitZero(t *testing.T) {
 
 	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p, "limit": 0})
 	require.NoError(t, err)
-	assert.Equal(t, "1|line one\n2|line two\n3|line three\n", result)
+	r := result.(*ReadFileResult)
+	assert.Equal(t, "1|line one\n2|line two\n3|line three\n", r.Content)
 }
 
 func TestReadFile_EmptyPath(t *testing.T) {
@@ -105,7 +114,8 @@ func TestReadFile_EmptyFile(t *testing.T) {
 
 	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p})
 	require.NoError(t, err)
-	assert.Equal(t, "", result)
+	r := result.(*ReadFileResult)
+	assert.Equal(t, "", r.Content)
 }
 
 func TestReadFile_NoTrailingNewline(t *testing.T) {
@@ -116,7 +126,62 @@ func TestReadFile_NoTrailingNewline(t *testing.T) {
 
 	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p})
 	require.NoError(t, err)
-	assert.Equal(t, "1|line one\n2|line two\n", result)
+	r := result.(*ReadFileResult)
+	assert.Equal(t, "1|line one\n2|line two\n", r.Content)
+}
+
+func TestReadFile_ByteCapTruncation(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "big.txt")
+	// Each line is ~100 bytes; 1000 lines = ~100 KB. The default
+	// cap is 50 KB / 2000 lines, so the byte cap dominates.
+	var sb strings.Builder
+	for i := 0; i < 2000; i++ {
+		sb.WriteString(fmt.Sprintf("line %05d: this is a moderately long line of text for size to push us over the cap\n", i))
+	}
+	full := sb.String()
+	require.NoError(t, os.WriteFile(p, []byte(full), 0o644))
+
+	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p})
+	require.NoError(t, err)
+	r := result.(*ReadFileResult)
+
+	require.NotNil(t, r.Truncation, "Truncation should be non-nil for 200 KB output")
+	assert.LessOrEqual(t, len(r.Content), 50_000)
+	assert.NotEmpty(t, r.TempFilePath, "temp file path should be set on truncation")
+
+	// Verify the temp file exists and contains the full content.
+	t.Cleanup(func() { os.Remove(r.TempFilePath) })
+	contents, err := os.ReadFile(r.TempFilePath)
+	require.NoError(t, err)
+	assert.Equal(t, len(full), len(contents), "temp file should hold the unmodified file content")
+}
+
+func TestReadFile_MarshalLLM_NoTruncation(t *testing.T) {
+	t.Parallel()
+	r := &ReadFileResult{Content: "1|hello\n2|world\n"}
+	assert.Equal(t, "1|hello\n2|world\n", r.MarshalLLM())
+}
+
+func TestReadFile_MarshalLLM_Truncated(t *testing.T) {
+	t.Parallel()
+	r := &ReadFileResult{
+		Content:      "1|first line\n",
+		TempFilePath: "/tmp/ore-readfile-abc.txt",
+		Truncation: &artifact.Truncation{
+			OriginalBytes: 100_000,
+			OriginalLines: 1000,
+			ShownBytes:    20,
+			ShownLines:    1,
+			Style:         "head",
+		},
+	}
+	got := r.MarshalLLM()
+	assert.Contains(t, got, "1|first line\n")
+	assert.Contains(t, got, "offset=2")
+	assert.Contains(t, got, "/tmp/ore-readfile-abc.txt")
+	assert.Contains(t, got, "lines shown of")
 }
 
 func TestWriteFile_NewFile(t *testing.T) {
@@ -352,7 +417,9 @@ func TestListDirectory_MixedEntries(t *testing.T) {
 
 	result, err := ListDirectory(context.Background(), nil, map[string]any{"path": dir})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"a.txt", "b.txt", "c_dir"}, result)
+	r := result.(*ListDirectoryResult)
+	assert.Equal(t, []string{"a.txt", "b.txt", "c_dir"}, r.Entries)
+	assert.Nil(t, r.Truncation)
 }
 
 func TestListDirectory_Empty(t *testing.T) {
@@ -361,7 +428,8 @@ func TestListDirectory_Empty(t *testing.T) {
 
 	result, err := ListDirectory(context.Background(), nil, map[string]any{"path": dir})
 	require.NoError(t, err)
-	assert.Equal(t, []string{}, result)
+	r := result.(*ListDirectoryResult)
+	assert.Equal(t, []string{}, r.Entries)
 }
 
 func TestListDirectory_MissingPath(t *testing.T) {
@@ -393,7 +461,75 @@ func TestListDirectory_HiddenSubdirectory(t *testing.T) {
 
 	result, err := ListDirectory(context.Background(), nil, map[string]any{"path": dir})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"visible"}, result)
+	r := result.(*ListDirectoryResult)
+	assert.Equal(t, []string{"visible"}, r.Entries)
+}
+
+func TestListDirectory_RowCap(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	// Create 600 files; the default cap is 500.
+	for i := 0; i < 600; i++ {
+		require.NoError(t, os.WriteFile(
+			filepath.Join(dir, fmt.Sprintf("file%04d.txt", i)),
+			[]byte("x"), 0o644,
+		))
+	}
+
+	result, err := ListDirectory(context.Background(), nil, map[string]any{"path": dir})
+	require.NoError(t, err)
+	r := result.(*ListDirectoryResult)
+
+	assert.Len(t, r.Entries, 500)
+	require.NotNil(t, r.Truncation, "Truncation should be non-nil at the row cap")
+	assert.Equal(t, 600, r.Truncation.OriginalLines)
+	assert.Equal(t, 500, r.Truncation.ShownLines)
+}
+
+func TestListDirectory_RowCap_WithLimitArg(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	for i := 0; i < 100; i++ {
+		require.NoError(t, os.WriteFile(
+			filepath.Join(dir, fmt.Sprintf("file%04d.txt", i)),
+			[]byte("x"), 0o644,
+		))
+	}
+
+	// Caller asks for 10; cap applies.
+	result, err := ListDirectory(context.Background(), nil, map[string]any{
+		"path":  dir,
+		"limit": 10.0,
+	})
+	require.NoError(t, err)
+	r := result.(*ListDirectoryResult)
+
+	assert.Len(t, r.Entries, 10)
+	require.NotNil(t, r.Truncation)
+}
+
+func TestListDirectory_MarshalLLM_NoTruncation(t *testing.T) {
+	t.Parallel()
+	r := &ListDirectoryResult{Entries: []string{"a", "b", "c"}}
+	assert.Equal(t, "a\nb\nc", r.MarshalLLM())
+}
+
+func TestListDirectory_MarshalLLM_Truncated(t *testing.T) {
+	t.Parallel()
+	r := &ListDirectoryResult{
+		Entries: []string{"a", "b"},
+		Truncation: &artifact.Truncation{
+			OriginalBytes: 1000,
+			OriginalLines: 100,
+			ShownBytes:    20,
+			ShownLines:    2,
+			Style:         "head",
+		},
+	}
+	got := r.MarshalLLM()
+	assert.Contains(t, got, "a\nb")
+	assert.Contains(t, got, "limit=2N")
+	assert.Contains(t, got, "entries shown of")
 }
 
 func TestSearchFiles_SingleFile(t *testing.T) {
@@ -407,13 +543,13 @@ func TestSearchFiles_SingleFile(t *testing.T) {
 		"query": "hello",
 	})
 	require.NoError(t, err)
+	r := result.(*SearchFilesResult)
 
-	results := result.([]SearchResult)
-	require.Len(t, results, 2)
-	assert.Equal(t, 1, results[0].LineNumber)
-	assert.Equal(t, "hello world", results[0].Content)
-	assert.Equal(t, 3, results[1].LineNumber)
-	assert.Equal(t, "hello moon", results[1].Content)
+	require.Len(t, r.Results, 2)
+	assert.Equal(t, 1, r.Results[0].LineNumber)
+	assert.Equal(t, "hello world", r.Results[0].Content)
+	assert.Equal(t, 3, r.Results[1].LineNumber)
+	assert.Equal(t, "hello moon", r.Results[1].Content)
 }
 
 func TestSearchFiles_DirectoryRecursive(t *testing.T) {
@@ -431,15 +567,15 @@ func TestSearchFiles_DirectoryRecursive(t *testing.T) {
 		"query": "a",
 	})
 	require.NoError(t, err)
+	r := result.(*SearchFilesResult)
 
-	results := result.([]SearchResult)
-	require.Len(t, results, 2)
-	assert.Equal(t, p1, results[0].Path)
-	assert.Equal(t, 1, results[0].LineNumber)
-	assert.Equal(t, "alpha", results[0].Content)
-	assert.Equal(t, p2, results[1].Path)
-	assert.Equal(t, 1, results[1].LineNumber)
-	assert.Equal(t, "gamma", results[1].Content)
+	require.Len(t, r.Results, 2)
+	assert.Equal(t, p1, r.Results[0].Path)
+	assert.Equal(t, 1, r.Results[0].LineNumber)
+	assert.Equal(t, "alpha", r.Results[0].Content)
+	assert.Equal(t, p2, r.Results[1].Path)
+	assert.Equal(t, 1, r.Results[1].LineNumber)
+	assert.Equal(t, "gamma", r.Results[1].Content)
 }
 
 func TestSearchFiles_NoMatches(t *testing.T) {
@@ -453,9 +589,8 @@ func TestSearchFiles_NoMatches(t *testing.T) {
 		"query": "nomatch",
 	})
 	require.NoError(t, err)
-
-	results := result.([]SearchResult)
-	assert.Len(t, results, 0)
+	r := result.(*SearchFilesResult)
+	assert.Len(t, r.Results, 0)
 }
 
 func TestSearchFiles_InvalidRegex(t *testing.T) {
@@ -485,10 +620,9 @@ func TestSearchFiles_SkipsHidden(t *testing.T) {
 		"query": "content",
 	})
 	require.NoError(t, err)
-
-	results := result.([]SearchResult)
-	require.Len(t, results, 1)
-	assert.Equal(t, visible, results[0].Path)
+	r := result.(*SearchFilesResult)
+	require.Len(t, r.Results, 1)
+	assert.Equal(t, visible, r.Results[0].Path)
 }
 
 func TestSearchFiles_EmptyQuery(t *testing.T) {
@@ -520,10 +654,63 @@ func TestSearchFiles_HiddenSubdirectory(t *testing.T) {
 		"query": "match",
 	})
 	require.NoError(t, err)
+	r := result.(*SearchFilesResult)
+	require.Len(t, r.Results, 1)
+	assert.Equal(t, visible, r.Results[0].Path)
+}
 
-	results := result.([]SearchResult)
-	require.Len(t, results, 1)
-	assert.Equal(t, visible, results[0].Path)
+func TestSearchFiles_RowCap(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "search.txt")
+	// 1500 matching lines; default cap is 1000.
+	var sb strings.Builder
+	for i := 0; i < 1500; i++ {
+		sb.WriteString(fmt.Sprintf("match line %d\n", i))
+	}
+	require.NoError(t, os.WriteFile(p, []byte(sb.String()), 0o644))
+
+	result, err := SearchFiles(context.Background(), nil, map[string]any{
+		"path":  p,
+		"query": "match",
+	})
+	require.NoError(t, err)
+	r := result.(*SearchFilesResult)
+
+	assert.Len(t, r.Results, 1000)
+	require.NotNil(t, r.Truncation)
+	assert.Equal(t, 1500, r.Truncation.OriginalLines)
+	assert.Equal(t, 1000, r.Truncation.ShownLines)
+}
+
+func TestSearchFiles_MarshalLLM_NoTruncation(t *testing.T) {
+	t.Parallel()
+	r := &SearchFilesResult{
+		Results: []SearchResult{
+			{Path: "/a/b.go", LineNumber: 10, Content: "foo"},
+			{Path: "/c/d.go", LineNumber: 20, Content: "bar"},
+		},
+	}
+	got := r.MarshalLLM()
+	assert.Contains(t, got, "/a/b.go:10: foo")
+	assert.Contains(t, got, "/c/d.go:20: bar")
+}
+
+func TestSearchFiles_MarshalLLM_Truncated(t *testing.T) {
+	t.Parallel()
+	r := &SearchFilesResult{
+		Results: []SearchResult{{Path: "/a", LineNumber: 1, Content: "x"}},
+		Truncation: &artifact.Truncation{
+			OriginalBytes: 100_000,
+			OriginalLines: 2000,
+			ShownBytes:    50,
+			ShownLines:    1,
+			Style:         "head",
+		},
+	}
+	got := r.MarshalLLM()
+	assert.Contains(t, got, "limit=2N")
+	assert.Contains(t, got, "matches shown of")
 }
 
 func TestToInt_Float64(t *testing.T) {
@@ -603,7 +790,8 @@ func TestReadFile_WithSandbox(t *testing.T) {
 	sb := &mockFileSandbox{dir: dir}
 	result, err := ReadFile(context.Background(), sb, map[string]any{"path": "test.txt"})
 	require.NoError(t, err)
-	assert.Equal(t, "1|hello\n", result)
+	r := result.(*ReadFileResult)
+	assert.Equal(t, "1|hello\n", r.Content)
 }
 
 func TestReadFile_AbsolutePathInSandbox(t *testing.T) {
@@ -616,7 +804,8 @@ func TestReadFile_AbsolutePathInSandbox(t *testing.T) {
 	sb := &mockFileSandbox{dir: dir}
 	result, err := ReadFile(context.Background(), sb, map[string]any{"path": "/etc/passwd"})
 	require.NoError(t, err)
-	assert.Equal(t, "1|hello\n", result)
+	r := result.(*ReadFileResult)
+	assert.Equal(t, "1|hello\n", r.Content)
 }
 
 func TestReadFile_SandboxRejectsAbsolutePath(t *testing.T) {
@@ -660,7 +849,8 @@ func TestReadFile_NegativeOffset(t *testing.T) {
 
 	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p, "offset": -5})
 	require.NoError(t, err)
-	assert.Equal(t, "1|line1\n2|line2\n3|line3\n", result)
+	r := result.(*ReadFileResult)
+	assert.Equal(t, "1|line1\n2|line2\n3|line3\n", r.Content)
 }
 
 func TestReadFile_ZeroLimit(t *testing.T) {
@@ -671,7 +861,8 @@ func TestReadFile_ZeroLimit(t *testing.T) {
 
 	result, err := ReadFile(context.Background(), nil, map[string]any{"path": p, "offset": 1, "limit": 0})
 	require.NoError(t, err)
-	assert.Equal(t, "1|line1\n2|line2\n3|line3\n", result)
+	r := result.(*ReadFileResult)
+	assert.Equal(t, "1|line1\n2|line2\n3|line3\n", r.Content)
 }
 
 func TestReadFile_BinaryRejection(t *testing.T) {
@@ -685,5 +876,3 @@ func TestReadFile_BinaryRejection(t *testing.T) {
 	assert.Contains(t, err.Error(), "cannot read binary file")
 	assert.Contains(t, err.Error(), p)
 }
-
-
