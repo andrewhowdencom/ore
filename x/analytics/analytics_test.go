@@ -479,6 +479,15 @@ func TestAnalyzeThread_AfterJSONRoundTrip(t *testing.T) {
 		if got[i].Kind != baseline[i].Kind {
 			t.Errorf("kind[%d]: got %q, want %q", i, got[i].Kind, baseline[i].Kind)
 		}
+		// Source must also round-trip identically. For tool_call and
+		// tool_result, this means the originating tool's Name must
+		// survive JSON round-trip AND the same-turn join must still
+		// find the originating call after reload.
+		if got[i].Source != baseline[i].Source {
+			t.Errorf("%s source: got %q, want %q (same-turn join did not "+
+				"survive the JSON round-trip)",
+				got[i].Kind, got[i].Source, baseline[i].Source)
+		}
 		if got[i].Count != baseline[i].Count {
 			t.Errorf("%s count: got %d, want %d", got[i].Kind, got[i].Count, baseline[i].Count)
 		}
@@ -589,11 +598,78 @@ func TestAnalyzeThread_NoJSONEnvelopeLeak(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 kind entry, got %d", len(got))
 	}
+	// Text has no notion of a tool source, so Source must be empty.
+	if got[0].Source != "" {
+		t.Errorf("source: got %q, want \"\" (text has no source)", got[0].Source)
+	}
 	if got[0].Bytes >= int64(len(envelope)) {
 		t.Errorf("bytes (%d) match or exceed JSON envelope (%d) — counting "+
 			"the on-disk JSON, not the LLM payload", got[0].Bytes, len(envelope))
 	}
 	if got[0].Bytes != int64(len(art.Content)) {
 		t.Errorf("bytes: got %d, want %d (raw payload)", got[0].Bytes, len(art.Content))
+	}
+}
+
+// TestAnalyzeStore_ToolResultOrphanPerThread confirms that the
+// same-turn ToolCallID→Name join is scoped to a single thread: a
+// tool_result in thread B whose ToolCallID matches a tool_call in
+// thread A is still an orphan, because cross-thread resolution is
+// out of scope. This guards the per-thread invariant while also
+// covering the (unknown) bucket at the store-wide aggregate level.
+func TestAnalyzeStore_ToolResultOrphanPerThread(t *testing.T) {
+	// Thread A: a tool_call and a matching tool_result in the same
+	// turn. The tool_result must resolve to "bash".
+	bufA := &state.Buffer{}
+	bufA.Append(state.RoleAssistant,
+		artifact.ToolCall{ID: "1", Name: "bash", Arguments: `{"cmd":"ls"}`},
+		artifact.ToolResult{ToolCallID: "1", Content: "ok"},
+	)
+
+	// Thread B: a tool_result whose ToolCallID matches a tool_call
+	// that lives in a DIFFERENT thread. By the same-turn invariant,
+	// this is an orphan and must bucket under "(unknown)".
+	//
+	// The tool_call in thread B is also present but carries a
+	// different ID ("2"), so it cannot rescue the orphan result.
+	bufB := &state.Buffer{}
+	bufB.Append(state.RoleAssistant,
+		artifact.ToolCall{ID: "2", Name: "file_read", Arguments: `{"path":"/tmp/x"}`},
+		artifact.ToolResult{ToolCallID: "1", Content: "ok"},
+	)
+
+	store := &mockStore{
+		threads: []*session.Thread{
+			{State: bufA},
+			{State: bufB},
+		},
+	}
+
+	got, err := analytics.AnalyzeStore(store)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Expected rows, sorted lexicographically by (Kind, Source).
+	// Note: '(' (0x28) sorts before 'b' (0x62), so "(unknown)" sorts
+	// before "bash" within the tool_result kind.
+	//   (tool_call, bash, 1, 12)         — from thread A
+	//   (tool_call, file_read, 1, 17)    — from thread B
+	//   (tool_result, (unknown), 1, 2)   — from thread B (orphan)
+	//   (tool_result, bash, 1, 2)        — from thread A
+	want := []analytics.Stats{
+		{Kind: "tool_call", Source: "bash", Count: 1, Bytes: 12},
+		{Kind: "tool_call", Source: "file_read", Count: 1, Bytes: 17},
+		{Kind: "tool_result", Source: "(unknown)", Count: 1, Bytes: 2},
+		{Kind: "tool_result", Source: "bash", Count: 1, Bytes: 2},
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("expected %d rows, got %d: %+v", len(want), len(got), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got[%d]: got %+v, want %+v", i, got[i], want[i])
+		}
 	}
 }
