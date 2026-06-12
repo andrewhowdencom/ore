@@ -442,11 +442,14 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		chunk := stream.Current()
 		if len(chunk.Choices) == 0 {
 			if chunk.Usage.TotalTokens > 0 {
+				cacheRead, cacheWrite := readCacheUsage(chunk.Usage)
 				select {
 				case ch <- artifact.Usage{
 					PromptTokens:     int(chunk.Usage.PromptTokens),
 					CompletionTokens: int(chunk.Usage.CompletionTokens),
 					TotalTokens:      int(chunk.Usage.TotalTokens),
+					CacheReadTokens:  cacheRead,
+					CacheWriteTokens: cacheWrite,
 				}:
 				case <-ctx.Done():
 					return ctx.Err()
@@ -524,6 +527,43 @@ func (p *Provider) serializeTools(tools []tool.Tool) []openai.ChatCompletionTool
 // for prompt caching today. Stored as a package-level constant so the
 // mutation helpers below reference a single source of truth.
 var cacheControlEphemeral = map[string]any{"type": "ephemeral"}
+
+// readCacheUsage extracts the cache read and write token counts from a
+// streaming usage chunk. The function prefers Anthropic-style fields
+// (cache_read_input_tokens / cache_creation_input_tokens, surfaced by
+// OpenRouter and Anthropic-via-OpenRouter) when they are present, and
+// falls back to the OpenAI-native field
+// (usage.prompt_tokens_details.cached_tokens) otherwise. Hosts that report
+// neither leave both return values at zero, which the artifact's
+// `omitempty` JSON tag will hide from the wire.
+//
+// The function is tolerant of malformed or non-numeric values: a parse
+// failure on either Anthropic-style field is treated as zero rather than
+// an error, because a single bad number in a usage chunk should not
+// abort an in-flight stream.
+func readCacheUsage(usage openai.CompletionUsage) (cacheRead, cacheWrite int) {
+	// Anthropic-via-OpenRouter and raw Anthropic on OpenRouter surface
+	// cache metrics at the top of the usage object. The SDK does not
+	// model these, so they arrive in the JSON extra-fields bucket.
+	if field, ok := usage.JSON.ExtraFields["cache_read_input_tokens"]; ok && field.Valid() {
+		var n int64
+		if err := json.Unmarshal([]byte(field.Raw()), &n); err == nil {
+			cacheRead = int(n)
+		}
+		if field, ok := usage.JSON.ExtraFields["cache_creation_input_tokens"]; ok && field.Valid() {
+			var n int64
+			if err := json.Unmarshal([]byte(field.Raw()), &n); err == nil {
+				cacheWrite = int(n)
+			}
+		}
+		return cacheRead, cacheWrite
+	}
+	// OpenAI native reports cache hits inside prompt_tokens_details.
+	// Prefer the explicit int64 field on the typed struct over the
+	// JSON fallback.
+	cacheRead = int(usage.PromptTokensDetails.CachedTokens)
+	return cacheRead, 0
+}
 
 // applyCacheControl mutates the marshaled messages and tools slices to add
 // Anthropic-style cache_control:{type:ephemeral} blocks at the three
