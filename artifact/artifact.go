@@ -213,12 +213,18 @@ func (t ToolResult) MarshalJSON() ([]byte, error) {
 // at their zero value; the `omitempty` tags keep them out of the JSON payload
 // in that case so consumers can distinguish "no cache reported" from
 // "explicitly zero".
+//
+// ThinkingTokens is the count of output tokens consumed by the model's
+// extended-thinking / reasoning phase. Anthropic and Anthropic-via-OpenRouter
+// surface this on the streaming message_delta usage block; other providers
+// leave it at zero and the `omitempty` tag hides it from the JSON payload.
 type Usage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
 	TotalTokens      int `json:"total_tokens"`
 	CacheReadTokens  int `json:"cache_read_tokens,omitempty"`
 	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
+	ThinkingTokens   int `json:"thinking_tokens,omitempty"`
 }
 
 // Kind returns the artifact kind identifier.
@@ -233,6 +239,7 @@ func (u Usage) MarshalJSON() ([]byte, error) {
 		TotalTokens      int    `json:"total_tokens"`
 		CacheReadTokens  int    `json:"cache_read_tokens,omitempty"`
 		CacheWriteTokens int    `json:"cache_write_tokens,omitempty"`
+		ThinkingTokens   int    `json:"thinking_tokens,omitempty"`
 	}
 	return json.Marshal(output{
 		Kind:             "usage",
@@ -241,6 +248,7 @@ func (u Usage) MarshalJSON() ([]byte, error) {
 		TotalTokens:      u.TotalTokens,
 		CacheReadTokens:  u.CacheReadTokens,
 		CacheWriteTokens: u.CacheWriteTokens,
+		ThinkingTokens:   u.ThinkingTokens,
 	})
 }
 
@@ -276,6 +284,65 @@ func (r Reasoning) MarshalJSON() ([]byte, error) {
 		Content string `json:"content"`
 	}
 	return json.Marshal(output{Kind: "reasoning", Content: r.Content})
+}
+
+// ReasoningSignature represents an opaque, provider-issued signature that
+// anchors a prior reasoning block to the next request. It is emitted by
+// providers that support extended-thinking / reasoning replay, and is
+// consumed by request serializers to attach the right wire shape to the
+// assistant content array of the next turn.
+//
+// The three fields are the minimal representation that lets a single
+// artifact type carry every wire shape the supported upstreams produce:
+//
+//   - Provider discriminates the upstream. Today the supported values are
+//     "anthropic" and "openai"; new providers extend the set.
+//   - SubKind discriminates the wire shape that the upstream expects for
+//     replay. Defined values:
+//   - "signature": Anthropic thinking-block signature (the opaque
+//     signature that anchors extended-thinking across turns; arrives on
+//     the response side of ThinkingBlock).
+//   - "redacted": Anthropic redacted_thinking block data (encrypted
+//     reasoning; arrives on the response side of RedactedThinkingBlock).
+//   - "encrypted": OpenAI / OpenRouter reasoning.encrypted entry in
+//     reasoning_details[] on the chat-completions wire.
+//   - Data is opaque. Consumers MUST NOT parse it; the request
+//     serializer routes it to the correct upstream shape based on
+//     (Provider, SubKind).
+//
+// The struct field is named SubKind (not Kind) to avoid a name collision
+// with the artifact interface's Kind() method. The explicit JSON tags
+// are required so the wire-level `sub_kind` key is matched to the
+// `SubKind` field on the way in; without them, encoding/json's
+// case-insensitive field matching would route `sub_kind` to a `Kind`
+// field (which does not exist) instead, silently dropping the value.
+//
+// ReasoningSignature is intentionally not Delta / Accumulable: signatures
+// are complete artifacts emitted at the close of a reasoning block,
+// never incrementally.
+type ReasoningSignature struct {
+	Provider string `json:"provider"`
+	SubKind  string `json:"sub_kind"`
+	Data     string `json:"data"`
+}
+
+// Kind returns the artifact kind identifier.
+func (r ReasoningSignature) Kind() string { return "reasoning_signature" }
+
+// MarshalJSON serializes ReasoningSignature to JSON.
+func (r ReasoningSignature) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind     string `json:"kind"`
+		Provider string `json:"provider"`
+		SubKind  string `json:"sub_kind"`
+		Data     string `json:"data"`
+	}
+	return json.Marshal(output{
+		Kind:     "reasoning_signature",
+		Provider: r.Provider,
+		SubKind:  r.SubKind,
+		Data:     r.Data,
+	})
 }
 
 // TextDelta represents a partial chunk of text content for streaming.
