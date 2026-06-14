@@ -372,6 +372,30 @@ func (s *Stream) SetMetadata(key, value string) {
 	})
 }
 
+// ModelOption returns a provider.InvokeOption that, when passed to a
+// provider's Invoke, overrides the model name with the value of
+// Thread.Metadata["provider.model"]. When the key is absent or empty,
+// it returns nil so callers can append unconditionally:
+//
+//	opts = append(opts, stream.ModelOption())
+//
+// The metadata key "provider.model" is the framework contract; a
+// slash command, handler, or transform is responsible for writing
+// it (e.g. via stream.SetMetadata("provider.model", "gpt-4o-mini")).
+// SetMetadata emits a loop.PropertiesEvent so UI conduits can react;
+// no further integration is required by callers.
+//
+// Adapters that honor provider.ModelOption treat an empty override
+// as a no-op, so this method intentionally returns nil in that case
+// rather than handing the adapter a useless option.
+func (s *Stream) ModelOption() provider.InvokeOption {
+	name, ok := s.GetMetadata("provider.model")
+	if !ok || name == "" {
+		return nil
+	}
+	return provider.WithModel(name)
+}
+
 // Save persists the underlying thread to the store.
 func (s *Stream) Save() error {
 	return s.store.Save(s.thread)
