@@ -344,15 +344,15 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	var span trace.Span
 	if p.tracer != nil {
 		ctx, span = p.tracer.Start(ctx, "provider.invoke", trace.WithSpanKind(trace.SpanKindClient))
-		span.SetAttributes(attribute.String("model", p.model))
-		if id, ok := loop.ThreadIDFrom(ctx); ok {
-			span.SetAttributes(attribute.String("thread_id", id))
-		}
+		// Note: the model attribute is set after the option-walk so it
+		// reflects the *effective* (possibly overridden) model, not the
+		// constructor default. A trace that lies about which model served
+		// a request makes per-invocation switching impossible to debug.
+		defer span.End()
 		// Attach httptrace hooks to record granular HTTP lifecycle events
 		// (DNS, connect, TLS, first-byte) on the provider.invoke span.
 		// This is only enabled when a tracer is configured via WithTracer.
 		ctx = httptrace.WithClientTrace(ctx, otelhttptrace.NewClientTrace(ctx, otelhttptrace.WithoutSubSpans()))
-		defer span.End()
 	}
 
 	messages := p.serializeMessages(s)
@@ -363,6 +363,7 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	var maxTokens int64
 	var sessionID string
 	var cacheControl bool
+	var modelName string
 	for _, opt := range opts {
 		if to, ok := opt.(provider.ToolsOption); ok {
 			tools = to.Tools(ctx, s)
@@ -382,10 +383,28 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		if _, ok := opt.(cacheControlOption); ok {
 			cacheControl = true
 		}
+		if mo, ok := opt.(provider.ModelOption); ok {
+			modelName = mo.Model
+		}
+	}
+
+	// Effective model: per-invocation override wins; empty string falls
+	// through to the constructor default. This is the only place the
+	// precedence rule is encoded, and it is intentionally simple.
+	effectiveModel := p.model
+	if modelName != "" {
+		effectiveModel = modelName
+	}
+
+	if p.tracer != nil {
+		span.SetAttributes(attribute.String("model", effectiveModel))
+		if id, ok := loop.ThreadIDFrom(ctx); ok {
+			span.SetAttributes(attribute.String("thread_id", id))
+		}
 	}
 
 	params := openai.ChatCompletionNewParams{
-		Model:         openai.ChatModel(p.model),
+		Model:         openai.ChatModel(effectiveModel),
 		Messages:      messages,
 		StreamOptions: openai.ChatCompletionStreamOptionsParam{IncludeUsage: param.NewOpt(true)},
 	}
