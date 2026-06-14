@@ -184,6 +184,87 @@ func TestReadFile_MarshalLLM_Truncated(t *testing.T) {
 	assert.Contains(t, got, "lines shown of")
 }
 
+func TestReadFile_MarshalMarkdown(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		result  ReadFileResult
+		want    []string
+		notWant []string
+	}{
+		{
+			name:   "content wrapped in code fence",
+			result: ReadFileResult{Content: "1|hello\n2|world\n"},
+			want: []string{
+				"```",
+				"1|hello",
+				"2|world",
+				"```",
+			},
+			notWant: []string{
+				"Output truncated",
+			},
+		},
+		{
+			name:   "empty content is a bare fence pair",
+			result: ReadFileResult{Content: ""},
+			want: []string{
+				"```\n```",
+			},
+		},
+		{
+			name: "content without trailing newline gets one inside the fence",
+			// The reader always emits a trailing '\n', so this case
+			// is a safety net: it should still close the fence cleanly.
+			result: ReadFileResult{Content: "1|hello"},
+			want: []string{
+				"```\n1|hello\n```",
+			},
+		},
+		{
+			name: "truncated result includes recovery hint with temp file path",
+			result: ReadFileResult{
+				Content:      "1|first line\n2|second line\n",
+				TempFilePath: "/tmp/ore-readfile-abc.txt",
+				Truncation: &artifact.Truncation{
+					OriginalBytes: 100_000,
+					OriginalLines: 1000,
+					ShownBytes:    20,
+					ShownLines:    2,
+					Style:         "head",
+				},
+			},
+			want: []string{
+				"```",
+				"1|first line",
+				"2|second line",
+				"```",
+				"Output truncated",
+				"2 of 1000 lines shown",
+				"/tmp/ore-readfile-abc.txt",
+				"offset=3",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			md := tt.result.MarshalMarkdown()
+			for _, s := range tt.want {
+				if !strings.Contains(md, s) {
+					t.Errorf("MarshalMarkdown() missing %q\ngot:\n%s", s, md)
+				}
+			}
+			for _, s := range tt.notWant {
+				if strings.Contains(md, s) {
+					t.Errorf("MarshalMarkdown() unexpectedly contains %q\ngot:\n%s", s, md)
+				}
+			}
+		})
+	}
+}
+
 func TestWriteFile_NewFile(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -532,6 +613,66 @@ func TestListDirectory_MarshalLLM_Truncated(t *testing.T) {
 	assert.Contains(t, got, "entries shown of")
 }
 
+func TestListDirectory_MarshalMarkdown(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		result  ListDirectoryResult
+		want    []string
+		notWant []string
+	}{
+		{
+			name:   "entries wrapped in code fence, one per line",
+			result: ListDirectoryResult{Entries: []string{"a", "b", "c"}},
+			want: []string{
+				"```\na\nb\nc\n```",
+			},
+		},
+		{
+			name:   "empty entry list is a bare fence pair",
+			result: ListDirectoryResult{Entries: nil},
+			want: []string{
+				"```\n```",
+			},
+		},
+		{
+			name: "truncated result includes recovery hint",
+			result: ListDirectoryResult{
+				Entries: []string{"a", "b"},
+				Truncation: &artifact.Truncation{
+					OriginalBytes: 1000,
+					OriginalLines: 100,
+					ShownBytes:    20,
+					ShownLines:    2,
+					Style:         "head",
+				},
+			},
+			want: []string{
+				"```\na\nb\n```",
+				"Output truncated",
+				"2 of 100 entries shown",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			md := tt.result.MarshalMarkdown()
+			for _, s := range tt.want {
+				if !strings.Contains(md, s) {
+					t.Errorf("MarshalMarkdown() missing %q\ngot:\n%s", s, md)
+				}
+			}
+			for _, s := range tt.notWant {
+				if strings.Contains(md, s) {
+					t.Errorf("MarshalMarkdown() unexpectedly contains %q\ngot:\n%s", s, md)
+				}
+			}
+		})
+	}
+}
+
 func TestSearchFiles_SingleFile(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -711,6 +852,71 @@ func TestSearchFiles_MarshalLLM_Truncated(t *testing.T) {
 	got := r.MarshalLLM()
 	assert.Contains(t, got, "limit=2N")
 	assert.Contains(t, got, "matches shown of")
+}
+
+func TestSearchFiles_MarshalMarkdown(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		result  SearchFilesResult
+		want    []string
+		notWant []string
+	}{
+		{
+			name: "matches wrapped in code fence with path:line: framing",
+			result: SearchFilesResult{
+				Results: []SearchResult{
+					{Path: "/a.go", LineNumber: 1, Content: "package main"},
+					{Path: "/a.go", LineNumber: 5, Content: "func main() {}"},
+				},
+			},
+			want: []string{
+				"```\n/a.go:1: package main\n/a.go:5: func main() {}\n```",
+			},
+		},
+		{
+			name:   "empty result set is a bare fence pair",
+			result: SearchFilesResult{Results: nil},
+			want: []string{
+				"```\n```",
+			},
+		},
+		{
+			name: "truncated result includes recovery hint",
+			result: SearchFilesResult{
+				Results: []SearchResult{{Path: "/a", LineNumber: 1, Content: "x"}},
+				Truncation: &artifact.Truncation{
+					OriginalBytes: 100_000,
+					OriginalLines: 2000,
+					ShownBytes:    50,
+					ShownLines:    1,
+					Style:         "head",
+				},
+			},
+			want: []string{
+				"```\n/a:1: x\n```",
+				"Output truncated",
+				"1 of 2000 matches shown",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			md := tt.result.MarshalMarkdown()
+			for _, s := range tt.want {
+				if !strings.Contains(md, s) {
+					t.Errorf("MarshalMarkdown() missing %q\ngot:\n%s", s, md)
+				}
+			}
+			for _, s := range tt.notWant {
+				if strings.Contains(md, s) {
+					t.Errorf("MarshalMarkdown() unexpectedly contains %q\ngot:\n%s", s, md)
+				}
+			}
+		})
+	}
 }
 
 func TestToInt_Float64(t *testing.T) {
