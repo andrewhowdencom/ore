@@ -140,10 +140,10 @@ func (m *model) buildContent() string {
 			}
 			b.WriteString(renderBlockUnified(block, turn.timestamp, expanded, width))
 			if i < len(turn.blocks)-1 {
-				b.WriteString("\n\n")
+				b.WriteString(m.theme.Gap(m.theme.InterBlockGap))
 			}
 		}
-		b.WriteString("\n\n")
+		b.WriteString(m.theme.Gap(m.theme.InterTurnGap))
 	}
 
 	// Render the in-progress assistant turn accumulated from ArtifactEvents.
@@ -152,10 +152,10 @@ func (m *model) buildContent() string {
 			expanded := m.expandLatestDetails || block.expandedByDefault
 			b.WriteString(renderBlockUnified(block, time.Time{}, expanded, width))
 			if i < len(m.currentTurn.blocks)-1 {
-				b.WriteString("\n\n")
+				b.WriteString(m.theme.Gap(m.theme.InterBlockGap))
 			}
 		}
-		b.WriteString("\n\n")
+		b.WriteString(m.theme.Gap(m.theme.InterTurnGap))
 	}
 
 	// Render pending placeholder only when no artifacts have arrived yet.
@@ -167,7 +167,7 @@ func (m *model) buildContent() string {
 			style:             m.theme.AssistantStyle,
 			expandedByDefault: true,
 		}, time.Time{}, true, width))
-		b.WriteString("\n\n")
+		b.WriteString(m.theme.Gap(m.theme.InterTurnGap))
 	}
 
 	m.cachedContent = b.String()

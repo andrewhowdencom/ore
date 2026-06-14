@@ -12,6 +12,8 @@
 package theme
 
 import (
+	"strings"
+
 	"charm.land/lipgloss/v2"
 	"github.com/andrewhowdencom/ore/state"
 	glamouransi "github.com/charmbracelet/glamour/ansi"
@@ -55,6 +57,30 @@ type Theme struct {
 	// ZoneLabelStyle styles zone names (Lifecycle, Context) in the status
 	// bar.
 	ZoneLabelStyle lipgloss.Style
+
+	// InterBlockGap is the number of blank lines the renderer inserts
+	// between two blocks within the same turn (e.g. between a tool
+	// result and the assistant's reply). A value of 0 produces no gap;
+	// 1 produces one blank line. The default is 1.
+	InterBlockGap int
+	// InterTurnGap is the number of blank lines the renderer inserts
+	// between two turns (and after the last turn). Same semantics as
+	// InterBlockGap. The default is 1.
+	InterTurnGap int
+}
+
+// Gap encodes a blank-line amount as a string the renderer writes
+// between structural elements (blocks within a turn, turns within the
+// stream). n == 0 returns ""; n > 0 returns n+1 newlines, which
+// renders as n blank lines on a monospace terminal. The method is on
+// *Theme so the encoding lives next to the values it encodes; if a
+// future renderer needs a different encoding (e.g. OSC sequences for
+// half-blank lines), the change is local to this package.
+func (t *Theme) Gap(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return strings.Repeat("\n", n+1)
 }
 
 // StyleForRole returns the lipgloss style appropriate for a conversation
