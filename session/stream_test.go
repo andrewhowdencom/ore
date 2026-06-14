@@ -898,6 +898,41 @@ func TestStream_Interceptor_Rewrite(t *testing.T) {
 	_ = stream.Close()
 }
 
+func TestStream_ModelOption(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = stream.Close() })
+
+	t.Run("returns nil when metadata key is absent", func(t *testing.T) {
+		assert.Nil(t, stream.ModelOption(),
+			"fresh stream has no provider.model metadata; ModelOption must return nil so the result can be appended unconditionally")
+	})
+
+	t.Run("returns ModelOption carrying the metadata value", func(t *testing.T) {
+		stream.SetMetadata("provider.model", "gpt-4o-mini")
+
+		opt := stream.ModelOption()
+		require.NotNil(t, opt)
+
+		mo, ok := opt.(provider.ModelOption)
+		require.True(t, ok, "ModelOption should produce a provider.ModelOption value")
+		assert.Equal(t, "gpt-4o-mini", mo.Model)
+	})
+
+	t.Run("returns nil when metadata is explicitly cleared", func(t *testing.T) {
+		// Even if the key was previously set, an empty string is a
+		// no-op signal. ModelOption must mirror that contract.
+		stream.SetMetadata("provider.model", "")
+
+		assert.Nil(t, stream.ModelOption(),
+			"empty metadata value must produce a nil option, matching the empty-Model no-op contract")
+	})
+}
+
 func TestStream_Interceptor_Error(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
