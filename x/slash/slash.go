@@ -16,7 +16,21 @@ import (
 type Command struct {
 	Name  string // e.g. "help" (no leading slash)
 	Input string // everything after the command, raw and unmodified
+
+	// stream is the active session.Stream that the slash command is
+	// running in. Handlers that need to mutate thread-scoped state
+	// (e.g. metadata) access it via the Stream() method. It is nil for
+	// Command values constructed directly in tests; only the registry's
+	// Intercept sets it.
+	stream *session.Stream
 }
+
+// Stream returns the session.Stream that owns the in-flight event the
+// slash command was parsed from. It is nil for Command values that were
+// not produced by a session.Interceptor (e.g. hand-constructed in tests).
+// Handlers that mutate thread state via SetMetadata must check for nil
+// before dereferencing.
+func (c Command) Stream() *session.Stream { return c.stream }
 
 // Result is the return value from a slash command handler.
 type Result struct {
@@ -42,7 +56,7 @@ func Fields(input string) []string {
 // Registry is the slash command registry interface.
 type Registry interface {
 	Bind(name string, description string, handler Handler)
-	Intercept(ctx context.Context, event session.Event, emitter loop.Emitter) (session.InterceptResult, error)
+	Intercept(ctx context.Context, event session.Event, stream *session.Stream, emitter loop.Emitter) (session.InterceptResult, error)
 }
 
 // Compile-time assertion that registry implements session.Interceptor.
@@ -96,7 +110,11 @@ func (r *registry) Bind(name string, description string, handler Handler) {
 // invoked and the event is consumed or replaced. If no command matches, the
 // event passes through unchanged. Non-UserMessageEvent types are always passed
 // through unchanged.
-func (r *registry) Intercept(ctx context.Context, event session.Event, emitter loop.Emitter) (session.InterceptResult, error) {
+//
+// The active *session.Stream is threaded through to the parsed Command so
+// handlers that need to mutate thread state (e.g. via SetMetadata) can
+// recover it via Command.Stream().
+func (r *registry) Intercept(ctx context.Context, event session.Event, stream *session.Stream, emitter loop.Emitter) (session.InterceptResult, error) {
 	ume, ok := event.(session.UserMessageEvent)
 	if !ok {
 		return session.InterceptResult{Event: event}, nil
@@ -138,7 +156,7 @@ func (r *registry) Intercept(ctx context.Context, event session.Event, emitter l
 		}, nil
 	}
 
-	result, err := handler(ctx, emitter, Command{Name: command, Input: input})
+	result, err := handler(ctx, emitter, Command{Name: command, Input: input, stream: stream})
 	if err != nil {
 		return session.InterceptResult{Event: event}, err
 	}

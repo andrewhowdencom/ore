@@ -34,6 +34,7 @@ import (
 	"github.com/andrewhowdencom/ore/x/provider/openai"
 	"github.com/andrewhowdencom/ore/x/slash"
 	"github.com/andrewhowdencom/ore/x/telemetry"
+	"github.com/andrewhowdencom/ore/x/tool/set_model"
 	"github.com/andrewhowdencom/ore/x/tool/set_title"
 	"github.com/andrewhowdencom/ore/x/usage"
 	"go.opentelemetry.io/otel/attribute"
@@ -172,6 +173,7 @@ func run() error {
 	// going through the tool/LLM pipeline.
 	slashReg := slash.NewRegistry()
 	slashReg.Bind("name", "Set the conversation title", set_title.Slash())
+	slashReg.Bind("model", "Set the model for this session", set_model.Slash())
 
 	// Manager now auto-persists state via a default OnEmit callback;
 	// no custom stepFactory needed for basic TUI usage, but we wire the

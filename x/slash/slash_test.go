@@ -24,7 +24,7 @@ func TestRegistry_BindAndMatch(t *testing.T) {
 	})
 
 	event := session.UserMessageEvent{Content: "/new"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
@@ -39,7 +39,7 @@ func TestRegistry_UnknownCommand(t *testing.T) {
 	})
 
 	event := session.UserMessageEvent{Content: "/other"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed for unknown command")
@@ -56,7 +56,7 @@ func TestRegistry_HandlerError(t *testing.T) {
 	})
 
 	event := session.UserMessageEvent{Content: "/fail"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.Error(t, err)
 	assert.Equal(t, expectedErr, err)
@@ -73,7 +73,7 @@ func TestRegistry_RawInputParsing(t *testing.T) {
 	})
 
 	event := session.UserMessageEvent{Content: "/include /path/with spaces"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
@@ -95,7 +95,7 @@ func TestRegistry_Feedback(t *testing.T) {
 	})
 
 	event := session.UserMessageEvent{Content: "/status"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
@@ -113,7 +113,7 @@ func TestRegistry_FeedbackWithReplace(t *testing.T) {
 	})
 
 	event := session.UserMessageEvent{Content: "/switch"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	require.NotNil(t, result.Event)
@@ -133,7 +133,7 @@ func TestRegistry_NonUserMessage(t *testing.T) {
 	})
 
 	event := session.InterruptEvent{Ctx: context.Background()}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, event, result.Event, "expected event to pass through")
@@ -148,7 +148,7 @@ func TestRegistry_NoSlashPrefix(t *testing.T) {
 	})
 
 	event := session.UserMessageEvent{Content: "new"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, event, result.Event, "expected event to pass through")
@@ -163,7 +163,7 @@ func TestRegistry_EmptyContent(t *testing.T) {
 	})
 
 	event := session.UserMessageEvent{Content: ""}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, event, result.Event, "expected event to pass through")
@@ -182,7 +182,7 @@ func TestRegistry_HandlerReturnsEvent(t *testing.T) {
 	})
 
 	event := session.UserMessageEvent{Content: "/new"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	require.NotNil(t, result.Event, "expected event to be replaced, not consumed")
@@ -203,7 +203,7 @@ func TestRegistry_Help(t *testing.T) {
 	})
 
 	event := session.UserMessageEvent{Content: "/help"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
@@ -224,7 +224,7 @@ func TestRegistry_HelpExcludesUnbound(t *testing.T) {
 	// Only /help is auto-registered; no other commands.
 
 	event := session.UserMessageEvent{Content: "/help"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	require.Len(t, result.Feedback, 1)
@@ -252,7 +252,7 @@ func TestRegistry_PostSlashWhitespace(t *testing.T) {
 
 	// Multiple spaces after the slash — command should be parsed correctly.
 	event := session.UserMessageEvent{Content: "/   help"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
@@ -270,7 +270,7 @@ func TestRegistry_PostSlashWhitespace_WithInput(t *testing.T) {
 
 	// Multiple spaces after slash and between command and input.
 	event := session.UserMessageEvent{Content: "/   include   /path/with spaces"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
@@ -290,7 +290,7 @@ func TestRegistry_DuplicateBind_Overwrites(t *testing.T) {
 	})
 
 	event := session.UserMessageEvent{Content: "/test"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	assert.False(t, firstCalled, "first handler should not be called")
@@ -309,7 +309,7 @@ func TestRegistry_DuplicateBind_UpdatesDescription(t *testing.T) {
 
 	// Verify /help shows the updated description.
 	event := session.UserMessageEvent{Content: "/help"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	require.Len(t, result.Feedback, 1)
@@ -326,7 +326,7 @@ func TestRegistry_MixedCase(t *testing.T) {
 	})
 
 	event := session.UserMessageEvent{Content: "/HeLp"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event)
@@ -341,7 +341,7 @@ func TestRegistry_EmptyFeedback(t *testing.T) {
 	})
 
 	event := session.UserMessageEvent{Content: "/silent"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
@@ -365,7 +365,7 @@ func TestRegistry_Isolation(t *testing.T) {
 	r2 := NewRegistry()
 
 	event := session.UserMessageEvent{Content: "/foo"}
-	result, err := r2.Intercept(context.Background(), event, nil)
+	result, err := r2.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event)
@@ -382,7 +382,7 @@ func TestRegistry_LeadingWhitespace(t *testing.T) {
 	})
 
 	event := session.UserMessageEvent{Content: "   /help"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
@@ -403,7 +403,7 @@ func TestRegistry_MultipleFeedback(t *testing.T) {
 	// multiple feedback items by having a single handler return one item.
 	// This test verifies that the single feedback item is correctly passed through.
 	event := session.UserMessageEvent{Content: "/multi"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
@@ -419,7 +419,7 @@ func TestRegistry_CaseSensitive(t *testing.T) {
 
 	// Uppercase HELP should be treated as unknown command.
 	event := session.UserMessageEvent{Content: "/HELP"}
-	result, err := r.Intercept(context.Background(), event, nil)
+	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed for unknown command")

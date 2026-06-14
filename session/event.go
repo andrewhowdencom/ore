@@ -56,22 +56,27 @@ type InterceptResult struct {
 }
 
 // Interceptor processes events before they enter the LLM pipeline.
-// It receives a session.Event and an optional loop.Emitter for signaling
-// activity, and can either:
+// It receives a session.Event, the active *session.Stream, and a
+// loop.Emitter for signaling activity, and can either:
 //   - Return a non-nil Event in the result to rewrite the event
 //   - Return a nil Event in the result to consume the event (no further processing)
 //   - Return an error to abort processing
 // Feedback messages are ephemeral UI messages that are not persisted to state.
+//
+// The *session.Stream parameter is the stream that owns the in-flight event,
+// so interceptors can call stream-scoped methods like SetMetadata. It is
+// never nil for a configured interceptor — stream.processOne passes the
+// active stream unconditionally.
 type Interceptor interface {
-	Intercept(ctx context.Context, event Event, emitter loop.Emitter) (InterceptResult, error)
+	Intercept(ctx context.Context, event Event, stream *Stream, emitter loop.Emitter) (InterceptResult, error)
 }
 
 // InterceptorFunc is a function type that implements Interceptor.
-type InterceptorFunc func(ctx context.Context, event Event, emitter loop.Emitter) (InterceptResult, error)
+type InterceptorFunc func(ctx context.Context, event Event, stream *Stream, emitter loop.Emitter) (InterceptResult, error)
 
 // Intercept delegates to the function.
-func (f InterceptorFunc) Intercept(ctx context.Context, event Event, emitter loop.Emitter) (InterceptResult, error) {
-	return f(ctx, event, emitter)
+func (f InterceptorFunc) Intercept(ctx context.Context, event Event, stream *Stream, emitter loop.Emitter) (InterceptResult, error) {
+	return f(ctx, event, stream, emitter)
 }
 
 // SessionSwitchEvent signals a cross-session navigation.
