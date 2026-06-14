@@ -48,6 +48,9 @@ includes:
   x-tool-sandbox-unsafe:
     taskfile: Taskfile.lib.yml
     dir: x/tool/sandbox/unsafe
+  x-tool-set-model:
+    taskfile: Taskfile.lib.yml
+    dir: x/tool/set_model
   x-tool-skills:
     taskfile: Taskfile.lib.yml
     dir: x/tool/skills
@@ -104,6 +107,7 @@ tasks:
       - task x-tool-filesystem:validate
       - task x-tool-mcp:validate
       - task x-tool-sandbox-unsafe:validate
+      - task x-tool-set-model:validate
       - task x-tool-skills:validate
       - task x-tool-truncate:validate
 
