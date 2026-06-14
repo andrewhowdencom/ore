@@ -39,5 +39,7 @@ func Dark() *Theme {
 		ReasoningExpandedStyle: lipgloss.NewStyle().Faint(true),
 		SpinnerStyle:           lipgloss.NewStyle().Faint(true).Italic(true),
 		ZoneLabelStyle:         lipgloss.NewStyle().Bold(true),
+		InterBlockGap:          1,
+		InterTurnGap:           1,
 	}
 }
