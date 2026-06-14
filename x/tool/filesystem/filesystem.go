@@ -102,9 +102,42 @@ func (r *ReadFileResult) MarshalLLM() string {
 	return sb.String()
 }
 
-// Compile-time assertion: *ReadFileResult implements LLMRenderer
-// so the framework handler respects the bounded output verbatim.
-var _ artifact.LLMRenderer = (*ReadFileResult)(nil)
+// MarshalMarkdown returns the Markdown representation of the
+// result for human display (e.g. the TUI). The line-numbered
+// content is wrapped in a fenced code block so glamour preserves
+// the line breaks and (when a language is recognised) syntax
+// highlights the contents. When truncation occurred, a short
+// recovery hint naming the temp file path is appended below the
+// code block — a Markdown link keeps the path clickable in
+// downstream Markdown renderers.
+func (r *ReadFileResult) MarshalMarkdown() string {
+	var sb strings.Builder
+	sb.WriteString("```\n")
+	sb.WriteString(r.Content)
+	if !strings.HasSuffix(r.Content, "\n") && r.Content != "" {
+		sb.WriteString("\n")
+	}
+	sb.WriteString("```")
+	if r.Truncation != nil && r.Truncation.Truncated() && r.TempFilePath != "" {
+		sb.WriteString(fmt.Sprintf(
+			"\n\nOutput truncated (%d of %d lines shown). Full file: `%s`. Use offset=%d to continue.",
+			r.Truncation.ShownLines,
+			r.Truncation.OriginalLines,
+			r.TempFilePath,
+			r.Truncation.ShownLines+1,
+		))
+	}
+	return sb.String()
+}
+
+// Compile-time assertion: *ReadFileResult implements both the
+// LLM and Markdown renderers so the framework handler keeps the
+// line-numbered output verbatim for the LLM, and the TUI
+// renders it as a code block.
+var (
+	_ artifact.LLMRenderer     = (*ReadFileResult)(nil)
+	_ artifact.MarkdownRenderer = (*ReadFileResult)(nil)
+)
 
 // ReadFile reads a file and returns its line-numbered content
 // with byte-cap truncation and temp-file fallback. When the
@@ -445,7 +478,33 @@ func (r *ListDirectoryResult) MarshalLLM() string {
 	return sb.String()
 }
 
-var _ artifact.LLMRenderer = (*ListDirectoryResult)(nil)
+// MarshalMarkdown returns the Markdown representation of the
+// result for human display. The entry list is wrapped in a
+// fenced code block so glamour preserves the newlines between
+// names. When truncation occurred, a short recovery hint
+// follows the code block.
+func (r *ListDirectoryResult) MarshalMarkdown() string {
+	var sb strings.Builder
+	sb.WriteString("```\n")
+	sb.WriteString(strings.Join(r.Entries, "\n"))
+	if len(r.Entries) > 0 {
+		sb.WriteString("\n")
+	}
+	sb.WriteString("```")
+	if r.Truncation != nil && r.Truncation.Truncated() {
+		sb.WriteString(fmt.Sprintf(
+			"\n\nOutput truncated (%d of %d entries shown). Use a higher `limit` to see more.",
+			r.Truncation.ShownLines,
+			r.Truncation.OriginalLines,
+		))
+	}
+	return sb.String()
+}
+
+var (
+	_ artifact.LLMRenderer     = (*ListDirectoryResult)(nil)
+	_ artifact.MarkdownRenderer = (*ListDirectoryResult)(nil)
+)
 
 // ListDirectory returns a shallow listing of non-hidden entries in a directory.
 // Parameters:
@@ -582,7 +641,32 @@ func (r *SearchFilesResult) MarshalLLM() string {
 	return sb.String()
 }
 
-var _ artifact.LLMRenderer = (*SearchFilesResult)(nil)
+// MarshalMarkdown returns the Markdown representation of the
+// result for human display. Each match is wrapped in a fenced
+// code block so the "path:line: content" framing is preserved
+// verbatim (no soft-wrapping that would obscure the location).
+// When truncation occurred, a short recovery hint follows.
+func (r *SearchFilesResult) MarshalMarkdown() string {
+	var sb strings.Builder
+	sb.WriteString("```\n")
+	for _, m := range r.Results {
+		fmt.Fprintf(&sb, "%s:%d: %s\n", m.Path, m.LineNumber, m.Content)
+	}
+	sb.WriteString("```")
+	if r.Truncation != nil && r.Truncation.Truncated() {
+		sb.WriteString(fmt.Sprintf(
+			"\n\nOutput truncated (%d of %d matches shown). Use a higher `limit` or refine the regex.",
+			r.Truncation.ShownLines,
+			r.Truncation.OriginalLines,
+		))
+	}
+	return sb.String()
+}
+
+var (
+	_ artifact.LLMRenderer     = (*SearchFilesResult)(nil)
+	_ artifact.MarkdownRenderer = (*SearchFilesResult)(nil)
+)
 
 // SearchFiles searches files for lines matching a regex query.
 // Parameters:
