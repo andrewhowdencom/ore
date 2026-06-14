@@ -13,6 +13,7 @@ use (
 	./x/conduit/telegram
 	./x/conduit/tui
 	./x/llmbytes
+	./x/provider/anthropic
 	./x/provider/openai
 	./x/telemetry
 	./x/tool
