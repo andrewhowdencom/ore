@@ -42,6 +42,34 @@ func WithTools(tools []tool.Tool) InvokeOption {
 	return ToolsOption{Tools: func(context.Context, state.State) []tool.Tool { return tools }}
 }
 
+// ModelOption is a per-invocation option that overrides the model name used
+// for a single provider invocation. The Model field is a string so callers
+// can source it from arbitrary input (e.g. session metadata).
+//
+// An empty Model field is treated as a no-op by adapters; it does not clear
+// the model or fall back to a default. Adapters that honor ModelOption must
+// continue to use the value supplied at construction when Model is empty.
+// This preserves the precedence rule: per-invocation option > constructor.
+type ModelOption struct {
+	// Model is the model name to use for the current invocation. Adapters
+	// must treat an empty string as a no-op.
+	Model string
+}
+
+// IsInvokeOption marks ModelOption as a provider.InvokeOption.
+func (ModelOption) IsInvokeOption() {}
+
+// WithModel returns an InvokeOption that overrides the model name for a
+// single provider invocation. Passing an empty string is a no-op: adapters
+// must keep using the value supplied at construction.
+//
+// Note: the per-adapter constructor option (e.g. openai.WithModel) shares
+// the same bare name by design. Call sites should disambiguate with the
+// package qualifier, e.g. provider.WithModel(...) at the call to Invoke.
+func WithModel(name string) InvokeOption {
+	return ModelOption{Model: name}
+}
+
 // Provider is the interface implemented by LLM provider adapters.
 type Provider interface {
 	// Invoke serializes the given state, calls the LLM API, and emits
