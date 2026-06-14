@@ -152,6 +152,28 @@ func reasoningOnlySSE(parts ...string) string {
 	return sb.String()
 }
 
+// flatReasoningSSE emits a delta carrying `reasoning` (flat string) instead
+// of `reasoning_content`. This is the wire shape surfaced by OpenRouter
+// for non-Anthropic reasoning routes.
+func flatReasoningSSE(reasoning string) string {
+	return fmt.Sprintf("data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"deepseek/deepseek-r1\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning\":%q},\"finish_reason\":null}]}\n\ndata: [DONE]\n\n", reasoning)
+}
+
+// reasoningDetailsTextSSE emits a delta carrying a `reasoning_details`
+// array with one `reasoning.text` entry. This is the OpenRouter wire
+// shape for streaming text-mode reasoning.
+func reasoningDetailsTextSSE(text string) string {
+	return fmt.Sprintf("data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"anthropic/claude-3.7-sonnet:thinking\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_details\":[{\"type\":\"reasoning.text\",\"text\":%q,\"id\":\"rd-0\"}]},\"finish_reason\":null}]}\n\ndata: [DONE]\n\n", text)
+}
+
+// reasoningDetailsEncryptedSSE emits a delta carrying a `reasoning_details`
+// array with one `reasoning.encrypted` entry. This is the OpenRouter wire
+// shape for streaming encrypted reasoning; the provider must emit a
+// ReasoningSignature so the next turn can replay the encrypted blob.
+func reasoningDetailsEncryptedSSE(data string) string {
+	return fmt.Sprintf("data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"anthropic/claude-3.7-sonnet:thinking\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_details\":[{\"type\":\"reasoning.encrypted\",\"data\":%q,\"id\":\"rd-0\"}]},\"finish_reason\":null}]}\n\ndata: [DONE]\n\n", data)
+}
+
 func emptyChoicesSSE() string {
 	return "data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"choices\":[]}\n\ndata: [DONE]\n\n"
 }
@@ -1967,4 +1989,81 @@ func TestProviderInvoke_UsageChunkNoCache(t *testing.T) {
 	assert.Equal(t, 15, u.TotalTokens)
 	assert.Equal(t, 0, u.CacheReadTokens, "no cache fields in response should leave CacheReadTokens zero")
 	assert.Equal(t, 0, u.CacheWriteTokens, "no cache fields in response should leave CacheWriteTokens zero")
+}
+
+// TestProviderInvoke_StreamsReasoning_FlatField verifies that an SSE
+// delta carrying `reasoning` (the flat-string shape surfaced by
+// OpenRouter for non-Anthropic reasoning routes) is read and emitted as
+// a ReasoningDelta. Coexists with the existing `reasoning_content`
+// path; both are read independently so a single host can serve either
+// shape.
+func TestProviderInvoke_StreamsReasoning_FlatField(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(flatReasoningSSE("Let me analyze this...")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("deepseek/deepseek-r1"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	artifacts := drainArtifacts(ch)
+
+	require.Len(t, artifacts, 1)
+	assert.Equal(t, "reasoning_delta", artifacts[0].Kind())
+	assert.Equal(t, "Let me analyze this...", artifacts[0].(artifact.ReasoningDelta).Content)
+}
+
+// TestProviderInvoke_StreamsReasoning_DetailsArray_Text verifies that
+// an SSE delta whose `reasoning_details[]` array contains a
+// `reasoning.text` entry is read and emitted as a ReasoningDelta with
+// that text. This is the OpenRouter wire shape for text-mode reasoning.
+func TestProviderInvoke_StreamsReasoning_DetailsArray_Text(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(reasoningDetailsTextSSE("text-mode reasoning chunk")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("anthropic/claude-3.7-sonnet:thinking"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	artifacts := drainArtifacts(ch)
+
+	require.Len(t, artifacts, 1)
+	assert.Equal(t, "reasoning_delta", artifacts[0].Kind())
+	assert.Equal(t, "text-mode reasoning chunk", artifacts[0].(artifact.ReasoningDelta).Content)
+}
+
+// TestProviderInvoke_StreamsReasoning_DetailsArray_Encrypted verifies
+// that an SSE delta whose `reasoning_details[]` array contains a
+// `reasoning.encrypted` entry is read and emitted as a
+// ReasoningSignature{Provider: "openai", SubKind: "encrypted", ...}. The
+// signature is the carrier that lets the next-turn serializer (Task 3)
+// emit `reasoning_details[]` on the assistant message for replay.
+func TestProviderInvoke_StreamsReasoning_DetailsArray_Encrypted(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(reasoningDetailsEncryptedSSE("opaque-encrypted-blob")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("anthropic/claude-3.7-sonnet:thinking"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	artifacts := drainArtifacts(ch)
+
+	require.Len(t, artifacts, 1)
+	assert.Equal(t, "reasoning_signature", artifacts[0].Kind())
+	sig, ok := artifacts[0].(artifact.ReasoningSignature)
+	require.True(t, ok)
+	assert.Equal(t, "openai", sig.Provider)
+	assert.Equal(t, "encrypted", sig.SubKind)
+	assert.Equal(t, "opaque-encrypted-blob", sig.Data)
 }

@@ -478,6 +478,40 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 			}
 		}
 
+		// `delta.reasoning` is the flat-string form surfaced by some
+		// OpenAI-compatible providers (e.g. OpenRouter for non-Anthropic
+		// reasoning routes). The `reasoning_content` path above
+		// remains the canonical OpenAI-native shape; both paths
+		// coexist so a single provider can serve multiple hosts.
+		if field, ok := delta.JSON.ExtraFields["reasoning"]; ok {
+			var reasoning string
+			if err := json.Unmarshal([]byte(field.Raw()), &reasoning); err == nil && reasoning != "" {
+				select {
+				case ch <- artifact.ReasoningDelta{Content: reasoning}:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+		}
+
+		// `delta.reasoning_details[]` is the structured-form used by
+		// OpenRouter and other proxies. Each entry has a `type`
+		// discriminator that drives emission: `reasoning.text` becomes
+		// a ReasoningDelta, `reasoning.encrypted` becomes a
+		// ReasoningSignature (so it can be replayed on the next turn).
+		if field, ok := delta.JSON.ExtraFields["reasoning_details"]; ok {
+			arts, err := reasoningDetailsToArtifacts([]byte(field.Raw()))
+			if err == nil {
+				for _, a := range arts {
+					select {
+					case ch <- a:
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				}
+			}
+		}
+
 		for _, tc := range delta.ToolCalls {
 			select {
 			case ch <- artifact.ToolCallDelta{
@@ -570,6 +604,50 @@ func readCacheUsage(usage openai.CompletionUsage) (cacheRead, cacheWrite int) {
 	// JSON fallback.
 	cacheRead = int(usage.PromptTokensDetails.CachedTokens)
 	return cacheRead, 0
+}
+
+// reasoningDetailsToArtifacts walks a `delta.reasoning_details[]` JSON
+// payload and emits the corresponding streaming artifacts. Supported
+// entry shapes today:
+//
+//   - {"type": "reasoning.text", "text": "..."}        -> ReasoningDelta
+//   - {"type": "reasoning.encrypted", "data": "..."}  -> ReasoningSignature
+//
+// Unknown `type` values are skipped silently (the wire is allowed to
+// grow new kinds without breaking the SDK). Malformed JSON is reported
+// to the caller; the streaming loop in Invoke treats a parse failure
+// as a no-op for the affected delta so a single bad chunk does not
+// abort the in-flight stream.
+func reasoningDetailsToArtifacts(rawJSON []byte) ([]artifact.Artifact, error) {
+	var entries []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+		Data string `json:"data"`
+	}
+	if err := json.Unmarshal(rawJSON, &entries); err != nil {
+		return nil, fmt.Errorf("unmarshal reasoning_details: %w", err)
+	}
+
+	var out []artifact.Artifact
+	for _, e := range entries {
+		switch e.Type {
+		case "reasoning.text":
+			if e.Text == "" {
+				continue
+			}
+			out = append(out, artifact.ReasoningDelta{Content: e.Text})
+		case "reasoning.encrypted":
+			if e.Data == "" {
+				continue
+			}
+			out = append(out, artifact.ReasoningSignature{
+				Provider: "openai",
+				SubKind:  "encrypted",
+				Data:     e.Data,
+			})
+		}
+	}
+	return out, nil
 }
 
 // applyCacheControl mutates the marshaled messages and tools slices to add
