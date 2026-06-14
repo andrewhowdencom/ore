@@ -1294,6 +1294,120 @@ func TestProviderInvoke_DynamicTools_Concurrency(t *testing.T) {
 	}
 }
 
+func TestProviderInvoke_PerInvocationModelOverride(t *testing.T) {
+	// Three sub-cases, all sharing the same recording transport and a
+	// fixed constructor model. The plan calls for the constructor
+	// default to win when no override is supplied and when an empty
+	// string is explicitly passed.
+	cases := []struct {
+		name string
+		opts []provider.InvokeOption
+		want string
+	}{
+		{
+			name: "no override uses constructor model",
+			opts: nil,
+			want: "gpt-4",
+		},
+		{
+			name: "with override uses override value",
+			opts: []provider.InvokeOption{provider.WithModel("gpt-4o-mini")},
+			want: "gpt-4o-mini",
+		},
+		{
+			name: "empty override is a no-op and falls back to constructor",
+			opts: []provider.InvokeOption{provider.WithModel("")},
+			want: "gpt-4",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			transport := &recordingMockTransport{
+				responseBody: simpleSSE("ok"),
+			}
+
+			p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(&http.Client{Transport: transport}))
+			require.NoError(t, err)
+
+			mem := &state.Buffer{}
+			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+			ch := make(chan artifact.Artifact, 10)
+			require.NoError(t, p.Invoke(t.Context(), mem, ch, tc.opts...))
+			close(ch)
+			for range ch {
+			}
+
+			requests := transport.Requests()
+			require.Len(t, requests, 1)
+
+			var reqBody map[string]any
+			require.NoError(t, json.Unmarshal(requests[0].body, &reqBody))
+
+			assert.Equal(t, tc.want, reqBody["model"], "outgoing request model field should reflect the effective model")
+		})
+	}
+}
+
+func TestProviderInvoke_PerInvocationModelOverride_OTelSpan(t *testing.T) {
+	// The OTel span on provider.invoke must record the *effective* model,
+	// not just the constructor value. Without this, a trace would lie
+	// about which model served a request, defeating the entire purpose
+	// of per-invocation switching for observability.
+	transport := &recordingMockTransport{
+		responseBody: simpleSSE("ok"),
+	}
+
+	recorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+
+	p, err := New(
+		WithAPIKey("test-key"),
+		WithModel("gpt-4"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+		WithTracer(tp.Tracer("test")),
+	)
+	require.NoError(t, err)
+
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	require.NoError(t, p.Invoke(
+		t.Context(),
+		mem,
+		ch,
+		provider.WithModel("gpt-4o-mini"),
+	))
+	close(ch)
+	for range ch {
+	}
+
+	spans := recorder.Ended()
+	var foundSpan sdktrace.ReadOnlySpan
+	for _, sp := range spans {
+		if sp.Name() == "provider.invoke" {
+			foundSpan = sp
+			break
+		}
+	}
+	require.NotNil(t, foundSpan, "expected a provider.invoke span to be recorded")
+
+	var modelAttr string
+	var foundAttr bool
+	for _, kv := range foundSpan.Attributes() {
+		if string(kv.Key) == "model" {
+			modelAttr = kv.Value.AsString()
+			foundAttr = true
+		}
+	}
+	require.True(t, foundAttr, "provider.invoke span should record a model attribute")
+	assert.Equal(t, "gpt-4o-mini", modelAttr,
+		"OTel span must record the effective (overridden) model, not the constructor default")
+}
+
 func TestProviderInvoke_WithFilteredTools(t *testing.T) {
 	transport := &mockTransport{
 		response: mockResponseSSE(simpleSSE("ok")),
