@@ -176,14 +176,19 @@ func TestToolResult_MarkdownString(t *testing.T) {
 	}
 }
 
-func TestToolCall_ValueField(t *testing.T) {
-	tc := ToolCall{ID: "call_1", Name: "foo", Arguments: `{"x":1}`, Value: 42}
+func TestToolCall_DisplayField(t *testing.T) {
+	tc := ToolCall{ID: "call_1", Name: "foo", Arguments: `{"x":1}`, Display: 42}
 	assert.Equal(t, "call_1", tc.ID)
 	assert.Equal(t, "foo", tc.Name)
 	assert.Equal(t, `{"x":1}`, tc.Arguments)
-	assert.Equal(t, 42, tc.Value)
+	assert.Equal(t, 42, tc.Display)
 }
 
+// TestToolCall_LLMString asserts that LLMString returns the wire
+// format (Arguments) verbatim, ignoring Display. The LLM sees the
+// JSON object the model originally streamed; the display value is a
+// human-rendering concern that must not contaminate the LLM-visible
+// size estimate.
 func TestToolCall_LLMString(t *testing.T) {
 	tests := []struct {
 		name string
@@ -191,28 +196,28 @@ func TestToolCall_LLMString(t *testing.T) {
 		want string
 	}{
 		{
-			name: "LLMRenderer takes precedence",
-			tc:   ToolCall{Value: &mockLLMRenderer{}, Arguments: "fallback"},
-			want: "llm",
-		},
-		{
-			name: "json.Marshal fallback for simple value",
-			tc:   ToolCall{Value: "hello", Arguments: "fallback"},
-			want: `"hello"`,
-		},
-		{
-			name: "nil Value falls back to Arguments",
-			tc:   ToolCall{Value: nil, Arguments: "fallback"},
+			name: "Display with LLMRenderer is ignored",
+			tc:   ToolCall{Display: &mockLLMRenderer{}, Arguments: "fallback"},
 			want: "fallback",
 		},
 		{
-			name: "zero Value falls back to Arguments",
+			name: "Display with string is ignored",
+			tc:   ToolCall{Display: "hello", Arguments: `{"x":1}`},
+			want: `{"x":1}`,
+		},
+		{
+			name: "Display with arbitrary value is ignored",
+			tc:   ToolCall{Display: 42, Arguments: "fallback"},
+			want: "fallback",
+		},
+		{
+			name: "nil Display returns Arguments",
+			tc:   ToolCall{Display: nil, Arguments: "fallback"},
+			want: "fallback",
+		},
+		{
+			name: "zero Display returns Arguments",
 			tc:   ToolCall{Arguments: "fallback"},
-			want: "fallback",
-		},
-		{
-			name: "unserializable Value falls back to Arguments",
-			tc:   ToolCall{Value: make(chan int), Arguments: "fallback"},
 			want: "fallback",
 		},
 	}
@@ -232,27 +237,37 @@ func TestToolCall_MarkdownString(t *testing.T) {
 	}{
 		{
 			name: "MarkdownRenderer takes precedence",
-			tc:   ToolCall{Value: &mockMarkdownRenderer{}, Arguments: "fallback"},
+			tc:   ToolCall{Display: &mockMarkdownRenderer{}, Arguments: "fallback"},
 			want: "markdown",
 		},
 		{
-			name: "json.Marshal fallback for simple value",
-			tc:   ToolCall{Value: 42, Arguments: "fallback"},
+			name: "string Display is returned as-is (no JSON quoting)",
+			tc:   ToolCall{Display: "📁 list_directory(/path)", Arguments: "fallback"},
+			want: "📁 list_directory(/path)",
+		},
+		{
+			name: "json.Marshal fallback for non-string non-renderer value",
+			tc:   ToolCall{Display: 42, Arguments: "fallback"},
 			want: `42`,
 		},
 		{
-			name: "nil Value falls back to Arguments",
-			tc:   ToolCall{Value: nil, Arguments: "fallback"},
+			name: "json.Marshal fallback for structured value",
+			tc:   ToolCall{Display: map[string]any{"a": 1}, Arguments: "fallback"},
+			want: `{"a":1}`,
+		},
+		{
+			name: "nil Display falls back to Arguments",
+			tc:   ToolCall{Display: nil, Arguments: "fallback"},
 			want: "fallback",
 		},
 		{
-			name: "zero Value falls back to Arguments",
+			name: "zero Display falls back to Arguments",
 			tc:   ToolCall{Arguments: "fallback"},
 			want: "fallback",
 		},
 		{
-			name: "unserializable Value falls back to Arguments",
-			tc:   ToolCall{Value: make(chan int), Arguments: "fallback"},
+			name: "unserializable Display falls back to Arguments",
+			tc:   ToolCall{Display: make(chan int), Arguments: "fallback"},
 			want: "fallback",
 		},
 	}
@@ -299,25 +314,25 @@ func TestAccumulable_MergeInto_EdgeCases(t *testing.T) {
 			name:     "ToolCallDelta seeds new ToolCall when acc is nil",
 			delta:    ToolCallDelta{Index: 0, ID: "call_1", Name: "search", Arguments: "q"},
 			acc:      nil,
-			expected: ToolCall{ID: "call_1", Name: "search", Arguments: "q", Value: nil},
+			expected: ToolCall{ID: "call_1", Name: "search", Arguments: "q", Display: nil},
 		},
 		{
 			name:     "ToolCallDelta concatenates Name and Arguments",
 			delta:    ToolCallDelta{Index: 0, ID: "", Name: "calc", Arguments: "1+"},
-			acc:      ToolCall{ID: "call_1", Name: "search", Arguments: "q", Value: nil},
-			expected: ToolCall{ID: "call_1", Name: "searchcalc", Arguments: "q1+", Value: nil},
+			acc:      ToolCall{ID: "call_1", Name: "search", Arguments: "q", Display: nil},
+			expected: ToolCall{ID: "call_1", Name: "searchcalc", Arguments: "q1+", Display: nil},
 		},
 		{
 			name:     "ToolCallDelta latest-wins overwrites ID",
 			delta:    ToolCallDelta{Index: 0, ID: "call_2", Name: "", Arguments: ""},
-			acc:      ToolCall{ID: "call_1", Name: "search", Arguments: "q", Value: nil},
-			expected: ToolCall{ID: "call_2", Name: "search", Arguments: "q", Value: nil},
+			acc:      ToolCall{ID: "call_1", Name: "search", Arguments: "q", Display: nil},
+			expected: ToolCall{ID: "call_2", Name: "search", Arguments: "q", Display: nil},
 		},
 		{
 			name:     "ToolCallDelta empty ID preserves existing ID",
 			delta:    ToolCallDelta{Index: 0, ID: "", Name: "calc", Arguments: "1"},
-			acc:      ToolCall{ID: "call_1", Name: "search", Arguments: "q", Value: nil},
-			expected: ToolCall{ID: "call_1", Name: "searchcalc", Arguments: "q1", Value: nil},
+			acc:      ToolCall{ID: "call_1", Name: "search", Arguments: "q", Display: nil},
+			expected: ToolCall{ID: "call_1", Name: "searchcalc", Arguments: "q1", Display: nil},
 		},
 	}
 
@@ -360,7 +375,7 @@ func TestToolCall_MarshalJSON(t *testing.T) {
 }
 
 func TestToolCall_MarshalJSON_WithDisplay(t *testing.T) {
-	tc := ToolCall{ID: "1", Name: "calc", Arguments: `{"a":1}`, Value: map[string]interface{}{"result": 42}}
+	tc := ToolCall{ID: "1", Name: "calc", Arguments: `{"a":1}`, Display: map[string]interface{}{"result": 42}}
 	data, err := json.Marshal(tc)
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"kind":"tool_call","id":"1","name":"calc","arguments":"{\"a\":1}","display":"{\"result\":42}"}`, string(data))
