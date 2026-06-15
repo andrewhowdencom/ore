@@ -151,6 +151,20 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	for stream.Next() {
 		event := stream.Current()
 		switch e := event.AsAny().(type) {
+		case anthropic.ContentBlockStartEvent:
+			block := e.ContentBlock
+			if block.Type == "tool_use" {
+				select {
+				case ch <- artifact.ToolCallDelta{
+					ID:    block.ID,
+					Name:  block.Name,
+					Arguments: "", // Arguments follow in input_json_delta
+				}:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+
 		case anthropic.ContentBlockDeltaEvent:
 			delta := e.Delta
 			switch delta.Type {
