@@ -126,8 +126,77 @@ func New(opts ...Option) (*Provider, error) {
 
 // Invoke serializes state and calls the Anthropic Messages API.
 func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
-	// TODO: Implement streaming logic in Task 3
-	return fmt.Errorf("not implemented")
+	if p.tracer != nil {
+		_, span := p.tracer.Start(ctx, "provider.invoke", trace.WithSpanKind(trace.SpanKindClient))
+		defer span.End()
+	}
+
+	messages, systemPrompt := p.serializeMessages(s)
+
+	params := anthropic.MessageNewParams{
+		Model:    anthropic.Model(p.model),
+		Messages: messages,
+		System:   systemPrompt,
+	}
+
+	if p.thinking.Type != "" {
+		params.Thinking = anthropic.ThinkingConfigParamOfEnabled(int64(p.thinking.BudgetTokens))
+	}
+
+	// Default max tokens if not provided
+	params.MaxTokens = 4096
+
+	stream := p.client.Messages.NewStreaming(ctx, params)
+
+	for stream.Next() {
+		event := stream.Current()
+		switch e := event.AsAny().(type) {
+		case anthropic.ContentBlockDeltaEvent:
+			delta := e.Delta
+			switch delta.Type {
+			case "text_delta":
+				select {
+				case ch <- artifact.TextDelta{Content: delta.Text}:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			case "thinking_delta":
+				select {
+				case ch <- artifact.ReasoningDelta{Content: delta.Thinking}:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			case "input_json_delta":
+				select {
+				case ch <- artifact.ToolCallDelta{
+					Arguments: delta.PartialJSON,
+				}:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+
+		case anthropic.MessageDeltaEvent:
+			usage := e.Usage
+			select {
+			case ch <- artifact.Usage{
+				PromptTokens:     int(usage.InputTokens),
+				CompletionTokens: int(usage.OutputTokens),
+				TotalTokens:      int(usage.InputTokens + usage.OutputTokens),
+				CacheReadTokens:  int(usage.CacheReadInputTokens),
+				CacheWriteTokens: int(usage.CacheCreationInputTokens),
+			}:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+	}
+
+	if err := stream.Err(); err != nil {
+		return fmt.Errorf("streaming completion: %w", err)
+	}
+
+	return nil
 }
 
 // Compile-time interface check.
