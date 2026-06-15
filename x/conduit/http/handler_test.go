@@ -75,12 +75,12 @@ func boomProcessor() session.TurnProcessor {
 // errStore is a Store that always returns an error from Create.
 type errStore struct{}
 
-func (e *errStore) Create() (*session.Thread, error)   { return nil, fmt.Errorf("store error") }
-func (e *errStore) Get(string) (*session.Thread, bool) { return nil, false }
+func (e *errStore) Create() (*session.Thread, error)             { return nil, fmt.Errorf("store error") }
+func (e *errStore) Get(string) (*session.Thread, bool)           { return nil, false }
 func (e *errStore) GetBy(string, string) (*session.Thread, bool) { return nil, false }
-func (e *errStore) Save(*session.Thread) error         { return nil }
-func (e *errStore) Delete(string) bool                { return false }
-func (e *errStore) List() ([]*session.Thread, error)   { return nil, nil }
+func (e *errStore) Save(*session.Thread) error                   { return nil }
+func (e *errStore) Delete(string) bool                           { return false }
+func (e *errStore) List() ([]*session.Thread, error)             { return nil, nil }
 
 // saveErrStore is a Store whose Save always returns an error.
 type saveErrStore struct {
@@ -93,20 +93,22 @@ func newSaveErrStore() *saveErrStore {
 
 func (s *saveErrStore) Create() (*session.Thread, error)      { return s.inner.Create() }
 func (s *saveErrStore) Get(id string) (*session.Thread, bool) { return s.inner.Get(id) }
-func (s *saveErrStore) GetBy(key, value string) (*session.Thread, bool) { return s.inner.GetBy(key, value) }
-func (s *saveErrStore) Save(*session.Thread) error            { return fmt.Errorf("save failed") }
-func (s *saveErrStore) Delete(string) bool                   { return s.inner.Delete("") }
-func (s *saveErrStore) List() ([]*session.Thread, error)      { return s.inner.List() }
+func (s *saveErrStore) GetBy(key, value string) (*session.Thread, bool) {
+	return s.inner.GetBy(key, value)
+}
+func (s *saveErrStore) Save(*session.Thread) error       { return fmt.Errorf("save failed") }
+func (s *saveErrStore) Delete(string) bool               { return s.inner.Delete("") }
+func (s *saveErrStore) List() ([]*session.Thread, error) { return s.inner.List() }
 
 // listErrStore is a Store whose List always returns an error.
 type listErrStore struct{}
 
-func (s *listErrStore) Create() (*session.Thread, error)   { return nil, nil }
-func (s *listErrStore) Get(string) (*session.Thread, bool) { return nil, false }
+func (s *listErrStore) Create() (*session.Thread, error)             { return nil, nil }
+func (s *listErrStore) Get(string) (*session.Thread, bool)           { return nil, false }
 func (s *listErrStore) GetBy(string, string) (*session.Thread, bool) { return nil, false }
-func (s *listErrStore) Save(*session.Thread) error         { return nil }
-func (s *listErrStore) Delete(string) bool                { return false }
-func (s *listErrStore) List() ([]*session.Thread, error)   { return nil, fmt.Errorf("list failed") }
+func (s *listErrStore) Save(*session.Thread) error                   { return nil }
+func (s *listErrStore) Delete(string) bool                           { return false }
+func (s *listErrStore) List() ([]*session.Thread, error)             { return nil, fmt.Errorf("list failed") }
 
 // newTestHandler wraps New for table-driven tests that need access to the
 // concrete *Handler and its ServeMux() method.
@@ -476,7 +478,6 @@ func TestHandler_SendMessage_NoKinds(t *testing.T) {
 	assert.Equal(t, "Hello", assistantTurn.Artifacts[0].(artifact.Text).Content)
 }
 
-
 func TestHandler_SendMessage_MalformedJSON(t *testing.T) {
 	store := session.NewMemoryStore()
 	prov := &mockProvider{}
@@ -790,10 +791,15 @@ func TestHandler_ListThreads(t *testing.T) {
 	require.Equal(t, 200, rr.Code)
 	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
 
-	var resp []map[string]any
+	// New envelope: {"threads": [...], "next_cursor": "..."}
+	var resp struct {
+		Threads    []map[string]any `json:"threads"`
+		NextCursor string           `json:"next_cursor"`
+	}
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-	require.Len(t, resp, 1)
-	assert.Equal(t, createResp["id"], resp[0]["id"])
+	require.Len(t, resp.Threads, 1)
+	assert.Equal(t, createResp["id"], resp.Threads[0]["id"])
+	assert.Empty(t, resp.NextCursor, "single thread should yield no next cursor")
 }
 
 func TestHandler_ListThreads_Empty(t *testing.T) {
@@ -809,9 +815,18 @@ func TestHandler_ListThreads_Empty(t *testing.T) {
 	require.Equal(t, 200, rr.Code)
 	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
 
-	var resp []map[string]any
+	// Envelope must always be an object with a threads array.
+	var resp map[string]any
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-	assert.Empty(t, resp)
+	threads, ok := resp["threads"]
+	require.True(t, ok, "response must contain 'threads' key")
+	arr, ok := threads.([]any)
+	require.True(t, ok, "'threads' must be an array, got %T", threads)
+	assert.Empty(t, arr)
+	// next_cursor is omitted on the last page; assert it's not present
+	// (rather than asserting empty string) to honour the omitempty contract.
+	_, hasNext := resp["next_cursor"]
+	assert.False(t, hasNext, "next_cursor should be omitted on last page")
 }
 
 func TestHandler_ListThreads_StoreError(t *testing.T) {
@@ -825,6 +840,241 @@ func TestHandler_ListThreads_StoreError(t *testing.T) {
 	h.ServeMux().ServeHTTP(rr, req)
 
 	assert.Equal(t, 500, rr.Code)
+}
+
+// seedThread saves a thread with a controlled UpdatedAt timestamp. Used
+// by the listing tests below to construct predictable sort orders
+// without depending on real wall-clock time.
+//
+// MemoryStore.Save overrides UpdatedAt to time.Now() at save time. We
+// re-apply the requested timestamp after the save completes; since the
+// store retains the *Thread pointer, the modification is reflected in
+// the stored record.
+func seedThread(t *testing.T, store *session.MemoryStore, id string, updatedAt time.Time) {
+	t.Helper()
+	thr := &session.Thread{
+		ID:        id,
+		State:     &state.Buffer{},
+		CreatedAt: updatedAt,
+		UpdatedAt: updatedAt,
+		Metadata:  map[string]string{},
+	}
+	require.NoError(t, store.Save(thr))
+	thr.UpdatedAt = updatedAt
+}
+
+// threadIDsInPage extracts the IDs from a threads-list response payload.
+func threadIDsInPage(t *testing.T, body []byte) []string {
+	t.Helper()
+	var resp struct {
+		Threads    []map[string]any `json:"threads"`
+		NextCursor string           `json:"next_cursor"`
+	}
+	require.NoError(t, json.Unmarshal(body, &resp))
+	ids := make([]string, 0, len(resp.Threads))
+	for _, th := range resp.Threads {
+		ids = append(ids, th["id"].(string))
+	}
+	return ids
+}
+
+func TestHandler_ListThreads_DefaultLimit(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	h := newTestHandler(t, mgr)
+
+	// Seed 25 threads. Default page size is 20, so we should see 20.
+	now := time.Now()
+	for i := 0; i < 25; i++ {
+		seedThread(t, store, fmt.Sprintf("t-%02d", i), now.Add(-time.Duration(i)*time.Minute))
+	}
+
+	req := httptest.NewRequest("GET", "/threads", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	require.Equal(t, 200, rr.Code)
+	ids := threadIDsInPage(t, rr.Body.Bytes())
+	require.Len(t, ids, defaultThreadPageSize)
+
+	// The most recently updated (i=0) should be first.
+	assert.Equal(t, "t-00", ids[0])
+}
+
+func TestHandler_ListThreads_SortedByUpdatedAtDesc(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	h := newTestHandler(t, mgr)
+
+	// Seed in a non-chronological order to ensure the handler sorts.
+	now := time.Now()
+	seedThread(t, store, "old", now.Add(-3*time.Hour))
+	seedThread(t, store, "newest", now)
+	seedThread(t, store, "middle", now.Add(-1*time.Hour))
+
+	req := httptest.NewRequest("GET", "/threads", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	require.Equal(t, 200, rr.Code)
+	assert.Equal(t, []string{"newest", "middle", "old"}, threadIDsInPage(t, rr.Body.Bytes()))
+}
+
+func TestHandler_ListThreads_LimitRespected(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	h := newTestHandler(t, mgr)
+
+	now := time.Now()
+	for i := 0; i < 10; i++ {
+		seedThread(t, store, fmt.Sprintf("t-%02d", i), now.Add(-time.Duration(i)*time.Minute))
+	}
+
+	req := httptest.NewRequest("GET", "/threads?limit=3", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	require.Equal(t, 200, rr.Code)
+	ids := threadIDsInPage(t, rr.Body.Bytes())
+	require.Len(t, ids, 3)
+	assert.Equal(t, []string{"t-00", "t-01", "t-02"}, ids)
+}
+
+func TestHandler_ListThreads_CursorProgression(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	h := newTestHandler(t, mgr)
+
+	now := time.Now()
+	for i := 0; i < 5; i++ {
+		seedThread(t, store, fmt.Sprintf("t-%02d", i), now.Add(-time.Duration(i)*time.Minute))
+	}
+
+	// Page 1: limit=2
+	rr1 := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr1, httptest.NewRequest("GET", "/threads?limit=2", nil))
+	require.Equal(t, 200, rr1.Code)
+
+	var page1 struct {
+		Threads    []map[string]any `json:"threads"`
+		NextCursor string           `json:"next_cursor"`
+	}
+	require.NoError(t, json.Unmarshal(rr1.Body.Bytes(), &page1))
+	require.Len(t, page1.Threads, 2)
+	assert.Equal(t, "t-00", page1.Threads[0]["id"])
+	assert.Equal(t, "t-01", page1.Threads[1]["id"])
+	require.NotEmpty(t, page1.NextCursor, "page 1 must have a next cursor")
+
+	// Page 2: use the cursor.
+	rr2 := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr2, httptest.NewRequest("GET", "/threads?limit=2&cursor="+page1.NextCursor, nil))
+	require.Equal(t, 200, rr2.Code)
+	ids2 := threadIDsInPage(t, rr2.Body.Bytes())
+	assert.Equal(t, []string{"t-02", "t-03"}, ids2)
+
+	var page2 struct {
+		NextCursor string `json:"next_cursor"`
+	}
+	require.NoError(t, json.Unmarshal(rr2.Body.Bytes(), &page2))
+	require.NotEmpty(t, page2.NextCursor, "page 2 must have a next cursor")
+
+	// Page 3: last page, no cursor.
+	rr3 := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr3, httptest.NewRequest("GET", "/threads?limit=2&cursor="+page2.NextCursor, nil))
+	require.Equal(t, 200, rr3.Code)
+	ids3 := threadIDsInPage(t, rr3.Body.Bytes())
+	assert.Equal(t, []string{"t-04"}, ids3)
+
+	// Confirm next_cursor is omitted on the last page.
+	var page3 map[string]any
+	require.NoError(t, json.Unmarshal(rr3.Body.Bytes(), &page3))
+	_, hasNext := page3["next_cursor"]
+	assert.False(t, hasNext, "last page must omit next_cursor")
+}
+
+func TestHandler_ListThreads_LastPageHasEmptyCursor(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	h := newTestHandler(t, mgr)
+
+	// Only 2 threads; ?limit=10 should return them all with no next cursor.
+	now := time.Now()
+	seedThread(t, store, "a", now.Add(-1*time.Hour))
+	seedThread(t, store, "b", now)
+
+	req := httptest.NewRequest("GET", "/threads?limit=10", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	require.Equal(t, 200, rr.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	_, hasNext := resp["next_cursor"]
+	assert.False(t, hasNext, "next_cursor must be omitted when all items fit on one page")
+}
+
+func TestHandler_ListThreads_InvalidCursor400(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	h := newTestHandler(t, mgr)
+
+	now := time.Now()
+	seedThread(t, store, "a", now)
+
+	req := httptest.NewRequest("GET", "/threads?cursor=not-a-valid-cursor", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	assert.Equal(t, 400, rr.Code)
+	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+
+	// Body should contain a clear error message.
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &body))
+	errMsg, ok := body["error"].(string)
+	require.True(t, ok, "error body should be a JSON object with an 'error' string")
+	assert.Contains(t, errMsg, "cursor")
+}
+
+func TestHandler_ListThreads_LimitClamped(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	h := newTestHandler(t, mgr)
+
+	// Seed 200 threads so we can detect clamping in both directions.
+	now := time.Now()
+	for i := 0; i < 200; i++ {
+		seedThread(t, store, fmt.Sprintf("t-%03d", i), now.Add(-time.Duration(i)*time.Minute))
+	}
+
+	tests := []struct {
+		name  string
+		query string
+		want  int // expected page length
+	}{
+		{"zero clamps to 1", "?limit=0", 1},
+		{"negative clamps to 1", "?limit=-5", 1},
+		{"huge clamps to 100", "?limit=99999", 100},
+		{"empty defaults to 20", "?limit=", defaultThreadPageSize},
+		{"non-numeric defaults to 20", "?limit=abc", defaultThreadPageSize},
+		{"valid limit honoured", "?limit=7", 7},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			h.ServeMux().ServeHTTP(rr, httptest.NewRequest("GET", "/threads"+tt.query, nil))
+			require.Equal(t, 200, rr.Code)
+			ids := threadIDsInPage(t, rr.Body.Bytes())
+			assert.Len(t, ids, tt.want)
+		})
+	}
 }
 
 func TestNDJSONWriter_NoFlusher(t *testing.T) {
