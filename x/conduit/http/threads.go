@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -165,4 +166,39 @@ func threadIsAfterCursor(t *session.Thread, c threadCursor) bool {
 		return true
 	}
 	return false
+}
+
+// parseLimit parses the ?limit= query parameter and returns a value
+// clamped to [1, maxThreadPageSize]. An empty or unparseable string
+// returns defaultThreadPageSize. The handler treats all values the same;
+// out-of-range values are silently clamped.
+func parseLimit(s string) int {
+	if s == "" {
+		return defaultThreadPageSize
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return defaultThreadPageSize
+	}
+	if n < 1 {
+		return 1
+	}
+	if n > maxThreadPageSize {
+		return maxThreadPageSize
+	}
+	return n
+}
+
+// summariesFrom converts a slice of session.Thread pointers into the
+// JSON-ready summary form used by the listing response.
+func summariesFrom(threads []*session.Thread) []threadSummaryJSON {
+	out := make([]threadSummaryJSON, 0, len(threads))
+	for _, t := range threads {
+		out = append(out, threadSummaryJSON{
+			ID:        t.ID,
+			CreatedAt: t.CreatedAt,
+			UpdatedAt: t.UpdatedAt,
+		})
+	}
+	return out
 }
