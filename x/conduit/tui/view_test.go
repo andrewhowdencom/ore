@@ -1042,7 +1042,7 @@ func TestRenderArtifact_ToolCall_MarkdownRenderer(t *testing.T) {
 		ID:        "call_1",
 		Name:      "bash",
 		Arguments: `{"command":"go test ./..."}`,
-		Value:     mockMarkdownValue{output: "```bash\n$ go test ./...\n```"},
+		Display:   mockMarkdownValue{output: "```bash\n$ go test ./...\n```"},
 	}
 	block := m.renderArtifact(tc, state.RoleAssistant)
 	assert.Equal(t, "tool_call", block.kind)

@@ -46,9 +46,17 @@ type Tool struct {
 	// Schema defines the JSON Schema for the tool's parameters.
 	Schema map[string]any
 	// DisplayHint is an optional formatter that receives parsed JSON
-	// arguments and returns a displayable value (implementing
-	// MarkdownRenderer / LLMRenderer). When nil, conduits fall back to
-	// raw JSON Arguments.
+	// arguments and returns a displayable value for human rendering
+	// (TUI, exporters, log viewers). The return value is purely a
+	// display artifact: it is attached to ToolCall.Display by the loop
+	// pipeline's applyDisplayHints step and read only by display-layer
+	// consumers. It has no effect on the wire format sent to the
+	// provider — the wire format is always derived from Arguments,
+	// the JSON the model streamed. Implementing MarkdownRenderer is
+	// recommended for rich rendering; returning a string is the common
+	// case for simple labels; returning nil is also valid (the
+	// consumer falls back to raw Arguments). When DisplayHint itself
+	// is nil, no Display value is set.
 	DisplayHint func(map[string]any) any
 	// Examples is an optional list of few-shot input/output pairs that
 	// illustrate how the tool should be used. They are not sent to the
