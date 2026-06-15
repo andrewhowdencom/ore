@@ -179,28 +179,14 @@ func TestNew_AnthropicNativeBaseURL(t *testing.T) {
 	assert.Equal(t, "2023-06-01", req.Header.Get("anthropic-version"))
 }
 
-// TestInvoke_StubReturnsNil verifies the skeleton Invoke is callable
-// and returns nil. Streaming behavior lands in Task 7; this is a
-// compile-and-wire smoke test only.
-func TestInvoke_StubReturnsNil(t *testing.T) {
-	t.Parallel()
-
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
-	)
-	require.NoError(t, err)
-
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
-
-	ch := make(chan artifact.Artifact, 1)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
-	close(ch)
-	for range ch {
-		// drain
-	}
-}
+// TestInvoke_StubReturnsNil is intentionally absent. The original
+// skeleton test asserted the stub Invoke returned nil; the stub has
+// been replaced by a real streaming implementation that makes an
+// HTTP call. The new streaming tests (TestProviderInvoke_Streams*)
+// cover the live path with a mock transport, and the auth-dispatch
+// tests above exercise the SDK option pipeline via
+// triggerRequest. There is no longer a 'stub returns nil' code path
+// to test.
 
 // TestIsOpenRouter_TableDriven exercises the host-detection helper
 // with a small table of base URLs. The substring-match heuristic
