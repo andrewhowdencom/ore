@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/stretchr/testify/assert"
@@ -378,7 +379,7 @@ func TestProviderSerialize_ReplaysToolUseAndToolResult(t *testing.T) {
 	})
 	mem.Append(state.RoleTool, artifact.ToolResult{
 		ToolCallID: "toolu_abc",
-		Content:     "72F sunny",
+		Content:    "72F sunny",
 	})
 
 	got := p.serializeMessages(mem)
@@ -616,7 +617,7 @@ func TestProviderInvokeOptions_DefaultsAreUnset(t *testing.T) {
 	got := applyInvokeOptions()
 	assert.False(t, got.temperatureSet)
 	assert.False(t, got.maxTokensSet)
-	assert.False(t, got.thinkingBudgetSet)
+	assert.False(t, got.thinkingLevelSet)
 	assert.False(t, got.toolsSet)
 }
 
@@ -629,28 +630,115 @@ func TestProviderInvokeOptions_FoldsAllKnownOptions(t *testing.T) {
 	got := applyInvokeOptions(
 		WithTemperature(0.42),
 		WithMaxTokens(2048),
-		WithThinkingBudget(1024),
+		WithThinkingLevel(provider.ThinkingLevelMedium),
 	)
 
 	assert.True(t, got.temperatureSet)
 	assert.InDelta(t, 0.42, got.temperature, 0.0001)
 	assert.True(t, got.maxTokensSet)
 	assert.Equal(t, int64(2048), got.maxTokens)
-	assert.True(t, got.thinkingBudgetSet)
-	assert.Equal(t, int64(1024), got.thinkingBudget)
+	assert.True(t, got.thinkingLevelSet)
+	assert.Equal(t, provider.ThinkingLevelMedium, got.thinkingLevel)
 }
 
-// TestProviderInvokeOptions_ThinkingBudgetZeroIsSet verifies that
-// zero is a meaningful value, not the zero-value of the bool flag.
-// The flag must be true so Invoke knows the caller explicitly
-// requested no thinking; this is what allows WithThinkingBudget(0)
-// to act as a no-op (i.e., the SDK will not receive a thinking field).
-func TestProviderInvokeOptions_ThinkingBudgetZeroIsSet(t *testing.T) {
+// TestProviderInvokeOptions_ThinkingLevelOffIsSet verifies that the
+// "off" level sets the flag (so Invoke knows thinking was explicitly
+// disabled) and produces a value the translation helper recognizes.
+func TestProviderInvokeOptions_ThinkingLevelOffIsSet(t *testing.T) {
 	t.Parallel()
 
-	got := applyInvokeOptions(WithThinkingBudget(0))
-	assert.True(t, got.thinkingBudgetSet, "explicit zero must set the flag")
-	assert.Equal(t, int64(0), got.thinkingBudget)
+	got := applyInvokeOptions(WithThinkingLevel(provider.ThinkingLevelOff))
+	assert.True(t, got.thinkingLevelSet, "explicit off must set the flag")
+	assert.Equal(t, provider.ThinkingLevelOff, got.thinkingLevel)
+}
+
+// TestProviderInvokeOptions_ThinkingLevelFoldsCorrectly is a
+// table-driven test that verifies each level is folded into the
+// resolved invokeOptions without modification.
+func TestProviderInvokeOptions_ThinkingLevelFoldsCorrectly(t *testing.T) {
+	t.Parallel()
+
+	cases := []provider.ThinkingLevel{
+		provider.ThinkingLevelOff,
+		provider.ThinkingLevelMinimal,
+		provider.ThinkingLevelLow,
+		provider.ThinkingLevelMedium,
+		provider.ThinkingLevelHigh,
+		provider.ThinkingLevelMax,
+	}
+	for _, level := range cases {
+		got := applyInvokeOptions(WithThinkingLevel(level))
+		assert.True(t, got.thinkingLevelSet, "level %q must set the flag", level)
+		assert.Equal(t, level, got.thinkingLevel, "level must round-trip")
+	}
+}
+
+// TestTranslateThinkingLevel verifies the per-level percentage
+// mapping, the 1024 floor, and the (max_tokens - 1024) ceiling.
+func TestTranslateThinkingLevel(t *testing.T) {
+	t.Parallel()
+
+	t.Run("off and unset disable thinking", func(t *testing.T) {
+		t.Parallel()
+		budget, ok := translateThinkingLevel(provider.ThinkingLevelOff, 32000)
+		assert.False(t, ok, "off must disable thinking")
+		assert.Equal(t, int64(0), budget)
+
+		budget, ok = translateThinkingLevel("", 32000)
+		assert.False(t, ok, "empty must disable thinking")
+		assert.Equal(t, int64(0), budget)
+
+		budget, ok = translateThinkingLevel("unknown", 32000)
+		assert.False(t, ok, "unknown level must disable thinking (forward compat)")
+		assert.Equal(t, int64(0), budget)
+	})
+
+	t.Run("percentage mapping at 32k max_tokens", func(t *testing.T) {
+		t.Parallel()
+		// 32000 is workshop's defaultAnthropicMaxTokens. 25% of 32000
+		// is 8000 (not 8192; that requires 32768). The percentage is the
+		// source of truth, so the actual budget depends on the configured
+		// max_tokens.
+		cases := []struct {
+			level provider.ThinkingLevel
+			want  int64
+		}{
+			{provider.ThinkingLevelMinimal, 1024}, // 2% of 32k = 640, floored to 1024
+			{provider.ThinkingLevelLow, 2560},     // 8% of 32k
+			{provider.ThinkingLevelMedium, 8000},  // 25% of 32k
+			{provider.ThinkingLevelHigh, 16000},   // 50% of 32k
+			{provider.ThinkingLevelMax, 25600},    // 80% of 32k
+		}
+		for _, tc := range cases {
+			got, ok := translateThinkingLevel(tc.level, 32000)
+			assert.True(t, ok, "%q must enable thinking", tc.level)
+			assert.Equal(t, tc.want, got, "%q @ 32k", tc.level)
+		}
+	})
+
+	t.Run("percentage mapping at 128k max_tokens", func(t *testing.T) {
+		t.Parallel()
+		// Verify the percentage scales with max_tokens.
+		budget, ok := translateThinkingLevel(provider.ThinkingLevelMedium, 128000)
+		assert.True(t, ok)
+		assert.Equal(t, int64(32000), budget, "25% of 128k")
+	})
+
+	t.Run("ceiling enforced when percentage exceeds max_tokens - 1024", func(t *testing.T) {
+		t.Parallel()
+		// max = 4096, max level = 80% of 4096 = 3276; ceiling is 4096 - 1024 = 3072.
+		budget, ok := translateThinkingLevel(provider.ThinkingLevelMax, 4096)
+		assert.True(t, ok)
+		assert.Equal(t, int64(3072), budget, "must be capped at max - 1024")
+	})
+
+	t.Run("impossibly small max_tokens disables thinking", func(t *testing.T) {
+		t.Parallel()
+		// max = 1024 cannot satisfy 1024 floor + 1024 visible response.
+		budget, ok := translateThinkingLevel(provider.ThinkingLevelLow, 1024)
+		assert.False(t, ok, "max_tokens too small to think")
+		assert.Equal(t, int64(0), budget)
+	})
 }
 
 // TestProviderSerialize_ArgumentsParseAsDict verifies the tool-use
@@ -713,8 +801,8 @@ func TestProviderSerialize_IsErrorTruePropagates(t *testing.T) {
 	})
 	mem.Append(state.RoleTool, artifact.ToolResult{
 		ToolCallID: "toolu_err",
-		Content:     "service unavailable",
-		IsError:     true,
+		Content:    "service unavailable",
+		IsError:    true,
 	})
 
 	got := p.serializeMessages(mem)
@@ -982,7 +1070,7 @@ func TestProviderSerialize_AppliesPreTasksFixesRegressions(t *testing.T) {
 	)
 	mem.Append(state.RoleTool, artifact.ToolResult{
 		ToolCallID: "toolu_1",
-		Content:     "result",
+		Content:    "result",
 	})
 
 	got := p.serializeMessages(mem)
