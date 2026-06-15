@@ -1,5 +1,5 @@
-github.com/andrewhowdencom/ore v0.8.0 h1:zxT6i6gXtMUcJYxq8zmxHxKVkBdFWp2PtN1Bhcd2jIQ=
-github.com/andrewhowdencom/ore v0.8.0/go.mod h1:z8ohVfj62/vsXqVsbpqftza2GTINPPqwxzZhJbclN4g=
+github.com/andrewhowdencom/ore v0.8.1 h1:zbOjyjbnPABIIDrwz+srFWpBX98GlEaf2uDYafX6Zsw=
+github.com/andrewhowdencom/ore v0.8.1/go.mod h1:z8ohVfj62/vsXqVsbpqftza2GTINPPqwxzZhJbclN4g=
 github.com/anthropics/anthropic-sdk-go v1.50.1 h1:XTd1RkdeHCPusPpzcBY5RIWj/WW6ZktjftxrHvQBJfU=
 github.com/anthropics/anthropic-sdk-go v1.50.1/go.mod h1:3EfIfmFqxH6rbiLcIP4tPFyXL/IHakx2wDG4OU+TIEI=
 github.com/bahlo/generic-list-go v0.2.0 h1:5sz/EEAK+ls5wF+NeqDpk5+iNdMDXrh3z3nPnH1Wvgk=
