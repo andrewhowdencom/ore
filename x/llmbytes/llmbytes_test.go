@@ -36,15 +36,19 @@ func TestOf_ToolCall(t *testing.T) {
 			t.Errorf("Of(ToolCall): got %d, want %d", got, want)
 		}
 	})
-	// When Value is set, LLMString() returns the JSON of Value rather
-	// than Arguments. The dispatcher must honour this.
-	t.Run("value_overrides_arguments", func(t *testing.T) {
+	// Display is a human-rendering concern and must not affect the
+	// LLM-visible byte count. The wire format (Arguments) is what the
+	// model sees; the dispatcher counts only that.
+	t.Run("display_does_not_override_arguments", func(t *testing.T) {
 		tc := artifact.ToolCall{
 			ID: "1", Name: "test", Arguments: `{"x":1}`,
-			Value: map[string]any{"x": 1},
+			Display: "📁 list_directory(/some/very/long/path/to/nowhere)",
+		}
+		if got, want := llmbytes.Of(tc), int64(len(tc.LLMString())); got != want {
+			t.Errorf("Of(ToolCall w/ Display): got %d, want %d", got, want)
 		}
 		if got, want := llmbytes.Of(tc), int64(len(`{"x":1}`)); got != want {
-			t.Errorf("Of(ToolCall w/ Value): got %d, want %d", got, want)
+			t.Errorf("Of(ToolCall w/ Display) should equal len(Arguments): got %d, want %d", got, want)
 		}
 	})
 }
