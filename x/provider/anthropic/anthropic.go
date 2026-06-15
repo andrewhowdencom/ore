@@ -8,14 +8,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptrace"
 	"strings"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -240,17 +245,304 @@ func New(opts ...Option) (*Provider, error) {
 // Compile-time interface check.
 var _ provider.Provider = (*Provider)(nil)
 
-// Invoke is the streaming entry point. The skeleton in this task returns
-// nil unconditionally; full implementation lands in later tasks. The stub
-// signature matches provider.Provider so the compile-time interface check
-// succeeds and downstream callers can wire the provider up before
-// streaming is implemented.
+// Invoke serializes state into an Anthropic Messages streaming request
+// via the SDK, walks the resulting SSE event stream, and emits canonical
+// ore artifact types in wire-arrival order. Reasoning and text deltas
+// are emitted directly; tool-call fragments are accumulated by the
+// generic loop accumulator; signatures and redacted_thinking blocks are
+// emitted as complete ReasoningSignature artifacts so the write-side
+// can replay them on the next turn.
+//
+// The provider never closes the channel (the contract forbids it).
+// Every send is guarded by `select { case ch <- ...: case <-ctx.Done():
+// return ctx.Err() }` so context cancellation aborts the call promptly.
 func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
-	_ = ctx
-	_ = s
-	_ = ch
-	_ = opts
+	var span trace.Span
+	if p.tracer != nil {
+		ctx, span = p.tracer.Start(ctx, "provider.invoke", trace.WithSpanKind(trace.SpanKindClient))
+		// The model attribute is set after the option walk so it
+		// reflects the *effective* (possibly overridden) model,
+		// not the constructor default. A trace that lies about
+		// which model served a request makes per-invocation
+		// switching impossible to debug.
+		defer span.End()
+		// Attach httptrace hooks to record granular HTTP
+		// lifecycle events (DNS, connect, TLS, first-byte) on
+		// the provider.invoke span. Only enabled when a tracer
+		// is configured.
+		ctx = httptrace.WithClientTrace(ctx, otelhttptrace.NewClientTrace(ctx, otelhttptrace.WithoutSubSpans()))
+	}
+
+	serialized := p.serializeMessages(s)
+
+	inv := applyInvokeOptions(opts...)
+	var modelOverride string
+	for _, opt := range opts {
+		if mo, ok := opt.(provider.ModelOption); ok {
+			modelOverride = mo.Model
+		}
+	}
+	effectiveModel := p.model
+	if modelOverride != "" {
+		effectiveModel = modelOverride
+	}
+
+	if span != nil {
+		span.SetAttributes(attribute.String("model", effectiveModel))
+		if id, ok := loop.ThreadIDFrom(ctx); ok {
+			span.SetAttributes(attribute.String("thread_id", id))
+		}
+	}
+
+	params := anthropic.MessageNewParams{
+		Model:     anthropic.Model(effectiveModel),
+		Messages:  serialized.messages,
+		MaxTokens: 1, // SDK minimum; overridden by per-invocation option below if set.
+	}
+	if len(serialized.system) > 0 {
+		params.System = serialized.system
+	}
+	if inv.maxTokensSet {
+		params.MaxTokens = inv.maxTokens
+	}
+	if inv.temperatureSet {
+		params.Temperature = anthropic.Float(inv.temperature)
+	}
+	if inv.toolsSet && len(inv.tools) > 0 {
+		params.Tools = p.serializeTools(inv.tools)
+	}
+	if inv.thinkingBudgetSet && inv.thinkingBudget > 0 {
+		// Anthropic requires a minimum budget of 1,024 tokens;
+		// smaller values are forwarded as-is and the upstream
+		// rejects them. A budget of 0 is a no-op.
+		params.Thinking = anthropic.ThinkingConfigParamOfEnabled(inv.thinkingBudget)
+	}
+
+	stream := p.client.Messages.NewStreaming(ctx, params)
+	defer stream.Close()
+
+	// The SDK's MessageDeltaUsage is cumulative across the stream,
+	// so we buffer the latest message_delta usage and emit a single
+	// Usage artifact at message_stop. Emitting per message_delta
+	// would double-count tokens.
+	var pendingUsage *artifact.Usage
+
+	for stream.Next() {
+		event := stream.Current()
+		if err := p.dispatchEvent(ctx, event, ch, &pendingUsage); err != nil {
+			if span != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			return err
+		}
+		if _, ok := event.AsAny().(anthropic.MessageStopEvent); ok {
+			break
+		}
+	}
+
+	if err := stream.Err(); err != nil {
+		if span != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		return fmt.Errorf("anthropic streaming: %w", err)
+	}
+
+	if pendingUsage != nil {
+		select {
+		case ch <- *pendingUsage:
+		case <-ctx.Done():
+			if span != nil {
+				span.RecordError(ctx.Err())
+				span.SetStatus(codes.Error, ctx.Err().Error())
+			}
+			return ctx.Err()
+		}
+	}
 	return nil
+}
+
+// dispatchEvent routes a single SSE event from the SDK to the right
+// ore artifact emission. The dispatch is exhaustive over the SDK's
+// typed event union; unknown variants are silently skipped so a future
+// SDK addition does not break older providers.
+func (p *Provider) dispatchEvent(
+	ctx context.Context,
+	event anthropic.MessageStreamEventUnion,
+	ch chan<- artifact.Artifact,
+	pendingUsage **artifact.Usage,
+) error {
+	switch ev := event.AsAny().(type) {
+	case anthropic.MessageStartEvent:
+		// Envelope; the message body is built incrementally from
+		// the content_block_* events that follow.
+		return nil
+	case anthropic.ContentBlockStartEvent:
+		return p.dispatchBlockStart(ctx, ev, ch)
+	case anthropic.ContentBlockDeltaEvent:
+		return p.dispatchBlockDelta(ctx, ev, ch)
+	case anthropic.ContentBlockStopEvent:
+		// Block boundary; the loop accumulator flushes any
+		// accumulated deltas when a non-delta artifact arrives.
+		return nil
+	case anthropic.MessageDeltaEvent:
+		bufferUsage(ev.Usage, pendingUsage)
+		return nil
+	case anthropic.MessageStopEvent:
+		// Final envelope; the caller breaks out of the event
+		// loop on this event and emits the buffered usage.
+		return nil
+	default:
+		// Unknown variant (e.g., a future SDK addition). Skip
+		// rather than error so a version skew does not break
+		// a live stream.
+		return nil
+	}
+}
+
+// dispatchBlockStart handles a content_block_start event. Thinking and
+// text blocks carry no payload at start (the deltas do the work);
+// redacted_thinking blocks carry an opaque data blob that must be
+// preserved verbatim; tool_use blocks carry the ID and name that seed
+// the first ToolCallDelta.
+func (p *Provider) dispatchBlockStart(
+	ctx context.Context,
+	ev anthropic.ContentBlockStartEvent,
+	ch chan<- artifact.Artifact,
+) error {
+	switch b := ev.ContentBlock.AsAny().(type) {
+	case anthropic.ThinkingBlock, anthropic.TextBlock:
+		// No payload at start; deltas will follow.
+		return nil
+	case anthropic.RedactedThinkingBlock:
+		if b.Data == "" {
+			return nil
+		}
+		sig := artifact.ReasoningSignature{
+			Provider: "anthropic",
+			SubKind:  "redacted",
+			Data:     b.Data,
+		}
+		return sendOrCancel(ctx, ch, sig)
+	case anthropic.ToolUseBlock:
+		delta := artifact.ToolCallDelta{
+			Index: int(ev.Index),
+			ID:    b.ID,
+			Name:  b.Name,
+		}
+		return sendOrCancel(ctx, ch, delta)
+	default:
+		// Other block types (server_tool_use, web_search_tool_result,
+		// container_upload, etc.) are not modeled by ore; skip.
+		return nil
+	}
+}
+
+// dispatchBlockDelta handles a content_block_delta event. The four
+// modeled variants map to ReasoningDelta, TextDelta, ToolCallDelta,
+// and ReasoningSignature respectively. Empty payloads are skipped so
+// the loop accumulator does not see zero-content deltas.
+func (p *Provider) dispatchBlockDelta(
+	ctx context.Context,
+	ev anthropic.ContentBlockDeltaEvent,
+	ch chan<- artifact.Artifact,
+) error {
+	switch d := ev.Delta.AsAny().(type) {
+	case anthropic.ThinkingDelta:
+		if d.Thinking == "" {
+			return nil
+		}
+		return sendOrCancel(ctx, ch, artifact.ReasoningDelta{Content: d.Thinking})
+	case anthropic.SignatureDelta:
+		if d.Signature == "" {
+			return nil
+		}
+		sig := artifact.ReasoningSignature{
+			Provider: "anthropic",
+			SubKind:  "signature",
+			Data:     d.Signature,
+		}
+		return sendOrCancel(ctx, ch, sig)
+	case anthropic.TextDelta:
+		if d.Text == "" {
+			return nil
+		}
+		return sendOrCancel(ctx, ch, artifact.TextDelta{Content: d.Text})
+	case anthropic.InputJSONDelta:
+		if d.PartialJSON == "" {
+			return nil
+		}
+		delta := artifact.ToolCallDelta{
+			Index:     int(ev.Index),
+			Arguments: d.PartialJSON,
+		}
+		return sendOrCancel(ctx, ch, delta)
+	default:
+		// citations_delta and unknown variants are not modeled.
+		return nil
+	}
+}
+
+// bufferUsage replaces the pending Usage pointer with one built from
+// the SDK's cumulative message_delta usage. The caller emits the
+// buffered Usage once, at message_stop, to avoid the double-count
+// trap (the SDK reports cumulative token counts, not per-delta
+// deltas, so emitting on every message_delta would multiply-count).
+func bufferUsage(usage anthropic.MessageDeltaUsage, pending **artifact.Usage) {
+	*pending = &artifact.Usage{
+		PromptTokens:     int(usage.InputTokens),
+		CompletionTokens: int(usage.OutputTokens),
+		TotalTokens:      int(usage.InputTokens + usage.OutputTokens),
+		CacheReadTokens:  int(usage.CacheReadInputTokens),
+		CacheWriteTokens: int(usage.CacheCreationInputTokens),
+		ThinkingTokens:   int(usage.OutputTokensDetails.ThinkingTokens),
+	}
+}
+
+// sendOrCancel emits an artifact on the channel, respecting context
+// cancellation. The contract forbids the adapter from closing the
+// channel, so the only way out of a send is via the ctx.Done() arm.
+func sendOrCancel(ctx context.Context, ch chan<- artifact.Artifact, a artifact.Artifact) error {
+	select {
+	case ch <- a:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// serializeTools converts provider-agnostic tool.Tool definitions into
+// the SDK's ToolUnionParam shape. The Schema field is a JSON Schema
+// object; we extract `properties` and `required` (the two fields the
+// Anthropic API requires on input_schema) and forward them verbatim.
+// Tools that omit Schema still produce a valid (if permissive) tool
+// definition because Type defaults to "object" in the SDK.
+func (p *Provider) serializeTools(tools []tool.Tool) []anthropic.ToolUnionParam {
+	out := make([]anthropic.ToolUnionParam, len(tools))
+	for i, t := range tools {
+		schema := anthropic.ToolInputSchemaParam{
+			Type: "object",
+		}
+		if t.Schema != nil {
+			if props, ok := t.Schema["properties"]; ok {
+				schema.Properties = props
+			}
+			if req, ok := t.Schema["required"]; ok {
+				if rs, ok := req.([]string); ok {
+					schema.Required = rs
+				} else if rsi, ok := req.([]any); ok {
+					for _, r := range rsi {
+						if s, ok := r.(string); ok {
+							schema.Required = append(schema.Required, s)
+						}
+					}
+				}
+			}
+		}
+		out[i] = anthropic.ToolUnionParamOfTool(schema, t.Name)
+	}
+	return out
 }
 
 // isOpenRouter reports whether the configured base URL targets OpenRouter.
