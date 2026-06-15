@@ -813,7 +813,7 @@ func TestStream_MultipleSubmit_StartsSingleWorker(t *testing.T) {
 func TestStream_Interceptor_Consume(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	consumeInterceptor := func(ctx context.Context, event Event, emitter loop.Emitter) (InterceptResult, error) {
+	consumeInterceptor := func(ctx context.Context, event Event, stream *Stream, emitter loop.Emitter) (InterceptResult, error) {
 		return InterceptResult{}, nil
 	}
 	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(consumeInterceptor)))
@@ -842,7 +842,7 @@ func TestStream_Interceptor_Consume(t *testing.T) {
 func TestStream_Interceptor_PassThrough(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	passThroughInterceptor := func(ctx context.Context, event Event, emitter loop.Emitter) (InterceptResult, error) {
+	passThroughInterceptor := func(ctx context.Context, event Event, stream *Stream, emitter loop.Emitter) (InterceptResult, error) {
 		return InterceptResult{Event: event}, nil
 	}
 	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(passThroughInterceptor)))
@@ -876,7 +876,7 @@ func TestStream_Interceptor_PassThrough(t *testing.T) {
 func TestStream_Interceptor_Rewrite(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	rewriteInterceptor := func(ctx context.Context, event Event, emitter loop.Emitter) (InterceptResult, error) {
+	rewriteInterceptor := func(ctx context.Context, event Event, stream *Stream, emitter loop.Emitter) (InterceptResult, error) {
 		if ume, ok := event.(UserMessageEvent); ok {
 			ume.Content = "rewritten: " + ume.Content
 			return InterceptResult{Event: ume}, nil
@@ -936,7 +936,7 @@ func TestStream_ModelOption(t *testing.T) {
 func TestStream_Interceptor_Error(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	errorInterceptor := func(ctx context.Context, event Event, emitter loop.Emitter) (InterceptResult, error) {
+	errorInterceptor := func(ctx context.Context, event Event, stream *Stream, emitter loop.Emitter) (InterceptResult, error) {
 		return InterceptResult{}, errors.New("interceptor error")
 	}
 	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(errorInterceptor)))
@@ -955,7 +955,7 @@ func TestStream_Interceptor_NonUserMessage(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
 	var calledWith Event
-	nonUserInterceptor := func(ctx context.Context, event Event, emitter loop.Emitter) (InterceptResult, error) {
+	nonUserInterceptor := func(ctx context.Context, event Event, stream *Stream, emitter loop.Emitter) (InterceptResult, error) {
 		calledWith = event
 		return InterceptResult{Event: event}, nil
 	}
@@ -976,7 +976,7 @@ func TestStream_Interceptor_NonUserMessage(t *testing.T) {
 func TestStream_Interceptor_Feedback(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	feedbackInterceptor := func(ctx context.Context, event Event, emitter loop.Emitter) (InterceptResult, error) {
+	feedbackInterceptor := func(ctx context.Context, event Event, stream *Stream, emitter loop.Emitter) (InterceptResult, error) {
 		return InterceptResult{
 			Feedback: []artifact.Text{
 				{Content: "first feedback"},
@@ -1028,7 +1028,7 @@ func TestStream_Interceptor_Feedback(t *testing.T) {
 func TestStream_Interceptor_FeedbackProvenance(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	feedbackInterceptor := func(ctx context.Context, event Event, emitter loop.Emitter) (InterceptResult, error) {
+	feedbackInterceptor := func(ctx context.Context, event Event, stream *Stream, emitter loop.Emitter) (InterceptResult, error) {
 		return InterceptResult{
 			Feedback: []artifact.Text{{Content: "feedback message"}},
 		}, nil
@@ -1061,7 +1061,7 @@ func TestStream_Interceptor_FeedbackProvenance(t *testing.T) {
 func TestStream_Interceptor_FeedbackWithReplaceAndMultipleFeedback(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	feedbackInterceptor := func(ctx context.Context, event Event, emitter loop.Emitter) (InterceptResult, error) {
+	feedbackInterceptor := func(ctx context.Context, event Event, stream *Stream, emitter loop.Emitter) (InterceptResult, error) {
 		ume, ok := event.(UserMessageEvent)
 		require.True(t, ok)
 		ume.Content = "rewritten: " + ume.Content
@@ -1120,7 +1120,7 @@ func TestStream_Interceptor_FeedbackWithReplaceAndMultipleFeedback(t *testing.T)
 func TestStream_Interceptor_FeedbackWithReplace(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	feedbackInterceptor := func(ctx context.Context, event Event, emitter loop.Emitter) (InterceptResult, error) {
+	feedbackInterceptor := func(ctx context.Context, event Event, stream *Stream, emitter loop.Emitter) (InterceptResult, error) {
 		ume, ok := event.(UserMessageEvent)
 		require.True(t, ok)
 		ume.Content = "rewritten: " + ume.Content

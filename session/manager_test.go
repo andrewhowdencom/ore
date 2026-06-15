@@ -1335,7 +1335,7 @@ func TestManager_Process_ToolLoop_NoDuplicateTurns(t *testing.T) {
 func TestManager_WithInterceptor(t *testing.T) {
 	store := NewMemoryStore()
 	var called bool
-	interceptor := InterceptorFunc(func(ctx context.Context, event Event, emitter loop.Emitter) (InterceptResult, error) {
+	interceptor := InterceptorFunc(func(ctx context.Context, event Event, stream *Stream, emitter loop.Emitter) (InterceptResult, error) {
 		called = true
 		return InterceptResult{Event: event}, nil
 	})
