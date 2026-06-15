@@ -203,6 +203,8 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 			case <-ctx.Done():
 				return ctx.Err()
 			}
+		case anthropic.MessageStopEvent:
+			// Signal completion if needed (ore providers usually just return nil)
 		}
 	}
 
