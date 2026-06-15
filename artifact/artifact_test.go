@@ -16,6 +16,7 @@ var _ Artifact = ToolResult{}
 var _ Artifact = Usage{}
 var _ Artifact = Image{}
 var _ Artifact = Reasoning{}
+var _ Artifact = ReasoningSignature{}
 
 var _ LLMRenderer = (*mockLLMRenderer)(nil)
 var _ MarkdownRenderer = (*mockMarkdownRenderer)(nil)
@@ -49,6 +50,7 @@ func TestDeltaArtifacts(t *testing.T) {
 	assert.False(t, isDelta(Usage{}))
 	assert.False(t, isDelta(Image{}))
 	assert.False(t, isDelta(Reasoning{}))
+	assert.False(t, isDelta(ReasoningSignature{}))
 }
 
 func isDelta(a Artifact) bool {
@@ -70,6 +72,7 @@ func TestArtifactKinds(t *testing.T) {
 		{"usage", Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15}, "usage"},
 		{"image", Image{URL: "http://example.com/img.png"}, "image"},
 		{"reasoning", Reasoning{Content: "Let me think..."}, "reasoning"},
+		{"reasoning_signature", ReasoningSignature{Provider: "anthropic", SubKind: "signature", Data: "x"}, "reasoning_signature"},
 	}
 
 	for _, tt := range tests {
@@ -436,4 +439,98 @@ func TestImage_MarshalJSON(t *testing.T) {
 	data, err := json.Marshal(Image{URL: "https://example.com/img.png"})
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"kind":"image","url":"https://example.com/img.png"}`, string(data))
+}
+
+func TestReasoningSignature_RoundTrip(t *testing.T) {
+	original := ReasoningSignature{
+		Provider: "anthropic",
+		SubKind:  "signature",
+		Data:     "opaque-signature-bytes",
+	}
+
+	data, err := json.Marshal(original)
+	require.NoError(t, err)
+	assert.JSONEq(t,
+		`{"kind":"reasoning_signature","provider":"anthropic","sub_kind":"signature","data":"opaque-signature-bytes"}`,
+		string(data),
+	)
+
+	var roundTripped ReasoningSignature
+	require.NoError(t, json.Unmarshal(data, &roundTripped))
+	assert.Equal(t, original, roundTripped)
+}
+
+func TestReasoningSignature_AllKindValues(t *testing.T) {
+	// The three documented SubKind values must each round-trip cleanly.
+	// New values extend the set but should follow the same shape.
+	tests := []struct {
+		name     string
+		sig      ReasoningSignature
+		wantJSON string
+	}{
+		{
+			name:     "anthropic signature",
+			sig:      ReasoningSignature{Provider: "anthropic", SubKind: "signature", Data: "sig"},
+			wantJSON: `{"kind":"reasoning_signature","provider":"anthropic","sub_kind":"signature","data":"sig"}`,
+		},
+		{
+			name:     "anthropic redacted",
+			sig:      ReasoningSignature{Provider: "anthropic", SubKind: "redacted", Data: "encrypted"},
+			wantJSON: `{"kind":"reasoning_signature","provider":"anthropic","sub_kind":"redacted","data":"encrypted"}`,
+		},
+		{
+			name:     "openai encrypted",
+			sig:      ReasoningSignature{Provider: "openai", SubKind: "encrypted", Data: "blob"},
+			wantJSON: `{"kind":"reasoning_signature","provider":"openai","sub_kind":"encrypted","data":"blob"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, "reasoning_signature", tt.sig.Kind())
+			data, err := json.Marshal(tt.sig)
+			require.NoError(t, err)
+			assert.JSONEq(t, tt.wantJSON, string(data))
+		})
+	}
+}
+
+func TestUsage_ThinkingTokens_Omitempty(t *testing.T) {
+	t.Run("zero thinking tokens are omitted", func(t *testing.T) {
+		data, err := json.Marshal(Usage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30})
+		require.NoError(t, err)
+		assert.JSONEq(t,
+			`{"kind":"usage","prompt_tokens":10,"completion_tokens":20,"total_tokens":30}`,
+			string(data),
+		)
+	})
+
+	t.Run("non-zero thinking tokens are emitted", func(t *testing.T) {
+		data, err := json.Marshal(Usage{
+			PromptTokens:     10,
+			CompletionTokens: 100,
+			TotalTokens:      110,
+			ThinkingTokens:   42,
+		})
+		require.NoError(t, err)
+		assert.JSONEq(t,
+			`{"kind":"usage","prompt_tokens":10,"completion_tokens":100,"total_tokens":110,"thinking_tokens":42}`,
+			string(data),
+		)
+	})
+
+	t.Run("thinking tokens round trip through marshal and unmarshal", func(t *testing.T) {
+		original := Usage{
+			PromptTokens:     100,
+			CompletionTokens: 250,
+			TotalTokens:      350,
+			ThinkingTokens:   80,
+		}
+		data, err := json.Marshal(original)
+		require.NoError(t, err)
+
+		var roundTripped Usage
+		require.NoError(t, json.Unmarshal(data, &roundTripped))
+		assert.Equal(t, original, roundTripped)
+	})
 }

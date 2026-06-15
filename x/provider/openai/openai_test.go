@@ -152,6 +152,28 @@ func reasoningOnlySSE(parts ...string) string {
 	return sb.String()
 }
 
+// flatReasoningSSE emits a delta carrying `reasoning` (flat string) instead
+// of `reasoning_content`. This is the wire shape surfaced by OpenRouter
+// for non-Anthropic reasoning routes.
+func flatReasoningSSE(reasoning string) string {
+	return fmt.Sprintf("data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"deepseek/deepseek-r1\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning\":%q},\"finish_reason\":null}]}\n\ndata: [DONE]\n\n", reasoning)
+}
+
+// reasoningDetailsTextSSE emits a delta carrying a `reasoning_details`
+// array with one `reasoning.text` entry. This is the OpenRouter wire
+// shape for streaming text-mode reasoning.
+func reasoningDetailsTextSSE(text string) string {
+	return fmt.Sprintf("data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"anthropic/claude-3.7-sonnet:thinking\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_details\":[{\"type\":\"reasoning.text\",\"text\":%q,\"id\":\"rd-0\"}]},\"finish_reason\":null}]}\n\ndata: [DONE]\n\n", text)
+}
+
+// reasoningDetailsEncryptedSSE emits a delta carrying a `reasoning_details`
+// array with one `reasoning.encrypted` entry. This is the OpenRouter wire
+// shape for streaming encrypted reasoning; the provider must emit a
+// ReasoningSignature so the next turn can replay the encrypted blob.
+func reasoningDetailsEncryptedSSE(data string) string {
+	return fmt.Sprintf("data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"anthropic/claude-3.7-sonnet:thinking\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_details\":[{\"type\":\"reasoning.encrypted\",\"data\":%q,\"id\":\"rd-0\"}]},\"finish_reason\":null}]}\n\ndata: [DONE]\n\n", data)
+}
+
 func emptyChoicesSSE() string {
 	return "data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"choices\":[]}\n\ndata: [DONE]\n\n"
 }
@@ -2081,4 +2103,316 @@ func TestProviderInvoke_UsageChunkNoCache(t *testing.T) {
 	assert.Equal(t, 15, u.TotalTokens)
 	assert.Equal(t, 0, u.CacheReadTokens, "no cache fields in response should leave CacheReadTokens zero")
 	assert.Equal(t, 0, u.CacheWriteTokens, "no cache fields in response should leave CacheWriteTokens zero")
+}
+
+// TestProviderInvoke_StreamsReasoning_FlatField verifies that an SSE
+// delta carrying `reasoning` (the flat-string shape surfaced by
+// OpenRouter for non-Anthropic reasoning routes) is read and emitted as
+// a ReasoningDelta. Coexists with the existing `reasoning_content`
+// path; both are read independently so a single host can serve either
+// shape.
+func TestProviderInvoke_StreamsReasoning_FlatField(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(flatReasoningSSE("Let me analyze this...")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("deepseek/deepseek-r1"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	artifacts := drainArtifacts(ch)
+
+	require.Len(t, artifacts, 1)
+	assert.Equal(t, "reasoning_delta", artifacts[0].Kind())
+	assert.Equal(t, "Let me analyze this...", artifacts[0].(artifact.ReasoningDelta).Content)
+}
+
+// TestProviderInvoke_StreamsReasoning_DetailsArray_Text verifies that
+// an SSE delta whose `reasoning_details[]` array contains a
+// `reasoning.text` entry is read and emitted as a ReasoningDelta with
+// that text. This is the OpenRouter wire shape for text-mode reasoning.
+func TestProviderInvoke_StreamsReasoning_DetailsArray_Text(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(reasoningDetailsTextSSE("text-mode reasoning chunk")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("anthropic/claude-3.7-sonnet:thinking"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	artifacts := drainArtifacts(ch)
+
+	require.Len(t, artifacts, 1)
+	assert.Equal(t, "reasoning_delta", artifacts[0].Kind())
+	assert.Equal(t, "text-mode reasoning chunk", artifacts[0].(artifact.ReasoningDelta).Content)
+}
+
+// TestProviderInvoke_StreamsReasoning_DetailsArray_Encrypted verifies
+// that an SSE delta whose `reasoning_details[]` array contains a
+// `reasoning.encrypted` entry is read and emitted as a
+// ReasoningSignature{Provider: "openai", SubKind: "encrypted", ...}. The
+// signature is the carrier that lets the next-turn serializer (Task 3)
+// emit `reasoning_details[]` on the assistant message for replay.
+func TestProviderInvoke_StreamsReasoning_DetailsArray_Encrypted(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(reasoningDetailsEncryptedSSE("opaque-encrypted-blob")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("anthropic/claude-3.7-sonnet:thinking"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+
+	ch := make(chan artifact.Artifact, 10)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	artifacts := drainArtifacts(ch)
+
+	require.Len(t, artifacts, 1)
+	assert.Equal(t, "reasoning_signature", artifacts[0].Kind())
+	sig, ok := artifacts[0].(artifact.ReasoningSignature)
+	require.True(t, ok)
+	assert.Equal(t, "openai", sig.Provider)
+	assert.Equal(t, "encrypted", sig.SubKind)
+	assert.Equal(t, "opaque-encrypted-blob", sig.Data)
+}
+
+// TestProviderSerialize_ReplaysReasoning_OpenAINative verifies that on
+// the OpenAI-native wire, an assistant turn that emitted Reasoning
+// artifacts in state is replayed by setting the assistant message's
+// `reasoning_content` field to the concatenation of all Reasoning
+// contents. Cross-provider ReasoningSignature entries (here, an
+// Anthropic-style signature) are dropped on the native wire because
+// OpenAI has no surface for them; the native SDK does not model
+// signature replay today.
+func TestProviderSerialize_ReplaysReasoning_OpenAINative(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingMockTransport{
+		responseBody: simpleSSE("ok"),
+	}
+
+	p, err := New(
+		WithAPIKey("test-key"),
+		WithModel("o3-mini"),
+		WithBaseURL("https://api.openai.com/v1"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	// Two consecutive reasoning blocks (think, then more think) and
+	// the resulting text. Also include an Anthropic-style
+	// ReasoningSignature in the same turn to assert that it is
+	// dropped on the native wire.
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "what is 2+2?"})
+	mem.Append(state.RoleAssistant,
+		artifact.Reasoning{Content: "Let me think..."},
+		artifact.Reasoning{Content: " ...step by step."},
+		artifact.ReasoningSignature{Provider: "anthropic", SubKind: "thinking", Data: "anth-blob"},
+		artifact.Text{Content: "The answer is 4."},
+	)
+
+	ch := make(chan artifact.Artifact, 10)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	drainArtifacts(ch)
+
+	requests := transport.Requests()
+	require.Len(t, requests, 1)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(requests[0].body, &reqBody))
+
+	msgs, ok := reqBody["messages"].([]any)
+	require.True(t, ok)
+	require.Len(t, msgs, 2) // user + assistant
+
+	// Find the assistant message.
+	var asst map[string]any
+	for _, m := range msgs {
+		mm := m.(map[string]any)
+		if mm["role"] == "assistant" {
+			asst = mm
+			break
+		}
+	}
+	require.NotNil(t, asst, "expected an assistant message in the request body")
+
+	// Concatenated reasoning content, with a newline between blocks.
+	assert.Equal(t, "Let me think...\n ...step by step.", asst["reasoning_content"])
+	// Anthropic-style signatures do not appear on the native wire.
+	_, hasDetails := asst["reasoning_details"]
+	assert.False(t, hasDetails, "OpenAI native wire should not carry reasoning_details")
+	// The text content is preserved.
+	assert.Equal(t, "The answer is 4.", asst["content"])
+}
+
+// TestProviderSerialize_ReplaysReasoning_OpenRouter verifies that on
+// the OpenRouter wire, an assistant turn that emitted both Reasoning
+// and ReasoningSignature{openai, encrypted} artifacts is replayed as a
+// `reasoning_details[]` array on the assistant message. Order is
+// preserved: Reasoning entries become `reasoning.text`, then
+// ReasoningSignature entries become `reasoning.encrypted`.
+//
+// The test also asserts that the top-level `reasoning: {include:
+// true}` field is present (the read-side depends on it to surface
+// `delta.reasoning_details[]` in the first place) and that an
+// Anthropic-style signature is dropped on the OpenRouter wire (we
+// only replay `openai`+`encrypted` on hosts that already accept that
+// shape).
+func TestProviderSerialize_ReplaysReasoning_OpenRouter(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingMockTransport{
+		responseBody: simpleSSE("ok"),
+	}
+
+	p, err := New(
+		WithAPIKey("test-key"),
+		WithModel("anthropic/claude-3.7-sonnet:thinking"),
+		WithBaseURL("https://openrouter.ai/api/v1"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "what is 2+2?"})
+	mem.Append(state.RoleAssistant,
+		artifact.Reasoning{Content: "I am thinking"},
+		artifact.ReasoningSignature{Provider: "openai", SubKind: "encrypted", Data: "openai-blob"},
+		artifact.ReasoningSignature{Provider: "anthropic", SubKind: "thinking", Data: "anth-blob"},
+		artifact.Text{Content: "The answer is 4."},
+	)
+
+	ch := make(chan artifact.Artifact, 10)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	drainArtifacts(ch)
+
+	requests := transport.Requests()
+	require.Len(t, requests, 1)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(requests[0].body, &reqBody))
+
+	// Top-level reasoning.include is the signal that produces
+	// reasoning_details[] in the SSE stream.
+	reasoning, ok := reqBody["reasoning"].(map[string]any)
+	require.True(t, ok, "expected top-level `reasoning` map in request body; got %v", reqBody["reasoning"])
+	assert.Equal(t, true, reasoning["include"])
+
+	// Find the assistant message and inspect reasoning_details.
+	msgs, ok := reqBody["messages"].([]any)
+	require.True(t, ok)
+	var asst map[string]any
+	for _, m := range msgs {
+		mm := m.(map[string]any)
+		if mm["role"] == "assistant" {
+			asst = mm
+			break
+		}
+	}
+	require.NotNil(t, asst)
+
+	details, ok := asst["reasoning_details"].([]any)
+	require.True(t, ok, "expected reasoning_details[] on assistant message; got %v", asst)
+	require.Len(t, details, 2, "expected exactly two entries: the text block and the openai-encrypted blob")
+
+	// First entry: the Reasoning block, type=reasoning.text.
+	first := details[0].(map[string]any)
+	assert.Equal(t, "reasoning.text", first["type"])
+	assert.Equal(t, "I am thinking", first["text"])
+	_, hasData := first["data"]
+	assert.False(t, hasData, "text entries should not carry a `data` field")
+
+	// Second entry: the OpenAI-style encrypted signature.
+	second := details[1].(map[string]any)
+	assert.Equal(t, "reasoning.encrypted", second["type"])
+	assert.Equal(t, "openai-blob", second["data"])
+
+	// OpenRouter wire still carries the text body.
+	assert.Equal(t, "The answer is 4.", asst["content"])
+	// OpenRouter wire does NOT use the native `reasoning_content`
+	// field — that is the OpenAI-native shape only.
+	_, hasRC := asst["reasoning_content"]
+	assert.False(t, hasRC, "OpenRouter wire should not carry reasoning_content")
+}
+
+// TestProviderSerialize_ComposesWithCacheControl verifies that
+// WithCacheControl and reasoning replay compose: when both are
+// requested, the assistant message in the same outgoing request
+// carries BOTH the cache_control stamp (on the last user turn, per
+// the WithCacheControl contract) AND the OpenRouter `reasoning_details`
+// array (because the base URL is OpenRouter). The two mutations must
+// not clobber each other.
+func TestProviderSerialize_ComposesWithCacheControl(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingMockTransport{
+		responseBody: simpleSSE("ok"),
+	}
+
+	p, err := New(
+		WithAPIKey("test-key"),
+		WithModel("anthropic/claude-3.7-sonnet:thinking"),
+		WithBaseURL("https://openrouter.ai/api/v1"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	mem := &state.Buffer{}
+	mem.Append(state.RoleSystem, artifact.Text{Content: "You are a helpful assistant."})
+	mem.Append(state.RoleUser, artifact.Text{Content: "first question"})
+	mem.Append(state.RoleAssistant,
+		artifact.Reasoning{Content: "thinking"},
+		artifact.Text{Content: "first answer"},
+	)
+	mem.Append(state.RoleUser, artifact.Text{Content: "follow up"})
+
+	ch := make(chan artifact.Artifact, 10)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch,
+		WithCacheControl(),
+	))
+	drainArtifacts(ch)
+
+	requests := transport.Requests()
+	require.Len(t, requests, 1)
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal(requests[0].body, &reqBody))
+
+	msgs, ok := reqBody["messages"].([]any)
+	require.True(t, ok)
+	require.NotEmpty(t, msgs)
+
+	// The system message should carry cache_control on its content
+	// part (asserting that the cache-control mutation survived the
+	// chain with reasoning replay).
+	sysMsg, ok := msgs[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "system", sysMsg["role"])
+	sysParts, ok := sysMsg["content"].([]any)
+	require.True(t, ok, "system content should be a content-parts array when cache_control is set")
+	require.Len(t, sysParts, 1)
+	assertCacheControlEphemeral(t, sysParts[0].(map[string]any))
+
+	// The assistant message (second message in the slice, after
+	// system) should carry reasoning_details — the reasoning-replay
+	// mutation must still have run alongside cache_control.
+	var asst map[string]any
+	for _, m := range msgs {
+		mm := m.(map[string]any)
+		if mm["role"] == "assistant" {
+			asst = mm
+			break
+		}
+	}
+	require.NotNil(t, asst, "expected an assistant message in the request body")
+	details, ok := asst["reasoning_details"].([]any)
+	require.True(t, ok, "reasoning_details[] should survive on the assistant message alongside cache_control")
+	require.Len(t, details, 1)
+	first := details[0].(map[string]any)
+	assert.Equal(t, "reasoning.text", first["type"])
+	assert.Equal(t, "thinking", first["text"])
 }
