@@ -456,6 +456,16 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		if mto, ok := opt.(maxTokensOption); ok {
 			maxTokens = mto.n
 		}
+		if mto, ok := opt.(provider.MaxTokensOption); ok {
+			// Provider-agnostic form. N <= 0 is "no opinion";
+			// the adapter does not set the wire field. Callers
+			// (e.g. SummarizeStrategy) use this option to size
+			// their own budget without importing a concrete
+			// adapter package.
+			if mto.N > 0 {
+				maxTokens = mto.N
+			}
+		}
 		if sid, ok := opt.(sessionIDOption); ok {
 			sessionID = sid.id
 		}
