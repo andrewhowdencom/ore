@@ -93,8 +93,8 @@ func (p *Pipeline) Turn(ctx context.Context, st state.State, prov provider.Provi
 	close(provCh)
 	wg.Wait()
 
-	// Post-accumulation: enrich ToolCall artifacts with display hints.
-	enrichToolCalls(ctx, accumulatedArtifacts, allOpts)
+	// Post-accumulation: attach display hints to ToolCall artifacts.
+	applyDisplayHints(ctx, accumulatedArtifacts, allOpts)
 
 	if err != nil {
 		return st, accumulatedArtifacts, err

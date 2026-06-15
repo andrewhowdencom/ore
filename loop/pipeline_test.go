@@ -253,9 +253,9 @@ func TestPipeline_RunHandlers_EmitterPassedToHandler(t *testing.T) {
 	assert.Equal(t, emitter, capturedEmitter)
 }
 
-// TestPipeline_Turn_EnrichToolCalls verifies that Pipeline.Turn enriches
-// ToolCall artifacts with display hints when matching ToolsOption is present.
-func TestPipeline_Turn_EnrichToolCalls(t *testing.T) {
+// TestPipeline_Turn_ApplyDisplayHints verifies that Pipeline.Turn attaches
+// display hints to ToolCall artifacts when a matching ToolsOption is present.
+func TestPipeline_Turn_ApplyDisplayHints(t *testing.T) {
 	p := newPipeline()
 	p.invokeOpts = []provider.InvokeOption{
 		provider.ToolsOption{
@@ -286,13 +286,13 @@ func TestPipeline_Turn_EnrichToolCalls(t *testing.T) {
 
 	tc, ok := accumulated[0].(artifact.ToolCall)
 	require.True(t, ok)
-	assert.Equal(t, "hint: hello", tc.Value)
+	assert.Equal(t, "hint: hello", tc.Display)
 	assert.Equal(t, 1, len(st.Turns()))
 }
 
-// TestPipeline_Turn_EnrichToolCalls_NoMatchingHint verifies that ToolCall
+// TestPipeline_Turn_ApplyDisplayHints_NoMatchingHint verifies that ToolCall
 // artifacts are left unchanged when no matching display hint is found.
-func TestPipeline_Turn_EnrichToolCalls_NoMatchingHint(t *testing.T) {
+func TestPipeline_Turn_ApplyDisplayHints_NoMatchingHint(t *testing.T) {
 	p := newPipeline()
 	p.invokeOpts = []provider.InvokeOption{
 		provider.ToolsOption{
@@ -323,6 +323,6 @@ func TestPipeline_Turn_EnrichToolCalls_NoMatchingHint(t *testing.T) {
 
 	tc, ok := accumulated[0].(artifact.ToolCall)
 	require.True(t, ok)
-	assert.Nil(t, tc.Value)
+	assert.Nil(t, tc.Display)
 	assert.Equal(t, 1, len(st.Turns()))
 }

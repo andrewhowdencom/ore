@@ -1495,7 +1495,7 @@ func TestStep_Turn_ErrorEvent_NoSubscriber(t *testing.T) {
 	}
 }
 
-func TestEnrichToolCalls_AttachesValue(t *testing.T) {
+func TestApplyDisplayHints_AttachesDisplay(t *testing.T) {
 	displayHint := func(args map[string]any) any {
 		cmd, _ := args["command"].(string)
 		return struct{ Command string }{Command: cmd}
@@ -1514,12 +1514,12 @@ func TestEnrichToolCalls_AttachesValue(t *testing.T) {
 		artifact.Text{Content: "hello"},
 	}
 
-	enrichToolCalls(context.Background(), artifacts, []provider.InvokeOption{toolsOpt})
+	applyDisplayHints(context.Background(), artifacts, []provider.InvokeOption{toolsOpt})
 
 	tc, ok := artifacts[0].(artifact.ToolCall)
 	require.True(t, ok)
-	assert.NotNil(t, tc.Value)
-	assert.Equal(t, "go test ./...", tc.Value.(struct{ Command string }).Command)
+	assert.NotNil(t, tc.Display)
+	assert.Equal(t, "go test ./...", tc.Display.(struct{ Command string }).Command)
 
 	// Non-ToolCall artifact untouched.
 	text, ok := artifacts[1].(artifact.Text)
@@ -1527,7 +1527,7 @@ func TestEnrichToolCalls_AttachesValue(t *testing.T) {
 	assert.Equal(t, "hello", text.Content)
 }
 
-func TestEnrichToolCalls_NoMatchingHint(t *testing.T) {
+func TestApplyDisplayHints_NoMatchingHint(t *testing.T) {
 	toolsOpt := provider.ToolsOption{
 		Tools: func(_ context.Context, _ state.State) []tool.Tool {
 			return []tool.Tool{
@@ -1540,14 +1540,14 @@ func TestEnrichToolCalls_NoMatchingHint(t *testing.T) {
 		artifact.ToolCall{Name: "bash", Arguments: `{"command":"go test"}`},
 	}
 
-	enrichToolCalls(context.Background(), artifacts, []provider.InvokeOption{toolsOpt})
+	applyDisplayHints(context.Background(), artifacts, []provider.InvokeOption{toolsOpt})
 
 	tc, ok := artifacts[0].(artifact.ToolCall)
 	require.True(t, ok)
-	assert.Nil(t, tc.Value)
+	assert.Nil(t, tc.Display)
 }
 
-func TestEnrichToolCalls_InvalidJSON(t *testing.T) {
+func TestApplyDisplayHints_InvalidJSON(t *testing.T) {
 	displayHint := func(args map[string]any) any { return args }
 	toolsOpt := provider.ToolsOption{
 		Tools: func(_ context.Context, _ state.State) []tool.Tool {
@@ -1561,11 +1561,11 @@ func TestEnrichToolCalls_InvalidJSON(t *testing.T) {
 		artifact.ToolCall{Name: "bash", Arguments: `not-json`},
 	}
 
-	enrichToolCalls(context.Background(), artifacts, []provider.InvokeOption{toolsOpt})
+	applyDisplayHints(context.Background(), artifacts, []provider.InvokeOption{toolsOpt})
 
 	tc, ok := artifacts[0].(artifact.ToolCall)
 	require.True(t, ok)
-	assert.Nil(t, tc.Value)
+	assert.Nil(t, tc.Display)
 }
 
 func TestStep_Emit_WithState_NoOnEmit(t *testing.T) {

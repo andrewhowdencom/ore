@@ -48,42 +48,65 @@ func (t Text) MarshalJSON() ([]byte, error) {
 }
 
 // ToolCall represents a tool invocation artifact.
+//
+// Arguments is the JSON object the model streamed; it is the source
+// of truth for the wire format that providers serialize back to the
+// upstream API. Display is an optional, opaque value attached by
+// applyDisplayHints in the loop pipeline; it is for human rendering
+// only (TUI, exporters, log viewers) and is never consulted by the
+// wire-format code path. The two fields are deliberately decoupled
+// so a tool's display choice cannot corrupt the wire format.
 type ToolCall struct {
 	ID        string
 	Name      string
 	Arguments string
-	Value     any // NEW
+	Display   any
 }
 
 // Kind returns the artifact kind identifier.
 func (t ToolCall) Kind() string { return "tool_call" }
 
-// LLMString returns a string representation of the tool call suitable
-// for consumption by an LLM provider. It prefers the custom LLMRenderer
-// on Value, falls back to json.Marshal of Value, and finally falls back
-// to the raw Arguments string.
+// LLMString returns the LLM-visible string representation of the tool
+// call. For a tool call, the LLM sees the wire format — the JSON
+// object the model originally streamed — so this returns Arguments
+// directly. The display value is intentionally ignored: display is a
+// human-rendering concern, not a wire-format concern.
+//
+// This method exists primarily to support x/llmbytes' byte counting,
+// which estimates the LLM-visible size of each artifact. Returning
+// Arguments gives a more accurate estimate than the previous
+// json.Marshal-of-Display fallback, which frequently diverged from
+// the actual wire size for tools that return non-JSON display values.
 func (t ToolCall) LLMString() string {
-	if t.Value != nil {
-		if r, ok := t.Value.(LLMRenderer); ok {
-			return r.MarshalLLM()
-		}
-		if b, err := json.Marshal(t.Value); err == nil {
-			return string(b)
-		}
-	}
 	return t.Arguments
 }
 
-// MarkdownString returns a string representation of the tool call
-// suitable for human display. It prefers the custom MarkdownRenderer on
-// Value, falls back to json.Marshal of Value, and finally falls back
-// to the raw Arguments string.
+// MarkdownString returns a human-readable representation of the tool
+// call for display layers (TUI, exporters, log viewers). The lookup
+// order is:
+//
+//  1. If Display implements MarkdownRenderer, use MarshalMarkdown.
+//  2. If Display is a string, return it as-is. This is the common
+//     case for tools whose DisplayHint returns a pre-formatted label
+//     (e.g. "📁 list_directory(/path)"). The previous implementation
+//     json.Marshaled strings and embedded literal quotes; this is
+//     corrected here.
+//  3. Otherwise, fall back to json.Marshal of Display so structured
+//     values still render usefully.
+//  4. When Display is nil, fall through to Arguments.
+//
+// Display is the single source of truth for human rendering; Arguments
+// is intentionally not consulted unless Display is nil. Providers
+// never call this method — it is for display consumers only.
 func (t ToolCall) MarkdownString() string {
-	if t.Value != nil {
-		if r, ok := t.Value.(MarkdownRenderer); ok {
-			return r.MarshalMarkdown()
-		}
-		if b, err := json.Marshal(t.Value); err == nil {
+	if r, ok := t.Display.(MarkdownRenderer); ok {
+		return r.MarshalMarkdown()
+	}
+	if s, ok := t.Display.(string); ok {
+		return s
+	}
+	if t.Display != nil {
+		if b, err := json.Marshal(t.Display); err == nil {
 			return string(b)
 		}
 	}
@@ -455,7 +478,8 @@ func (d ToolCallDelta) AccumulatorKey() string {
 
 // MergeInto merges the delta into an existing ToolCall artifact or seeds a new one.
 // ID uses latest-wins semantics; Name and Arguments are concatenated.
-// Value is not present in deltas and is left nil on seeding.
+// Display is not present in deltas and is left nil on seeding; it is
+// populated later by applyDisplayHints in the loop pipeline.
 func (d ToolCallDelta) MergeInto(acc Artifact) Artifact {
 	if acc == nil {
 		return ToolCall{
