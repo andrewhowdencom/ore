@@ -219,6 +219,8 @@ type Usage struct {
 	TotalTokens      int `json:"total_tokens"`
 	CacheReadTokens  int `json:"cache_read_tokens,omitempty"`
 	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
+	// ReasoningSignature stores an opaque signature for reasoning replay.
+	ReasoningSignature string `json:"reasoning_signature,omitempty"`
 }
 
 // Kind returns the artifact kind identifier.
@@ -233,6 +235,7 @@ func (u Usage) MarshalJSON() ([]byte, error) {
 		TotalTokens      int    `json:"total_tokens"`
 		CacheReadTokens  int    `json:"cache_read_tokens,omitempty"`
 		CacheWriteTokens int    `json:"cache_write_tokens,omitempty"`
+		ReasoningSignature string `json:"reasoning_signature,omitempty"`
 	}
 	return json.Marshal(output{
 		Kind:             "usage",
@@ -241,6 +244,7 @@ func (u Usage) MarshalJSON() ([]byte, error) {
 		TotalTokens:      u.TotalTokens,
 		CacheReadTokens:  u.CacheReadTokens,
 		CacheWriteTokens: u.CacheWriteTokens,
+		ReasoningSignature: u.ReasoningSignature,
 	})
 }
 
