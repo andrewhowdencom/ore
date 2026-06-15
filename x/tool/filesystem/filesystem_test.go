@@ -275,7 +275,10 @@ func TestWriteFile_NewFile(t *testing.T) {
 		"content": "hello world",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, fmt.Sprintf("wrote %d bytes to %q", len("hello world"), p), result)
+	r := result.(*WriteFileResult)
+	assert.Equal(t, fmt.Sprintf("wrote %d bytes to %q", len("hello world"), p), r.Message)
+	assert.Equal(t, p, r.Path)
+	assert.Equal(t, len("hello world"), r.Bytes)
 
 	data, err := os.ReadFile(p)
 	require.NoError(t, err)
@@ -292,7 +295,8 @@ func TestWriteFile_NestedPath(t *testing.T) {
 		"content": "nested content",
 	})
 	require.NoError(t, err)
-	assert.Contains(t, result.(string), "nested.txt")
+	r := result.(*WriteFileResult)
+	assert.Contains(t, r.Message, "nested.txt")
 
 	data, err := os.ReadFile(p)
 	require.NoError(t, err)
@@ -310,7 +314,8 @@ func TestWriteFile_Overwrites(t *testing.T) {
 		"content": "new content",
 	})
 	require.NoError(t, err)
-	assert.Contains(t, result.(string), "wrote")
+	r := result.(*WriteFileResult)
+	assert.Contains(t, r.Message, "wrote")
 
 	data, err := os.ReadFile(p)
 	require.NoError(t, err)
@@ -350,7 +355,9 @@ func TestWriteFile_EmptyContent(t *testing.T) {
 		"content": "",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, fmt.Sprintf("wrote 0 bytes to %q", p), result)
+	r := result.(*WriteFileResult)
+	assert.Equal(t, fmt.Sprintf("wrote 0 bytes to %q", p), r.Message)
+	assert.Equal(t, 0, r.Bytes)
 
 	info, err := os.Stat(p)
 	require.NoError(t, err)
@@ -369,7 +376,9 @@ func TestEditFile_SingleLine(t *testing.T) {
 		"new_string": "goodbye",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, fmt.Sprintf("edited %q", p), result)
+	r := result.(*EditFileResult)
+	assert.Equal(t, fmt.Sprintf("edited %q", p), r.Message)
+	assert.Equal(t, p, r.Path)
 
 	data, err := os.ReadFile(p)
 	require.NoError(t, err)
@@ -388,7 +397,8 @@ func TestEditFile_MultiLine(t *testing.T) {
 		"new_string": "replaced two\nreplaced three",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, fmt.Sprintf("edited %q", p), result)
+	r := result.(*EditFileResult)
+	assert.Equal(t, fmt.Sprintf("edited %q", p), r.Message)
 
 	data, err := os.ReadFile(p)
 	require.NoError(t, err)
@@ -451,7 +461,8 @@ func TestEditFile_EmptyNewString(t *testing.T) {
 		"new_string": "",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, fmt.Sprintf("edited %q", p), result)
+	r := result.(*EditFileResult)
+	assert.Equal(t, fmt.Sprintf("edited %q", p), r.Message)
 
 	data, err := os.ReadFile(p)
 	require.NoError(t, err)
@@ -481,11 +492,104 @@ func TestEditFile_FirstOccurrenceOnly(t *testing.T) {
 		"new_string": "XX",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, fmt.Sprintf("edited %q", p), result)
+	r := result.(*EditFileResult)
+	assert.Equal(t, fmt.Sprintf("edited %q", p), r.Message)
 
 	data, err := os.ReadFile(p)
 	require.NoError(t, err)
 	assert.Equal(t, "XX ab ab\n", string(data))
+}
+
+func TestWriteFile_MarshalMarkdown(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		result  WriteFileResult
+		want    []string
+		notWant []string
+	}{
+		{
+			name: "ack wrapped in code fence",
+			result: WriteFileResult{
+				Path:    "/tmp/foo.go",
+				Bytes:   42,
+				Message: `wrote 42 bytes to "/tmp/foo.go"`,
+			},
+			want: []string{
+				"```\nwrote 42 bytes to \"/tmp/foo.go\"\n```",
+			},
+			notWant: []string{
+				`\"/tmp/foo.go\"`, // no JSON-escaped quotes
+			},
+		},
+		{
+			name: "empty message is a bare fence pair",
+			result: WriteFileResult{
+				Message: "",
+			},
+			want: []string{
+				"```\n```",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			md := tt.result.MarshalMarkdown()
+			for _, s := range tt.want {
+				if !strings.Contains(md, s) {
+					t.Errorf("MarshalMarkdown() missing %q\ngot:\n%s", s, md)
+				}
+			}
+			for _, s := range tt.notWant {
+				if strings.Contains(md, s) {
+					t.Errorf("MarshalMarkdown() unexpectedly contains %q\ngot:\n%s", s, md)
+				}
+			}
+		})
+	}
+}
+
+func TestEditFile_MarshalMarkdown(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		result EditFileResult
+		want   []string
+	}{
+		{
+			name: "ack wrapped in code fence",
+			result: EditFileResult{
+				Path:    "/tmp/foo.go",
+				Message: `edited "/tmp/foo.go"`,
+			},
+			want: []string{
+				"```\nedited \"/tmp/foo.go\"\n```",
+			},
+		},
+		{
+			name: "empty message is a bare fence pair",
+			result: EditFileResult{
+				Message: "",
+			},
+			want: []string{
+				"```\n```",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			md := tt.result.MarshalMarkdown()
+			for _, s := range tt.want {
+				if !strings.Contains(md, s) {
+					t.Errorf("MarshalMarkdown() missing %q\ngot:\n%s", s, md)
+				}
+			}
+		})
+	}
 }
 
 func TestListDirectory_MixedEntries(t *testing.T) {
@@ -1032,7 +1136,8 @@ func TestWriteFile_WithSandbox(t *testing.T) {
 		"content": "hello world",
 	})
 	require.NoError(t, err)
-	assert.Contains(t, result.(string), "new.txt")
+	r := result.(*WriteFileResult)
+	assert.Contains(t, r.Message, "new.txt")
 
 	data, err := os.ReadFile(filepath.Join(dir, "new.txt"))
 	require.NoError(t, err)

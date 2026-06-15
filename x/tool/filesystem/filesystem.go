@@ -326,6 +326,44 @@ var ReadFileTool = tool.Tool{
 	},
 }
 
+// WriteFileResult carries the acknowledgement returned by
+// WriteFile. The Message field holds the LLM-facing string
+// (e.g. `wrote 42 bytes to "/foo"`). The type implements both
+// artifact.LLMRenderer and artifact.MarkdownRenderer so the
+// TUI can render the acknowledgement cleanly (as a fenced
+// code block) instead of the JSON-shaped noise that
+// json.Marshal(string) would produce.
+type WriteFileResult struct {
+	Path    string
+	Bytes   int
+	Message string
+}
+
+// MarshalLLM returns the LLM-facing acknowledgement.
+func (r *WriteFileResult) MarshalLLM() string { return r.Message }
+
+// MarshalMarkdown returns the Markdown representation of the
+// acknowledgement for human display. The ack is wrapped in a
+// fenced code block so glamour preserves the formatting
+// (otherwise a bare `wrote N bytes to "path"` string is
+// JSON-marshaled by the framework's fallback path and rendered
+// with literal quote characters and escape sequences).
+func (r *WriteFileResult) MarshalMarkdown() string {
+	var sb strings.Builder
+	sb.WriteString("```\n")
+	if r.Message != "" {
+		sb.WriteString(r.Message)
+		sb.WriteString("\n")
+	}
+	sb.WriteString("```")
+	return sb.String()
+}
+
+var (
+	_ artifact.LLMRenderer     = (*WriteFileResult)(nil)
+	_ artifact.MarkdownRenderer = (*WriteFileResult)(nil)
+)
+
 // WriteFile creates a new file with the given content, overwriting if it exists.
 // Parameters:
 //   - path    (string, required): relative or absolute file path.
@@ -352,7 +390,11 @@ func WriteFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, 
 		return nil, fmt.Errorf("failed to write file: %w", err)
 	}
 
-	return fmt.Sprintf("wrote %d bytes to %q", len(content), path), nil
+	return &WriteFileResult{
+		Path:    path,
+		Bytes:   len(content),
+		Message: fmt.Sprintf("wrote %d bytes to %q", len(content), path),
+	}, nil
 }
 
 // WriteFileTool is the tool.Tool descriptor for WriteFile.
@@ -377,6 +419,37 @@ var WriteFileTool = tool.Tool{
 		return fmt.Sprintf("📝 write_file(%s)", toString(args["path"]))
 	},
 }
+
+// EditFileResult carries the acknowledgement returned by
+// EditFile. Like WriteFileResult, the type implements both
+// LLMRenderer and MarkdownRenderer so the TUI renders the ack
+// as a clean fenced code block rather than JSON-quoted noise.
+type EditFileResult struct {
+	Path    string
+	Message string
+}
+
+// MarshalLLM returns the LLM-facing acknowledgement.
+func (r *EditFileResult) MarshalLLM() string { return r.Message }
+
+// MarshalMarkdown returns the Markdown representation of the
+// acknowledgement for human display. See WriteFileResult for the
+// rationale behind wrapping the message in a code fence.
+func (r *EditFileResult) MarshalMarkdown() string {
+	var sb strings.Builder
+	sb.WriteString("```\n")
+	if r.Message != "" {
+		sb.WriteString(r.Message)
+		sb.WriteString("\n")
+	}
+	sb.WriteString("```")
+	return sb.String()
+}
+
+var (
+	_ artifact.LLMRenderer     = (*EditFileResult)(nil)
+	_ artifact.MarkdownRenderer = (*EditFileResult)(nil)
+)
 
 // EditFile performs an exact-match search-and-replace on an existing file.
 // It replaces the first occurrence of old_string with new_string.
@@ -418,7 +491,10 @@ func EditFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, e
 		return nil, fmt.Errorf("failed to write file: %w", err)
 	}
 
-	return fmt.Sprintf("edited %q", path), nil
+	return &EditFileResult{
+		Path:    path,
+		Message: fmt.Sprintf("edited %q", path),
+	}, nil
 }
 
 // EditFileTool is the tool.Tool descriptor for EditFile.
