@@ -87,6 +87,22 @@
             margin-bottom: 1.5rem;
             font-size: 0.9375rem;
         }
+        .load-more {
+            display: block;
+            margin: 1.5rem auto 0;
+            padding: 0.625rem 1.5rem;
+            background: #fff;
+            color: #007bff;
+            border: 1px solid #007bff;
+            border-radius: 0.5rem;
+            font-size: 0.9375rem;
+            font-weight: 500;
+            cursor: pointer;
+        }
+        .load-more:hover {
+            background: #007bff;
+            color: #fff;
+        }
     </style>
 </head>
 <body>
@@ -98,11 +114,16 @@
             {{range .Threads}}
             <a href="/chat?thread={{.ID}}" class="thread-card">
                 <div class="thread-id">{{.ID}}</div>
+                {{if .Preview}}
                 <div class="thread-preview">{{.Preview}}</div>
+                {{end}}
                 <div class="thread-meta">Updated {{.UpdatedAt.Format "Jan 2, 2006 3:04 PM"}}</div>
             </a>
             {{end}}
         </div>
+        {{if .NextCursor}}
+        <button id="load-more" data-cursor="{{.NextCursor}}" class="load-more">Load more</button>
+        {{end}}
         {{else}}
         <div class="empty-state">
             <p>No conversations yet.</p>
@@ -110,5 +131,75 @@
         </div>
         {{end}}
     </div>
+    <noscript><style>#load-more { display: none; }</style></noscript>
+    <script>
+    (function() {
+        var button = document.getElementById('load-more');
+        if (!button) { return; }
+        var list = document.querySelector('.thread-list');
+        if (!list) { return; }
+
+        function esc(s) {
+            var d = document.createElement('div');
+            d.textContent = s == null ? '' : String(s);
+            return d.innerHTML;
+        }
+
+        function formatDate(iso) {
+            var d = new Date(iso);
+            if (isNaN(d.getTime())) { return ''; }
+            var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            var month = months[d.getMonth()];
+            var day = d.getDate();
+            var year = d.getFullYear();
+            var hour = d.getHours();
+            var min = d.getMinutes();
+            var ampm = hour >= 12 ? 'PM' : 'AM';
+            hour = hour % 12;
+            if (hour === 0) { hour = 12; }
+            var minStr = min < 10 ? '0' + min : '' + min;
+            return month + ' ' + day + ', ' + year + ' ' + hour + ':' + minStr + ' ' + ampm;
+        }
+
+        function renderCard(t) {
+            var preview = t.preview
+                ? '<div class="thread-preview">' + esc(t.preview) + '</div>'
+                : '';
+            return '<a href="/chat?thread=' + esc(t.id) + '" class="thread-card">' +
+                '<div class="thread-id">' + esc(t.id) + '</div>' +
+                preview +
+                '<div class="thread-meta">Updated ' + esc(formatDate(t.updated_at)) + '</div>' +
+                '</a>';
+        }
+
+        button.addEventListener('click', function() {
+            var cursor = button.getAttribute('data-cursor');
+            if (!cursor) { return; }
+            fetch('/threads?cursor=' + encodeURIComponent(cursor) + '&limit=20', {
+                headers: { 'Accept': 'application/json' }
+            })
+            .then(function(r) {
+                if (!r.ok) { throw new Error('Failed to load more (' + r.status + ')'); }
+                return r.json();
+            })
+            .then(function(data) {
+                var threads = data.threads || [];
+                var html = '';
+                for (var i = 0; i < threads.length; i++) {
+                    html += renderCard(threads[i]);
+                }
+                list.insertAdjacentHTML('beforeend', html);
+                if (data.next_cursor) {
+                    button.setAttribute('data-cursor', data.next_cursor);
+                } else {
+                    button.parentNode.removeChild(button);
+                }
+            })
+            .catch(function(err) {
+                console.error('Load more failed:', err);
+            });
+        });
+    })();
+    </script>
 </body>
 </html>

@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -1075,6 +1076,74 @@ func TestHandler_ListThreads_LimitClamped(t *testing.T) {
 			assert.Len(t, ids, tt.want)
 		})
 	}
+}
+
+func TestHandler_LandingPage_IncludesLoadMoreWhenMorePagesExist(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	h := newTestHandler(t, mgr)
+
+	// Seed more threads than the default page size so a next cursor exists.
+	now := time.Now()
+	for i := 0; i < defaultThreadPageSize+5; i++ {
+		seedThread(t, store, fmt.Sprintf("t-%02d", i), now.Add(-time.Duration(i)*time.Minute))
+	}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	require.Equal(t, 200, rr.Code)
+	body := rr.Body.String()
+
+	// The button must be present with a non-empty cursor.
+	assert.Contains(t, body, `id="load-more"`)
+	assert.Contains(t, body, `class="load-more"`)
+
+	// Extract the data-cursor attribute value and verify it is a valid cursor.
+	// We use a simple regex because string containment is awkward for attribute values.
+	re := regexp.MustCompile(`data-cursor="([^"]+)"`)
+	match := re.FindStringSubmatch(body)
+	require.NotNil(t, match, "landing page must include a data-cursor attribute on the load-more button")
+	cursor := match[1]
+	require.NotEmpty(t, cursor)
+
+	// The cursor must round-trip through the decoder.
+	decoded, err := decodeThreadCursor(cursor)
+	require.NoError(t, err)
+	assert.NotZero(t, decoded.UpdatedAt)
+	assert.NotEmpty(t, decoded.ID)
+
+	// The noscript fallback must be present.
+	assert.Contains(t, body, "<noscript>")
+
+	// The load-more script must be present.
+	assert.Contains(t, body, "load-more")
+	assert.Contains(t, body, "/threads?cursor=")
+}
+
+func TestHandler_LandingPage_OmitsLoadMoreOnLastPage(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	h := newTestHandler(t, mgr)
+
+	// Seed fewer threads than the default page size so there is no next page.
+	now := time.Now()
+	for i := 0; i < 3; i++ {
+		seedThread(t, store, fmt.Sprintf("t-%02d", i), now.Add(-time.Duration(i)*time.Minute))
+	}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	rr := httptest.NewRecorder()
+	h.ServeMux().ServeHTTP(rr, req)
+
+	require.Equal(t, 200, rr.Code)
+	body := rr.Body.String()
+
+	assert.NotContains(t, body, `id="load-more"`)
+	assert.NotContains(t, body, `data-cursor=`)
 }
 
 func TestNDJSONWriter_NoFlusher(t *testing.T) {
