@@ -539,11 +539,19 @@ func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, op
 	return st, nil
 }
 
-// enrichToolCalls scans accumulated artifacts for ToolCall values and, when a
-// matching DisplayHint is found in the ToolsOption of the invocation options,
-// parses the JSON arguments, runs the hint, and attaches the result to
-// ToolCall.Value. It mutates the slice in-place.
-func enrichToolCalls(ctx context.Context, artifacts []artifact.Artifact, opts []provider.InvokeOption) {
+// applyDisplayHints scans accumulated artifacts for ToolCall values
+// and, when a matching DisplayHint is found in the ToolsOption of the
+// invocation options, parses the JSON arguments, runs the hint, and
+// attaches the result to ToolCall.Display. It mutates the slice
+// in-place.
+//
+// The hint's return value is purely a human-rendering artifact: it is
+// read by MarkdownString and by display-layer conduits (TUI, log
+// viewers, exporters) and is never consulted by any provider's
+// wire-format code path. The wire format is always derived from
+// ToolCall.Arguments, the JSON the model streamed. This separation is
+// load-bearing — see artifact.ToolCall for the rationale.
+func applyDisplayHints(ctx context.Context, artifacts []artifact.Artifact, opts []provider.InvokeOption) {
 	hints := make(map[string]func(map[string]any) any)
 	for _, opt := range opts {
 		if to, ok := opt.(provider.ToolsOption); ok {
@@ -572,7 +580,7 @@ func enrichToolCalls(ctx context.Context, artifacts []artifact.Artifact, opts []
 			continue
 		}
 		if v := hint(args); v != nil {
-			tc.Value = v
+			tc.Display = v
 			artifacts[i] = tc
 		}
 	}

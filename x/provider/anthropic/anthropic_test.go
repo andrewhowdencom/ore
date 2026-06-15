@@ -430,6 +430,66 @@ func TestProviderSerialize_ReplaysToolUseAndToolResult(t *testing.T) {
 	assert.False(t, toolMsg.Content[0].IsError)
 }
 
+// TestProviderSerialize_DisplayDoesNotAffectWireFormat is a regression
+// test for the bug where a non-dict Display value (set by the loop's
+// applyDisplayHints from a string-returning tool.Tool.DisplayHint) was
+// forwarded as the tool_use.input field. Anthropic rejects non-object
+// inputs with "Input should be a valid dictionary (2013)".
+//
+// The wire format is always derived from ToolCall.Arguments, the JSON
+// the model streamed. ToolCall.Display is for human rendering only
+// and must never contaminate the wire format.
+func TestProviderSerialize_DisplayDoesNotAffectWireFormat(t *testing.T) {
+	t.Parallel()
+
+	p, err := New(
+		WithAPIKey("test-key"),
+		WithModel("claude-3-7-sonnet-latest"),
+	)
+	require.NoError(t, err)
+
+	mem := state.NewBuffer()
+	mem.Append(state.RoleUser, artifact.Text{Content: "list things"})
+	// Display is the kind of string label that the built-in filesystem
+	// tools produce from their DisplayHint. The previous implementation
+	// of parseToolArguments preferred Display over Arguments, so this
+	// string would have been sent as the input field and the request
+	// would have been rejected by the API.
+	mem.Append(state.RoleAssistant, artifact.ToolCall{
+		ID:        "toolu_disp",
+		Name:      "list_directory",
+		Arguments: `{"path":"/home/../Development"}`,
+		Display:   "📁 list_directory(/home/../Development)",
+	})
+
+	got := p.serializeMessages(mem)
+	require.Len(t, got.messages, 2, "user + assistant")
+
+	asstBytes, err := json.Marshal(got.messages[1])
+	require.NoError(t, err)
+	var asst struct {
+		Role    string `json:"role"`
+		Content []struct {
+			Type  string         `json:"type"`
+			ID    string         `json:"id,omitempty"`
+			Name  string         `json:"name,omitempty"`
+			Input map[string]any `json:"input,omitempty"`
+		} `json:"content"`
+	}
+	require.NoError(t, json.Unmarshal(asstBytes, &asst))
+	require.Len(t, asst.Content, 1)
+	require.Equal(t, "tool_use", asst.Content[0].Type)
+	require.Equal(t, "toolu_disp", asst.Content[0].ID)
+	require.Equal(t, "list_directory", asst.Content[0].Name)
+
+	// The input field must be the JSON object from Arguments, not the
+	// Display string. Asserting on map[string]any forces a dict shape:
+	// a string Display value would have produced an unmarshal error
+	// here, and a non-dict JSON would have left Input as nil.
+	require.NotNil(t, asst.Content[0].Input, "input must be a dict, not the Display string")
+	assert.Equal(t, "/home/../Development", asst.Content[0].Input["path"])
+}
+
 // TestProviderSerialize_SystemCollapsedToSystemField verifies that a
 // RoleSystem turn is hoisted out of the messages slice and placed on
 // the request-level `system` field. A subsequent user turn keeps its
@@ -593,11 +653,12 @@ func TestProviderInvokeOptions_ThinkingBudgetZeroIsSet(t *testing.T) {
 	assert.Equal(t, int64(0), got.thinkingBudget)
 }
 
-// TestProviderSerialize_HandlesJSONArgumentValue verifies the tool-use
-// path when the artifact carries a structured `Value` rather than a
-// pre-marshaled string. The SDK receives a structured `any` so the
-// input serializes to nested JSON, not a quoted blob.
-func TestProviderSerialize_HandlesJSONArgumentValue(t *testing.T) {
+// TestProviderSerialize_ArgumentsParseAsDict verifies the tool-use
+// path when Arguments is a JSON string that parses to a dict. The
+// SDK receives the parsed map[string]any so the input serializes to
+// nested JSON, not a quoted blob. The wire format is always derived
+// from Arguments, never from Display.
+func TestProviderSerialize_ArgumentsParseAsDict(t *testing.T) {
 	t.Parallel()
 
 	p, err := New(
@@ -606,16 +667,12 @@ func TestProviderSerialize_HandlesJSONArgumentValue(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	type args struct {
-		Location string `json:"location"`
-		Unit     string `json:"unit"`
-	}
 	mem := state.NewBuffer()
 	mem.Append(state.RoleUser, artifact.Text{Content: "weather?"})
 	mem.Append(state.RoleAssistant, artifact.ToolCall{
-		ID:    "toolu_xyz",
-		Name:  "get_weather",
-		Value: args{Location: "sf", Unit: "f"},
+		ID:        "toolu_xyz",
+		Name:      "get_weather",
+		Arguments: `{"location":"sf","unit":"f"}`,
 	})
 
 	got := p.serializeMessages(mem)

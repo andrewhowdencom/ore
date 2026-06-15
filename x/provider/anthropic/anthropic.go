@@ -789,20 +789,34 @@ func serializeAssistantTurn(artifacts []artifact.Artifact) anthropic.MessagePara
 }
 
 // parseToolArguments converts an artifact.ToolCall's argument payload
-// into the form the SDK's tool_use block expects (`any`). The two
-// available inputs are:
+// into the form the SDK's tool_use block expects (`any`). The wire
+// format is always derived from ToolCall.Arguments, the JSON object
+// the model streamed; ToolCall.Display is intentionally not consulted
+// (it is a human-rendering concern, not a wire-format concern).
 //
-//   - Value: a structured Go value. When set, it is forwarded as-is.
-//   - Arguments: a JSON-encoded string. When Value is nil, we try to
-//     unmarshal Arguments; on failure, the raw string is passed
-//     through so the upstream can produce a useful error.
+// The lookup order is:
 //
-// Both cases end up as `any` so the SDK's tool_use block can serialize
-// the input to JSON without further conversion.
+//   - Empty Arguments: return an empty object so the SDK produces a
+//     well-formed `input: {}` rather than failing serialization.
+//   - Arguments parses as JSON: forward the parsed value. The
+//     upstream model is responsible for emitting a JSON object for
+//     tool_use.input; if it emits something else, the API will
+//     reject it with a wire-protocol error that names the offending
+//     message — which is more useful than silently papering over a
+//     schema violation at the framework layer.
+//   - Arguments fails to parse: pass the raw string through so the
+//     upstream can produce a useful error.
+//
+// This function deliberately does not consult ToolCall.Display. A
+// previous implementation preferred Display over Arguments, which
+// caused non-dict display values (e.g. string labels from tools
+// whose DisplayHint returns a pre-formatted title) to be sent as
+// the tool_use.input field. The Anthropic API requires input to be a
+// JSON object, and the resulting 400 ("Input should be a valid
+// dictionary (2013)") failed the entire request. See
+// .plans/decouple-toolcall-display-from-wire.md for the full
+// rationale.
 func parseToolArguments(tc artifact.ToolCall) any {
-	if tc.Value != nil {
-		return tc.Value
-	}
 	if tc.Arguments == "" {
 		return map[string]any{}
 	}
