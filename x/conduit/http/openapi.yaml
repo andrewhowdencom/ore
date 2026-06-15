@@ -134,17 +134,45 @@ paths:
 
   /threads:
     get:
-      summary: List all threads
-      description: Returns all threads in the store as a JSON array.
+      summary: List threads (paginated)
+      description: |
+        Returns a single page of threads sorted by updated_at descending,
+        with id ascending as a tiebreaker. The response is an envelope;
+        pass the returned next_cursor to the cursor query parameter to
+        fetch the next page.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: |
+            Maximum number of threads to return. Defaults to 20. Values
+            outside the range [1, 100] are silently clamped.
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: cursor
+          in: query
+          required: false
+          description: |
+            Opaque pagination cursor returned in a previous response's
+            next_cursor field. Omit on the first page.
+          schema:
+            type: string
       responses:
         '200':
-          description: Thread list
+          description: Thread page
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ThreadSummary'
+                $ref: '#/components/schemas/ThreadsListResponse'
+        '400':
+          description: Invalid cursor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /:
     get:
@@ -245,6 +273,38 @@ components:
           type: string
           format: date-time
           description: Thread last update timestamp (RFC3339)
+        preview:
+          type: string
+          description: |
+            Excerpt of the thread's first user turn, truncated to 120
+            characters. Used by the landing page's "Load more" UI to
+            render full thread cards without an extra round trip.
+            Omitted when the thread has no user turn.
+
+    ThreadsListResponse:
+      type: object
+      required:
+        - threads
+      properties:
+        threads:
+          type: array
+          description: Page of threads (possibly empty)
+          items:
+            $ref: '#/components/schemas/ThreadSummary'
+        next_cursor:
+          type: string
+          description: |
+            Opaque cursor to pass to the next request's cursor query
+            parameter. Omitted on the last page.
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
 
     EventKind:
       type: string
