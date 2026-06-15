@@ -168,16 +168,17 @@ func TestMarshalTurns_RoundTrip(t *testing.T) {
 	}
 }
 
-func TestMarshalArtifacts_ToolCallWithValue(t *testing.T) {
-	// ToolCall with a custom Value should marshal successfully and
-	// preserve Arguments on round-trip. Value may become map[string]any
-	// because the concrete type is lost during JSON serialization.
+func TestMarshalArtifacts_ToolCallWithDisplay(t *testing.T) {
+	// ToolCall with a custom Display value should marshal successfully
+	// and preserve Arguments on round-trip. Display may become
+	// map[string]any because the concrete type is lost during JSON
+	// serialization.
 	artifacts := []artifact.Artifact{
 		artifact.ToolCall{
 			ID:        "call_1",
 			Name:      "bash",
 			Arguments: `{"command":"go test ./..."}`,
-			Value:     struct{ Command string }{Command: "go test ./..."},
+			Display:   struct{ Command string }{Command: "go test ./..."},
 		},
 	}
 
@@ -194,16 +195,20 @@ func TestMarshalArtifacts_ToolCallWithValue(t *testing.T) {
 	assert.Equal(t, "bash", tc.Name)
 	assert.Equal(t, `{"command":"go test ./..."}`, tc.Arguments)
 
-	// Value may be deserialized as map[string]any; it is not guaranteed to
-	// preserve the concrete type.
-	if tc.Value != nil {
-		switch v := tc.Value.(type) {
-		case map[string]any:
-			assert.Equal(t, "go test ./...", v["Command"])
-		case struct{ Command string }:
-			assert.Equal(t, "go test ./...", v.Command)
+	// Display is a display-only field. The JSON envelope stores it
+	// as a string (produced by MarkdownString), so after round-trip
+	// the Go field is a string, not the original struct type. The
+	// concrete Display type is not part of the contract; tools that
+	// need it back as a typed value must re-derive it from Arguments.
+	if tc.Display != nil {
+		switch v := tc.Display.(type) {
+		case string:
+			// The JSON envelope stored Display as a string via
+			// MarkdownString. The content should be the JSON of the
+			// original struct.
+			assert.Contains(t, v, `"Command":"go test ./..."`)
 		default:
-			assert.Fail(t, "unexpected Value type: %T", v)
+			t.Fatalf("unexpected Display type after round-trip: %T", tc.Display)
 		}
 	}
 }
