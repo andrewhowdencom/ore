@@ -1,12 +1,17 @@
 package anthropic
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -52,38 +57,126 @@ func TestNew_SucceedsWithRequiredOptions(t *testing.T) {
 	assert.False(t, p.isOpenRouter, "empty base URL is Anthropic native, not OpenRouter")
 }
 
+// recordingTransport is an http.RoundTripper that captures the outgoing
+// request (method, URL, headers, body) and returns a canned JSON
+// response. It is safe for concurrent use; the auth-dispatch tests and
+// the streaming tests both need to inspect what the SDK actually puts
+// on the wire, and this single helper is shared between them.
+type recordingTransport struct {
+	mu       sync.Mutex
+	request  *http.Request
+	body     []byte
+	response string
+}
+
+func (r *recordingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	body, _ := io.ReadAll(req.Body)
+	r.mu.Lock()
+	r.request = req
+	r.body = body
+	resp := r.response
+	r.mu.Unlock()
+	if resp == "" {
+		resp = `{"id":"msg_test","type":"message","role":"assistant","content":[],"model":"test","stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`
+	}
+	return &http.Response{
+		StatusCode: 200,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(resp)),
+	}, nil
+}
+
+func (r *recordingTransport) Request() *http.Request {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.request
+}
+
+func (r *recordingTransport) Body() []byte {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.body
+}
+
+// triggerRequest forces the SDK to make one HTTP call by invoking the
+// non-streaming Messages.New with a minimal body. The call is expected
+// to fail in interesting ways (the mock returns a bare-minimum
+// response that does not satisfy the typed Message struct) — what
+// matters is that the request is made and captured by the transport
+// before the failure path runs. Any error is swallowed because the
+// test only cares about the captured request headers.
+func triggerRequest(t *testing.T, p *Provider) {
+	t.Helper()
+	_, _ = p.client.Messages.New(
+		context.Background(),
+		anthropic.MessageNewParams{
+			Model:     anthropic.Model(p.model),
+			MaxTokens: 1,
+			Messages: []anthropic.MessageParam{
+				anthropic.NewUserMessage(anthropic.NewTextBlock("ping")),
+			},
+		},
+	)
+}
+
 // TestNew_OpenRouterBaseURL verifies that configuring an OpenRouter
-// base URL flips the resolved isOpenRouter flag, which drives the
-// auth header dispatch in Task 8. The skeleton just stores the
-// flag; the full auth-header resolution lands in Task 8.
+// base URL drives the auth-header dispatch to Bearer. The check is
+// done by recording an actual HTTP call and inspecting the
+// Authorization header; x-api-key MUST be absent.
 func TestNew_OpenRouterBaseURL(t *testing.T) {
 	t.Parallel()
 
+	transport := &recordingTransport{}
 	p, err := New(
 		WithAPIKey("test-key"),
 		WithModel("anthropic/claude-3.7-sonnet:thinking"),
 		WithBaseURL("https://openrouter.ai/api/v1"),
+		WithHTTPClient(&http.Client{Transport: transport}),
 	)
 	require.NoError(t, err)
 	require.NotNil(t, p)
-	assert.True(t, p.isOpenRouter)
+	assert.True(t, p.isOpenRouter, "isOpenRouter must be true for an openrouter.ai base URL")
+
+	triggerRequest(t, p)
+
+	req := transport.Request()
+	require.NotNil(t, req, "the SDK must have made an HTTP call")
+	assert.Equal(t, "Bearer test-key", req.Header.Get("Authorization"),
+		"OpenRouter auth header must be Authorization: Bearer <key>")
+	assert.Empty(t, req.Header.Get("x-api-key"),
+		"x-api-key must NOT be set on OpenRouter")
 }
 
 // TestNew_AnthropicNativeBaseURL verifies that a non-OpenRouter base
-// URL is treated as Anthropic native. The isOpenRouter flag is the
-// only resolved state checked here; the full auth-header
-// resolution lands in Task 8.
+// URL drives the auth-header dispatch to x-api-key. The check is
+// done by recording an actual HTTP call and inspecting the headers;
+// Authorization MUST be absent.
 func TestNew_AnthropicNativeBaseURL(t *testing.T) {
 	t.Parallel()
 
+	transport := &recordingTransport{}
 	p, err := New(
 		WithAPIKey("test-key"),
 		WithModel("claude-3-7-sonnet-latest"),
 		WithBaseURL("https://api.anthropic.com"),
+		WithHTTPClient(&http.Client{Transport: transport}),
 	)
 	require.NoError(t, err)
 	require.NotNil(t, p)
-	assert.False(t, p.isOpenRouter)
+	assert.False(t, p.isOpenRouter, "isOpenRouter must be false for an api.anthropic.com base URL")
+
+	triggerRequest(t, p)
+
+	req := transport.Request()
+	require.NotNil(t, req, "the SDK must have made an HTTP call")
+	assert.Equal(t, "test-key", req.Header.Get("x-api-key"),
+		"Anthropic native auth header must be x-api-key: <key>")
+	assert.Empty(t, req.Header.Get("Authorization"),
+		"Authorization must NOT be set on Anthropic native")
+	// The SDK injects anthropic-version automatically in its request
+	// config middleware; assert the version is present and uses the
+	// documented default.
+	assert.Equal(t, "2023-06-01", req.Header.Get("anthropic-version"))
 }
 
 // TestInvoke_StubReturnsNil verifies the skeleton Invoke is callable

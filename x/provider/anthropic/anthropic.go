@@ -264,11 +264,23 @@ func isOpenRouter(baseURL string) bool {
 
 // buildSDKOptions assembles the SDK option list at construction time. The
 // auth header is selected here (not per invocation) so it cannot drift
-// between turns of the same Provider. The skeleton applies the
-// Anthropic-native default (`x-api-key`); the full host-aware dispatch
-// lands in Task 8 alongside the OpenRouter test.
+// between turns of the same Provider. The dispatch is:
+//
+//   - isOpenRouter(cfg.baseURL) -> option.WithAuthToken, which sets
+//     Authorization: Bearer <key>. OpenRouter's /api/v1/messages mirror
+//     accepts Bearer tokens, not x-api-key.
+//   - everything else (including an empty base URL, which defaults to
+//     api.anthropic.com) -> option.WithAPIKey, which sets
+//     x-api-key: <key>. The SDK also injects anthropic-version:
+//     2023-06-01 in its requestconfig middleware (see
+//     internal/requestconfig/requestconfig.go in the SDK), so callers
+//     do not need a WithAnthropicVersion knob.
 func buildSDKOptions(cfg *config) []option.RequestOption {
-	sdkOpts := []option.RequestOption{option.WithAPIKey(cfg.apiKey)}
+	authOpt := option.RequestOption(option.WithAPIKey(cfg.apiKey))
+	if isOpenRouter(cfg.baseURL) {
+		authOpt = option.WithAuthToken(cfg.apiKey)
+	}
+	sdkOpts := []option.RequestOption{authOpt}
 	if cfg.baseURL != "" {
 		sdkOpts = append(sdkOpts, option.WithBaseURL(cfg.baseURL))
 	}
