@@ -361,6 +361,23 @@ func (s *Stream) GetMetadata(key string) (string, bool) {
 	return v, ok
 }
 
+// AllMetadata returns a defensive copy of the thread's metadata map.
+// Mutating the returned map does not affect the underlying thread.
+// The stream mutex is held for the duration of the copy so a concurrent
+// SetMetadata cannot race with the read. Conduits that need to seed
+// their view at Start time (e.g. the TUI status bar) should call
+// AllMetadata() before stream.Subscribe, since Subscribe is live-only
+// and does not replay historical PropertiesEvents.
+func (s *Stream) AllMetadata() map[string]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]string, len(s.thread.Metadata))
+	for k, v := range s.thread.Metadata {
+		out[k] = v
+	}
+	return out
+}
+
 // SetMetadata sets a metadata value on the underlying thread.
 func (s *Stream) SetMetadata(key, value string) {
 	s.mu.Lock()

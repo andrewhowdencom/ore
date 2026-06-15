@@ -108,6 +108,71 @@ func TestStream_LoadTurns(t *testing.T) {
 	_ = stream.Close()
 }
 
+func TestStream_AllMetadata(t *testing.T) {
+	t.Run("returns empty map for a fresh stream", func(t *testing.T) {
+		store := NewMemoryStore()
+		prov := &mockProvider{}
+		mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+		stream, err := mgr.Create()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = stream.Close() })
+
+		meta := stream.AllMetadata()
+		require.NotNil(t, meta, "AllMetadata must return a non-nil map for safe iteration")
+		assert.Empty(t, meta)
+	})
+
+	t.Run("returns seeded keys after SetMetadata", func(t *testing.T) {
+		store := NewMemoryStore()
+		prov := &mockProvider{}
+		mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+		stream, err := mgr.Create()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = stream.Close() })
+
+		stream.SetMetadata("thread_id", "abc")
+		stream.SetMetadata("cwd", "/tmp")
+		stream.SetMetadata("role", "reviewer")
+
+		meta := stream.AllMetadata()
+		assert.Equal(t, "abc", meta["thread_id"])
+		assert.Equal(t, "/tmp", meta["cwd"])
+		assert.Equal(t, "reviewer", meta["role"])
+		assert.Len(t, meta, 3)
+	})
+
+	t.Run("returns a defensive copy that does not alias the thread's map", func(t *testing.T) {
+		store := NewMemoryStore()
+		prov := &mockProvider{}
+		mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+		stream, err := mgr.Create()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = stream.Close() })
+
+		stream.SetMetadata("thread_id", "abc")
+		stream.SetMetadata("role", "reviewer")
+
+		// Mutate the returned map in every way a caller could.
+		meta := stream.AllMetadata()
+		meta["injected"] = "evil"
+		delete(meta, "thread_id")
+		meta["role"] = "tampered"
+
+		// Re-read; the stream's metadata must be unaffected. This also
+		// proves the returned map is a fresh reference (aliasing would
+		// have shown the mutations on re-read).
+		fresh := stream.AllMetadata()
+		assert.Len(t, fresh, 2, "the thread's metadata must be unchanged after mutating the returned map")
+		assert.Equal(t, "abc", fresh["thread_id"])
+		assert.Equal(t, "reviewer", fresh["role"])
+		_, leaked := fresh["injected"]
+		assert.False(t, leaked, "the injected key must not leak into the thread's metadata")
+	})
+}
+
 func TestStream_Process_ContextPropagation(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
