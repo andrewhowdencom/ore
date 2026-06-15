@@ -63,6 +63,7 @@ import (
 	"github.com/andrewhowdencom/ore/x/slash"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
 	"github.com/andrewhowdencom/ore/x/tool/calculator"
+	"github.com/andrewhowdencom/ore/x/tool/set_model"
 	"github.com/andrewhowdencom/ore/x/telemetry"
 	"github.com/andrewhowdencom/ore/x/usage"
 	"go.opentelemetry.io/otel/attribute"
@@ -213,6 +214,7 @@ func run() error {
 		slog.Info("slash command: /compact", "args", slash.Fields(cmd.Input))
 		return slash.Result{}, nil
 	})
+	slashReg.Bind("model", "Set the model for this session", set_model.Slash())
 
 	// Create the HTTP conduit.
 	// UI is enabled by default in New(); use httpc.WithoutUI() to disable it.
