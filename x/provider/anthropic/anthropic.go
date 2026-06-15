@@ -163,6 +163,27 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 				case <-ctx.Done():
 					return ctx.Err()
 				}
+			} else if block.Type == "thinking" {
+				// Thinking blocks can arrive as a start event with an initial value
+				if block.Thinking != "" {
+					select {
+					case ch <- artifact.ReasoningDelta{Content: block.Thinking}:
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				}
+			} else if block.Type == "redacted_thinking" {
+				// Redacted thinking blocks should be preserved for replay.
+				// We emit them as a Usage artifact since they are opaque metadata.
+				if block.Data != "" {
+					select {
+					case ch <- artifact.Usage{
+						ReasoningSignature: block.Data,
+					}:
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				}
 			}
 
 		case anthropic.ContentBlockDeltaEvent:
@@ -249,7 +270,16 @@ func (p *Provider) serializeMessages(s state.State) ([]anthropic.MessageParam, [
 				case artifact.Text:
 					blocks = append(blocks, anthropic.NewTextBlock(a.Content))
 				case artifact.Reasoning:
-					blocks = append(blocks, anthropic.NewThinkingBlock("", a.Content))
+					// Check for a signature in the preceding usage artifact for replay
+					signature := ""
+					// Look back for the most recent Usage artifact in this turn
+					for i := len(turn.Artifacts) - 1; i >= 0; i-- {
+						if u, ok := turn.Artifacts[i].(artifact.Usage); ok {
+							signature = u.ReasoningSignature
+							break
+						}
+					}
+					blocks = append(blocks, anthropic.NewThinkingBlock(signature, a.Content))
 				case artifact.ToolCall:
 					blocks = append(blocks, anthropic.NewToolUseBlock(a.ID, a.Arguments, a.Name))
 				}
