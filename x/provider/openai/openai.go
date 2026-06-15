@@ -571,6 +571,15 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 
 	stream := p.client.Chat.Completions.NewStreaming(ctx, params)
 
+	// pendingStopReason buffers the most-recent non-empty finish_reason
+	// from the stream so it can be emitted as a single StopReason
+	// artifact after the loop ends. The OpenAI wire format sends
+	// `finish_reason: null` on every intermediate delta and only sets a
+	// real value on the final delta of a choice; the zero-value check
+	// in translateFinishReason prevents the intermediate nulls from
+	// clobbering a previously-buffered reason.
+	var pendingStopReason artifact.StopReasonKind
+
 	for stream.Next() {
 		chunk := stream.Current()
 		if len(chunk.Choices) == 0 {
@@ -589,6 +598,14 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 				}
 			}
 			continue
+		}
+
+		// Buffer the finish_reason. OpenAI sends `null` on every
+		// intermediate delta and only sets a real value on the final
+		// delta; translateFinishReason returns "" for the empty /
+		// null case so the buffer is not clobbered.
+		if reason := translateFinishReason(chunk.Choices[0].FinishReason); reason != "" {
+			pendingStopReason = reason
 		}
 
 		delta := chunk.Choices[0].Delta
@@ -667,7 +684,59 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		return fmt.Errorf("streaming chat completion: %w", err)
 	}
 
+	// Emit the buffered StopReason, if any. This is unconditional
+	// across the success path: a successful stream that did not
+	// report a finish_reason (rare, but possible on some
+	// OpenAI-compatible hosts) leaves the buffer empty and we
+	// skip the send. The StopReason is emitted before the final
+	// Usage; the only artifact after it on the channel would be
+	// the Usage, which has already been sent inline by the loop
+	// above when chunk.Choices is empty.
+	if pendingStopReason != "" {
+		select {
+		case ch <- artifact.StopReason{Reason: pendingStopReason}:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
 	return nil
+}
+
+// translateFinishReason normalizes an OpenAI finish_reason value into
+// the canonical artifact.StopReasonKind used across all adapters.
+// The OpenAI SDK exposes FinishReason as a plain string (not a typed
+// enum), so the comparison is against the documented wire values.
+// The mapping is:
+//
+//   - "stop" → stop
+//   - "length" → length
+//   - "tool_calls" and the deprecated "function_call" → tool_use
+//   - "content_filter" → refusal
+//   - anything else (or the empty string returned for
+//     `finish_reason: null` intermediates) → other or ""
+//
+// The empty input maps to the empty kind so the caller's
+// "non-zero reason buffered" check can distinguish "upstream
+// reported a known reason" from "upstream did not report one."
+func translateFinishReason(r string) artifact.StopReasonKind {
+	switch r {
+	case "":
+		return ""
+	case "stop":
+		return artifact.StopReasonStop
+	case "length":
+		return artifact.StopReasonLength
+	case "tool_calls", "function_call":
+		// function_call is the pre-tool-calls wire form; it is
+		// structurally equivalent to tool_use for canonical
+		// purposes (a model asked to invoke a callable).
+		return artifact.StopReasonToolUse
+	case "content_filter":
+		return artifact.StopReasonRefusal
+	default:
+		return artifact.StopReasonOther
+	}
 }
 
 // serializeTools converts provider-agnostic tool definitions into OpenAI SDK
