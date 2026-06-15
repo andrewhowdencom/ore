@@ -19,12 +19,12 @@ import (
 	"github.com/andrewhowdencom/ore/state"
 	toolpkg "github.com/andrewhowdencom/ore/tool"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // mockTransport is an http.RoundTripper that returns a canned response and
@@ -649,15 +649,25 @@ func TestProviderInvoke_WithoutMaxTokens(t *testing.T) {
 }
 
 func TestProviderInvoke_WithReasoningEffort(t *testing.T) {
+	// Tests that each thinking level produces the expected
+	// reasoning_effort string on the wire, that the off/empty levels
+	// omit the field, and that unknown levels are treated as off
+	// (forward compatibility).
 	tests := []struct {
-		name       string
-		effort     string
-		wantAbsent bool
+		name      string
+		level     provider.ThinkingLevel
+		wantField string // expected value of reasoning_effort, "" means absent
+		hasOption bool   // whether to pass the WithThinkingLevel option
 	}{
-		{"low", "low", false},
-		{"medium", "medium", false},
-		{"high", "high", false},
-		{"absent when not provided", "", true},
+		{"low produces low", provider.ThinkingLevelLow, "low", true},
+		{"medium produces medium", provider.ThinkingLevelMedium, "medium", true},
+		{"high produces high", provider.ThinkingLevelHigh, "high", true},
+		{"minimal clamps to low", provider.ThinkingLevelMinimal, "low", true},
+		{"max clamps to high", provider.ThinkingLevelMax, "high", true},
+		{"off omits the field", provider.ThinkingLevelOff, "", true},
+		{"empty omits the field", "", "", true},
+		{"absent when not provided", "", "", false},
+		{"unknown level is treated as off", "frobnicate", "", true},
 	}
 
 	for _, tt := range tests {
@@ -667,15 +677,15 @@ func TestProviderInvoke_WithReasoningEffort(t *testing.T) {
 			}
 
 			p, err := New(WithAPIKey("test-key"), WithModel("o3-mini"), WithHTTPClient(mockClient(transport)))
-	require.NoError(t, err)
+			require.NoError(t, err)
 			mem := &state.Buffer{}
 			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 			ch := make(chan artifact.Artifact, 10)
-			if tt.wantAbsent {
-				_ = p.Invoke(t.Context(), mem, ch)
+			if tt.hasOption {
+				_ = p.Invoke(t.Context(), mem, ch, WithThinkingLevel(tt.level))
 			} else {
-				_ = p.Invoke(t.Context(), mem, ch, WithReasoningEffort(tt.effort))
+				_ = p.Invoke(t.Context(), mem, ch)
 			}
 			close(ch)
 			for range ch {
@@ -686,13 +696,35 @@ func TestProviderInvoke_WithReasoningEffort(t *testing.T) {
 			var reqBody map[string]any
 			require.NoError(t, json.Unmarshal(body, &reqBody))
 
-			if tt.wantAbsent {
-				_, ok := reqBody["reasoning_effort"]
+			got, ok := reqBody["reasoning_effort"]
+			if tt.wantField == "" {
 				assert.False(t, ok, "reasoning_effort should not be present")
 			} else {
-				assert.Equal(t, tt.effort, reqBody["reasoning_effort"])
+				require.True(t, ok, "reasoning_effort should be present")
+				assert.Equal(t, tt.wantField, got)
 			}
 		})
+	}
+}
+
+func TestTranslateThinkingLevel(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		level provider.ThinkingLevel
+		want  string
+	}{
+		{provider.ThinkingLevelOff, ""},
+		{provider.ThinkingLevelMinimal, "low"},
+		{provider.ThinkingLevelLow, "low"},
+		{provider.ThinkingLevelMedium, "medium"},
+		{provider.ThinkingLevelHigh, "high"},
+		{provider.ThinkingLevelMax, "high"},
+		{"", ""},
+		{"unknown", ""},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, translateThinkingLevel(tc.level), "%q", tc.level)
 	}
 }
 
