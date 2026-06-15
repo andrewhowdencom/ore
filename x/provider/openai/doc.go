@@ -4,6 +4,23 @@
 // It uses the official OpenAI Go SDK and supports custom base URLs for
 // local proxies or alternative endpoints.
 //
+// # Reasoning
+//
+// The provider surfaces one per-invocation option for reasoning
+// configuration. WithThinkingLevel(provider.ThinkingLevel) is the
+// portable, qualitative knob; the adapter maps it to OpenAI's
+// reasoning_effort field at request time as follows:
+//
+//	off     -> (no field; reasoning disabled)
+//	minimal -> low
+//	low     -> low
+//	medium  -> medium
+//	high    -> high
+//	max     -> high  (clamped; OpenAI does not support higher)
+//
+// The empty level and unknown levels are treated as off for forward
+// compatibility with future framework-level additions.
+//
 // # Cache control
 //
 // The provider surfaces two per-invocation options for prompt-cache
