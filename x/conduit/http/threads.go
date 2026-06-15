@@ -24,10 +24,14 @@ const (
 var errInvalidCursor = errors.New("invalid pagination cursor")
 
 // threadSummaryJSON is the JSON representation of a Thread on the listing.
+// The Preview field carries the first user turn's text excerpt, truncated,
+// so the landing page's "Load more" JS can render the same card shape
+// as the server-rendered first page.
 type threadSummaryJSON struct {
 	ID        string    `json:"id"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	Preview   string    `json:"preview,omitempty"`
 }
 
 // threadsListResponseJSON is the envelope for the GET /threads response.
@@ -190,7 +194,8 @@ func parseLimit(s string) int {
 }
 
 // summariesFrom converts a slice of session.Thread pointers into the
-// JSON-ready summary form used by the listing response.
+// JSON-ready summary form used by the listing response. Each summary
+// includes a 120-character preview excerpt from the first user turn.
 func summariesFrom(threads []*session.Thread) []threadSummaryJSON {
 	out := make([]threadSummaryJSON, 0, len(threads))
 	for _, t := range threads {
@@ -198,6 +203,7 @@ func summariesFrom(threads []*session.Thread) []threadSummaryJSON {
 			ID:        t.ID,
 			CreatedAt: t.CreatedAt,
 			UpdatedAt: t.UpdatedAt,
+			Preview:   previewSnippet(t, 120),
 		})
 	}
 	return out
