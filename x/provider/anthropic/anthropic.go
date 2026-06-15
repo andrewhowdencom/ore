@@ -124,11 +124,97 @@ func New(opts ...Option) (*Provider, error) {
 	}, nil
 }
 
-// Compile-time interface check.
-var _ provider.Provider = (*Provider)(nil)
-
 // Invoke serializes state and calls the Anthropic Messages API.
 func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	// TODO: Implement streaming logic in Task 3
 	return fmt.Errorf("not implemented")
+}
+
+// Compile-time interface check.
+var _ provider.Provider = (*Provider)(nil)
+
+// serializeMessages converts ore state into Anthropic SDK message parameters.
+// It maps ore roles to Anthropic roles and preserves Reasoning artifacts
+// as thinking blocks to enable model continuity.
+func (p *Provider) serializeMessages(s state.State) []anthropic.MessageParam {
+	turns := s.Turns()
+	messages := make([]anthropic.MessageParam, 0, len(turns))
+
+	for _, turn := range turns {
+		var blocks []anthropic.ContentBlockParamUnion
+
+		switch turn.Role {
+		case state.RoleSystem:
+			// Anthropic handles system prompts as a top-level field in the request,
+			// not as a message in the messages array. However, for the purpose of
+			// this internal helper, we map it to a message. The actual Invoke method
+			// will extract the system message if present.
+			content := concatText(turn.Artifacts)
+			messages = append(messages, anthropic.MessageParam{
+				Role:    "system",
+				Content: []anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(content)},
+			})
+			continue
+
+		case state.RoleUser:
+			content := concatText(turn.Artifacts)
+			blocks = append(blocks, anthropic.NewTextBlock(content))
+			messages = append(messages, anthropic.MessageParam{
+				Role:    "user",
+				Content: blocks,
+			})
+
+		case state.RoleAssistant:
+			for _, art := range turn.Artifacts {
+				switch a := art.(type) {
+				case artifact.Text:
+					blocks = append(blocks, anthropic.NewTextBlock(a.Content))
+				case artifact.Reasoning:
+					blocks = append(blocks, anthropic.NewThinkingBlock("", a.Content))
+				case artifact.ToolCall:
+					blocks = append(blocks, anthropic.NewToolUseBlock(a.ID, a.Arguments, a.Name))
+				}
+			}
+			messages = append(messages, anthropic.MessageParam{
+				Role:    "assistant",
+				Content: blocks,
+			})
+
+		case state.RoleTool:
+			for _, art := range turn.Artifacts {
+				if tr, ok := art.(artifact.ToolResult); ok {
+					blocks = append(blocks, anthropic.NewToolResultBlock(tr.ToolCallID, tr.LLMString(), tr.IsError))
+				}
+			}
+			if len(blocks) > 0 {
+				messages = append(messages, anthropic.MessageParam{
+					Role:    "user",
+					Content: blocks,
+				})
+			}
+		default:
+			content := concatText(turn.Artifacts)
+			blocks = append(blocks, anthropic.NewTextBlock(content))
+			messages = append(messages, anthropic.MessageParam{
+				Role:    "user",
+				Content: blocks,
+			})
+		}
+	}
+
+	return messages
+}
+
+// concatText extracts and concatenates Text artifacts from a slice.
+func concatText(artifacts []artifact.Artifact) string {
+	var content string
+	for _, art := range artifacts {
+		if text, ok := art.(artifact.Text); ok {
+			if content != "" {
+				content += "\n"
+			}
+			content += text.Content
+		}
+	}
+	return content
 }
