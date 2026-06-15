@@ -17,6 +17,7 @@ var _ Artifact = Usage{}
 var _ Artifact = Image{}
 var _ Artifact = Reasoning{}
 var _ Artifact = ReasoningSignature{}
+var _ Artifact = StopReason{}
 
 var _ LLMRenderer = (*mockLLMRenderer)(nil)
 var _ MarkdownRenderer = (*mockMarkdownRenderer)(nil)
@@ -73,6 +74,7 @@ func TestArtifactKinds(t *testing.T) {
 		{"image", Image{URL: "http://example.com/img.png"}, "image"},
 		{"reasoning", Reasoning{Content: "Let me think..."}, "reasoning"},
 		{"reasoning_signature", ReasoningSignature{Provider: "anthropic", SubKind: "signature", Data: "x"}, "reasoning_signature"},
+		{"stop_reason", StopReason{Reason: StopReasonLength}, "stop_reason"},
 	}
 
 	for _, tt := range tests {
@@ -86,6 +88,40 @@ func TestAccumulableInterface(t *testing.T) {
 	assert.Implements(t, (*Accumulable)(nil), TextDelta{})
 	assert.Implements(t, (*Accumulable)(nil), ReasoningDelta{})
 	assert.Implements(t, (*Accumulable)(nil), ToolCallDelta{})
+}
+
+func TestStopReason_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		reason StopReasonKind
+		want   string
+	}{
+		{"stop", StopReasonStop, `{"kind":"stop_reason","reason":"stop"}`},
+		{"length", StopReasonLength, `{"kind":"stop_reason","reason":"length"}`},
+		{"tool_use", StopReasonToolUse, `{"kind":"stop_reason","reason":"tool_use"}`},
+		{"refusal", StopReasonRefusal, `{"kind":"stop_reason","reason":"refusal"}`},
+		{"other", StopReasonOther, `{"kind":"stop_reason","reason":"other"}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sr := StopReason{Reason: tt.reason}
+			assert.Equal(t, "stop_reason", sr.Kind())
+
+			got, err := sr.MarshalJSON()
+			require.NoError(t, err)
+			assert.JSONEq(t, tt.want, string(got))
+
+			// Round-trip: decode and re-encode; the result must match
+			// the original. This guards against a typo in the JSON
+			// tags breaking the read-side in either direction.
+			var decoded StopReason
+			require.NoError(t, json.Unmarshal(got, &decoded))
+			reEncoded, err := decoded.MarshalJSON()
+			require.NoError(t, err)
+			assert.JSONEq(t, string(got), string(reEncoded))
+		})
+	}
 }
 
 func TestToolResult_ValueField(t *testing.T) {

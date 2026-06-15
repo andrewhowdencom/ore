@@ -275,6 +275,78 @@ func (u Usage) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// StopReasonKind is a canonical, provider-agnostic description of why a
+// model stopped generating. Adapters translate provider-specific values
+// (Anthropic stop_reason, OpenAI finish_reason) into one of these
+// constants at the read-side, so downstream code never has to know
+// which provider produced the stream.
+//
+// The empty string is not a valid reason. Adapters should not emit a
+// StopReason when the upstream did not report a reason; consumers
+// should treat a missing StopReason as equivalent to StopReasonOther
+// for forward compatibility.
+//
+// Adding a new value is non-breaking; renaming a value is breaking.
+type StopReasonKind string
+
+const (
+	// StopReasonStop indicates the model finished normally — it produced
+	// a complete response without hitting a length cap, calling a tool,
+	// or being interrupted by a safety filter.
+	StopReasonStop StopReasonKind = "stop"
+
+	// StopReasonLength indicates the model hit a token-output cap
+	// (Anthropic max_tokens, OpenAI length). The response may be
+	// truncated; consumers that cannot tolerate truncation should
+	// surface an error.
+	StopReasonLength StopReasonKind = "length"
+
+	// StopReasonToolUse indicates the model emitted a tool invocation
+	// block. Adapters emit a ToolCall artifact alongside.
+	StopReasonToolUse StopReasonKind = "tool_use"
+
+	// StopReasonRefusal indicates the model declined to produce a
+	// response due to a safety filter (Anthropic refusal, OpenAI
+	// content_filter).
+	StopReasonRefusal StopReasonKind = "refusal"
+
+	// StopReasonOther is the catch-all for upstream values not covered
+	// by the canonical set (e.g. Anthropic stop_sequence, or any new
+	// reason a future adapter introduces). Forward-compatible: new
+	// adapters can map unknown values to this without breaking
+	// existing consumers.
+	StopReasonOther StopReasonKind = "other"
+)
+
+// StopReason is the artifact emitted by adapters on the streaming
+// channel to communicate why the model stopped generating. It is
+// emitted immediately before the final Usage artifact at the end of
+// a successful stream.
+//
+// The Reason field is the canonical StopReasonKind. Adapters are
+// responsible for translating their provider-specific vocabulary
+// (Anthropic stop_reason, OpenAI finish_reason) into the canonical
+// set at the read-side; consumers can switch on Reason without
+// caring which provider produced the stream.
+type StopReason struct {
+	Reason StopReasonKind
+}
+
+// Kind returns the artifact kind identifier.
+func (s StopReason) Kind() string { return "stop_reason" }
+
+// MarshalJSON serializes StopReason to JSON.
+func (s StopReason) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind   string         `json:"kind"`
+		Reason StopReasonKind `json:"reason"`
+	}
+	return json.Marshal(output{
+		Kind:   "stop_reason",
+		Reason: s.Reason,
+	})
+}
+
 // Image represents an image artifact referenced by URL.
 type Image struct {
 	URL string
