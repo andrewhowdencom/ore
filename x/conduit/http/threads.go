@@ -5,7 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
+
+	"github.com/andrewhowdencom/ore/session"
 )
 
 // Thread listing pagination parameters.
@@ -84,4 +88,81 @@ func decodeThreadCursor(s string) (threadCursor, error) {
 		return threadCursor{}, fmt.Errorf("%w: unsupported version %d", errInvalidCursor, c.Version)
 	}
 	return c, nil
+}
+
+// paginateAndSortThreads sorts the given slice of threads by (updated_at
+// desc, id asc) and returns a single page of at most limit items, starting
+// strictly after the position identified by cursor. An empty cursor means
+// "start from the beginning". Returns errInvalidCursor if the cursor
+// cannot be decoded. The input slice is sorted in place; the returned
+// page is a sub-slice of the input.
+func paginateAndSortThreads(threads []*session.Thread, limit int, cursor string) (page []*session.Thread, nextCursor string, err error) {
+	if limit < 1 {
+		limit = 1
+	}
+
+	slices.SortFunc(threads, compareThreads)
+
+	start := 0
+	if cursor != "" {
+		c, err := decodeThreadCursor(cursor)
+		if err != nil {
+			return nil, "", err
+		}
+		start = len(threads) // default: no items after cursor
+		for i, t := range threads {
+			if threadIsAfterCursor(t, c) {
+				start = i
+				break
+			}
+		}
+	}
+
+	end := start + limit
+	if end > len(threads) {
+		end = len(threads)
+	}
+
+	page = threads[start:end]
+
+	if end < len(threads) {
+		last := threads[end-1]
+		next, encErr := (threadCursor{
+			Version:   threadCursorVersion,
+			UpdatedAt: last.UpdatedAt,
+			ID:        last.ID,
+		}).encode()
+		if encErr != nil {
+			return nil, "", encErr
+		}
+		nextCursor = next
+	}
+
+	return page, nextCursor, nil
+}
+
+// compareThreads orders threads by (updated_at desc, id asc). The
+// tiebreaker on id is required for deterministic pagination across
+// threads that share a timestamp.
+func compareThreads(a, b *session.Thread) int {
+	if a.UpdatedAt.Equal(b.UpdatedAt) {
+		return strings.Compare(a.ID, b.ID)
+	}
+	if a.UpdatedAt.After(b.UpdatedAt) {
+		return -1 // a comes first (later updated_at)
+	}
+	return 1
+}
+
+// threadIsAfterCursor reports whether t sorts strictly after the cursor
+// position in (updated_at desc, id asc) order. Items equal to the cursor
+// are NOT considered "after"; the cursor is exclusive.
+func threadIsAfterCursor(t *session.Thread, c threadCursor) bool {
+	if t.UpdatedAt.Before(c.UpdatedAt) {
+		return true
+	}
+	if t.UpdatedAt.Equal(c.UpdatedAt) && t.ID > c.ID {
+		return true
+	}
+	return false
 }
