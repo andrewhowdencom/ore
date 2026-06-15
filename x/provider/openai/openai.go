@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http/httptrace"
+	"strconv"
 	"strings"
 
 	"github.com/andrewhowdencom/ore/artifact"
@@ -34,6 +35,14 @@ type Provider struct {
 	// request body. Resolved once at construction from the explicit
 	// override and the base-URL heuristic so Invoke doesn't re-walk options.
 	includeReasoning bool
+	// isOpenRouter is the resolved boolean used by the write-side
+	// reasoning-replay mutation to choose the OpenRouter branch (which
+	// emits `reasoning_details[]` on each assistant message) over the
+	// OpenAI-native branch (which concatenates reasoning into
+	// `reasoning_content`). Resolved at construction from the same
+	// signal that drives includeReasoning, so the read- and write-sides
+	// are guaranteed to agree.
+	isOpenRouter bool
 }
 
 // WithTools returns an InvokeOption that configures the set of available tools
@@ -237,18 +246,36 @@ func New(opts ...Option) (*Provider, error) {
 		model:            cfg.model,
 		tracer:           cfg.tracer,
 		includeReasoning: wantsReasoningInclude(cfg),
+		isOpenRouter:     isOpenRouter(cfg.baseURL),
 	}, nil
 }
 
 // Compile-time interface check.
 var _ provider.Provider = (*Provider)(nil)
 
+// assistantReasoning is the per-turn reasoning replay payload collected
+// by serializeMessages. Each entry corresponds to one assistant turn in
+// state order, and carries the reasoning blocks that the read-side
+// emitted in arrival order. The order is preserved by the loop that
+// builds the slice; downstream consumers (the applyReasoningReplay
+// mutation) must preserve it on the wire.
+type assistantReasoning struct {
+	Reasonings []artifact.Reasoning
+	Sigs       []artifact.ReasoningSignature
+}
+
 // serializeMessages converts ore state into OpenAI chat completion message
 // parameters. It maps ore roles to OpenAI message types and preserves
 // ToolCall and ToolResult artifacts for tool calling conversations.
-func (p *Provider) serializeMessages(s state.State) []openai.ChatCompletionMessageParamUnion {
+//
+// The second return value is the per-turn reasoning payload collected
+// from each assistant turn. It is consumed by applyReasoningReplay
+// after the messages slice has been marshaled. Order matches state
+// turn order, which matches read-side arrival order.
+func (p *Provider) serializeMessages(s state.State) ([]openai.ChatCompletionMessageParamUnion, []assistantReasoning) {
 	turns := s.Turns()
 	messages := make([]openai.ChatCompletionMessageParamUnion, 0, len(turns))
+	replayPerTurn := make([]assistantReasoning, 0, len(turns))
 
 	for _, turn := range turns {
 		switch turn.Role {
@@ -261,6 +288,8 @@ func (p *Provider) serializeMessages(s state.State) []openai.ChatCompletionMessa
 		case state.RoleAssistant:
 			var toolCalls []artifact.ToolCall
 			var textContent string
+			var reasonings []artifact.Reasoning
+			var reasonSigs []artifact.ReasoningSignature
 			for _, art := range turn.Artifacts {
 				switch a := art.(type) {
 				case artifact.Text:
@@ -270,7 +299,35 @@ func (p *Provider) serializeMessages(s state.State) []openai.ChatCompletionMessa
 					textContent += a.Content
 				case artifact.ToolCall:
 					toolCalls = append(toolCalls, a)
+				case artifact.Reasoning:
+					reasonings = append(reasonings, a)
+				case artifact.ReasoningSignature:
+					// Drop cross-provider signatures on the openai
+					// wire. Anthropic-only signatures cannot be
+					// represented on the openai chat-completions
+					// wire, and a future openai native signature
+					// would be carried as `reasoning_details[]` on
+					// the assistant message — but the openai
+					// native SDK does not currently surface a
+					// signature we can replay, so we drop all of
+					// them for now. The upstream carry happens in
+					// the dedicated sub-slices below.
+					if a.Provider == "openai" && a.SubKind == "encrypted" {
+						reasonSigs = append(reasonSigs, a)
+					}
 				}
+			}
+
+			// Save the reasoning artifacts for the post-serialize
+			// mutation. Order is preserved per-turn (the order
+			// artifacts appeared in the state's turn slice, which
+			// is the order they were emitted by the previous
+			// read).
+			if len(reasonings) > 0 || len(reasonSigs) > 0 {
+				replayPerTurn = append(replayPerTurn, assistantReasoning{
+					Reasonings: reasonings,
+					Sigs:       reasonSigs,
+				})
 			}
 
 			if len(toolCalls) > 0 {
@@ -319,7 +376,7 @@ func (p *Provider) serializeMessages(s state.State) []openai.ChatCompletionMessa
 		}
 	}
 
-	return messages
+	return messages, replayPerTurn
 }
 
 // concatText extracts and concatenates Text artifacts from a slice.
@@ -355,7 +412,7 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		ctx = httptrace.WithClientTrace(ctx, otelhttptrace.NewClientTrace(ctx, otelhttptrace.WithoutSubSpans()))
 	}
 
-	messages := p.serializeMessages(s)
+	messages, replayPerTurn := p.serializeMessages(s)
 
 	var tools []tool.Tool
 	var temperature float64
@@ -428,18 +485,53 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 
 	// Build the per-host extra fields. Multiple concerns share the same
 	// SetExtraFields bucket because the SDK's metadata implementation
-	// replaces the whole extra map on each call, so we collect them here
-	// and dispatch once.
+	// replaces the whole extra map on each call, so we collect them
+	// here and dispatch once.
+	//
+	// Mutation order:
+	//   1. applyCacheControl (if WithCacheControl) — typed messages
+	//      round-trip through JSON, stamps the three Anthropic-style
+	//      cache_control blocks.
+	//   2. applyReasoningReplayToAny — attaches the host-specific
+	//      reasoning field (reasoning_content for OpenAI native,
+	//      reasoning_details[] for OpenRouter) to each assistant
+	//      message that carried reasoning artifacts in state.
+	//
+	// The two mutations compose by mutating in place: when both are
+	// needed, applyCacheControl produces the []any, and
+	// applyReasoningReplayToAny mutates that same slice. The final
+	// result is shipped via a single SetExtraFields call.
 	extra := map[string]any{}
 	if cacheControl {
 		mutMsgs, mutTools, err := applyCacheControl(messages, params.Tools)
 		if err != nil {
 			return fmt.Errorf("apply cache control: %w", err)
 		}
+		mutMsgs, err = applyReasoningReplayToAny(mutMsgs, replayPerTurn, p.isOpenRouter)
+		if err != nil {
+			return fmt.Errorf("apply reasoning replay: %w", err)
+		}
 		extra["messages"] = mutMsgs
 		if mutTools != nil {
 			extra["tools"] = mutTools
 		}
+	} else if len(replayPerTurn) > 0 {
+		// No cache control, but reasoning replay is needed. Round-trip
+		// the typed messages through JSON once to obtain the mutable
+		// []any shape.
+		msgBytes, err := json.Marshal(messages)
+		if err != nil {
+			return fmt.Errorf("marshal messages: %w", err)
+		}
+		var mutMsgs []any
+		if err := json.Unmarshal(msgBytes, &mutMsgs); err != nil {
+			return fmt.Errorf("unmarshal messages: %w", err)
+		}
+		mutMsgs, err = applyReasoningReplayToAny(mutMsgs, replayPerTurn, p.isOpenRouter)
+		if err != nil {
+			return fmt.Errorf("apply reasoning replay: %w", err)
+		}
+		extra["messages"] = mutMsgs
 	}
 	if p.includeReasoning {
 		// Inject `reasoning: {include: true}` when talking to OpenRouter
@@ -493,6 +585,40 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 				case ch <- artifact.ReasoningDelta{Content: reasoning}:
 				case <-ctx.Done():
 					return ctx.Err()
+				}
+			}
+		}
+
+		// `delta.reasoning` is the flat-string form surfaced by some
+		// OpenAI-compatible providers (e.g. OpenRouter for non-Anthropic
+		// reasoning routes). The `reasoning_content` path above
+		// remains the canonical OpenAI-native shape; both paths
+		// coexist so a single provider can serve multiple hosts.
+		if field, ok := delta.JSON.ExtraFields["reasoning"]; ok {
+			var reasoning string
+			if err := json.Unmarshal([]byte(field.Raw()), &reasoning); err == nil && reasoning != "" {
+				select {
+				case ch <- artifact.ReasoningDelta{Content: reasoning}:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+		}
+
+		// `delta.reasoning_details[]` is the structured-form used by
+		// OpenRouter and other proxies. Each entry has a `type`
+		// discriminator that drives emission: `reasoning.text` becomes
+		// a ReasoningDelta, `reasoning.encrypted` becomes a
+		// ReasoningSignature (so it can be replayed on the next turn).
+		if field, ok := delta.JSON.ExtraFields["reasoning_details"]; ok {
+			arts, err := reasoningDetailsToArtifacts([]byte(field.Raw()))
+			if err == nil {
+				for _, a := range arts {
+					select {
+					case ch <- a:
+					case <-ctx.Done():
+						return ctx.Err()
+					}
 				}
 			}
 		}
@@ -589,6 +715,153 @@ func readCacheUsage(usage openai.CompletionUsage) (cacheRead, cacheWrite int) {
 	// JSON fallback.
 	cacheRead = int(usage.PromptTokensDetails.CachedTokens)
 	return cacheRead, 0
+}
+
+// reasoningDetailsToArtifacts walks a `delta.reasoning_details[]` JSON
+// payload and emits the corresponding streaming artifacts. Supported
+// entry shapes today:
+//
+//   - {"type": "reasoning.text", "text": "..."}        -> ReasoningDelta
+//   - {"type": "reasoning.encrypted", "data": "..."}  -> ReasoningSignature
+//
+// Unknown `type` values are skipped silently (the wire is allowed to
+// grow new kinds without breaking the SDK). Malformed JSON is reported
+// to the caller; the streaming loop in Invoke treats a parse failure
+// as a no-op for the affected delta so a single bad chunk does not
+// abort the in-flight stream.
+func reasoningDetailsToArtifacts(rawJSON []byte) ([]artifact.Artifact, error) {
+	var entries []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+		Data string `json:"data"`
+	}
+	if err := json.Unmarshal(rawJSON, &entries); err != nil {
+		return nil, fmt.Errorf("unmarshal reasoning_details: %w", err)
+	}
+
+	var out []artifact.Artifact
+	for _, e := range entries {
+		switch e.Type {
+		case "reasoning.text":
+			if e.Text == "" {
+				continue
+			}
+			out = append(out, artifact.ReasoningDelta{Content: e.Text})
+		case "reasoning.encrypted":
+			if e.Data == "" {
+				continue
+			}
+			out = append(out, artifact.ReasoningSignature{
+				Provider: "openai",
+				SubKind:  "encrypted",
+				Data:     e.Data,
+			})
+		}
+	}
+	return out, nil
+}
+
+// applyReasoningReplayToAny mutates an already-marshaled []any messages
+// slice to attach the host-specific reasoning replay field on each
+// assistant message. It is the second-stage helper in the chain:
+// applyCacheControl produces a []any via the SDK's typed-to-any
+// round-trip, and this function then mutates the assistant entries.
+//
+// The `isOpenRouter` boolean is the same one resolved at Provider
+// construction time (see New); threading it explicitly here keeps the
+// helper a pure function and unit-testable, while still guaranteeing
+// the read- and write-sides agree on the host identity.
+func applyReasoningReplayToAny(messages []any, perTurn []assistantReasoning, isOpenRouter bool) ([]any, error) {
+	if len(perTurn) == 0 {
+		return messages, nil
+	}
+
+	// Walk the marshaled messages in lockstep with the per-turn
+	// replay payload, matching each assistant message to its
+	// payload by ordinal.
+	assistantIdx := 0
+	for _, m := range messages {
+		mm, ok := m.(map[string]any)
+		if !ok {
+			continue
+		}
+		role, _ := mm["role"].(string)
+		if role != "assistant" {
+			continue
+		}
+
+		// Bounds check: the typed slice can contain zero assistant
+		// messages in degenerate states. Skip cleanly rather than
+		// panic.
+		if assistantIdx >= len(perTurn) {
+			break
+		}
+		entry := perTurn[assistantIdx]
+		assistantIdx++
+
+		if len(entry.Reasonings) == 0 && len(entry.Sigs) == 0 {
+			continue
+		}
+
+		if isOpenRouter {
+			details := buildReasoningDetails(entry)
+			if len(details) > 0 {
+				mm["reasoning_details"] = details
+			}
+			continue
+		}
+
+		// OpenAI native: concatenate reasoning content into the
+		// assistant message's `reasoning_content` field. Signature
+		// entries (Provider=="openai", SubKind=="encrypted") are
+		// dropped — the native wire has no surface for them.
+		var sb strings.Builder
+		for _, r := range entry.Reasonings {
+			if sb.Len() > 0 {
+				sb.WriteString("\n")
+			}
+			sb.WriteString(r.Content)
+		}
+		if sb.Len() > 0 {
+			mm["reasoning_content"] = sb.String()
+		}
+	}
+
+	return messages, nil
+}
+
+// buildReasoningDetails turns a per-turn reasoning payload into the
+// reasoning_details[] wire array. Order matches the order artifacts
+// appeared in the state's turn slice, which matches read-side arrival
+// order. The stable `id` field is derived from the artifact's
+// position so multi-turn replay produces stable ids across
+// requests.
+func buildReasoningDetails(entry assistantReasoning) []map[string]any {
+	var out []map[string]any
+	idx := 0
+	for _, r := range entry.Reasonings {
+		if r.Content == "" {
+			continue
+		}
+		out = append(out, map[string]any{
+			"type": "reasoning.text",
+			"id":   "rd-" + strconv.Itoa(idx),
+			"text": r.Content,
+		})
+		idx++
+	}
+	for _, s := range entry.Sigs {
+		if s.Provider != "openai" || s.SubKind != "encrypted" || s.Data == "" {
+			continue
+		}
+		out = append(out, map[string]any{
+			"type": "reasoning.encrypted",
+			"id":   "rd-" + strconv.Itoa(idx),
+			"data": s.Data,
+		})
+		idx++
+	}
+	return out
 }
 
 // applyCacheControl mutates the marshaled messages and tools slices to add
