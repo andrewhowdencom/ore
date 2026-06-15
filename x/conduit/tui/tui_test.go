@@ -142,3 +142,70 @@ func TestTUI_InitModel_ResumesThreadWithHistory(t *testing.T) {
 	assert.Equal(t, "assistant response", m.turns[1].blocks[0].source)
 	assert.NotEmpty(t, m.turns[1].blocks[0].rendered, "assistant turn should be markdown rendered")
 }
+
+func TestStatusFromStream(t *testing.T) {
+	t.Run("returns a statusMsg carrying the stream's current metadata", func(t *testing.T) {
+		store := session.NewMemoryStore()
+		prov := &mockProvider{}
+		mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+		stream, err := mgr.Create()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = stream.Close() })
+
+		// Seed metadata that mirrors what Manager.applyDefaultMetadata
+		// produces in a real session (plus a workshop-style role key).
+		stream.SetMetadata("thread_id", "abc-123")
+		stream.SetMetadata("cwd", "/tmp/ore")
+		stream.SetMetadata("git_branch", "main")
+		stream.SetMetadata("tui.pid", "9999")
+		stream.SetMetadata("workshop.role", "context")
+
+		msg := statusFromStream(stream)
+		require.NotNil(t, msg, "statusFromStream must return a message when metadata is present")
+
+		sm, ok := msg.(statusMsg)
+		require.True(t, ok, "expected a statusMsg, got %T", msg)
+		assert.Equal(t, "abc-123", sm.status["thread_id"])
+		assert.Equal(t, "/tmp/ore", sm.status["cwd"])
+		assert.Equal(t, "main", sm.status["git_branch"])
+		assert.Equal(t, "9999", sm.status["tui.pid"])
+		assert.Equal(t, "context", sm.status["workshop.role"])
+		assert.Len(t, sm.status, 5)
+	})
+
+	t.Run("returns nil when the stream has no metadata", func(t *testing.T) {
+		store := session.NewMemoryStore()
+		prov := &mockProvider{}
+		mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+		stream, err := mgr.Create()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = stream.Close() })
+
+		msg := statusFromStream(stream)
+		assert.Nil(t, msg, "statusFromStream must return nil so Start skips a no-op Send")
+	})
+
+	t.Run("returns a defensive copy that the caller can mutate freely", func(t *testing.T) {
+		store := session.NewMemoryStore()
+		prov := &mockProvider{}
+		mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+		stream, err := mgr.Create()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = stream.Close() })
+
+		stream.SetMetadata("thread_id", "abc")
+
+		first := statusFromStream(stream).(statusMsg)
+		first.status["injected"] = "evil"
+		delete(first.status, "thread_id")
+
+		// A second call must return the original keys untouched.
+		second := statusFromStream(stream).(statusMsg)
+		assert.Equal(t, "abc", second.status["thread_id"])
+		_, leaked := second.status["injected"]
+		assert.False(t, leaked)
+	})
+}
