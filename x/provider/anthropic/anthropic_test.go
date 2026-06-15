@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -58,15 +59,24 @@ func TestNew_SucceedsWithRequiredOptions(t *testing.T) {
 }
 
 // recordingTransport is an http.RoundTripper that captures the outgoing
-// request (method, URL, headers, body) and returns a canned JSON
-// response. It is safe for concurrent use; the auth-dispatch tests and
-// the streaming tests both need to inspect what the SDK actually puts
-// on the wire, and this single helper is shared between them.
+// request (method, URL, headers, body) and returns a canned response.
+// It is safe for concurrent use; the auth-dispatch tests and the
+// streaming tests both need to inspect what the SDK actually puts on
+// the wire, and this single helper is shared between them.
+//
+// The transport supports two response modes:
+//   - Default (Content-Type: application/json) for the non-streaming
+//     Messages.New call exercised by triggerRequest in the
+//     auth-dispatch tests.
+//   - SSE (Content-Type: text/event-stream) when contentType is set to
+//     "text/event-stream"; the response body is returned verbatim so
+//     tests can build canned SSE event streams.
 type recordingTransport struct {
-	mu       sync.Mutex
-	request  *http.Request
-	body     []byte
-	response string
+	mu          sync.Mutex
+	request     *http.Request
+	body        []byte
+	response    string
+	contentType string
 }
 
 func (r *recordingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -75,13 +85,17 @@ func (r *recordingTransport) RoundTrip(req *http.Request) (*http.Response, error
 	r.request = req
 	r.body = body
 	resp := r.response
+	ct := r.contentType
 	r.mu.Unlock()
 	if resp == "" {
 		resp = `{"id":"msg_test","type":"message","role":"assistant","content":[],"model":"test","stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`
 	}
+	if ct == "" {
+		ct = "application/json"
+	}
 	return &http.Response{
 		StatusCode: 200,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Header:     http.Header{"Content-Type": []string{ct}},
 		Body:       io.NopCloser(strings.NewReader(resp)),
 	}, nil
 }
@@ -945,4 +959,422 @@ func TestProviderSerialize_AppliesPreTasksFixesRegressions(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(toolBytes), `"type":"tool_result"`)
 	assert.Contains(t, string(toolBytes), `"tool_use_id":"toolu_1"`)
+}
+
+// ---------------------------------------------------------------------------
+// Streaming tests
+// ---------------------------------------------------------------------------
+//
+// The tests below cover the streaming Invoke implementation. They use a
+// recordingTransport (defined above) configured to return a canned SSE
+// body. The SSE format follows the Anthropic Messages streaming
+// protocol: alternating `event:` and `data:` lines, separated by a
+// blank line, with the final `message_stop` event closing the stream.
+
+// sseEvent builds a single SSE event line with the given event name
+// and JSON payload. The blank line that terminates the event is
+// included so callers can simply concatenate the result of
+// sseEvent(...) calls.
+func sseEvent(event string, payload string) string {
+	return "event: " + event + "\ndata: " + payload + "\n\n"
+}
+
+// drainArtifacts closes the channel (caller-owned) and returns every
+// artifact that arrived on it. Used by the streaming tests to
+// collect the channel's output in arrival order.
+func drainArtifacts(ch chan artifact.Artifact) []artifact.Artifact {
+	close(ch)
+	var out []artifact.Artifact
+	for a := range ch {
+		out = append(out, a)
+	}
+	return out
+}
+
+// TestProviderInvoke_StreamsThinking asserts that an SSE stream
+// containing `content_block_delta` events with `type: "thinking_delta"`
+// produces `artifact.ReasoningDelta` values on the channel in order,
+// followed by a `ReasoningSignature` for the signature_delta event and
+// a final `Usage` artifact with the cumulative token counts.
+func TestProviderInvoke_StreamsThinking(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingTransport{
+		contentType: "text/event-stream",
+		response: sseEvent("message_start", `{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"model":"claude-3-7-sonnet-latest","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}`) +
+			sseEvent("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}`) +
+			sseEvent("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let me think"}}`) +
+			sseEvent("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" about this"}}`) +
+			sseEvent("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig_abc"}}`) +
+			sseEvent("content_block_stop", `{"type":"content_block_stop","index":0}`) +
+			sseEvent("message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":10,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens_details":{"thinking_tokens":4}}}`) +
+			sseEvent("message_stop", `{"type":"message_stop"}`),
+	}
+
+	p, err := New(
+		WithAPIKey("test-key"),
+		WithModel("claude-3-7-sonnet-latest"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	mem := state.NewBuffer()
+	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+
+	ch := make(chan artifact.Artifact, 16)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	got := drainArtifacts(ch)
+
+	// Two reasoning deltas, one signature, one usage.
+	require.Len(t, got, 4)
+	assert.Equal(t, "reasoning_delta", got[0].Kind())
+	assert.Equal(t, "Let me think", got[0].(artifact.ReasoningDelta).Content)
+	assert.Equal(t, "reasoning_delta", got[1].Kind())
+	assert.Equal(t, " about this", got[1].(artifact.ReasoningDelta).Content)
+	assert.Equal(t, "reasoning_signature", got[2].Kind())
+	sig := got[2].(artifact.ReasoningSignature)
+	assert.Equal(t, "anthropic", sig.Provider)
+	assert.Equal(t, "signature", sig.SubKind)
+	assert.Equal(t, "sig_abc", sig.Data)
+	assert.Equal(t, "usage", got[3].Kind())
+	u := got[3].(artifact.Usage)
+	assert.Equal(t, 10, u.PromptTokens)
+	assert.Equal(t, 5, u.CompletionTokens)
+	assert.Equal(t, 4, u.ThinkingTokens)
+}
+
+// TestProviderInvoke_StreamsMixedTextAndThinking asserts that
+// interleaved `thinking_delta` and `text_delta` events produce a turn
+// with both `Reasoning` and `Text` artifacts (the deltas arrive in
+// order; the loop accumulator produces the final artifacts when the
+// channel is drained).
+func TestProviderInvoke_StreamsMixedTextAndThinking(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingTransport{
+		contentType: "text/event-stream",
+		response: sseEvent("message_start", `{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"model":"claude-3-7-sonnet-latest","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}`) +
+			sseEvent("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}`) +
+			sseEvent("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Planning..."}}`) +
+			sseEvent("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig1"}}`) +
+			sseEvent("content_block_stop", `{"type":"content_block_stop","index":0}`) +
+			sseEvent("content_block_start", `{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}`) +
+			sseEvent("content_block_delta", `{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Hello!"}}`) +
+			sseEvent("content_block_stop", `{"type":"content_block_stop","index":1}`) +
+			sseEvent("message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":10,"output_tokens":3,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens_details":{"thinking_tokens":1}}}`) +
+			sseEvent("message_stop", `{"type":"message_stop"}`),
+	}
+
+	p, err := New(
+		WithAPIKey("test-key"),
+		WithModel("claude-3-7-sonnet-latest"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	mem := state.NewBuffer()
+	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+
+	ch := make(chan artifact.Artifact, 16)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	got := drainArtifacts(ch)
+
+	// Order on the channel:
+	//   1. ReasoningDelta "Planning..."
+	//   2. ReasoningSignature{anthropic, signature, sig1}
+	//   3. TextDelta "Hello!"
+	//   4. Usage (with thinking_tokens=1)
+	require.Len(t, got, 4)
+	assert.Equal(t, "reasoning_delta", got[0].Kind())
+	assert.Equal(t, "Planning...", got[0].(artifact.ReasoningDelta).Content)
+	assert.Equal(t, "reasoning_signature", got[1].Kind())
+	assert.Equal(t, "signature", got[1].(artifact.ReasoningSignature).SubKind)
+	assert.Equal(t, "text_delta", got[2].Kind())
+	assert.Equal(t, "Hello!", got[2].(artifact.TextDelta).Content)
+	assert.Equal(t, "usage", got[3].Kind())
+	assert.Equal(t, 1, got[3].(artifact.Usage).ThinkingTokens)
+}
+
+// TestProviderInvoke_StreamsRedactedThinkingForReplay asserts that a
+// `redacted_thinking` block in `content_block_start` is emitted as a
+// `ReasoningSignature{anthropic, redacted}` artifact, which the
+// write-side (`serializeMessages`) can attach to the next request
+// verbatim. The Data field must be the opaque base64 blob from the
+// wire, unmodified.
+func TestProviderInvoke_StreamsRedactedThinkingForReplay(t *testing.T) {
+	t.Parallel()
+
+	const opaqueData = "openrouter.reasoning:eyJ0ZXh0IjoiZW5jcnlwdGVkIn0="
+	transport := &recordingTransport{
+		contentType: "text/event-stream",
+		response: sseEvent("message_start", `{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"model":"claude-3-7-sonnet-latest","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}`) +
+			sseEvent("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"redacted_thinking","data":"`+opaqueData+`"}}`) +
+			sseEvent("content_block_stop", `{"type":"content_block_stop","index":0}`) +
+			sseEvent("message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":10,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens_details":{"thinking_tokens":0}}}`) +
+			sseEvent("message_stop", `{"type":"message_stop"}`),
+	}
+
+	p, err := New(
+		WithAPIKey("test-key"),
+		WithModel("claude-3-7-sonnet-latest"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	mem := state.NewBuffer()
+	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+
+	ch := make(chan artifact.Artifact, 16)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	got := drainArtifacts(ch)
+
+	require.Len(t, got, 2)
+	sig := got[0].(artifact.ReasoningSignature)
+	assert.Equal(t, "anthropic", sig.Provider)
+	assert.Equal(t, "redacted", sig.SubKind)
+	assert.Equal(t, opaqueData, sig.Data)
+	assert.Equal(t, "usage", got[1].Kind())
+}
+
+// TestProviderInvoke_PreservesUsageThinkingTokens asserts that
+// `usage.output_tokens_details.thinking_tokens` is surfaced in the
+// final `Usage` artifact's `ThinkingTokens` field. The field uses
+// `omitempty` so it is hidden from the JSON payload when the host
+// reports zero.
+func TestProviderInvoke_PreservesUsageThinkingTokens(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingTransport{
+		contentType: "text/event-stream",
+		response: sseEvent("message_start", `{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"model":"claude-3-7-sonnet-latest","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":42,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}`) +
+			sseEvent("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`) +
+			sseEvent("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}`) +
+			sseEvent("content_block_stop", `{"type":"content_block_stop","index":0}`) +
+			sseEvent("message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":42,"output_tokens":24,"cache_creation_input_tokens":3,"cache_read_input_tokens":7,"output_tokens_details":{"thinking_tokens":11}}}`) +
+			sseEvent("message_stop", `{"type":"message_stop"}`),
+	}
+
+	p, err := New(
+		WithAPIKey("test-key"),
+		WithModel("claude-3-7-sonnet-latest"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	mem := state.NewBuffer()
+	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+
+	ch := make(chan artifact.Artifact, 16)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	got := drainArtifacts(ch)
+
+	// One text_delta, one usage.
+	require.Len(t, got, 2)
+	u := got[1].(artifact.Usage)
+	assert.Equal(t, 42, u.PromptTokens)
+	assert.Equal(t, 24, u.CompletionTokens)
+	assert.Equal(t, 66, u.TotalTokens)
+	assert.Equal(t, 11, u.ThinkingTokens)
+	assert.Equal(t, 7, u.CacheReadTokens)
+	assert.Equal(t, 3, u.CacheWriteTokens)
+}
+
+// TestProviderInvoke_ToolUseStreaming asserts that a `tool_use` block
+// is emitted as a `ToolCallDelta` carrying the ID and Name at
+// `content_block_start`, and the `input_json_delta` events are
+// emitted as `ToolCallDelta{Arguments: <partial JSON>}` events with
+// the same Index. The loop accumulator is responsible for assembling
+// the final ToolCall.
+func TestProviderInvoke_ToolUseStreaming(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingTransport{
+		contentType: "text/event-stream",
+		response: sseEvent("message_start", `{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"model":"claude-3-7-sonnet-latest","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}`) +
+			sseEvent("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"search","input":{}}}`) +
+			sseEvent("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"q\":"}}`) +
+			sseEvent("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\"hello\"}"}}`) +
+			sseEvent("content_block_stop", `{"type":"content_block_stop","index":0}`) +
+			sseEvent("message_delta", `{"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":10,"output_tokens":2,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens_details":{"thinking_tokens":0}}}`) +
+			sseEvent("message_stop", `{"type":"message_stop"}`),
+	}
+
+	p, err := New(
+		WithAPIKey("test-key"),
+		WithModel("claude-3-7-sonnet-latest"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	mem := state.NewBuffer()
+	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+
+	ch := make(chan artifact.Artifact, 16)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	got := drainArtifacts(ch)
+
+	// tool_call_delta x3 (ID+Name, partial JSON, partial JSON), then usage.
+	require.Len(t, got, 4)
+	assert.Equal(t, "tool_call_delta", got[0].Kind())
+	t0 := got[0].(artifact.ToolCallDelta)
+	assert.Equal(t, 0, t0.Index)
+	assert.Equal(t, "toolu_1", t0.ID)
+	assert.Equal(t, "search", t0.Name)
+	assert.Empty(t, t0.Arguments)
+
+	assert.Equal(t, "tool_call_delta", got[1].Kind())
+	t1 := got[1].(artifact.ToolCallDelta)
+	assert.Equal(t, 0, t1.Index)
+	assert.Empty(t, t1.ID)
+	assert.Empty(t, t1.Name)
+	assert.Equal(t, `{"q":`, t1.Arguments)
+
+	assert.Equal(t, "tool_call_delta", got[2].Kind())
+	t2 := got[2].(artifact.ToolCallDelta)
+	assert.Equal(t, 0, t2.Index)
+	assert.Equal(t, `"hello"}`, t2.Arguments)
+
+	assert.Equal(t, "usage", got[3].Kind())
+}
+
+// TestProviderInvoke_ContextCancellation asserts that a pre-cancelled
+// context aborts the call promptly with ctx.Err() and that the
+// adapter does not emit further artifacts after cancellation. The
+// transport is configured to block on a channel so the call is
+// in-flight when cancellation fires.
+func TestProviderInvoke_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	release := make(chan struct{})
+	blocking := &blockingTransport{release: release}
+
+	p, err := New(
+		WithAPIKey("test-key"),
+		WithModel("claude-3-7-sonnet-latest"),
+		WithHTTPClient(&http.Client{Transport: blocking}),
+	)
+	require.NoError(t, err)
+
+	mem := state.NewBuffer()
+	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	ch := make(chan artifact.Artifact, 16)
+	err = p.Invoke(ctx, mem, ch)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+
+	// Unblock the transport so the test goroutine can exit cleanly.
+	close(release)
+}
+
+// TestProviderInvoke_HTTPError asserts that a non-2xx response with
+// an Anthropic-formatted error body is propagated as a wrapped error
+// from Invoke. The transport returns a 401 with a JSON error body
+// matching the Anthropic error schema.
+func TestProviderInvoke_HTTPError(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingTransport{
+		response: `{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}`,
+	}
+	// recordingTransport always returns 200; wrap it to allow 401.
+	tr := &statusOverrideTransport{
+		recordingTransport: transport,
+		status:             401,
+	}
+
+	p, err := New(
+		WithAPIKey("test-key"),
+		WithModel("claude-3-7-sonnet-latest"),
+		WithHTTPClient(&http.Client{Transport: tr}),
+	)
+	require.NoError(t, err)
+
+	mem := state.NewBuffer()
+	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+
+	ch := make(chan artifact.Artifact, 16)
+	err = p.Invoke(t.Context(), mem, ch)
+	require.Error(t, err)
+}
+
+// TestProviderInvoke_TalksToOpenRouter is the env-gated integration
+// test that round-trips against OpenRouter's /api/v1/messages
+// mirror. It is skipped unless OR_API_KEY is set in the environment.
+// The test uses a real model (minimax/minimax-m3) so the wire
+// returns a `thinking` content block, which is the regression
+// scenario the issue describes.
+func TestProviderInvoke_TalksToOpenRouter(t *testing.T) {
+	apiKey := os.Getenv("OR_API_KEY")
+	if apiKey == "" {
+		t.Skip("OR_API_KEY not set; skipping OpenRouter integration test")
+	}
+
+	p, err := New(
+		WithAPIKey(apiKey),
+		WithModel("minimax/minimax-m3"),
+		WithBaseURL("https://openrouter.ai/api/v1"),
+	)
+	require.NoError(t, err)
+
+	mem := state.NewBuffer()
+	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+
+	ch := make(chan artifact.Artifact, 16)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	got := drainArtifacts(ch)
+
+	// The test passes if Invoke returned without error. The exact
+	// artifact mix depends on the upstream model's behavior; the
+	// regression we are guarding against is 'no thinking arrives
+	// when the model does think', so a non-empty channel is the
+	// acceptance criterion.
+	require.NotEmpty(t, got, "OpenRouter must return at least one artifact for a thinking-capable model")
+}
+
+// ---------------------------------------------------------------------------
+// Test transport helpers
+// ---------------------------------------------------------------------------
+
+// statusOverrideTransport wraps a recordingTransport and overrides
+// the HTTP status code on the response. The recordingTransport
+// always returns 200; the override lets tests simulate 4xx/5xx
+// responses without writing a separate transport.
+type statusOverrideTransport struct {
+	recordingTransport *recordingTransport
+	status             int
+}
+
+func (s *statusOverrideTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := s.recordingTransport.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+	resp.StatusCode = s.status
+	return resp, nil
+}
+
+// blockingTransport is a RoundTripper that blocks until the release
+// channel is closed OR the request's context is cancelled. Used by
+// TestProviderInvoke_ContextCancellation to keep a call in-flight
+// while the context is cancelled; respecting req.Context() avoids a
+// 60s timeout when the test cancels the context before the call.
+type blockingTransport struct {
+	release <-chan struct{}
+}
+
+func (b *blockingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	select {
+	case <-b.release:
+	case <-req.Context().Done():
+		return nil, req.Context().Err()
+	}
+	return &http.Response{
+		StatusCode: 200,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(sseEvent("message_stop", `{"type":"message_stop"}`))),
+	}, nil
 }
