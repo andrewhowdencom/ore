@@ -27,6 +27,9 @@ includes:
   x-conduit-tui:
     taskfile: Taskfile.lib.yml
     dir: x/conduit/tui
+  x-provider-anthropic:
+    taskfile: Taskfile.lib.yml
+    dir: x/provider/anthropic
   x-provider-openai:
     taskfile: Taskfile.lib.yml
     dir: x/provider/openai
@@ -97,6 +100,7 @@ tasks:
       - task x-conduit-stdio:validate
       - task x-conduit-telegram:validate
       - task x-conduit-tui:validate
+      - task x-provider-anthropic:validate
       - task x-provider-openai:validate
       - task x-tool:validate
       - task x-tool-bash:validate
