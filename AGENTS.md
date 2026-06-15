@@ -144,7 +144,30 @@ examples.
 
 ### Dependencies
 
-Keep the dependency graph minimal. Provider adapters use `net/http` and `encoding/json` from the standard library. Avoid importing external SDKs for LLM providers — the adapter's job is to serialize/deserialize, and an SDK adds unnecessary weight and abstraction.
+The repository is a Go workspace (see `go.work`) with the root module and one
+sub-module per directory under `x/<area>/<name>/` and `examples/<name>/`.
+Each sub-module has its own `go.mod` and its own transitive dependency graph
+so the cost of a heavy upstream SDK is contained to the single module that
+needs it. The `Package Structure` section above documents the placement
+rules; this section documents the dependency rules that flow from them.
+
+- **Root module's `go.mod` must stay stdlib-only.** It contains the core
+  primitives (`artifact/`, `state/`, `provider/`, `loop/`, `tool/`, etc.) and
+  is imported by every other module. A transitive SDK in the root would
+  force every downstream module to pay for it.
+- **External SDKs are accepted inside a per-extension `go.mod`** when the
+  alternative is hand-rolling a long-tail wire protocol. Examples: the
+  openai module uses `github.com/openai/openai-go`; the anthropic module
+  uses `github.com/anthropics/anthropic-sdk-go`. The acceptance criterion
+  is *containment*: the SDK must not appear in the root module's
+  `go.sum`, and it must not be a transitive dep of any other module that
+  does not need it. Sub-modules may use `encoding/json` and `net/http` from
+  the standard library for the parts of the wire protocol that the SDK
+  does not model (e.g., non-standard extensions surfaced as JSON
+  extra-fields).
+- **Tests for a sub-module live inside the sub-module's `go.mod`** (as is
+  the convention for Go modules). External test-only deps (e.g.,
+  `github.com/stretchr/testify`) are acceptable in any module.
 
 ### Error Handling
 
