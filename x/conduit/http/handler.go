@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -10,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/x/conduit"
 
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
@@ -129,8 +130,16 @@ func (h *Handler) serveLanding(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		return
 	}
 
-	items := make([]threadItem, len(threads))
-	for i, thr := range threads {
+	page, next, err := paginateAndSortThreads(threads, defaultThreadPageSize, "")
+	if err != nil {
+		// The cursor is always empty for the landing page, so any error
+		// here is unexpected and indicates a programming error.
+		w.WriteHeader(stdhttp.StatusInternalServerError)
+		return
+	}
+
+	items := make([]threadItem, len(page))
+	for i, thr := range page {
 		items[i] = threadItem{
 			ID:        thr.ID,
 			Preview:   previewSnippet(thr, 120),
@@ -151,9 +160,10 @@ func (h *Handler) serveLanding(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = tmpl.Execute(w, struct {
-		Name    string
-		Threads []threadItem
-	}{Name: h.name, Threads: items})
+		Name       string
+		Threads    []threadItem
+		NextCursor string
+	}{Name: h.name, Threads: items, NextCursor: next})
 }
 
 // previewSnippet extracts a preview from the first user Text artifact in the
@@ -508,8 +518,11 @@ func (h *Handler) serveUI(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 }
 
-// listThreads handles GET /threads by returning all threads
-// in the store as a JSON array.
+// listThreads handles GET /threads by returning a single page of
+// threads, sorted by updated_at descending with id ascending as a
+// tiebreaker, wrapped in an envelope that includes the next-page
+// cursor. The endpoint accepts ?limit= (default 20, max 100) and
+// ?cursor= (opaque, from a previous response's next_cursor).
 func (h *Handler) listThreads(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	threads, err := h.mgr.ListThreads()
 	if err != nil {
@@ -517,21 +530,24 @@ func (h *Handler) listThreads(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		return
 	}
 
-	type summary struct {
-		ID        string    `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-	}
-
-	result := make([]summary, len(threads))
-	for i, thr := range threads {
-		result[i] = summary{
-			ID:        thr.ID,
-			CreatedAt: thr.CreatedAt,
-			UpdatedAt: thr.UpdatedAt,
+	limit := parseLimit(r.URL.Query().Get("limit"))
+	page, next, err := paginateAndSortThreads(threads, limit, r.URL.Query().Get("cursor"))
+	if err != nil {
+		if errors.Is(err, errInvalidCursor) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(stdhttp.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error": "invalid cursor: " + err.Error(),
+			})
+			return
 		}
+		w.WriteHeader(stdhttp.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(threadsListResponseJSON{
+		Threads:    summariesFrom(page),
+		NextCursor: next,
+	})
 }
