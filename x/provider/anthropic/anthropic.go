@@ -79,11 +79,16 @@ type maxTokensOption struct {
 func (maxTokensOption) IsInvokeOption() {}
 
 // WithMaxTokens returns an InvokeOption that sets the maximum number of
-// tokens the model is permitted to generate on a single invocation. Callers
-// are responsible for picking a value appropriate to the model; different
-// Anthropic models have different ceilings. The default (when this option is
-// not supplied) is 1, the SDK's hard minimum, which will let the provider
-// fail loudly rather than silently truncating on an arbitrary cap.
+// tokens the model is permitted to generate on a single invocation.
+//
+// Callers are responsible for picking a value appropriate to the model
+// and the task; different Anthropic models have different output caps,
+// and a summary task typically warrants a larger budget than a
+// short-form chat turn. There is no default — omitting this option
+// leaves the Anthropic SDK / model default in effect, matching the
+// openai adapter's behavior. Long-running callers (e.g. compaction
+// strategies) should set this explicitly so the model has room to
+// produce a complete response.
 func WithMaxTokens(n int64) provider.InvokeOption {
 	return maxTokensOption{n: n}
 }
@@ -358,9 +363,20 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	}
 
 	params := anthropic.MessageNewParams{
-		Model:     anthropic.Model(effectiveModel),
-		Messages:  serialized.messages,
-		MaxTokens: 1, // SDK minimum; overridden by per-invocation option below if set.
+		Model:    anthropic.Model(effectiveModel),
+		Messages: serialized.messages,
+		// MaxTokens is intentionally not set here. The Anthropic
+		// SDK rejects a request with MaxTokens=0, so omitting
+		// the field altogether leaves the SDK / model default
+		// in effect. This matches the openai adapter's
+		// "no default; caller must opt in" behavior, and
+		// removes the previous 'fail loudly with a 1-token
+		// response' default that produced silent garbage
+		// (a markdown heading fragment, e.g. '##') when
+		// callers forgot to set the option.
+		//
+		// If inv.maxTokensSet is true, the per-invocation value
+		// is applied below.
 	}
 	if len(serialized.system) > 0 {
 		params.System = serialized.system
