@@ -10,15 +10,31 @@
 // configuration, plus reasoning / signature replay on both the read and
 // write sides.
 //
-// WithThinkingBudget(tokens) enables Anthropic's `thinking` config on the
-// outgoing request when the budget is non-zero. The provider streams
-// `thinking_delta` events back as ReasoningDelta artifacts and surfaces
-// each completed `thinking` block's `signature` as a
-// ReasoningSignature{Provider: "anthropic", SubKind: "signature"} at the
-// close of the block, so the next turn's serializer can merge it into
-// the replayed `thinking` block. A `redacted_thinking` block produces a
-// ReasoningSignature{Provider: "anthropic", SubKind: "redacted"} so the
-// opaque encrypted reasoning can be carried forward.
+// WithThinkingLevel(level) enables Anthropic's `thinking` config on the
+// outgoing request when the level is not off. The level is translated
+// to a thinking.budget_tokens value at request time, expressed as a
+// percentage of max_tokens:
+//
+//	minimal -> 2%   (floored to 1024)
+//	low     -> 8%
+//	medium  -> 25%
+//	high    -> 50%
+//	max     -> 80%  (capped at max_tokens - 1024)
+//
+// The floor of 1024 is Anthropic's hard minimum; the ceiling of
+// (max_tokens - 1024) guarantees the visible response has at least
+// 1024 tokens to work with. provider.ThinkingLevelOff (or the empty
+// level) disables extended thinking entirely; the SDK receives no
+// `thinking` field and the upstream model falls back to its
+// non-thinking default behavior.
+//
+// The provider streams `thinking_delta` events back as ReasoningDelta
+// artifacts and surfaces each completed `thinking` block's `signature`
+// as a ReasoningSignature{Provider: "anthropic", SubKind: "signature"}
+// at the close of the block, so the next turn's serializer can merge
+// it into the replayed `thinking` block. A `redacted_thinking` block
+// produces a ReasoningSignature{Provider: "anthropic", SubKind:
+// "redacted"} so the opaque encrypted reasoning can be carried forward.
 //
 // # Cache metrics
 //

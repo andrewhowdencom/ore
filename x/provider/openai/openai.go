@@ -65,19 +65,41 @@ func WithTemperature(t float64) provider.InvokeOption {
 	return temperatureOption{t: t}
 }
 
-// reasoningEffortOption is a per-invocation option that sets the reasoning
-// effort for models that support it (e.g. o3-mini).
-type reasoningEffortOption struct {
-	effort string
+// thinkingLevelOption is a per-invocation option that sets the thinking
+// effort level for OpenAI-compatible providers. The level is translated
+// to OpenAI's reasoning_effort field at request time. The "off" level
+// omits the field entirely.
+type thinkingLevelOption struct {
+	level provider.ThinkingLevel
 }
 
-func (reasoningEffortOption) IsInvokeOption() {}
+func (thinkingLevelOption) IsInvokeOption() {}
 
-// WithReasoningEffort returns an InvokeOption that sets the reasoning effort
-// for a single provider invocation. Supported values are "low", "medium", and
-// "high".
-func WithReasoningEffort(effort string) provider.InvokeOption {
-	return reasoningEffortOption{effort: effort}
+// WithThinkingLevel returns an InvokeOption that sets the thinking
+// effort level for a single provider invocation. The level is mapped
+// to OpenAI's reasoning_effort vocabulary (low | medium | high);
+// levels outside that vocabulary are clamped (minimal -> low; max ->
+// high) because OpenAI's vocabulary is smaller than the framework's.
+// provider.ThinkingLevelOff and the empty level both disable reasoning.
+func WithThinkingLevel(l provider.ThinkingLevel) provider.InvokeOption {
+	return thinkingLevelOption{level: l}
+}
+
+// translateThinkingLevel returns OpenAI's reasoning_effort string for
+// the given level, or the empty string if the request should omit the
+// field. Unknown levels return the empty string (treated as "off") for
+// forward compatibility.
+func translateThinkingLevel(l provider.ThinkingLevel) string {
+	switch l {
+	case provider.ThinkingLevelMinimal, provider.ThinkingLevelLow:
+		return "low"
+	case provider.ThinkingLevelMedium:
+		return "medium"
+	case provider.ThinkingLevelHigh, provider.ThinkingLevelMax:
+		return "high"
+	}
+	// Off, empty, and unknown all disable reasoning.
+	return ""
 }
 
 // WithReasoningInclude returns an Option that explicitly sets whether the
@@ -416,7 +438,7 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 
 	var tools []tool.Tool
 	var temperature float64
-	var reasoningEffort string
+	var thinkingLevel provider.ThinkingLevel
 	var maxTokens int64
 	var sessionID string
 	var cacheControl bool
@@ -428,8 +450,8 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		if temp, ok := opt.(temperatureOption); ok {
 			temperature = temp.t
 		}
-		if re, ok := opt.(reasoningEffortOption); ok {
-			reasoningEffort = re.effort
+		if tl, ok := opt.(thinkingLevelOption); ok {
+			thinkingLevel = tl.level
 		}
 		if mto, ok := opt.(maxTokensOption); ok {
 			maxTokens = mto.n
@@ -471,8 +493,8 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	if temperature != 0 {
 		params.Temperature = param.NewOpt(temperature)
 	}
-	if reasoningEffort != "" {
-		params.ReasoningEffort = openai.ReasoningEffort(reasoningEffort)
+	if effort := translateThinkingLevel(thinkingLevel); effort != "" {
+		params.ReasoningEffort = openai.ReasoningEffort(effort)
 	}
 	if maxTokens > 0 {
 		params.MaxTokens = param.NewOpt(maxTokens)
