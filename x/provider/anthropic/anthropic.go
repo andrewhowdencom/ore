@@ -388,10 +388,11 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	// Usage artifact at message_stop. Emitting per message_delta
 	// would double-count tokens.
 	var pendingUsage *artifact.Usage
+	var pendingStopReason artifact.StopReasonKind
 
 	for stream.Next() {
 		event := stream.Current()
-		if err := p.dispatchEvent(ctx, event, ch, &pendingUsage); err != nil {
+		if err := p.dispatchEvent(ctx, event, ch, &pendingUsage, &pendingStopReason); err != nil {
 			if span != nil {
 				span.RecordError(err)
 				span.SetStatus(codes.Error, err.Error())
@@ -411,6 +412,15 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		return fmt.Errorf("anthropic streaming: %w", err)
 	}
 
+	if pendingStopReason != "" {
+		if err := sendOrCancel(ctx, ch, artifact.StopReason{Reason: pendingStopReason}); err != nil {
+			if span != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			return err
+		}
+	}
 	if pendingUsage != nil {
 		select {
 		case ch <- *pendingUsage:
@@ -429,11 +439,20 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 // ore artifact emission. The dispatch is exhaustive over the SDK's
 // typed event union; unknown variants are silently skipped so a future
 // SDK addition does not break older providers.
+//
+// pendingUsage and pendingStopReason are out-parameters for the
+// per-stream envelopes: the message_delta event carries both the
+// cumulative usage block and the upstream stop_reason, and both are
+// emitted on the channel once the stream closes (after message_stop).
+// Carrying them through the dispatch loop avoids re-reading the SSE
+// payload twice and keeps the SDK's cumulative-usage contract in one
+// place.
 func (p *Provider) dispatchEvent(
 	ctx context.Context,
 	event anthropic.MessageStreamEventUnion,
 	ch chan<- artifact.Artifact,
 	pendingUsage **artifact.Usage,
+	pendingStopReason *artifact.StopReasonKind,
 ) error {
 	switch ev := event.AsAny().(type) {
 	case anthropic.MessageStartEvent:
@@ -450,6 +469,7 @@ func (p *Provider) dispatchEvent(
 		return nil
 	case anthropic.MessageDeltaEvent:
 		bufferUsage(ev.Usage, pendingUsage)
+		bufferStopReason(ev.Delta.StopReason, pendingStopReason)
 		return nil
 	case anthropic.MessageStopEvent:
 		// Final envelope; the caller breaks out of the event
@@ -559,6 +579,46 @@ func bufferUsage(usage anthropic.MessageDeltaUsage, pending **artifact.Usage) {
 		CacheReadTokens:  int(usage.CacheReadInputTokens),
 		CacheWriteTokens: int(usage.CacheCreationInputTokens),
 		ThinkingTokens:   int(usage.OutputTokensDetails.ThinkingTokens),
+	}
+}
+
+// bufferStopReason translates the upstream stop_reason from a
+// message_delta event into the canonical artifact.StopReasonKind
+// and stores it in the pending out-parameter. The caller emits the
+// buffered StopReason once, at message_stop, immediately before the
+// buffered Usage. Like bufferUsage, this avoids the (smaller) trap
+// of translating on every event when the SDK only sends the final
+// stop_reason in the message_delta that precedes message_stop.
+func bufferStopReason(reason anthropic.StopReason, pending *artifact.StopReasonKind) {
+	*pending = translateStopReason(reason)
+}
+
+// translateStopReason normalizes an Anthropic-specific stop_reason
+// value into the canonical artifact.StopReasonKind used across all
+// adapters. The mapping mirrors the table documented in the package:
+// end_turn → stop, max_tokens → length, tool_use → tool_use,
+// refusal → refusal, and anything else (including stop_sequence and
+// future SDK additions) → other. The empty string maps to "" (no
+// reason buffered) so callers can distinguish "upstream reported no
+// reason" from "upstream reported a known reason" — although in
+// practice the SDK always reports a reason because the field is
+// api:"required" on the wire.
+func translateStopReason(s anthropic.StopReason) artifact.StopReasonKind {
+	switch s {
+	case "":
+		return ""
+	case anthropic.StopReasonEndTurn:
+		return artifact.StopReasonStop
+	case anthropic.StopReasonMaxTokens:
+		return artifact.StopReasonLength
+	case anthropic.StopReasonToolUse:
+		return artifact.StopReasonToolUse
+	case anthropic.StopReasonRefusal:
+		return artifact.StopReasonRefusal
+	default:
+		// stop_sequence, pause_turn, and any future SDK additions
+		// land here. The 'other' bucket is the forward-compat slot.
+		return artifact.StopReasonOther
 	}
 }
 
