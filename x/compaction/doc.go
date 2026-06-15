@@ -41,6 +41,39 @@
 // Tasks & Next Steps. Applications can override the prompt via the Prompt
 // field.
 //
+// # Per-invocation budget
+//
+// SummarizeStrategy owns its own output budget via the MaxTokens
+// field (default 8192). The strategy passes this to the provider as a
+// per-invocation provider.WithMaxTokens option so the model has
+// room to produce a complete summary regardless of the adapter's
+// per-model default. This is the fix for the 'compaction returns
+// ##' bug, which was caused by an adapter-level default of 1 token
+// combined with a strategy that did not pass any invoke options.
+//
+// # Truncation surfacing
+//
+// Both built-in LLM adapters (anthropic, openai) emit a
+// canonical artifact.StopReason artifact on the streaming channel
+// at the end of every successful stream, normalized from the
+// provider's native stop_reason / finish_reason. SummarizeStrategy
+// reads this signal; if the final reason is StopReasonLength,
+// Compact returns the original turns unchanged wrapped with the
+// sentinel ErrTruncatedSummary:
+//
+//	if errors.Is(err, compaction.ErrTruncatedSummary) {
+//	    // The model hit its output cap mid-summary; the original
+//	    // turns are returned. Decide whether to retry with a
+//	    // larger MaxTokens, fall back to a different strategy, or
+//	    // refuse to compact.
+//	}
+//
+// This contract replaces the previous silent-corruption behavior
+// in which a truncated summary (often a one-token '##' fragment)
+// was written into the conversation buffer as if it were valid.
+// Truncation is now structurally detectable and structurally
+// surfaced.
+//
 // SummarizeStrategy only collects artifact.Text responses from the provider.
 // Other artifact types (Usage, Reasoning, ToolCall, etc.) are silently
 // ignored. This is an MVP limitation; future work may add custom formatters

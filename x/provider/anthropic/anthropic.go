@@ -204,6 +204,16 @@ func applyInvokeOptions(opts ...provider.InvokeOption) invokeOptions {
 		case maxTokensOption:
 			out.maxTokens = o.n
 			out.maxTokensSet = true
+		case provider.MaxTokensOption:
+			// Provider-agnostic form. N <= 0 is "no opinion";
+			// the adapter does not set the wire field. Callers
+			// (e.g. SummarizeStrategy) use this option to size
+			// their own budget without importing a concrete
+			// adapter package.
+			if o.N > 0 {
+				out.maxTokens = o.N
+				out.maxTokensSet = true
+			}
 		case thinkingLevelOption:
 			out.thinkingLevel = o.level
 			out.thinkingLevelSet = true
