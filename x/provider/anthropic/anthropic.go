@@ -88,43 +88,106 @@ func WithMaxTokens(n int64) provider.InvokeOption {
 	return maxTokensOption{n: n}
 }
 
-// thinkingBudgetOption is a per-invocation option that sets the
-// extended-thinking budget, in tokens, for models that support it
-// (e.g. claude-3-7-sonnet). A budget of 0 is a no-op: the SDK will not
-// receive a `thinking` field, so the upstream model will fall back to its
-// non-thinking default behavior.
-type thinkingBudgetOption struct {
-	tokens int64
+// thinkingLevelOption is a per-invocation option that sets the
+// thinking effort level for the Anthropic Messages API. The level is
+// translated to a thinking.budget_tokens value at request time as a
+// percentage of max_tokens, with a 1024-token floor and a
+// (max_tokens - 1024) ceiling. The empty level or "off" disables
+// extended thinking entirely.
+type thinkingLevelOption struct {
+	level provider.ThinkingLevel
 }
 
-func (thinkingBudgetOption) IsInvokeOption() {}
+func (thinkingLevelOption) IsInvokeOption() {}
 
-// WithThinkingBudget returns an InvokeOption that sets the extended-thinking
-// budget, in tokens, for a single provider invocation. A value of 0 is a
-// no-op (the request is sent without a `thinking` field). Anthropic requires
-// a minimum budget of 1,024 tokens; smaller values are forwarded as-is and
-// the upstream rejects them.
-func WithThinkingBudget(tokens int64) provider.InvokeOption {
-	return thinkingBudgetOption{tokens: tokens}
+// WithThinkingLevel returns an InvokeOption that sets the thinking
+// effort level for a single provider invocation. The level is
+// translated to a token budget at request time; see translateThinkingLevel
+// for the per-level mapping and the floor/ceiling behavior. The empty
+// level and provider.ThinkingLevelOff are both treated as "no thinking".
+func WithThinkingLevel(l provider.ThinkingLevel) provider.InvokeOption {
+	return thinkingLevelOption{level: l}
+}
+
+// thinkingLevelPercentages maps each non-off level to a fraction of
+// max_tokens allocated to the thinking budget. The 1024 floor and the
+// (max_tokens - 1024) ceiling are applied in translateThinkingLevel.
+// These percentages are deliberately not absolute: the level is the
+// user's intent, and the resulting budget scales with the model's
+// output budget so "medium" feels similar across 8k, 32k, and 128k
+// output models.
+var thinkingLevelPercentages = map[provider.ThinkingLevel]float64{
+	provider.ThinkingLevelMinimal: 0.02,
+	provider.ThinkingLevelLow:     0.08,
+	provider.ThinkingLevelMedium:  0.25,
+	provider.ThinkingLevelHigh:    0.50,
+	provider.ThinkingLevelMax:     0.80,
+}
+
+// anthropicMinThinkingBudget is the floor Anthropic enforces on
+// thinking.budget_tokens. Any percentage that computes a smaller
+// value is clamped up to this.
+const anthropicMinThinkingBudget int64 = 1024
+
+// anthropicMinVisibleResponse is the minimum number of tokens
+// reserved for the visible response. The thinking budget is capped
+// at (maxTokens - anthropicMinVisibleResponse) so the model always
+// has at least this much room for the answer.
+const anthropicMinVisibleResponse int64 = 1024
+
+// translateThinkingLevel returns the thinking budget in tokens for
+// the given level and max_tokens. The second return is false when the
+// level is provider.ThinkingLevelOff or unset, in which case the
+// request should omit the thinking field. Unknown levels are treated
+// as off (forward compatibility with future level additions).
+//
+// The returned budget is at least anthropicMinThinkingBudget and at
+// most (maxTokens - anthropicMinVisibleResponse). If maxTokens is
+// smaller than anthropicMinThinkingBudget + anthropicMinVisibleResponse,
+// the budget is clamped to 0 with a false return.
+func translateThinkingLevel(l provider.ThinkingLevel, maxTokens int64) (int64, bool) {
+	if l == "" || l == provider.ThinkingLevelOff {
+		return 0, false
+	}
+	pct, ok := thinkingLevelPercentages[l]
+	if !ok {
+		// Unknown level: treat as off for forward compatibility.
+		return 0, false
+	}
+	if maxTokens < anthropicMinThinkingBudget+anthropicMinVisibleResponse {
+		// max_tokens is too small to even satisfy the 1024 floor
+		// while leaving room for the visible response. Disable
+		// thinking rather than send a request the upstream would
+		// reject.
+		return 0, false
+	}
+	budget := int64(pct * float64(maxTokens))
+	if budget < anthropicMinThinkingBudget {
+		budget = anthropicMinThinkingBudget
+	}
+	if ceiling := maxTokens - anthropicMinVisibleResponse; budget > ceiling {
+		budget = ceiling
+	}
+	return budget, true
 }
 
 // invokeOptions is the resolved per-invocation configuration collected by
 // Invoke. Each field has its own default so a missing option does not
 // silently change behavior.
 type invokeOptions struct {
-	temperature     float64
-	temperatureSet  bool
-	maxTokens       int64
-	maxTokensSet    bool
-	thinkingBudget  int64
-	thinkingBudgetSet bool
-	tools           []tool.Tool
-	toolsSet        bool
+	temperature    float64
+	temperatureSet bool
+	maxTokens      int64
+	maxTokensSet   bool
+	thinkingLevel  provider.ThinkingLevel
+	thinkingLevelSet bool
+	tools          []tool.Tool
+	toolsSet       bool
 }
 
 // applyInvokeOptions walks the provider.InvokeOption list and folds it into
 // an invokeOptions struct. Unknown option types are ignored; only the
-// temperature / maxTokens / thinkingBudget / tools options are recognized
+// temperature / maxTokens / thinkingLevel / tools options are recognized
 // here. This mirrors the openai module's pattern.
 func applyInvokeOptions(opts ...provider.InvokeOption) invokeOptions {
 	var out invokeOptions
@@ -136,9 +199,9 @@ func applyInvokeOptions(opts ...provider.InvokeOption) invokeOptions {
 		case maxTokensOption:
 			out.maxTokens = o.n
 			out.maxTokensSet = true
-		case thinkingBudgetOption:
-			out.thinkingBudget = o.tokens
-			out.thinkingBudgetSet = true
+		case thinkingLevelOption:
+			out.thinkingLevel = o.level
+			out.thinkingLevelSet = true
 		case provider.ToolsOption:
 			// The carrier's Tools field is a function so the
 			// tool list can be resolved dynamically from
@@ -311,11 +374,10 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	if inv.toolsSet && len(inv.tools) > 0 {
 		params.Tools = p.serializeTools(inv.tools)
 	}
-	if inv.thinkingBudgetSet && inv.thinkingBudget > 0 {
-		// Anthropic requires a minimum budget of 1,024 tokens;
-		// smaller values are forwarded as-is and the upstream
-		// rejects them. A budget of 0 is a no-op.
-		params.Thinking = anthropic.ThinkingConfigParamOfEnabled(inv.thinkingBudget)
+	if inv.thinkingLevelSet {
+		if budget, ok := translateThinkingLevel(inv.thinkingLevel, inv.maxTokens); ok {
+			params.Thinking = anthropic.ThinkingConfigParamOfEnabled(budget)
+		}
 	}
 
 	stream := p.client.Messages.NewStreaming(ctx, params)
