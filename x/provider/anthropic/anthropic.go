@@ -136,8 +136,9 @@ var _ provider.Provider = (*Provider)(nil)
 // serializeMessages converts ore state into Anthropic SDK message parameters.
 // It maps ore roles to Anthropic roles and preserves Reasoning artifacts
 // as thinking blocks to enable model continuity.
-func (p *Provider) serializeMessages(s state.State) []anthropic.MessageParam {
+func (p *Provider) serializeMessages(s state.State) ([]anthropic.MessageParam, []anthropic.TextBlockParam) {
 	turns := s.Turns()
+	var systemPrompt []anthropic.TextBlockParam
 	messages := make([]anthropic.MessageParam, 0, len(turns))
 
 	for _, turn := range turns {
@@ -145,15 +146,8 @@ func (p *Provider) serializeMessages(s state.State) []anthropic.MessageParam {
 
 		switch turn.Role {
 		case state.RoleSystem:
-			// Anthropic handles system prompts as a top-level field in the request,
-			// not as a message in the messages array. However, for the purpose of
-			// this internal helper, we map it to a message. The actual Invoke method
-			// will extract the system message if present.
 			content := concatText(turn.Artifacts)
-			messages = append(messages, anthropic.MessageParam{
-				Role:    "system",
-				Content: []anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(content)},
-			})
+			systemPrompt = append(systemPrompt, anthropic.TextBlockParam{Text: content})
 			continue
 
 		case state.RoleUser:
@@ -202,7 +196,7 @@ func (p *Provider) serializeMessages(s state.State) []anthropic.MessageParam {
 		}
 	}
 
-	return messages
+	return messages, systemPrompt
 }
 
 // concatText extracts and concatenates Text artifacts from a slice.
