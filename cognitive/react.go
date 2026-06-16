@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
@@ -26,6 +27,7 @@ type Pattern interface {
 type ReAct struct {
 	Step     loop.TurnRunner
 	Provider provider.Provider
+	Spec     models.Spec
 	tracer   trace.Tracer
 }
 
@@ -46,7 +48,7 @@ func (r *ReAct) Run(ctx context.Context, st state.State) (state.State, error) {
 	}
 
 	for {
-		result, err := r.Step.Turn(ctx, st, r.Provider)
+		result, err := r.Step.Turn(ctx, st, r.Spec, r.Provider)
 		if err != nil {
 			return result, fmt.Errorf("react turn failed: %w", err)
 		}
@@ -69,8 +71,10 @@ func (r *ReAct) Run(ctx context.Context, st state.State) (state.State, error) {
 // Pattern factory for each turn. The factory receives the session's
 // loop.Step and provider so it can construct stateful Patterns like ReAct.
 func NewTurnProcessor(factory func(loop.TurnExecutor, provider.Provider, trace.Tracer) Pattern, tracer trace.Tracer) session.TurnProcessor {
-	return func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
-		pattern := factory(executor, prov, tracer)
+	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, spec models.Spec) (state.State, error) {
+		pattern := factory(step, prov, tracer)
+		_ = pattern
+		_ = spec
 		return pattern.Run(ctx, st)
 	}
 }

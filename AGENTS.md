@@ -43,7 +43,11 @@ State is a **mutable** interface. `Append()` mutates in place. `Turns()` returns
 
 ### Provider
 
-The provider contract is intentionally minimal: a single `Invoke(ctx, State) ([]Artifact, error)` method. Metadata (token usage, finish reason) can be attached as custom artifact types or inspected by type-asserting the concrete provider adapter in the application layer. Do not bloat the interface with provider-specific fields.
+The provider contract is intentionally minimal: a single `Invoke(ctx, state, spec, ch, opts...)` method that takes a `models.Spec` value describing the model identity and inference configuration. The Spec is the canonical argument; per-call option types (ToolsOption, MaxTokensOption) cover only data-within-the-call. Metadata (token usage, finish reason) can be attached as custom artifact types or inspected by type-asserting the concrete provider adapter in the application layer. Do not bloat the interface with provider-specific fields.
+
+### Model
+
+The `models.ModelSpec` value type lives at the root level (`models/`, stdlib-only) and carries the model identity (`Name`) plus inference configuration (`Window`, `MaxOutputTokens`, `Temperature`, `ThinkingLevel`, `TopP`, `TopK`, `Seed`, `StopSequences`, `FrequencyPenalty`, `PresencePenalty`). The Spec is what flows through the loop, the session, and the provider; the application constructs it (or derives it from session metadata) and the framework propagates it. Per-vendor catalogs of well-known Specs live under `x/provider/<vendor>/models/` as extension subpackages.
 
 ### Loop
 

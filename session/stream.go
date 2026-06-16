@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 )
@@ -26,12 +28,12 @@ type Stream struct {
 	step        *loop.Step
 	provider    provider.Provider
 	processor   TurnProcessor
-	store        Store
-	interceptor  Interceptor
-	mu           sync.Mutex
-	cancel       context.CancelFunc
-	closed       bool
-	forwardOnce  sync.Once
+	store       Store
+	interceptor Interceptor
+	mu          sync.Mutex
+	cancel      context.CancelFunc
+	closed      bool
+	forwardOnce sync.Once
 
 	// queue is an unbounded FIFO of events waiting to be processed.
 	queue      []queuedEvent
@@ -187,7 +189,12 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 		defer s.step.SetEventContext(context.Background())
 		_, runErr = s.step.Submit(turnCtx, s.thread.State, state.RoleUser, artifact.Text{Content: e.Content})
 		if runErr == nil {
-			_, runErr = s.processor(turnCtx, s.step, s.thread.State, s.provider)
+			// Derive the per-turn Spec from session metadata. The
+			// step's configured default is used when no
+			// metadata-driven spec is present; an empty
+			// models.Spec tells the step to use that default.
+			spec, _ := s.Spec()
+			_, runErr = s.processor(turnCtx, s.step, s.thread.State, s.provider, spec)
 		}
 	case InterruptEvent:
 		// Interrupt is handled by cancelling the ongoing turn context.
@@ -389,31 +396,63 @@ func (s *Stream) SetMetadata(key, value string) {
 	})
 }
 
-// ModelOption returns a provider.InvokeOption that, when passed to a
-// provider's Invoke, overrides the model name with the value of
-// Thread.Metadata["provider.model"]. When the key is absent or empty,
-// it returns nil so callers can append unconditionally:
+// Model metadata keys. These are the framework contract keys that
+// the slash command in x/tool/set_model (and any other session-level
+// model configurator) writes into Thread.Metadata. The session
+// package owns the canonical form; downstream tools import the
+// constants when they need to set a value, or write the literal
+// string. The "ore.model." prefix reserves the namespace for
+// framework-level model configuration.
+const (
+	MetadataKeyModelName            = "ore.model.name"
+	MetadataKeyModelThinkingLevel   = "ore.model.thinking_level"
+	MetadataKeyModelTemperature     = "ore.model.temperature"
+	MetadataKeyModelMaxOutputTokens = "ore.model.max_output_tokens"
+)
+
+// Spec derives a [models.Spec] from the thread's metadata. The
+// bool result is false when no recognized metadata keys are set;
+// the caller should use the loop's default in that case. The
+// framework does not merge metadata into a base Spec; the session
+// is responsible for producing the effective Spec for each turn.
 //
-//	opts = append(opts, stream.ModelOption())
+// Recognized keys (all private to this package; documented here as
+// the framework contract):
 //
-// The metadata key "provider.model" is the framework contract; a
-// slash command, handler, or transform is responsible for writing
-// it (e.g. via stream.SetMetadata("provider.model", "gpt-4o-mini")).
-// SetMetadata emits a loop.PropertiesEvent so UI conduits can react;
-// no further integration is required by callers.
+//	"ore.model.name"              → Spec.Name
+//	"ore.model.thinking_level"    → Spec.ThinkingLevel
+//	"ore.model.temperature"       → Spec.Temperature (parsed float)
+//	"ore.model.max_output_tokens" → Spec.MaxOutputTokens (parsed int)
 //
-// Adapters that honor provider.ModelOption treat an empty override
-// as a no-op, so this method intentionally returns nil in that case
-// rather than handing the adapter a useless option.
-func (s *Stream) ModelOption() provider.InvokeOption {
-	name, ok := s.GetMetadata("provider.model")
-	if !ok || name == "" {
-		return nil
+// Unknown keys are ignored. The slash command in x/tool/set_model
+// is the canonical writer; see MetadataKeyModelName for the
+// "set the model" entry point.
+func (s *Stream) Spec() (models.Spec, bool) {
+	name, hasName := s.GetMetadata(MetadataKeyModelName)
+	if !hasName || name == "" {
+		return models.Spec{}, false
 	}
-	return provider.WithModel(name)
+	spec := models.Spec{Name: name}
+
+	if level, ok := s.GetMetadata(MetadataKeyModelThinkingLevel); ok && level != "" {
+		spec.ThinkingLevel = models.ThinkingLevel(level)
+	}
+
+	if tempStr, ok := s.GetMetadata(MetadataKeyModelTemperature); ok && tempStr != "" {
+		if t, err := strconv.ParseFloat(tempStr, 64); err == nil {
+			spec.Temperature = &t
+		}
+	}
+
+	if maxStr, ok := s.GetMetadata(MetadataKeyModelMaxOutputTokens); ok && maxStr != "" {
+		if n, err := strconv.ParseInt(maxStr, 10, 64); err == nil {
+			spec.MaxOutputTokens = n
+		}
+	}
+
+	return spec, true
 }
 
-// Save persists the underlying thread to the store.
 func (s *Stream) Save() error {
 	return s.store.Save(s.thread)
 }

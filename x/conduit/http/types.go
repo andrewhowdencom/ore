@@ -131,8 +131,6 @@ func eventContextFromJSON(ctx *eventContextJSON) context.Context {
 
 // --- Marshal functions ---
 
-
-
 // MarshalOutputEvent serializes a loop.OutputEvent to JSON bytes.
 // It dispatches to the event's json.Marshaler implementation when
 // available. Returns an error for unsupported event kinds.
@@ -142,8 +140,6 @@ func MarshalOutputEvent(event loop.OutputEvent) ([]byte, error) {
 	}
 	return nil, fmt.Errorf("unsupported event kind: %s", event.Kind())
 }
-
-
 
 // --- Unmarshal functions ---
 

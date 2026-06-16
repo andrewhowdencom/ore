@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 )
@@ -12,7 +13,7 @@ import (
 // Implementations invoke the provider, accumulate artifacts, and emit
 // streaming events. The canonical implementation is Step.Turn.
 type TurnRunner interface {
-	Turn(ctx context.Context, st state.State, p provider.Provider, opts ...provider.InvokeOption) (state.State, error)
+	Turn(ctx context.Context, st state.State, spec models.Spec, p provider.Provider, opts ...provider.InvokeOption) (state.State, error)
 }
 
 // TurnSubmitter records a non-inference turn into state and emits a

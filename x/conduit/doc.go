@@ -30,41 +30,41 @@
 // render-delta, show-status (structured metadata events via loop.PropertiesEvent),
 // accept-text, render-markdown).
 //
-// Standard Conduit Contract
+// # Standard Conduit Contract
 //
 // All conduit packages MUST satisfy the following contract so that framework
 // consumers and generators have a single, predictable pattern to follow:
 //
-//   1. Constructor — New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error)
+//  1. Constructor — New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error)
 //
-//      The constructor uses the functional-options pattern. It MUST validate that
-//      mgr is non-nil. It returns a value that satisfies conduit.Conduit and may
-//      be type-asserted to the concrete type for package-specific extensions
-//      (e.g., *http.Handler).
+//     The constructor uses the functional-options pattern. It MUST validate that
+//     mgr is non-nil. It returns a value that satisfies conduit.Conduit and may
+//     be type-asserted to the concrete type for package-specific extensions
+//     (e.g., *http.Handler).
 //
-//   2. Exported Descriptor — var Descriptor = conduit.Descriptor{...}
+//  2. Exported Descriptor — var Descriptor = conduit.Descriptor{...}
 //
-//      Each package exports a package-level Descriptor variable that lists the
-//      well-known capabilities the conduit supports. The variable is consumed by
-//      documentation generators (cmd/docgen) and static discovery tools.
+//     Each package exports a package-level Descriptor variable that lists the
+//     well-known capabilities the conduit supports. The variable is consumed by
+//     documentation generators (cmd/docgen) and static discovery tools.
 //
-//   3. Sink registration inside Start()
+//  3. Sink registration inside Start()
 //
-//      Conduits that maintain a persistent connection to a session stream MUST
-//      subscribe to output events (e.g., stream.Subscribe(...)) inside Start()
-//      before entering the blocking loop. Request-driven conduits MAY defer
-//      subscription to per-request handlers.
+//     Conduits that maintain a persistent connection to a session stream MUST
+//     subscribe to output events (e.g., stream.Subscribe(...)) inside Start()
+//     before entering the blocking loop. Request-driven conduits MAY defer
+//     subscription to per-request handlers.
 //
-//   4. Blocking Start(ctx context.Context) error
+//  4. Blocking Start(ctx context.Context) error
 //
-//      Start MUST block until ctx is cancelled or a fatal error occurs. It MUST
-//      return a non-nil error only on fatal startup or runtime errors; clean
-//      shutdown on ctx.Done() should return nil.
+//     Start MUST block until ctx is cancelled or a fatal error occurs. It MUST
+//     return a non-nil error only on fatal startup or runtime errors; clean
+//     shutdown on ctx.Done() should return nil.
 //
-//   5. Graceful shutdown
+//  5. Graceful shutdown
 //
-//      On ctx.Done(), the conduit MUST release resources (close channels,
-//      shutdown servers, close subscriptions) and return promptly.
+//     On ctx.Done(), the conduit MUST release resources (close channels,
+//     shutdown servers, close subscriptions) and return promptly.
 //
 // This package lives under x/ because the conduit abstraction and capability
 // vocabulary are still evolving as new frontend types are explored.

@@ -4,9 +4,9 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/tool"
 )
@@ -43,34 +43,6 @@ func WithTools(tools []tool.Tool) InvokeOption {
 	return ToolsOption{Tools: func(context.Context, state.State) []tool.Tool { return tools }}
 }
 
-// ModelOption is a per-invocation option that overrides the model name used
-// for a single provider invocation. The Model field is a string so callers
-// can source it from arbitrary input (e.g. session metadata).
-//
-// An empty Model field is treated as a no-op by adapters; it does not clear
-// the model or fall back to a default. Adapters that honor ModelOption must
-// continue to use the value supplied at construction when Model is empty.
-// This preserves the precedence rule: per-invocation option > constructor.
-type ModelOption struct {
-	// Model is the model name to use for the current invocation. Adapters
-	// must treat an empty string as a no-op.
-	Model string
-}
-
-// IsInvokeOption marks ModelOption as a provider.InvokeOption.
-func (ModelOption) IsInvokeOption() {}
-
-// WithModel returns an InvokeOption that overrides the model name for a
-// single provider invocation. Passing an empty string is a no-op: adapters
-// must keep using the value supplied at construction.
-//
-// Note: the per-adapter constructor option (e.g. openai.WithModel) shares
-// the same bare name by design. Call sites should disambiguate with the
-// package qualifier, e.g. provider.WithModel(...) at the call to Invoke.
-func WithModel(name string) InvokeOption {
-	return ModelOption{Model: name}
-}
-
 // MaxTokensOption is a per-invocation option that sets the maximum
 // number of tokens the model is permitted to generate on a single
 // invocation. It is the provider-agnostic counterpart to
@@ -82,8 +54,7 @@ func WithModel(name string) InvokeOption {
 // Adapters must translate the value into their provider's wire
 // format and must treat N <= 0 as a no-op (omit the field). A
 // zero or negative N is "the caller has no opinion; use whatever
-// default the adapter / model provides." This is symmetric with
-// ModelOption's empty-string-is-a-no-op rule.
+// default the adapter / model provides."
 type MaxTokensOption struct {
 	// N is the maximum number of tokens. N <= 0 means "no
 	// opinion" — the adapter should omit the field on the wire
@@ -111,66 +82,6 @@ func WithMaxTokens(n int64) InvokeOption {
 	return MaxTokensOption{N: n}
 }
 
-// ThinkingLevel is a portable, qualitative description of how much
-// reasoning effort a model should spend on a turn. Adapters translate
-// the level into their provider's wire format at request time.
-//
-// Levels are case-sensitive lowercase strings. The level is the user's
-// intent; the adapter is the translator. The empty string is not a
-// valid level — callers should substitute their own default (commonly
-// ThinkingLevelOff) before calling ParseThinkingLevel.
-type ThinkingLevel string
-
-const (
-	// ThinkingLevelOff disables extended thinking. Adapters must not
-	// send a `thinking` field (or equivalent) when this level is
-	// requested; the request is identical to a non-thinking request.
-	ThinkingLevelOff ThinkingLevel = "off"
-
-	// ThinkingLevelMinimal asks for the smallest amount of thinking
-	// the provider supports. Useful as a low-cost pipeline probe.
-	ThinkingLevelMinimal ThinkingLevel = "minimal"
-
-	// ThinkingLevelLow asks for a small amount of thinking.
-	ThinkingLevelLow ThinkingLevel = "low"
-
-	// ThinkingLevelMedium asks for a moderate amount of thinking.
-	// Recommended default for reasoning-capable models when the
-	// application or user opts in.
-	ThinkingLevelMedium ThinkingLevel = "medium"
-
-	// ThinkingLevelHigh asks for a substantial amount of thinking.
-	ThinkingLevelHigh ThinkingLevel = "high"
-
-	// ThinkingLevelMax asks for the maximum amount of thinking the
-	// provider allows, while still leaving room for the visible
-	// response. Adapters may clamp this to their maximum.
-	ThinkingLevelMax ThinkingLevel = "max"
-)
-
-// Valid reports whether the level is one of the defined constants.
-// The empty string is not valid.
-func (l ThinkingLevel) Valid() bool {
-	switch l {
-	case ThinkingLevelOff, ThinkingLevelMinimal, ThinkingLevelLow,
-		ThinkingLevelMedium, ThinkingLevelHigh, ThinkingLevelMax:
-		return true
-	}
-	return false
-}
-
-// ParseThinkingLevel parses a string into a ThinkingLevel. The empty
-// string is treated as a parse error — callers should substitute their
-// own default (commonly ThinkingLevelOff) before calling. Levels are
-// case-sensitive lowercase.
-func ParseThinkingLevel(s string) (ThinkingLevel, error) {
-	l := ThinkingLevel(s)
-	if !l.Valid() {
-		return "", fmt.Errorf("invalid thinking level %q: must be one of off, minimal, low, medium, high, max", s)
-	}
-	return l, nil
-}
-
 // Provider is the interface implemented by LLM provider adapters.
 type Provider interface {
 	// Invoke serializes the given state, calls the LLM API, and emits
@@ -186,9 +97,12 @@ type Provider interface {
 	// Adapters should not perform their own accumulation except when the
 	// native format genuinely cannot be expressed as an ore artifact type.
 	//
+	// The spec carries the model identity and inference configuration.
+	// Adapters translate the spec to their provider's wire format. A zero-
+	// value spec (empty Name, zero values for all fields) is valid: the
+	// adapter falls back to its constructor defaults and omits fields where
+	// the framework / model has a default.
+	//
 	// The channel must not be closed by the adapter.
-	Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...InvokeOption) error
+	Invoke(ctx context.Context, s state.State, spec models.Spec, ch chan<- artifact.Artifact, opts ...InvokeOption) error
 }
-
-
-

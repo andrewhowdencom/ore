@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,6 +22,7 @@ var (
 // TurnRunner interface produces the same result as calling directly on the
 // concrete *Step.
 func TestInterfaces_TurnRunner_CallsThrough(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -31,14 +33,14 @@ func TestInterfaces_TurnRunner_CallsThrough(t *testing.T) {
 		artifacts: []artifact.Artifact{artifact.Text{Content: "world"}},
 	}
 
-	st, err := runner.Turn(context.Background(), mem, prov)
+	st, err := runner.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 
 	// Direct call should produce identical results.
 	mem2 := &state.Buffer{}
 	mem2.Append(state.RoleUser, artifact.Text{Content: "hello"})
 	step2 := New(WithState(mem2))
-	st2, err := step2.Turn(context.Background(), mem2, prov)
+	st2, err := step2.Turn(context.Background(), mem2, spec, prov)
 	require.NoError(t, err)
 
 	// Verify turns match without comparing Timestamps (which differ between runs).
@@ -81,6 +83,7 @@ func TestInterfaces_TurnSubmitter_CallsThrough(t *testing.T) {
 // and Submit via the TurnExecutor interface works correctly and produces the
 // same results as direct calls.
 func TestInterfaces_TurnExecutor_CallsThrough(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -91,7 +94,7 @@ func TestInterfaces_TurnExecutor_CallsThrough(t *testing.T) {
 		artifacts: []artifact.Artifact{artifact.Text{Content: "assistant"}},
 	}
 
-	st, err := executor.Turn(context.Background(), mem, prov)
+	st, err := executor.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 
 	st, err = executor.Submit(context.Background(), st, state.RoleUser, artifact.Text{Content: "user"})

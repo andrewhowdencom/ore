@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 )
@@ -38,20 +39,19 @@ var ErrTruncatedSummary = errors.New("summarization produced truncated result")
 // limitation.
 type SummarizeStrategy struct {
 	Provider provider.Provider
+	// Spec is the compactor's own [models.Spec]. The strategy
+	// forwards the spec to the provider's Invoke method, including
+	// Spec.MaxOutputTokens as the per-invocation output-token budget.
+	//
+	// The compactor is conceptually a sub-agent: it runs a different
+	// (simpler) task than the main conversation, and may use a
+	// different (typically cheaper) model. The application is
+	// responsible for selecting the right Spec; the strategy
+	// consumes it transparently.
+	Spec models.Spec
 	// Prompt is an optional custom summarization prompt. When empty, a default
 	// structured handoff prompt is used.
 	Prompt string
-	// MaxTokens is the per-invocation output-token budget the strategy
-	// requests from the provider. The strategy passes this as a
-	// provider.WithMaxTokens invoke option so the model has room to
-	// produce a complete summary regardless of the provider's default.
-	//
-	// Zero or negative values fall back to defaultSummarizeMaxTokens.
-	// This is a self-sizing budget, not a hard cap: the framework does
-	// not enforce the value client-side, but the upstream will cut the
-	// response at it and the strategy will surface a
-	// StopReason{Length} as ErrTruncatedSummary.
-	MaxTokens int64
 }
 
 // defaultSummarizeMaxTokens is the per-invocation output budget the
@@ -131,7 +131,7 @@ func (s SummarizeStrategy) Compact(ctx context.Context, turns []state.Turn) ([]s
 	// room to produce a complete summary regardless of the
 	// adapter's per-model default (which on the Anthropic adapter
 	// is now "no default" — see anthropic.go WithMaxTokens).
-	maxTokens := s.MaxTokens
+	maxTokens := s.Spec.MaxOutputTokens
 	if maxTokens <= 0 {
 		maxTokens = defaultSummarizeMaxTokens
 	}
@@ -167,7 +167,7 @@ func (s SummarizeStrategy) Compact(ctx context.Context, turns []state.Turn) ([]s
 		}
 	}()
 
-	if err := s.Provider.Invoke(ctx, buf, ch, opts...); err != nil {
+	if err := s.Provider.Invoke(ctx, buf, s.Spec, ch, opts...); err != nil {
 		close(ch)
 		wg.Wait()
 		return nil, fmt.Errorf("summarization provider call failed: %w", err)
