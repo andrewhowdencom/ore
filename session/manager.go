@@ -8,14 +8,18 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 )
 
 // TurnProcessor runs the full inference pipeline for a single turn after
 // the user event has been submitted to state. It is called with the
-// stream's loop.Step, state, and provider.
-type TurnProcessor func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error)
+// stream's loop.Step, state, provider, and a [models.Spec] derived
+// from the session's metadata (or the empty zero value when no
+// metadata is set, in which case the step's configured default
+// spec applies).
+type TurnProcessor func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, spec models.Spec) (state.State, error)
 
 // ManagerOption configures a Manager.
 type ManagerOption func(*Manager)

@@ -27,11 +27,11 @@ const (
 	// CapShowStatus signals that the conduit can display a structured
 	// status line fed by "properties" OutputEvents carrying map[string]string
 	// key-value pairs (e.g. thread_id, token counts, model name).
-	CapShowStatus Capability = "show-status"
-	CapRenderDelta         Capability = "render-delta"
-	CapRenderTurn          Capability = "render-turn"
-	CapRenderMarkdown      Capability = "render-markdown"
-	CapRenderImage         Capability = "render-image"
+	CapShowStatus     Capability = "show-status"
+	CapRenderDelta    Capability = "render-delta"
+	CapRenderTurn     Capability = "render-turn"
+	CapRenderMarkdown Capability = "render-markdown"
+	CapRenderImage    Capability = "render-image"
 	// CapAudioNotification signals that the conduit can emit sound cues
 	// for turn completion and error events. Clients check this to know
 	// whether to wire AudioNotifier callbacks.

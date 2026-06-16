@@ -3,6 +3,8 @@ package slack
 import (
 	"context"
 	"testing"
+
+	"github.com/andrewhowdencom/ore/models"
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
@@ -18,7 +20,7 @@ import (
 // blockingProvider blocks until the context is cancelled.
 type blockingProvider struct{}
 
-func (m *blockingProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *blockingProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	<-ctx.Done()
 	return ctx.Err()
 }

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"github.com/andrewhowdencom/ore/models"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -30,7 +31,7 @@ type mockProvider struct {
 	err       error
 }
 
-func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	for _, art := range m.artifacts {
 		select {
 		case ch <- art:
@@ -61,14 +62,15 @@ func (e *errorFS) ReadFile(name string) ([]byte, error) { return nil, fs.ErrNotE
 
 // simpleProcessor runs a single Step.Turn with the mock provider.
 func simpleProcessor() session.TurnProcessor {
-	return func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
-		return executor.Turn(ctx, st, prov)
+	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+		spec := models.Spec{Name: "test-model"}
+		return step.Turn(ctx, st, spec, prov)
 	}
 }
 
 // boomProcessor always fails.
 func boomProcessor() session.TurnProcessor {
-	return func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
+	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 		return st, fmt.Errorf("boom")
 	}
 }

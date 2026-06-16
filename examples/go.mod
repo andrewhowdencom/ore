@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/examples
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.9.0
+	github.com/andrewhowdencom/ore v0.11.1
 	github.com/andrewhowdencom/ore/x/conduit/http v0.7.1
 	github.com/andrewhowdencom/ore/x/conduit/tui v0.11.0
 	github.com/andrewhowdencom/ore/x/provider/openai v0.5.2

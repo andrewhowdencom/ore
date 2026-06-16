@@ -26,7 +26,7 @@ func (noopProvider) Invoke(_ context.Context, _ state.State, _ models.Spec, _ ch
 // noopTurnProcessor is a TurnProcessor that never runs. SetMetadata does
 // not trigger inference, so a real processor is unnecessary; this noop
 // exists solely to satisfy NewManager's required parameter.
-func noopTurnProcessor(_ context.Context, _ loop.TurnExecutor, st state.State, _ provider.Provider) (state.State, error) {
+func noopTurnProcessor(_ context.Context, _ *loop.Step, st state.State, _ provider.Provider, _ models.Spec) (state.State, error) {
 	return st, nil
 }
 

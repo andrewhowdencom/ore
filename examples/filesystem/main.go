@@ -98,7 +98,7 @@ func run() error {
 	}
 	prov, err := openai.New(append([]openai.Option{
 		openai.WithAPIKey(apiKey),
-		openai.WithModel(model),
+		
 	}, opts...)...)
 	if err != nil {
 		return fmt.Errorf("create openai provider: %w", err)
