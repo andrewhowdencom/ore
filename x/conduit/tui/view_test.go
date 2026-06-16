@@ -1189,6 +1189,81 @@ func TestBuildStatusLine_NoTokenKeys(t *testing.T) {
 	assert.NotContains(t, rendered, "tokens")
 }
 
+// TestBuildStatusLine_ThinkingKeyGrouped asserts that when all four
+// token-family keys are present, the renderer produces the compact
+// "↑ X · ↓ Y · Σ Z · Ψ T" segment in the documented order, and that
+// non-token keys continue to appear separately.
+func TestBuildStatusLine_ThinkingKeyGrouped(t *testing.T) {
+	status := map[string]string{
+		"sent":      "100",
+		"received":  "50",
+		"total":     "150",
+		"thinking":  "7",
+		"phase":     "done",
+		"thread_id": "abc-123",
+	}
+	rendered, lines := buildStatusLine(theme.Dark(), status, 200)
+	assert.Equal(t, 1, lines)
+	assert.Contains(t, rendered, "↑ 100")
+	assert.Contains(t, rendered, "↓ 50")
+	assert.Contains(t, rendered, "Σ 150")
+	assert.Contains(t, rendered, "Ψ 7")
+	// Verify the four symbols appear in the documented order, joined by " · ".
+	symIdx := []int{
+		strings.Index(rendered, "↑"),
+		strings.Index(rendered, "↓"),
+		strings.Index(rendered, "Σ"),
+		strings.Index(rendered, "Ψ"),
+	}
+	for i := 1; i < len(symIdx); i++ {
+		assert.Greater(t, symIdx[i], symIdx[i-1],
+			"symbol %d must appear after symbol %d in the compact segment", i, i-1)
+	}
+	// Non-token keys must still appear.
+	assert.Contains(t, rendered, "phase: done")
+	assert.Contains(t, rendered, "thread_id: abc-123")
+	// The thinking key must not be re-emitted as "thinking: 7" by the
+	// "remaining keys alphabetically" loop.
+	assert.NotContains(t, rendered, "thinking: 7")
+}
+
+// TestBuildStatusLine_ThinkingKeyOnly asserts that a status map containing
+// only the thinking key renders "Ψ 0" and does not invent zero values for
+// the other three counters (which would only be present if the handler had
+// emitted them).
+func TestBuildStatusLine_ThinkingKeyOnly(t *testing.T) {
+	status := map[string]string{
+		"thinking": "0",
+	}
+	rendered, lines := buildStatusLine(theme.Dark(), status, 200)
+	assert.Equal(t, 1, lines)
+	assert.Contains(t, rendered, "Ψ 0")
+	assert.NotContains(t, rendered, "↑")
+	assert.NotContains(t, rendered, "↓")
+	assert.NotContains(t, rendered, "Σ")
+	// And the key must not be re-emitted by the "remaining keys" loop.
+	assert.NotContains(t, rendered, "thinking: 0")
+}
+
+// TestBuildStatusLine_ThinkingKeyNotDoubleRendered is a regression guard:
+// buildStatusLine groups token-family keys into the compact segment AND
+// skips them in the alphabetical "remaining keys" loop. If the skip
+// filter forgets the new key, "Ψ 42" would appear in the compact segment
+// AND "thinking: 42" would appear after it. This test asserts the
+// double-render cannot happen.
+func TestBuildStatusLine_ThinkingKeyNotDoubleRendered(t *testing.T) {
+	status := map[string]string{
+		"thinking": "42",
+	}
+	rendered, lines := buildStatusLine(theme.Dark(), status, 200)
+	assert.Equal(t, 1, lines)
+	assert.Equal(t, 1, strings.Count(rendered, "Ψ"),
+		"Ψ must appear exactly once in the rendered status line")
+	assert.Equal(t, 1, strings.Count(rendered, "42"),
+		"42 must appear exactly once in the rendered status line")
+	assert.NotContains(t, rendered, "thinking:")
+}
+
 func TestBuildStatusLine_ZoneGrouping(t *testing.T) {
 	segments := []conduit.StatusSegment{
 		{Label: "phase", Value: "streaming", Zone: "lifecycle"},
