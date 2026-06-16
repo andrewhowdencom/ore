@@ -151,12 +151,12 @@ type model struct {
 	// pending indicates an assistant response is in flight.
 	pending bool
 
-	// expandLatestDetails controls whether the latest assistant turn's
-	// details (tool calls, tool results, and reasoning) are shown expanded
-	// or compact.
-	// The flag is toggled by Ctrl+O and automatically cleared after
-	// the next assistant turn is received, restoring the default compact view.
-	expandLatestDetails bool
+	// expandAllDetails controls whether all non-text blocks across all
+	// turns (tool calls, tool results, and reasoning) are shown expanded
+	// or compact. The flag is toggled by Ctrl+O and persists across new
+	// turns and conversation boundaries, so the user's chosen view is
+	// preserved until they explicitly change it.
+	expandAllDetails bool
 
 	// Status map carries structured key-value metadata pairs received from
 	// PropertiesEvent output events (e.g. thread_id, state).
@@ -521,7 +521,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.currentTurn.timestamp = msg.turn.Timestamp
 			m.turns = append(m.turns, m.currentTurn)
 			m.currentTurn = renderedTurn{}
-			m.expandLatestDetails = false
 		} else {
 			// User and tool turns do not emit individual ArtifactEvents;
 			// build the turn from the full Turn content.
@@ -748,7 +747,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Ctrl+O
 		if msg.Key().Code == 'o' && msg.Key().Mod.Contains(tea.ModCtrl) {
-			m.expandLatestDetails = !m.expandLatestDetails
+			m.expandAllDetails = !m.expandAllDetails
 			m.contentDirty = true
 			m.syncViewport()
 			m.viewport.GotoBottom()
