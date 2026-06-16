@@ -218,6 +218,13 @@ func (t *TUI) initModel(eventsCh chan session.Event, stream *session.Stream) mod
 
 	// Pre-populate the model with historical turns when resuming a thread.
 	m.loadHistory(stream.Turns())
+
+	// Resolve the status-bar seed up front. It is delivered via Init()'s
+	// tea.Cmd (not via a direct Send) so the message reaches the
+	// statusMsg handler through the normal channel after the event loop
+	// has started. statusFromStream returns nil if there is no metadata,
+	// which Init() also treats as a no-op.
+	m.initStatusMsg = statusFromStream(stream)
 	return m
 }
 
@@ -265,14 +272,6 @@ func (t *TUI) Start(ctx context.Context) error {
 	p := tea.NewProgram(&m, t.programOpts...)
 	t.eventsCh = surfEventsCh
 	t.program = p
-
-	// Seed the status bar from the stream's current metadata before the
-	// live-event goroutine starts. Default-metadata PropertiesEvents fire
-	// during mgr.Create / mgr.Attach, before we can subscribe, so without
-	// this seed the status bar would render empty on the first frame.
-	if msg := statusFromStream(stream); msg != nil {
-		t.program.Send(msg)
-	}
 
 	// Subscribe to the stream's output, including delta artifact kinds so
 	// the TUI can accumulate assistant content incrementally as each delta
