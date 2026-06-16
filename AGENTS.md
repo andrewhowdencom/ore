@@ -207,6 +207,9 @@ configured the instrumentation is a no-op.
   `telegram.turn`, `stdio.turn`) — `SpanKindServer`
 - `cognitive.ReAct.Run()` — `react.run` — `SpanKindInternal`
 - `loop.Step.Turn()` / `Submit()` — `loop.turn` — `SpanKindInternal`
+- `x/provider/retry.Provider.Invoke()` — `retry.invoke` —
+  `SpanKindInternal` (parent of the inner `provider.invoke` span when
+  the decorator is in the call chain)
 - `x/provider/openai.Provider.Invoke()` — `provider.invoke` — `SpanKindClient`
 - `x/tool.Handler.Handle()` — `tool.execute` — `SpanKindInternal`
 
@@ -214,6 +217,12 @@ When a tracer is configured, the `provider.invoke` span also records
 granular HTTP lifecycle events (DNS, connection, TLS handshake, first-byte)
 via an attached `httptrace.ClientTrace`, enriching the span without
 creating child sub-spans.
+
+HTTP-level retries (5xx, 429 with `Retry-After`) belong in
+`x/provider/retry`, not in the provider adapters. The decorator owns the
+backoff schedule, the streaming backstop, and the tracing shape; the
+adapters only need to wrap their SDK errors in a type that implements
+`retry.HTTPError`.
 
 All spans carry `thread_id` as a `go.opentelemetry.io/otel/attribute.String`
 attribute, extracted from the context via `loop.ThreadIDFrom(ctx)`.
