@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
@@ -73,6 +74,58 @@ func TestStart_AttachNotFound(t *testing.T) {
 	err = c.Start(ctx)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "nonexistent")
+}
+
+// TestStart_ReachesEventLoop pins a regression introduced by commit
+// cf88e66, where TUI.Start invoked t.program.Send before p.Run(),
+// blocking the main goroutine inside Program.Send and preventing the
+// Bubble Tea event loop from ever starting. The test asserts that
+// Start returns within a short window after the context is cancelled,
+// which is only possible if the event loop reached the ctx-cancellation
+// goroutine and called p.Quit().
+//
+// Setup notes:
+//   - WithDefaultMetadata populates the stream with metadata so the
+//     status-bar seed path is exercised. Without metadata, statusFromStream
+//     returns nil and the broken Send is never reached.
+//   - WithProgramOptions(tea.WithoutRenderer(), tea.WithoutSignals())
+//     runs the Bubble Tea program in a non-interactive mode so the test
+//     does not require a TTY (this environment has no /dev/tty).
+//
+// This is a liveness test, not a correctness test: it does not inspect
+// the model's status. The seed-wiring correctness is covered by
+// TestInitModel_SeedsStatusFromStream and TestInit_DispatchesSeedCmd.
+func TestStart_ReachesEventLoop(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(),
+		session.WithDefaultMetadata(func(*session.Stream) map[string]string {
+			return map[string]string{
+				"thread_id":  "test-thread",
+				"cwd":        "/tmp",
+				"git_branch": "main",
+				"tui.pid":    "9999",
+			}
+		}),
+	)
+
+	c, err := New(mgr, WithProgramOptions(tea.WithoutRenderer(), tea.WithoutSignals()))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- c.Start(ctx) }()
+
+	cancel()
+	select {
+	case err := <-done:
+		require.NoError(t, err, "Start should return cleanly when context is cancelled")
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start did not return within 2s after context cancellation; " +
+			"the Bubble Tea event loop likely never started")
+	}
 }
 
 func TestNew_WithName(t *testing.T) {
