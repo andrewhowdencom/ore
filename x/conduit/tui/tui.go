@@ -207,6 +207,25 @@ func (t *TUI) initModel(eventsCh chan session.Event, stream *session.Stream) mod
 	return m
 }
 
+// statusFromStream returns the statusMsg that should be sent to the program
+// on Start, seeded from the stream's current metadata. Returns nil if the
+// stream has no metadata, so the caller can skip a no-op Send.
+//
+// The bootstrap exists because Manager.applyDefaultMetadata emits a
+// PropertiesEvent per default-metadata key before the TUI calls
+// Subscribe. Since Subscribe is live-only (no replay), those events are
+// lost; without this seed the status bar would render empty on the
+// first frame. Sending a single statusMsg before the live-event
+// goroutine starts keeps status updates funneled through the existing
+// statusMsg handler (a merge, not a replace) so a concurrent live
+// PropertiesEvent for the same key is a no-op.
+func statusFromStream(stream *session.Stream) tea.Msg {
+	if meta := stream.AllMetadata(); len(meta) > 0 {
+		return statusMsg{status: meta}
+	}
+	return nil
+}
+
 // Start creates or attaches to a session, initializes the Bubble Tea program,
 // subscribes to the session output stream, and blocks until the user quits
 // (Ctrl+C) or ctx is cancelled. On context cancellation the program exits
@@ -232,6 +251,14 @@ func (t *TUI) Start(ctx context.Context) error {
 	p := tea.NewProgram(&m)
 	t.eventsCh = surfEventsCh
 	t.program = p
+
+	// Seed the status bar from the stream's current metadata before the
+	// live-event goroutine starts. Default-metadata PropertiesEvents fire
+	// during mgr.Create / mgr.Attach, before we can subscribe, so without
+	// this seed the status bar would render empty on the first frame.
+	if msg := statusFromStream(stream); msg != nil {
+		t.program.Send(msg)
+	}
 
 	// Subscribe to the stream's output, including delta artifact kinds so
 	// the TUI can accumulate assistant content incrementally as each delta
