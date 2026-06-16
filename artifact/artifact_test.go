@@ -212,6 +212,53 @@ func TestToolResult_MarkdownString(t *testing.T) {
 	}
 }
 
+// errorLLMValue implements LLMRenderer for the error-content test.
+type errorLLMValue struct{}
+
+func (errorLLMValue) MarshalLLM() string { return "rendered-by-error-llm" }
+
+// errorMDValue implements MarkdownRenderer for the error-content test.
+type errorMDValue struct{}
+
+func (errorMDValue) MarshalMarkdown() string { return "rendered-by-error-md" }
+
+// TestToolResult_RenderersUseContentOnError pins the short-circuit
+// in LLMString and MarkdownString: when IsError is true and Content
+// is non-empty, the renderers on Value are bypassed and Content is
+// returned verbatim. This is what makes the `**Error:** <err>` footer
+// reach both audiences — the renderers on Value would otherwise
+// re-marshal the partial result and drop the appended footer.
+func TestToolResult_RenderersUseContentOnError(t *testing.T) {
+	content := "partial body\n\n**Error:** boom"
+	tr := ToolResult{
+		ToolCallID: "call_1",
+		Content:    content,
+		Value:      errorLLMValue{}, // would otherwise produce "rendered-by-error-llm"
+		IsError:    true,
+	}
+
+	assert.Equal(t, content, tr.LLMString(),
+		"LLMString must return Content verbatim on error, "+
+			"ignoring the LLMRenderer on Value")
+
+	// MarkdownString is the human-facing view; it must also see the
+	// same body + footer.
+	assert.Equal(t, content, tr.MarkdownString(),
+		"MarkdownString must return Content verbatim on error, "+
+			"ignoring the MarkdownRenderer on Value")
+
+	// Sanity-check: a MarkdownRenderer on Value is still respected
+	// when IsError is false (this is the success path and is
+	// unchanged by the fix).
+	success := ToolResult{
+		ToolCallID: "call_1",
+		Content:    "fallback",
+		Value:      errorMDValue{},
+	}
+	assert.Equal(t, "rendered-by-error-md", success.MarkdownString(),
+		"MarkdownRenderer on Value is honoured on the success path")
+}
+
 func TestToolCall_DisplayField(t *testing.T) {
 	tc := ToolCall{ID: "call_1", Name: "foo", Arguments: `{"x":1}`, Display: 42}
 	assert.Equal(t, "call_1", tc.ID)

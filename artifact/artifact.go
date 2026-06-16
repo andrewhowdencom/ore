@@ -179,7 +179,18 @@ func (t ToolResult) Kind() string { return "tool_result" }
 // for consumption by an LLM provider. It prefers the custom LLMRenderer
 // on Value, falls back to json.Marshal of Value, and finally falls back
 // to the pre-serialized Content string.
+//
+// When the result carries an error, the pre-serialized Content wins
+// regardless of what Value holds. This guarantees the `**Error:** <err>`
+// footer that the framework handler appended after truncation reaches
+// the LLM, even when Value is a typed result that would otherwise be
+// re-marshaled (and would drop the footer). Without this short-circuit,
+// a tool that returns (result, err) on the error path would render
+// only the partial result to the model — silently discarding the error.
 func (t ToolResult) LLMString() string {
+	if t.IsError && t.Content != "" {
+		return t.Content
+	}
 	if t.Value != nil {
 		if r, ok := t.Value.(LLMRenderer); ok {
 			return r.MarshalLLM()
@@ -196,6 +207,9 @@ func (t ToolResult) LLMString() string {
 // Value, falls back to json.Marshal of Value, and finally falls back
 // to the pre-serialized Content string.
 func (t ToolResult) MarkdownString() string {
+	if t.IsError && t.Content != "" {
+		return t.Content
+	}
 	if t.Value != nil {
 		if r, ok := t.Value.(MarkdownRenderer); ok {
 			return r.MarshalMarkdown()
