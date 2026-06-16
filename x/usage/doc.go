@@ -12,8 +12,9 @@
 //
 // The emitted PropertiesEvent contains the following string key/value pairs:
 //
-//   - "sent":     cumulative prompt token count
-//   - "received": cumulative completion token count
+//   - "sent":     per-turn prompt token count
+//   - "received": per-turn completion token count
+//   - "thinking": per-turn output tokens consumed by the model's extended-thinking / reasoning phase
 //   - "total":    cumulative total token count
 //
 // # Usage
