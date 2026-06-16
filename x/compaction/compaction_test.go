@@ -113,24 +113,52 @@ func TestTokenUsageTrigger(t *testing.T) {
 	tests := []struct {
 		name      string
 		maxTokens int
+		ratio     float64
 		turns     []state.Turn
 		want      bool
 	}{
 		{
-			name:      "fires when Usage exceeds MaxTokens",
+			name:      "fires when Usage exceeds 80% of Window (default)",
 			maxTokens: 10000,
 			turns: []state.Turn{
-				{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Usage{TotalTokens: 10001}}},
+				{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Usage{TotalTokens: 8001}}},
 			},
 			want: true,
 		},
 		{
-			name:      "does not fire when Usage under MaxTokens",
+			name:      "does not fire at 79% of Window (default)",
 			maxTokens: 10000,
+			turns: []state.Turn{
+				{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Usage{TotalTokens: 7900}}},
+			},
+			want: false,
+		},
+		{
+			name:      "Ratio 1.0 fires at exact Window",
+			maxTokens: 10000,
+			ratio:    1.0,
+			turns: []state.Turn{
+				{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Usage{TotalTokens: 10000}}},
+			},
+			want: true,
+		},
+		{
+			name:      "Ratio 1.0 does not fire just below Window",
+			maxTokens: 10000,
+			ratio:    1.0,
 			turns: []state.Turn{
 				{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Usage{TotalTokens: 9999}}},
 			},
 			want: false,
+		},
+		{
+			name:      "Ratio 0.5 fires at half Window",
+			maxTokens: 10000,
+			ratio:    0.5,
+			turns: []state.Turn{
+				{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Usage{TotalTokens: 5000}}},
+			},
+			want: true,
 		},
 		{
 			name:      "does not fire when no Usage artifact",
@@ -145,7 +173,7 @@ func TestTokenUsageTrigger(t *testing.T) {
 			maxTokens: 10000,
 			turns: []state.Turn{
 				{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Usage{TotalTokens: 10001}}},
-				{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Usage{TotalTokens: 9999}}},
+				{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Usage{TotalTokens: 100}}},
 			},
 			want: false,
 		},
@@ -155,10 +183,30 @@ func TestTokenUsageTrigger(t *testing.T) {
 			turns:     []state.Turn{},
 			want:      false,
 		},
+		{
+			name:      "zero Window returns false (graceful degradation)",
+			maxTokens: 0,
+			turns: []state.Turn{
+				{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Usage{TotalTokens: 999999}}},
+			},
+			want: false,
+		},
+		{
+			name:      "negative Ratio falls back to default (does not fire)",
+			maxTokens: 10000,
+			ratio:    -1,
+			turns: []state.Turn{
+				{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Usage{TotalTokens: 7999}}},
+			},
+			want: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tr := TokenUsageTrigger{Spec: models.Spec{Window: tt.maxTokens}}
+			tr := TokenUsageTrigger{
+				Spec:  models.Spec{Window: tt.maxTokens},
+				Ratio: tt.ratio,
+			}
 			assert.Equal(t, tt.want, tr.ShouldCompact(tt.turns))
 		})
 	}

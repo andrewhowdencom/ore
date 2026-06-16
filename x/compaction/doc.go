@@ -84,10 +84,15 @@
 // The compactor is called by the application before step.Turn(). If
 // compaction occurs, the application must call buf.LoadTurns():
 //
+//	provSpec := models.Spec{Name: "claude-opus-4-5", Window: 200000}
 //	compactor := compaction.New(
-//		compaction.WithTrigger(compaction.TokenUsageTrigger{MaxTokens: 8000}),
+//		compaction.WithTrigger(compaction.TokenUsageTrigger{Spec: provSpec}),
 //		compaction.WithStrategy(compaction.SummarizeStrategy{Provider: prov}),
 //	)
+//
+// TokenUsageTrigger fires at the default 80% of Spec.Window. Set
+// Ratio: 1.0 to fire at the exact window boundary; the field accepts
+// any positive fraction for fine-grained control.
 //
 // WithStrategy accumulates; each call appends another strategy to the
 // pipeline. Strategies execute in registration order.
