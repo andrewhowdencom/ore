@@ -84,23 +84,26 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 			return nil
 		}
 
+		// Resolve the format once and share it across the success
+		// and error branches. The error path renders the partial
+		// result through the same format pipeline so Format
+		// truncation and the LLMRenderer opt-out both work on
+		// errors too.
+		format := h.formatForRemote(source, name)
+
 		result, err := source.Call(ctx, name, args)
 		if err != nil {
 			if span != nil {
 				span.RecordError(err)
 				span.SetStatus(codes.Error, err.Error())
 			}
-			// Apply format to whatever partial result was returned, so
-			// a tool that produced a large partial result before erroring
-			// is still bounded.
-			h.handleError(ctx, e, tc.ID, err, result, span)
+			h.handleError(ctx, e, tc.ID, err, result, format, span)
 			return nil
 		}
 
 		// Look up the format from the remote source's Tool descriptor
 		// if available. Remote sources may not carry a Format; in that
 		// case the zero value is used and the framework default applies.
-		format := h.formatForRemote(source, name)
 		content, trunc, err := h.applyFormat(ctx, result, format, span)
 		if err != nil {
 			h.emitResult(ctx, e, tc.ID, content, result, true, nil)
@@ -138,7 +141,7 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 		}
-		h.handleError(ctx, e, tc.ID, err, result, span)
+		h.handleError(ctx, e, tc.ID, err, result, t.Format, span)
 		return nil
 	}
 
@@ -173,23 +176,47 @@ func (h *Handler) formatForRemote(source toolpkg.RemoteSource, name string) tool
 }
 
 // handleError centralizes the error path: it serializes whatever
-// (err, result) pair the tool produced, applies the framework's
-// truncation default to the partial result if any, and emits the
-// error ToolResult. Used by both the local and namespaced paths.
-func (h *Handler) handleError(ctx context.Context, e loop.Emitter, toolCallID string, err error, result any, span trace.Span) {
-	content := fmt.Sprintf("tool execution error: %v", err)
-	var value any
-	if result != nil {
-		if b, marshalErr := json.Marshal(result); marshalErr == nil {
-			content = string(b)
-			value = result
-		}
+// (err, result) pair the tool produced, applies the tool's Format
+// (truncation, LLMRenderer opt-out) to the partial result if any, and
+// emits the error ToolResult. Used by both the local and namespaced
+// paths.
+//
+// The underlying err is always appended to Content as a
+// `**Error:** <err.Error()>` footer. The footer is appended AFTER
+// `applyFormat` returns, so it is exempt from the Format byte/line
+// caps and is therefore never truncated. The LLM and the human both
+// see the footer because ToolResult.LLMString and ToolResult.MarkdownString
+// short-circuit to Content when IsError is true.
+//
+// When result is nil, a small synthetic value is built so the renderer
+// pipeline still produces a structured body (rather than a blank line
+// above the footer). The value is intentionally an anonymous struct
+// to avoid leaking a public type just for this error path.
+func (h *Handler) handleError(ctx context.Context, e loop.Emitter, toolCallID string, err error, result any, format toolpkg.Format, span trace.Span) {
+	// Synthesize a value for the (nil, err) case so the renderer
+	// pipeline produces a structured body above the footer.
+	value := result
+	if value == nil {
+		value = struct {
+			Error string `json:"error"`
+		}{Error: err.Error()}
 	}
-	// Apply the framework default truncation to error output. Errors
-	// are usually small, but tools that return large partial results
-	// (e.g., a multi-GB `dd` invocation) should still be bounded.
-	trunc := h.applyTruncationToString(ctx, content, toolpkg.Format{}, span)
-	h.emitResult(ctx, e, toolCallID, trunc.content, value, true, trunc.truncation)
+
+	content, trunc, marshalErr := h.applyFormat(ctx, value, format, span)
+	if marshalErr != nil {
+		// Marshal failure is rare (unsupported types like channels).
+		// Fall back to a small default body so the footer is still
+		// appended and the LLM sees something structured.
+		content = fmt.Sprintf("tool execution error: %v", err)
+		trunc = nil
+	}
+
+	// Append the error footer AFTER truncation runs. The footer is
+	// the most important thing the model sees after a failure, so it
+	// is exempt from the byte/line caps by design.
+	content = content + "\n\n**Error:** " + err.Error()
+
+	h.emitResult(ctx, e, toolCallID, content, result, true, trunc)
 }
 
 // applyFormat renders the LLM-facing string for a tool result,
