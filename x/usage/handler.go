@@ -23,10 +23,11 @@ import (
 // Handler aggregates token counts from artifact.Usage artifacts and emits a
 // PropertiesEvent after each one so conduits can display running totals.
 type Handler struct {
-	mu          sync.Mutex
-	prompt      int
-	completion  int
-	total       int
+	mu         sync.Mutex
+	prompt     int
+	completion int
+	total      int
+	thinking   int
 }
 
 // New creates a new usage aggregation handler.
@@ -47,14 +48,16 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 	}
 
 	h.mu.Lock()
-	// Update: prompt and completion track the last turn's values
+	// Update: prompt, completion, and thinking track the last turn's values
 	// (current API request size), not cumulative. Total remains cumulative
 	// for billing tracking.
 	h.prompt = u.PromptTokens
 	h.completion = u.CompletionTokens
+	h.thinking = u.ThinkingTokens
 	h.total += u.TotalTokens
 	prompt := h.prompt
 	completion := h.completion
+	thinking := h.thinking
 	total := h.total
 	h.mu.Unlock()
 
@@ -62,6 +65,7 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 		Properties: map[string]string{
 			"sent":     strconv.Itoa(prompt),
 			"received": strconv.Itoa(completion),
+			"thinking": strconv.Itoa(thinking),
 			"total":    strconv.Itoa(total),
 		},
 	})
