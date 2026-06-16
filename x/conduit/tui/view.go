@@ -206,9 +206,9 @@ func compactNumber(s string) string {
 // buildStatusLine renders the status map into a single wrapped line using
 // "key: value · key: value" format with ANSI styling.
 //
-// Token-usage keys (sent, received, total) are grouped into a single compact
-// segment with display symbols (↑, ↓, Σ) so the status bar is not flooded
-// with three separate entries.
+// Token-usage keys (sent, received, total, thinking) are grouped into a
+// single compact segment with display symbols (↑, ↓, Σ, Ψ) so the status
+// bar is not flooded with four separate entries.
 //
 // It returns the rendered string and the number of display lines it
 // occupies at the given width. Returns 0 lines when all values are empty.
@@ -221,7 +221,7 @@ func buildStatusLine(th *theme.Theme, status map[string]string, width int) (stri
 
 	// Group token-usage keys into one segment with display symbols.
 	var tokens []string
-	for _, key := range []string{"sent", "received", "total"} {
+	for _, key := range []string{"sent", "received", "total", "thinking"} {
 		if v, ok := status[key]; ok && v != "" {
 			var sym string
 			switch key {
@@ -231,6 +231,8 @@ func buildStatusLine(th *theme.Theme, status map[string]string, width int) (stri
 				sym = "↓"
 			case "total":
 				sym = "Σ"
+			case "thinking":
+				sym = "Ψ"
 			}
 			tokens = append(tokens, fmt.Sprintf("%s %s", sym, compactNumber(v)))
 		}
@@ -242,7 +244,7 @@ func buildStatusLine(th *theme.Theme, status map[string]string, width int) (stri
 	// Render remaining keys alphabetically.
 	var keys []string
 	for k := range status {
-		if k == "sent" || k == "received" || k == "total" {
+		if k == "sent" || k == "received" || k == "total" || k == "thinking" {
 			continue
 		}
 		keys = append(keys, k)
@@ -266,8 +268,9 @@ func buildStatusLine(th *theme.Theme, status map[string]string, width int) (stri
 	return wrapped, lines
 }
 
-// compactTokenSegments collapses sent, received, and total into a single
-// segment named "tokens" with a compact "↑ X · ↓ Y · Σ Z" value.
+// compactTokenSegments collapses sent, received, total, and thinking into
+// a single segment named "tokens" with a compact
+// "↑ X · ↓ Y · Σ Z · Ψ T" value.
 // Segments are sorted by label for deterministic output.
 func compactTokenSegments(segs []conduit.StatusSegment) []conduit.StatusSegment {
 	var values []string
@@ -281,6 +284,8 @@ func compactTokenSegments(segs []conduit.StatusSegment) []conduit.StatusSegment 
 			sym = "↓"
 		case "total":
 			sym = "Σ"
+		case "thinking":
+			sym = "Ψ"
 		default:
 			filtered = append(filtered, seg)
 			continue
