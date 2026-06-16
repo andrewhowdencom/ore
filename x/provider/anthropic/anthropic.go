@@ -13,6 +13,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/tool"
@@ -34,7 +35,6 @@ import (
 // list on every Invoke.
 type Provider struct {
 	client anthropic.Client
-	model  string
 	tracer trace.Tracer
 	// isOpenRouter is the resolved boolean used to choose the
 	// OpenRouter branch (`Authorization: Bearer <key>`) over the
@@ -99,8 +99,13 @@ func WithMaxTokens(n int64) provider.InvokeOption {
 // percentage of max_tokens, with a 1024-token floor and a
 // (max_tokens - 1024) ceiling. The empty level or "off" disables
 // extended thinking entirely.
+//
+// Note: this option is retained for adapter-specific use cases that
+// need to override the spec's ThinkingLevel on a per-call basis. The
+// canonical way to set a thinking level is via the [models.Spec]
+// passed to Invoke.
 type thinkingLevelOption struct {
-	level provider.ThinkingLevel
+	level models.ThinkingLevel
 }
 
 func (thinkingLevelOption) IsInvokeOption() {}
@@ -109,8 +114,8 @@ func (thinkingLevelOption) IsInvokeOption() {}
 // effort level for a single provider invocation. The level is
 // translated to a token budget at request time; see translateThinkingLevel
 // for the per-level mapping and the floor/ceiling behavior. The empty
-// level and provider.ThinkingLevelOff are both treated as "no thinking".
-func WithThinkingLevel(l provider.ThinkingLevel) provider.InvokeOption {
+// level and models.ThinkingLevelOff are both treated as "no thinking".
+func WithThinkingLevel(l models.ThinkingLevel) provider.InvokeOption {
 	return thinkingLevelOption{level: l}
 }
 
@@ -121,12 +126,12 @@ func WithThinkingLevel(l provider.ThinkingLevel) provider.InvokeOption {
 // user's intent, and the resulting budget scales with the model's
 // output budget so "medium" feels similar across 8k, 32k, and 128k
 // output models.
-var thinkingLevelPercentages = map[provider.ThinkingLevel]float64{
-	provider.ThinkingLevelMinimal: 0.02,
-	provider.ThinkingLevelLow:     0.08,
-	provider.ThinkingLevelMedium:  0.25,
-	provider.ThinkingLevelHigh:    0.50,
-	provider.ThinkingLevelMax:     0.80,
+var thinkingLevelPercentages = map[models.ThinkingLevel]float64{
+	models.ThinkingLevelMinimal: 0.02,
+	models.ThinkingLevelLow:     0.08,
+	models.ThinkingLevelMedium:  0.25,
+	models.ThinkingLevelHigh:    0.50,
+	models.ThinkingLevelMax:     0.80,
 }
 
 // anthropicMinThinkingBudget is the floor Anthropic enforces on
@@ -150,8 +155,8 @@ const anthropicMinVisibleResponse int64 = 1024
 // most (maxTokens - anthropicMinVisibleResponse). If maxTokens is
 // smaller than anthropicMinThinkingBudget + anthropicMinVisibleResponse,
 // the budget is clamped to 0 with a false return.
-func translateThinkingLevel(l provider.ThinkingLevel, maxTokens int64) (int64, bool) {
-	if l == "" || l == provider.ThinkingLevelOff {
+func translateThinkingLevel(l models.ThinkingLevel, maxTokens int64) (int64, bool) {
+	if l == "" || l == models.ThinkingLevelOff {
 		return 0, false
 	}
 	pct, ok := thinkingLevelPercentages[l]
@@ -180,14 +185,14 @@ func translateThinkingLevel(l provider.ThinkingLevel, maxTokens int64) (int64, b
 // Invoke. Each field has its own default so a missing option does not
 // silently change behavior.
 type invokeOptions struct {
-	temperature    float64
-	temperatureSet bool
-	maxTokens      int64
-	maxTokensSet   bool
-	thinkingLevel  provider.ThinkingLevel
+	temperature      float64
+	temperatureSet   bool
+	maxTokens        int64
+	maxTokensSet     bool
+	thinkingLevel    models.ThinkingLevel
 	thinkingLevelSet bool
-	tools          []tool.Tool
-	toolsSet       bool
+	tools            []tool.Tool
+	toolsSet         bool
 }
 
 // applyInvokeOptions walks the provider.InvokeOption list and folds it into
@@ -235,7 +240,6 @@ func applyInvokeOptions(opts ...provider.InvokeOption) invokeOptions {
 // config holds the build-time configuration for the Provider.
 type config struct {
 	apiKey     string
-	model      string
 	baseURL    string
 	httpClient option.HTTPClient
 	tracer     trace.Tracer
@@ -251,13 +255,6 @@ type Option func(*config)
 func WithAPIKey(key string) Option {
 	return func(c *config) {
 		c.apiKey = key
-	}
-}
-
-// WithModel sets the model identifier for the Anthropic-compatible provider.
-func WithModel(model string) Option {
-	return func(c *config) {
-		c.model = model
 	}
 }
 
@@ -293,10 +290,14 @@ func WithTracer(tracer trace.Tracer) Option {
 	}
 }
 
-// New creates an Anthropic-compatible provider. WithAPIKey and WithModel are
-// required; all other options are optional. The base URL is inspected once at
-// construction time to decide which auth header to apply, so callers do not
-// need to track host identity across invocations.
+// New creates an Anthropic-compatible provider. WithAPIKey is
+// required; all other options are optional. The base URL is inspected
+// once at construction time to decide which auth header to apply, so
+// callers do not need to track host identity across invocations.
+//
+// The model identity is supplied per-call via the [models.Spec]
+// argument to [Provider.Invoke]; there is no constructor option for
+// it.
 func New(opts ...Option) (*Provider, error) {
 	cfg := &config{}
 	for _, opt := range opts {
@@ -306,16 +307,12 @@ func New(opts ...Option) (*Provider, error) {
 	if cfg.apiKey == "" {
 		return nil, fmt.Errorf("missing required option: apiKey")
 	}
-	if cfg.model == "" {
-		return nil, fmt.Errorf("missing required option: model")
-	}
 
 	sdkOpts := buildSDKOptions(cfg)
 
 	return &Provider{
-		client:      anthropic.NewClient(sdkOpts...),
-		model:       cfg.model,
-		tracer:      cfg.tracer,
+		client:       anthropic.NewClient(sdkOpts...),
+		tracer:       cfg.tracer,
 		isOpenRouter: isOpenRouter(cfg.baseURL),
 	}, nil
 }
@@ -334,15 +331,32 @@ var _ provider.Provider = (*Provider)(nil)
 // The provider never closes the channel (the contract forbids it).
 // Every send is guarded by `select { case ch <- ...: case <-ctx.Done():
 // return ctx.Err() }` so context cancellation aborts the call promptly.
-func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+// Invoke serializes state into an Anthropic Messages streaming request
+// via the SDK, walks the resulting SSE event stream, and emits canonical
+// ore artifact types in wire-arrival order. Reasoning and text deltas
+// are emitted directly; tool-call fragments are accumulated by the
+// generic loop accumulator; signatures and redacted_thinking blocks are
+// emitted as complete ReasoningSignature artifacts so the write-side
+// can replay them on the next turn.
+//
+// The spec carries the model identity and inference configuration. The
+// adapter translates spec fields to the Anthropic wire format:
+// spec.Name is the model identifier, spec.Temperature is the sampling
+// temperature, spec.ThinkingLevel is translated to a thinking budget,
+// spec.MaxOutputTokens is mapped to max_tokens, and spec.StopSequences
+// to the stop_sequences field.
+//
+// The provider never closes the channel (the contract forbids it).
+// Every send is guarded by `select { case ch <- ...: case <-ctx.Done():
+// return ctx.Err() }` so context cancellation aborts the call promptly.
+func (p *Provider) Invoke(ctx context.Context, s state.State, spec models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	var span trace.Span
 	if p.tracer != nil {
 		ctx, span = p.tracer.Start(ctx, "provider.invoke", trace.WithSpanKind(trace.SpanKindClient))
-		// The model attribute is set after the option walk so it
-		// reflects the *effective* (possibly overridden) model,
-		// not the constructor default. A trace that lies about
-		// which model served a request makes per-invocation
-		// switching impossible to debug.
+		// The model attribute is set after the spec walk so it
+		// reflects the *effective* (per-call) model. A trace
+		// that lies about which model served a request makes
+		// per-invocation switching impossible to debug.
 		defer span.End()
 		// Attach httptrace hooks to record granular HTTP
 		// lifecycle events (DNS, connect, TLS, first-byte) on
@@ -351,19 +365,35 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		ctx = httptrace.WithClientTrace(ctx, otelhttptrace.NewClientTrace(ctx, otelhttptrace.WithoutSubSpans()))
 	}
 
+	// The spec's Name is the only source of model identity. An empty
+	// Name is a hard error: we cannot issue a request without knowing
+	// which model to call.
+	if spec.Name == "" {
+		return fmt.Errorf("anthropic: spec.Name is empty; model identity is required")
+	}
+
 	serialized := p.serializeMessages(s)
 
 	inv := applyInvokeOptions(opts...)
-	var modelOverride string
-	for _, opt := range opts {
-		if mo, ok := opt.(provider.ModelOption); ok {
-			modelOverride = mo.Model
-		}
+
+	// Spec fields take precedence over the per-call options above. A
+	// spec field that is the zero value (empty Name, nil pointer, etc.)
+	// leaves the corresponding value untouched. The spec is the
+	// canonical source of truth for model identity and inference
+	// configuration.
+	if spec.Temperature != nil {
+		inv.temperature = *spec.Temperature
+		inv.temperatureSet = true
 	}
-	effectiveModel := p.model
-	if modelOverride != "" {
-		effectiveModel = modelOverride
+	if spec.MaxOutputTokens > 0 {
+		inv.maxTokens = spec.MaxOutputTokens
+		inv.maxTokensSet = true
 	}
+	if spec.ThinkingLevel != "" {
+		inv.thinkingLevel = spec.ThinkingLevel
+		inv.thinkingLevelSet = true
+	}
+	effectiveModel := spec.Name
 
 	if span != nil {
 		span.SetAttributes(attribute.String("model", effectiveModel))

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/andrewhowdencom/ore/models"
 	"io"
 	"net"
 	"net/http"
@@ -19,12 +20,12 @@ import (
 	"github.com/andrewhowdencom/ore/state"
 	toolpkg "github.com/andrewhowdencom/ore/tool"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // mockTransport is an http.RoundTripper that returns a canned response and
@@ -222,13 +223,14 @@ func TestProviderInvoke_Success(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("Hello, world!")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	err = p.Invoke(t.Context(), mem, ch)
+	err = p.Invoke(t.Context(), mem, spec, ch)
 	require.NoError(t, err)
 
 	artifacts := drainArtifacts(ch)
@@ -243,13 +245,14 @@ func TestProviderInvoke_HTTPError(t *testing.T) {
 		response: mockResponse(401, `{"error":{"message":"invalid key","type":"invalid_request_error"}}`),
 	}
 
-	p, err := New(WithAPIKey("bad-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("bad-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	err = p.Invoke(t.Context(), mem, ch)
+	err = p.Invoke(t.Context(), mem, spec, ch)
 	require.Error(t, err)
 }
 
@@ -258,13 +261,14 @@ func TestProviderInvoke_EmptyChoices(t *testing.T) {
 		response: mockResponseSSE(emptyChoicesSSE()),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	err = p.Invoke(t.Context(), mem, ch)
+	err = p.Invoke(t.Context(), mem, spec, ch)
 	require.NoError(t, err)
 
 	artifacts := drainArtifacts(ch)
@@ -276,13 +280,14 @@ func TestProviderInvoke_UsageChunk(t *testing.T) {
 		response: mockResponseSSE(usageSSE(10, 5, 15)),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	err = p.Invoke(t.Context(), mem, ch)
+	err = p.Invoke(t.Context(), mem, spec, ch)
 	require.NoError(t, err)
 
 	artifacts := drainArtifacts(ch)
@@ -300,7 +305,8 @@ func TestProviderInvoke_MultipleTextArtifacts(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser,
@@ -309,7 +315,7 @@ func TestProviderInvoke_MultipleTextArtifacts(t *testing.T) {
 	)
 
 	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch)
+	_ = p.Invoke(t.Context(), mem, spec, ch)
 	close(ch)
 	for range ch {
 	}
@@ -324,7 +330,8 @@ func TestProviderInvoke_NonTextArtifactsSkipped(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser,
@@ -334,7 +341,7 @@ func TestProviderInvoke_NonTextArtifactsSkipped(t *testing.T) {
 	)
 
 	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch)
+	_ = p.Invoke(t.Context(), mem, spec, ch)
 	close(ch)
 	for range ch {
 	}
@@ -358,12 +365,13 @@ func TestProviderInvoke_EmptyState(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 
 	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch)
+	_ = p.Invoke(t.Context(), mem, spec, ch)
 	close(ch)
 	for range ch {
 	}
@@ -383,13 +391,14 @@ func TestProviderInvoke_MultipleChoices(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("first")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	err = p.Invoke(t.Context(), mem, ch)
+	err = p.Invoke(t.Context(), mem, spec, ch)
 	require.NoError(t, err)
 
 	artifacts := drainArtifacts(ch)
@@ -405,13 +414,14 @@ func TestProviderInvoke_MalformedJSON(t *testing.T) {
 		response: mockResponseSSE("data: {\"invalid\n\ndata: [DONE]\n\n"),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	err = p.Invoke(t.Context(), mem, ch)
+	err = p.Invoke(t.Context(), mem, spec, ch)
 	require.Error(t, err)
 }
 
@@ -420,7 +430,8 @@ func TestProviderInvoke_ContextCancellation(t *testing.T) {
 		err: context.Canceled,
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -429,7 +440,7 @@ func TestProviderInvoke_ContextCancellation(t *testing.T) {
 	cancel()
 
 	ch := make(chan artifact.Artifact, 10)
-	err = p.Invoke(ctx, mem, ch)
+	err = p.Invoke(ctx, mem, spec, ch)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 }
@@ -440,13 +451,14 @@ func TestProviderInvoke_CustomClient(t *testing.T) {
 		err: wantErr,
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	err = p.Invoke(t.Context(), mem, ch)
+	err = p.Invoke(t.Context(), mem, spec, ch)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, wantErr)
 }
@@ -456,13 +468,14 @@ func TestProviderInvoke_WithReasoning(t *testing.T) {
 		response: mockResponseSSE(reasoningSSE("Hello, world!", "Let me analyze this...")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("o3-mini"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "o3-mini"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	err = p.Invoke(t.Context(), mem, ch)
+	err = p.Invoke(t.Context(), mem, spec, ch)
 	require.NoError(t, err)
 
 	artifacts := drainArtifacts(ch)
@@ -479,13 +492,14 @@ func TestProviderInvoke_EmptyReasoning(t *testing.T) {
 		response: mockResponseSSE("data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"o3-mini\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello, world!\",\"reasoning_content\":\"\"},\"finish_reason\":null}]}\n\ndata: [DONE]\n\n"),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("o3-mini"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "o3-mini"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	err = p.Invoke(t.Context(), mem, ch)
+	err = p.Invoke(t.Context(), mem, spec, ch)
 	require.NoError(t, err)
 
 	artifacts := drainArtifacts(ch)
@@ -499,13 +513,14 @@ func TestProviderInvoke_ReasoningOnly(t *testing.T) {
 		response: mockResponseSSE(reasoningOnlySSE("Let me analyze", " this request")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("o3-mini"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "o3-mini"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	err = p.Invoke(t.Context(), mem, ch)
+	err = p.Invoke(t.Context(), mem, spec, ch)
 	require.NoError(t, err)
 
 	artifacts := drainArtifacts(ch)
@@ -522,7 +537,8 @@ func TestProviderInvoke_RoleMapping(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleSystem, artifact.Text{Content: "sys"})
@@ -531,7 +547,7 @@ func TestProviderInvoke_RoleMapping(t *testing.T) {
 	mem.Append(state.RoleTool, artifact.Text{Content: "tool"})
 
 	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch)
+	_ = p.Invoke(t.Context(), mem, spec, ch)
 	close(ch)
 	for range ch {
 	}
@@ -558,7 +574,8 @@ func TestProviderInvoke_ConcurrentOptions(t *testing.T) {
 		responseBody: simpleSSE("ok"),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(&http.Client{Transport: transport}))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(&http.Client{Transport: transport}))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -570,7 +587,7 @@ func TestProviderInvoke_ConcurrentOptions(t *testing.T) {
 			defer wg.Done()
 			tools := []toolpkg.Tool{{Name: fmt.Sprintf("tool-%d", idx), Description: "test", Schema: map[string]any{"type": "object"}}}
 			ch := make(chan artifact.Artifact, 10)
-			_ = p.Invoke(t.Context(), mem, ch, WithTools(tools))
+			_ = p.Invoke(t.Context(), mem, spec, ch, WithTools(tools))
 			close(ch)
 			for range ch {
 			}
@@ -584,13 +601,14 @@ func TestProviderInvoke_WithTemperature(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch, WithTemperature(0.7))
+	_ = p.Invoke(t.Context(), mem, spec, ch, WithTemperature(0.7))
 	close(ch)
 	for range ch {
 	}
@@ -607,13 +625,14 @@ func TestProviderInvoke_WithMaxTokens(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch, WithMaxTokens(12345))
+	_ = p.Invoke(t.Context(), mem, spec, ch, WithMaxTokens(12345))
 	close(ch)
 	for range ch {
 	}
@@ -630,13 +649,14 @@ func TestProviderInvoke_WithoutMaxTokens(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch)
+	_ = p.Invoke(t.Context(), mem, spec, ch)
 	close(ch)
 	for range ch {
 	}
@@ -676,16 +696,17 @@ func TestProviderInvoke_WithReasoningEffort(t *testing.T) {
 				response: mockResponseSSE(simpleSSE("ok")),
 			}
 
-			p, err := New(WithAPIKey("test-key"), WithModel("o3-mini"), WithHTTPClient(mockClient(transport)))
+			p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+			spec := models.Spec{Name: "o3-mini"}
 			require.NoError(t, err)
 			mem := &state.Buffer{}
 			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 			ch := make(chan artifact.Artifact, 10)
 			if tt.hasOption {
-				_ = p.Invoke(t.Context(), mem, ch, WithThinkingLevel(tt.level))
+				_ = p.Invoke(t.Context(), mem, spec, ch, WithThinkingLevel(tt.level))
 			} else {
-				_ = p.Invoke(t.Context(), mem, ch)
+				_ = p.Invoke(t.Context(), mem, spec, ch)
 			}
 			close(ch)
 			for range ch {
@@ -777,7 +798,7 @@ func TestInvoke_ReasoningIncludeField(t *testing.T) {
 
 			opts := []Option{
 				WithAPIKey("test-key"),
-				WithModel("deepseek/deepseek-r1"),
+
 				WithBaseURL(tt.baseURL),
 				WithHTTPClient(mockClient(transport)),
 			}
@@ -786,12 +807,13 @@ func TestInvoke_ReasoningIncludeField(t *testing.T) {
 			}
 
 			p, err := New(opts...)
+			spec := models.Spec{Name: "deepseek/deepseek-r1"}
 			require.NoError(t, err)
 			mem := &state.Buffer{}
 			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 			ch := make(chan artifact.Artifact, 10)
-			_ = p.Invoke(t.Context(), mem, ch)
+			_ = p.Invoke(t.Context(), mem, spec, ch)
 			close(ch)
 			for range ch {
 			}
@@ -817,7 +839,8 @@ func TestProviderInvoke_MixedAssistantTextAndToolCalls(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -830,7 +853,7 @@ func TestProviderInvoke_MixedAssistantTextAndToolCalls(t *testing.T) {
 	)
 
 	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch)
+	_ = p.Invoke(t.Context(), mem, spec, ch)
 	close(ch)
 	for range ch {
 	}
@@ -904,13 +927,14 @@ func TestProviderInvoke_ToolsWithDescription(t *testing.T) {
 		},
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch, WithTools(tools))
+	_ = p.Invoke(t.Context(), mem, spec, ch, WithTools(tools))
 	close(ch)
 	for range ch {
 	}
@@ -950,13 +974,14 @@ func TestProviderInvoke_InterleavedTextReasoningChunks(t *testing.T) {
 		response: mockResponseSSE(interleavedBody),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("o3-mini"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "o3-mini"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	err = p.Invoke(t.Context(), mem, ch)
+	err = p.Invoke(t.Context(), mem, spec, ch)
 	require.NoError(t, err)
 
 	artifacts := drainArtifacts(ch)
@@ -984,7 +1009,8 @@ func TestProviderInvoke_ToolResult_LLMRenderer(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -998,7 +1024,7 @@ func TestProviderInvoke_ToolResult_LLMRenderer(t *testing.T) {
 	})
 
 	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch)
+	_ = p.Invoke(t.Context(), mem, spec, ch)
 	close(ch)
 	for range ch {
 	}
@@ -1025,7 +1051,8 @@ func TestProviderInvoke_ToolResult_JSONFallback(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -1038,7 +1065,7 @@ func TestProviderInvoke_ToolResult_JSONFallback(t *testing.T) {
 	})
 
 	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch)
+	_ = p.Invoke(t.Context(), mem, spec, ch)
 	close(ch)
 	for range ch {
 	}
@@ -1064,7 +1091,8 @@ func TestProviderInvoke_ToolResult_ContentFallback(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -1076,7 +1104,7 @@ func TestProviderInvoke_ToolResult_ContentFallback(t *testing.T) {
 	})
 
 	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch)
+	_ = p.Invoke(t.Context(), mem, spec, ch)
 	close(ch)
 	for range ch {
 	}
@@ -1105,13 +1133,14 @@ func TestProviderInvoke_ToolCallDeltaAccumulation(t *testing.T) {
 		response: mockResponseSSE(toolCallBody),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	err = p.Invoke(t.Context(), mem, ch)
+	err = p.Invoke(t.Context(), mem, spec, ch)
 	require.NoError(t, err)
 
 	artifacts := drainArtifacts(ch)
@@ -1142,13 +1171,14 @@ func TestProviderInvoke_EmptyToolsOmitted(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch, WithTools([]toolpkg.Tool{}))
+	_ = p.Invoke(t.Context(), mem, spec, ch, WithTools([]toolpkg.Tool{}))
 	close(ch)
 	for range ch {
 	}
@@ -1167,7 +1197,8 @@ func TestProviderInvoke_DynamicToolsOption(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -1191,7 +1222,7 @@ func TestProviderInvoke_DynamicToolsOption(t *testing.T) {
 	}
 
 	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch, dynamicOpt)
+	_ = p.Invoke(t.Context(), mem, spec, ch, dynamicOpt)
 	close(ch)
 	for range ch {
 	}
@@ -1218,14 +1249,15 @@ func TestProviderInvoke_ToolsOptionPrecedence(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	// Later ToolsOption should override the earlier one.
-	_ = p.Invoke(t.Context(), mem, ch,
+	_ = p.Invoke(t.Context(), mem, spec, ch,
 		provider.WithTools([]toolpkg.Tool{{Name: "first", Description: "first tool"}}),
 		provider.ToolsOption{Tools: func(context.Context, state.State) []toolpkg.Tool {
 			return []toolpkg.Tool{
@@ -1262,13 +1294,14 @@ func TestProviderInvoke_DynamicTools_EmptyResult(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch, provider.ToolsOption{
+	_ = p.Invoke(t.Context(), mem, spec, ch, provider.ToolsOption{
 		Tools: func(context.Context, state.State) []toolpkg.Tool {
 			return nil
 		},
@@ -1291,7 +1324,8 @@ func TestProviderInvoke_DynamicTools_Concurrency(t *testing.T) {
 		responseBody: simpleSSE("ok"),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(&http.Client{Transport: transport}))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(&http.Client{Transport: transport}))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -1309,7 +1343,7 @@ func TestProviderInvoke_DynamicTools_Concurrency(t *testing.T) {
 				},
 			}
 			ch := make(chan artifact.Artifact, 10)
-			_ = p.Invoke(t.Context(), mem, ch, provider.ToolsOption{
+			_ = p.Invoke(t.Context(), mem, spec, ch, provider.ToolsOption{
 				Tools: func(context.Context, state.State) []toolpkg.Tool {
 					return tools
 				},
@@ -1348,126 +1382,13 @@ func TestProviderInvoke_DynamicTools_Concurrency(t *testing.T) {
 	}
 }
 
-func TestProviderInvoke_PerInvocationModelOverride(t *testing.T) {
-	// Three sub-cases, all sharing the same recording transport and a
-	// fixed constructor model. The plan calls for the constructor
-	// default to win when no override is supplied and when an empty
-	// string is explicitly passed.
-	cases := []struct {
-		name string
-		opts []provider.InvokeOption
-		want string
-	}{
-		{
-			name: "no override uses constructor model",
-			opts: nil,
-			want: "gpt-4",
-		},
-		{
-			name: "with override uses override value",
-			opts: []provider.InvokeOption{provider.WithModel("gpt-4o-mini")},
-			want: "gpt-4o-mini",
-		},
-		{
-			name: "empty override is a no-op and falls back to constructor",
-			opts: []provider.InvokeOption{provider.WithModel("")},
-			want: "gpt-4",
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			transport := &recordingMockTransport{
-				responseBody: simpleSSE("ok"),
-			}
-
-			p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(&http.Client{Transport: transport}))
-			require.NoError(t, err)
-
-			mem := &state.Buffer{}
-			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
-
-			ch := make(chan artifact.Artifact, 10)
-			require.NoError(t, p.Invoke(t.Context(), mem, ch, tc.opts...))
-			close(ch)
-			for range ch {
-			}
-
-			requests := transport.Requests()
-			require.Len(t, requests, 1)
-
-			var reqBody map[string]any
-			require.NoError(t, json.Unmarshal(requests[0].body, &reqBody))
-
-			assert.Equal(t, tc.want, reqBody["model"], "outgoing request model field should reflect the effective model")
-		})
-	}
-}
-
-func TestProviderInvoke_PerInvocationModelOverride_OTelSpan(t *testing.T) {
-	// The OTel span on provider.invoke must record the *effective* model,
-	// not just the constructor value. Without this, a trace would lie
-	// about which model served a request, defeating the entire purpose
-	// of per-invocation switching for observability.
-	transport := &recordingMockTransport{
-		responseBody: simpleSSE("ok"),
-	}
-
-	recorder := tracetest.NewSpanRecorder()
-	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
-	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
-
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("gpt-4"),
-		WithHTTPClient(&http.Client{Transport: transport}),
-		WithTracer(tp.Tracer("test")),
-	)
-	require.NoError(t, err)
-
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
-
-	ch := make(chan artifact.Artifact, 10)
-	require.NoError(t, p.Invoke(
-		t.Context(),
-		mem,
-		ch,
-		provider.WithModel("gpt-4o-mini"),
-	))
-	close(ch)
-	for range ch {
-	}
-
-	spans := recorder.Ended()
-	var foundSpan sdktrace.ReadOnlySpan
-	for _, sp := range spans {
-		if sp.Name() == "provider.invoke" {
-			foundSpan = sp
-			break
-		}
-	}
-	require.NotNil(t, foundSpan, "expected a provider.invoke span to be recorded")
-
-	var modelAttr string
-	var foundAttr bool
-	for _, kv := range foundSpan.Attributes() {
-		if string(kv.Key) == "model" {
-			modelAttr = kv.Value.AsString()
-			foundAttr = true
-		}
-	}
-	require.True(t, foundAttr, "provider.invoke span should record a model attribute")
-	assert.Equal(t, "gpt-4o-mini", modelAttr,
-		"OTel span must record the effective (overridden) model, not the constructor default")
-}
-
 func TestProviderInvoke_WithFilteredTools(t *testing.T) {
 	transport := &mockTransport{
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -1491,7 +1412,7 @@ func TestProviderInvoke_WithFilteredTools(t *testing.T) {
 	}
 
 	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch, xtool.WithFilteredTools(registry, filter))
+	_ = p.Invoke(t.Context(), mem, spec, ch, xtool.WithFilteredTools(registry, filter))
 	close(ch)
 	for range ch {
 	}
@@ -1518,13 +1439,14 @@ func TestProviderInvoke_WithUsage(t *testing.T) {
 		response: mockResponseSSE(textWithUsageSSE("Hello, world!", 10, 5, 15)),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	err = p.Invoke(t.Context(), mem, ch)
+	err = p.Invoke(t.Context(), mem, spec, ch)
 	require.NoError(t, err)
 
 	artifacts := drainArtifacts(ch)
@@ -1544,13 +1466,14 @@ func TestProviderInvoke_WithoutUsage(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("Hello, world!")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	err = p.Invoke(t.Context(), mem, ch)
+	err = p.Invoke(t.Context(), mem, spec, ch)
 	require.NoError(t, err)
 
 	artifacts := drainArtifacts(ch)
@@ -1564,13 +1487,14 @@ func TestProviderInvoke_IncludeUsageFlag(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	_ = p.Invoke(t.Context(), mem, ch)
+	_ = p.Invoke(t.Context(), mem, spec, ch)
 	close(ch)
 	for range ch {
 	}
@@ -1598,13 +1522,14 @@ func TestProviderInvoke_PartialStreamError(t *testing.T) {
 		},
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	err = p.Invoke(t.Context(), mem, ch)
+	err = p.Invoke(t.Context(), mem, spec, ch)
 
 	// The channel should contain the partial artifact emitted before the error.
 	close(ch)
@@ -1638,19 +1563,20 @@ func TestProviderInvoke_HTTPTraceContext(t *testing.T) {
 			}
 
 			var opts []Option
-			opts = append(opts, WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+			opts = append(opts, WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 			if tt.withTracer {
 				opts = append(opts, WithTracer(trace.NewNoopTracerProvider().Tracer("test")))
 			}
 
 			p, err := New(opts...)
+			spec := models.Spec{Name: "gpt-4"}
 			require.NoError(t, err)
 
 			mem := &state.Buffer{}
 			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 			ch := make(chan artifact.Artifact, 10)
-			_ = p.Invoke(t.Context(), mem, ch)
+			_ = p.Invoke(t.Context(), mem, spec, ch)
 			close(ch)
 			for range ch {
 			}
@@ -1740,14 +1666,15 @@ func TestProviderInvoke_SpanLifecycle(t *testing.T) {
 				transport = &mockTransport{response: mockResponse(tt.statusCode, tt.response)}
 			}
 
-			p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)), WithTracer(tp.Tracer("test")))
+			p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)), WithTracer(tp.Tracer("test")))
+			spec := models.Spec{Name: "gpt-4"}
 			require.NoError(t, err)
 
 			mem := &state.Buffer{}
 			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 			ch := make(chan artifact.Artifact, 10)
-			err = p.Invoke(t.Context(), mem, ch)
+			err = p.Invoke(t.Context(), mem, spec, ch)
 			close(ch)
 			for range ch {
 			}
@@ -1776,14 +1703,15 @@ func TestProviderInvoke_HTTPTrace_Events(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(&http.Client{Transport: transport}), WithTracer(tp.Tracer("test")))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(&http.Client{Transport: transport}), WithTracer(tp.Tracer("test")))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	err = p.Invoke(t.Context(), mem, ch)
+	err = p.Invoke(t.Context(), mem, spec, ch)
 	require.NoError(t, err)
 	drainArtifacts(ch)
 
@@ -1802,14 +1730,15 @@ func TestProviderInvoke_WithoutSubSpans(t *testing.T) {
 		response: mockResponseSSE(simpleSSE("ok")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(&http.Client{Transport: transport}), WithTracer(tp.Tracer("test")))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(&http.Client{Transport: transport}), WithTracer(tp.Tracer("test")))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	err = p.Invoke(t.Context(), mem, ch)
+	err = p.Invoke(t.Context(), mem, spec, ch)
 	require.NoError(t, err)
 	drainArtifacts(ch)
 
@@ -1853,12 +1782,12 @@ func TestInvoke_WithSessionID(t *testing.T) {
 				responseBody: simpleSSE("ok"),
 			}
 
-			p, err := New(
-				WithAPIKey("test-key"),
-				WithModel("gpt-4"),
+			p, err := New(PIKey("test-key"),
+
 				WithBaseURL("https://api.openai.com/v1"),
 				WithHTTPClient(&http.Client{Transport: transport}),
 			)
+			spec := models.Spec{Name: "gpt-4"}
 			require.NoError(t, err)
 
 			mem := &state.Buffer{}
@@ -1869,7 +1798,7 @@ func TestInvoke_WithSessionID(t *testing.T) {
 			if tt.option != nil {
 				invokeOpts = append(invokeOpts, tt.option)
 			}
-			err = p.Invoke(t.Context(), mem, ch, invokeOpts...)
+			err = p.Invoke(t.Context(), mem, spec, ch, invokeOpts...)
 			require.NoError(t, err)
 			drainArtifacts(ch)
 
@@ -1929,12 +1858,12 @@ func TestInvoke_WithCacheControl(t *testing.T) {
 				responseBody: simpleSSE("ok"),
 			}
 
-			p, err := New(
-				WithAPIKey("test-key"),
-				WithModel("gpt-4"),
+			p, err := New(PIKey("test-key"),
+
 				WithBaseURL("https://openrouter.ai/api/v1"), // exercises the reasoning.include path too
 				WithHTTPClient(&http.Client{Transport: transport}),
 			)
+			spec := models.Spec{Name: "gpt-4"}
 			require.NoError(t, err)
 
 			mem := &state.Buffer{}
@@ -1950,7 +1879,7 @@ func TestInvoke_WithCacheControl(t *testing.T) {
 				invokeOpts = append(invokeOpts, tt.option)
 			}
 			ch := make(chan artifact.Artifact, 10)
-			require.NoError(t, p.Invoke(t.Context(), mem, ch, invokeOpts...))
+			require.NoError(t, p.Invoke(t.Context(), mem, spec, ch, invokeOpts...))
 			drainArtifacts(ch)
 
 			requests := transport.Requests()
@@ -2061,13 +1990,14 @@ func TestProviderInvoke_UsageChunkWithOpenAICache(t *testing.T) {
 		response: mockResponseSSE(openaiCacheReadSSE(100, 25, 125, 80)),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	artifacts := drainArtifacts(ch)
 
 	require.Len(t, artifacts, 1)
@@ -2089,13 +2019,14 @@ func TestProviderInvoke_UsageChunkWithAnthropicCache(t *testing.T) {
 		response: mockResponseSSE(anthropicCacheSSE(200, 50, 250, 120, 30)),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	artifacts := drainArtifacts(ch)
 
 	require.Len(t, artifacts, 1)
@@ -2118,13 +2049,14 @@ func TestProviderInvoke_UsageChunkNoCache(t *testing.T) {
 		response: mockResponseSSE(usageSSE(10, 5, 15)),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	artifacts := drainArtifacts(ch)
 
 	require.Len(t, artifacts, 1)
@@ -2174,13 +2106,14 @@ func TestProviderInvoke_EmitsStopReason_Stop(t *testing.T) {
 		response: mockResponseSSE(finishReasonSSE("Hello, world!", "stop")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 10)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	artifacts := drainArtifacts(ch)
 
 	// text_delta, stop_reason
@@ -2201,13 +2134,14 @@ func TestProviderInvoke_EmitsStopReason_Length(t *testing.T) {
 		response: mockResponseSSE(finishReasonWithUsageSSE("##", "length", 1, 1, 2)),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "summarize this"})
 
 	ch := make(chan artifact.Artifact, 10)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	artifacts := drainArtifacts(ch)
 
 	// text_delta, usage, stop_reason.
@@ -2239,13 +2173,14 @@ func TestProviderInvoke_EmitsStopReason_ToolCalls(t *testing.T) {
 		response: mockResponseSSE(toolCallBody),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "find something"})
 
 	ch := make(chan artifact.Artifact, 10)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	artifacts := drainArtifacts(ch)
 
 	// tool_call_delta, stop_reason
@@ -2266,13 +2201,14 @@ func TestProviderInvoke_EmitsStopReason_ContentFilter(t *testing.T) {
 		response: mockResponseSSE(finishReasonSSE("", "content_filter")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "do something dangerous"})
 
 	ch := make(chan artifact.Artifact, 10)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	artifacts := drainArtifacts(ch)
 
 	// No text_delta because the content was filtered; just stop_reason.
@@ -2300,13 +2236,14 @@ func TestProviderInvoke_StopReason_NotOverwrittenByNull(t *testing.T) {
 		response: mockResponseSSE(body),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 10)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	artifacts := drainArtifacts(ch)
 
 	require.Len(t, artifacts, 1)
@@ -2354,13 +2291,14 @@ func TestProviderInvoke_StreamsReasoning_FlatField(t *testing.T) {
 		response: mockResponseSSE(flatReasoningSSE("Let me analyze this...")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("deepseek/deepseek-r1"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "deepseek/deepseek-r1"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	artifacts := drainArtifacts(ch)
 
 	require.Len(t, artifacts, 1)
@@ -2377,13 +2315,14 @@ func TestProviderInvoke_StreamsReasoning_DetailsArray_Text(t *testing.T) {
 		response: mockResponseSSE(reasoningDetailsTextSSE("text-mode reasoning chunk")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("anthropic/claude-3.7-sonnet:thinking"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "anthropic/claude-3.7-sonnet:thinking"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	artifacts := drainArtifacts(ch)
 
 	require.Len(t, artifacts, 1)
@@ -2402,13 +2341,14 @@ func TestProviderInvoke_StreamsReasoning_DetailsArray_Encrypted(t *testing.T) {
 		response: mockResponseSSE(reasoningDetailsEncryptedSSE("opaque-encrypted-blob")),
 	}
 
-	p, err := New(WithAPIKey("test-key"), WithModel("anthropic/claude-3.7-sonnet:thinking"), WithHTTPClient(mockClient(transport)))
+	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
+	spec := models.Spec{Name: "anthropic/claude-3.7-sonnet:thinking"}
 	require.NoError(t, err)
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	artifacts := drainArtifacts(ch)
 
 	require.Len(t, artifacts, 1)
@@ -2435,12 +2375,12 @@ func TestProviderSerialize_ReplaysReasoning_OpenAINative(t *testing.T) {
 		responseBody: simpleSSE("ok"),
 	}
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("o3-mini"),
+	p, err := New(PIKey("test-key"),
+
 		WithBaseURL("https://api.openai.com/v1"),
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
+	spec := models.Spec{Name: "o3-mini"}
 	require.NoError(t, err)
 
 	// Two consecutive reasoning blocks (think, then more think) and
@@ -2457,7 +2397,7 @@ func TestProviderSerialize_ReplaysReasoning_OpenAINative(t *testing.T) {
 	)
 
 	ch := make(chan artifact.Artifact, 10)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	drainArtifacts(ch)
 
 	requests := transport.Requests()
@@ -2509,12 +2449,12 @@ func TestProviderSerialize_ReplaysReasoning_OpenRouter(t *testing.T) {
 		responseBody: simpleSSE("ok"),
 	}
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("anthropic/claude-3.7-sonnet:thinking"),
+	p, err := New(PIKey("test-key"),
+
 		WithBaseURL("https://openrouter.ai/api/v1"),
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
+	spec := models.Spec{Name: "anthropic/claude-3.7-sonnet:thinking"}
 	require.NoError(t, err)
 
 	mem := &state.Buffer{}
@@ -2527,7 +2467,7 @@ func TestProviderSerialize_ReplaysReasoning_OpenRouter(t *testing.T) {
 	)
 
 	ch := make(chan artifact.Artifact, 10)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	drainArtifacts(ch)
 
 	requests := transport.Requests()
@@ -2592,12 +2532,12 @@ func TestProviderSerialize_ComposesWithCacheControl(t *testing.T) {
 		responseBody: simpleSSE("ok"),
 	}
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("anthropic/claude-3.7-sonnet:thinking"),
+	p, err := New(PIKey("test-key"),
+
 		WithBaseURL("https://openrouter.ai/api/v1"),
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
+	spec := models.Spec{Name: "anthropic/claude-3.7-sonnet:thinking"}
 	require.NoError(t, err)
 
 	mem := &state.Buffer{}
@@ -2610,7 +2550,7 @@ func TestProviderSerialize_ComposesWithCacheControl(t *testing.T) {
 	mem.Append(state.RoleUser, artifact.Text{Content: "follow up"})
 
 	ch := make(chan artifact.Artifact, 10)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch,
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch,
 		WithCacheControl(),
 	))
 	drainArtifacts(ch)
