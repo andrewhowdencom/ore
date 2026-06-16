@@ -3,6 +3,7 @@ package anthropic
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/andrewhowdencom/ore/models"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/x/provider/retry"
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1698,4 +1700,41 @@ func (b *blockingTransport) RoundTrip(req *http.Request) (*http.Response, error)
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
 		Body:       io.NopCloser(strings.NewReader(sseEvent("message_stop", `{"type":"message_stop"}`))),
 	}, nil
+}
+
+// TestRetriableError_UnwrapsAndSatisfiesHTTPError verifies that an
+// anthropic.Error wrapped via wrapForRetry:
+//  1. Is reachable via errors.As(err, &anthropic.Error{}) so callers
+//     that introspect the SDK error still see the original value.
+//  2. Is reachable via errors.As(err, &retry.HTTPError) so the
+//     x/provider/retry default classifier can recognise 5xx/429.
+func TestRetriableError_UnwrapsAndSatisfiesHTTPError(t *testing.T) {
+	anth := &anthropic.Error{
+		StatusCode: 429,
+		Response: &http.Response{
+			StatusCode: 429,
+			Header:     http.Header{"Retry-After": []string{"2"}},
+		},
+	}
+	wrapped := wrapForRetry(anth)
+
+	var anthOut *anthropic.Error
+	require.True(t, errors.As(wrapped, &anthOut), "errors.As(err, &anthropic.Error{}) must resolve")
+	assert.Equal(t, 429, anthOut.StatusCode, "StatusCode on unwrapped anthropic.Error")
+
+	var he retry.HTTPError
+	require.True(t, errors.As(wrapped, &he), "errors.As(err, &retry.HTTPError) must resolve")
+	assert.Equal(t, 429, he.StatusCode(), "StatusCode() on retry.HTTPError")
+	assert.Equal(t, "2", he.Header().Get("Retry-After"), "Retry-After must be readable via Header()")
+}
+
+// TestRetriableError_PassesThroughNonSDKError verifies that an
+// arbitrary non-SDK error is returned unchanged by wrapForRetry.
+// This is the path callers take when the inner provider returns
+// a context cancellation, a transport error before any HTTP
+// response, or a non-API error surfaced through the SDK.
+func TestRetriableError_PassesThroughNonSDKError(t *testing.T) {
+	in := errors.New("plain error")
+	out := wrapForRetry(in)
+	assert.Same(t, in, out, "wrapForRetry must return non-SDK errors unchanged")
 }
