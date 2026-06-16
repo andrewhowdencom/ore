@@ -88,7 +88,7 @@ func TestModel_View_AssistantTurn_FallbackToPlainText(t *testing.T) {
 func TestModel_View_AssistantTurn_WithReasoning(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
 			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "the answer"},
@@ -112,7 +112,7 @@ func TestModel_View_AssistantTurn_WithReasoning(t *testing.T) {
 func TestModel_View_AssistantTurn_MultiBlockSpacing(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
 			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "let me think..."},
@@ -151,7 +151,7 @@ func TestModel_View_AssistantTurn_Reasoning_Rendered(t *testing.T) {
 	}
 	newM2, _ := mm.Update(turnMsg{turn: turn})
 	mm2 := newM2.(*model)
-	mm2.expandLatestDetails = true
+	mm2.expandAllDetails = true
 	mm2.contentDirty = true
 	mm2.syncViewport()
 	output := mm2.View().Content
@@ -203,7 +203,7 @@ func TestBuildContent_Reasoning_Expanded(t *testing.T) {
 			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "because 2+2=4", rendered: "rendered-reasoning"},
 		}},
 	}
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 	output := m.buildContent()
 	assert.Contains(t, output, "Assistant")
 	assert.NotContains(t, output, "· |s|")
@@ -213,7 +213,7 @@ func TestBuildContent_Reasoning_Expanded(t *testing.T) {
 	assert.NotContains(t, output, "Thinking...")
 }
 
-func TestBuildContent_Reasoning_OldTurn_AlwaysCompact(t *testing.T) {
+func TestBuildContent_Reasoning_ExpandAllDetails_GlobalScope(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
@@ -226,11 +226,18 @@ func TestBuildContent_Reasoning_OldTurn_AlwaysCompact(t *testing.T) {
 			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "latest reasoning", rendered: "latest-reasoning"},
 		}},
 	}
-	m.expandLatestDetails = true
+	// With global semantics, expandAllDetails = true must expand reasoning
+	// blocks in BOTH historical turns, not just the latest.
+	m.expandAllDetails = true
 	output := m.buildContent()
-	// The latest reasoning should be expanded
-	assert.Contains(t, output, "latest-reasoning")
-	// The old reasoning should stay compact
+	assert.Contains(t, output, "latest-reasoning", "latest turn's reasoning should be expanded")
+	assert.Contains(t, output, "first-reasoning", "historical turn's reasoning should be expanded under global scope")
+
+	// And with the flag off, neither should be expanded.
+	m.expandAllDetails = false
+	m.contentDirty = true
+	output = m.buildContent()
+	assert.NotContains(t, output, "latest-reasoning")
 	assert.NotContains(t, output, "first-reasoning")
 }
 
@@ -502,7 +509,7 @@ func TestRenderReasoning_ErrorFallback(t *testing.T) {
 	assert.Empty(t, mm2.turns[0].blocks[0].rendered, "render error should leave rendered empty")
 	assert.Equal(t, "let me think...", mm2.turns[0].blocks[0].source, "raw text should still be stored")
 
-	mm2.expandLatestDetails = true
+	mm2.expandAllDetails = true
 	mm2.contentDirty = true
 	mm2.syncViewport()
 	output := mm2.View().Content
@@ -698,13 +705,13 @@ func TestBuildContent_ExpandLatestTools_Toggle(t *testing.T) {
 	}
 
 	// Compact mode (default): blocks use borderless header styles.
-	m.expandLatestDetails = false
+	m.expandAllDetails = false
 	compactOutput := m.buildContent()
 	assert.Contains(t, compactOutput, "search_files")
 	assert.Contains(t, compactOutput, "result data")
 
 	// Expanded mode: shows full source content.
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 	m.contentDirty = true
 	expandedOutput := m.buildContent()
 	assert.Contains(t, expandedOutput, "Calling: search_files")
@@ -736,12 +743,12 @@ func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
 	}
 
 	// Compact mode: error block should be wrapped in the error style.
-	m.expandLatestDetails = false
+	m.expandAllDetails = false
 	output := m.buildContent()
 	assert.Contains(t, output, "Error: failed")
 
 	// Expanded mode: error block should be wrapped in the error style.
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 	m.contentDirty = true
 	output = m.buildContent()
 	assert.Contains(t, output, "Error: failed")
@@ -771,7 +778,7 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 	}
 
 	// Compact mode: blocks use borderless header styles.
-	m.expandLatestDetails = false
+	m.expandAllDetails = false
 	output := m.buildContent()
 	assert.Contains(t, output, "foo")
 	assert.Contains(t, output, "bar")
@@ -779,7 +786,7 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 	assert.Contains(t, output, "result2")
 
 	// Expanded mode: shows full source content.
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 	m.contentDirty = true
 	output = m.buildContent()
 	assert.Contains(t, output, "Calling: foo({})")
@@ -791,7 +798,7 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 func TestBuildContent_MixedBlocks(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 
 	// A single assistant turn can contain text, tool_call, and reasoning
 	// blocks interleaved. tool_result blocks belong in separate RoleTool turns.
@@ -856,7 +863,7 @@ func TestBuildContent_ToggleNoToolBlocks(t *testing.T) {
 	}
 
 	// Toggle on — no tool blocks, view should be unchanged
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 	output := m.buildContent()
 	assert.Contains(t, output, "Assistant")
 	assert.NotContains(t, output, "· |s|")
@@ -876,7 +883,7 @@ func TestBuildContent_CompactToolCall_BlockStyling(t *testing.T) {
 		},
 	}
 
-	m.expandLatestDetails = false
+	m.expandAllDetails = false
 	output := m.buildContent()
 	assert.Contains(t, output, "foo")
 }
@@ -919,7 +926,7 @@ func TestModel_View_IncrementalToolCall_CompactAndExpanded(t *testing.T) {
 	assert.Contains(t, output1, "foo") // compact content shown in styled block
 
 	// Toggle expanded.
-	mm.expandLatestDetails = true
+	mm.expandAllDetails = true
 	mm.contentDirty = true
 	mm.syncViewport()
 	output2 := mm.View().Content
@@ -943,7 +950,7 @@ func TestModel_View_IncrementalReasoning_ExpandCollapse(t *testing.T) {
 	assert.NotContains(t, output1, "rendered-reasoning")
 
 	// Toggle expanded.
-	mm.expandLatestDetails = true
+	mm.expandAllDetails = true
 	mm.contentDirty = true
 	mm.syncViewport()
 	output2 := mm.View().Content
@@ -953,7 +960,7 @@ func TestModel_View_IncrementalReasoning_ExpandCollapse(t *testing.T) {
 	assert.NotContains(t, output2, "Thinking...")
 
 	// Toggle collapsed again.
-	mm.expandLatestDetails = false
+	mm.expandAllDetails = false
 	mm.contentDirty = true
 	mm.syncViewport()
 	output3 := mm.View().Content
@@ -1002,7 +1009,7 @@ func TestBuildContent_CompletedReasoning_CharCount(t *testing.T) {
 func TestBuildContent_Reasoning_Expanded_NoCounter(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 	m.currentTurn.blocks = []renderedBlock{
 		{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "let me think...", rendered: "rendered-reasoning"},
 	}
