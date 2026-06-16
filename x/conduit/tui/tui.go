@@ -50,6 +50,7 @@ type TUI struct {
 	threadID       string
 	eventsCh       chan session.Event
 	program        *tea.Program
+	programOpts    []tea.ProgramOption
 	name           string
 	zoneFormatter  conduit.StatusFormatter
 	zonePriorities map[string]int
@@ -134,6 +135,19 @@ func WithTheme(th *theme.Theme) Option {
 	}
 }
 
+// WithProgramOptions appends Bubble Tea ProgramOption values that are
+// applied when Start constructs the underlying tea.Program. This is
+// primarily intended for tests that need to run the program in a
+// non-interactive environment (e.g. tea.WithoutRenderer,
+// tea.WithoutSignals). Calling this option multiple times accumulates
+// the supplied options in call order. Pass no arguments to clear any
+// previously-supplied options.
+func WithProgramOptions(opts ...tea.ProgramOption) Option {
+	return func(t *TUI) {
+		t.programOpts = append(t.programOpts, opts...)
+	}
+}
+
 // themeOrAuto returns the configured theme or, if none was supplied via
 // WithTheme, the result of theme.Auto() for the current terminal. It
 // caches the auto-detected theme on the TUI so the renderer and model
@@ -204,6 +218,13 @@ func (t *TUI) initModel(eventsCh chan session.Event, stream *session.Stream) mod
 
 	// Pre-populate the model with historical turns when resuming a thread.
 	m.loadHistory(stream.Turns())
+
+	// Resolve the status-bar seed up front. It is delivered via Init()'s
+	// tea.Cmd (not via a direct Send) so the message reaches the
+	// statusMsg handler through the normal channel after the event loop
+	// has started. statusFromStream returns nil if there is no metadata,
+	// which Init() also treats as a no-op.
+	m.initStatusMsg = statusFromStream(stream)
 	return m
 }
 
@@ -248,17 +269,9 @@ func (t *TUI) Start(ctx context.Context) error {
 
 	surfEventsCh := make(chan session.Event, 10)
 	m := t.initModel(surfEventsCh, stream)
-	p := tea.NewProgram(&m)
+	p := tea.NewProgram(&m, t.programOpts...)
 	t.eventsCh = surfEventsCh
 	t.program = p
-
-	// Seed the status bar from the stream's current metadata before the
-	// live-event goroutine starts. Default-metadata PropertiesEvents fire
-	// during mgr.Create / mgr.Attach, before we can subscribe, so without
-	// this seed the status bar would render empty on the first frame.
-	if msg := statusFromStream(stream); msg != nil {
-		t.program.Send(msg)
-	}
 
 	// Subscribe to the stream's output, including delta artifact kinds so
 	// the TUI can accumulate assistant content incrementally as each delta

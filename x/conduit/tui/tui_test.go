@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
@@ -73,6 +74,62 @@ func TestStart_AttachNotFound(t *testing.T) {
 	err = c.Start(ctx)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "nonexistent")
+}
+
+// TestStart_ReachesEventLoop pins a regression introduced by commit
+// cf88e66, where TUI.Start invoked t.program.Send before p.Run(),
+// blocking the main goroutine inside Program.Send and preventing the
+// Bubble Tea event loop from ever starting. The test asserts that
+// Start returns within a short window after the context is cancelled,
+// which is only possible if the event loop reached the ctx-cancellation
+// goroutine and called p.Quit().
+//
+// Setup notes:
+//   - WithDefaultMetadata populates the stream with metadata so the
+//     status-bar seed path is exercised. Without metadata, statusFromStream
+//     returns nil and the broken Send is never reached.
+//   - WithProgramOptions(tea.WithoutRenderer(), tea.WithoutSignals(),
+//     tea.WithInput(nil)) runs the Bubble Tea program in non-interactive
+//     mode so the test does not require a TTY (this environment has no
+//     /dev/tty). WithoutRenderer skips the output renderer; WithoutSignals
+//     suppresses OS signal handling; WithInput(nil) disables input,
+//     which is what prevents Bubble Tea from trying to open /dev/tty for
+//     a fallback input reader when os.Stdin is not a terminal.
+//
+// This is a liveness test, not a correctness test: it does not inspect
+// the model's status. The seed-wiring correctness is covered by
+// TestInitModel_SeedsStatusFromStream and TestInit_DispatchesSeedCmd.
+func TestStart_ReachesEventLoop(t *testing.T) {
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(),
+		session.WithDefaultMetadata(func(*session.Stream) map[string]string {
+			return map[string]string{
+				"thread_id":  "test-thread",
+				"cwd":        "/tmp",
+				"git_branch": "main",
+				"tui.pid":    "9999",
+			}
+		}),
+	)
+
+	c, err := New(mgr, WithProgramOptions(tea.WithoutRenderer(), tea.WithoutSignals(), tea.WithInput(nil)))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- c.Start(ctx) }()
+
+	cancel()
+	select {
+	case err := <-done:
+		require.NoError(t, err, "Start should return cleanly when context is cancelled")
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start did not return within 2s after context cancellation; " +
+			"the Bubble Tea event loop likely never started")
+	}
 }
 
 func TestNew_WithName(t *testing.T) {
@@ -207,5 +264,110 @@ func TestStatusFromStream(t *testing.T) {
 		assert.Equal(t, "abc", second.status["thread_id"])
 		_, leaked := second.status["injected"]
 		assert.False(t, leaked)
+	})
+}
+
+// TestInitModel_SeedsStatusFromStream asserts that initModel populates
+// the model's initStatusMsg field from the stream's current metadata.
+// Init() will later yield this message as a tea.Cmd so the existing
+// statusMsg handler can merge it into m.status through the normal
+// message channel after the event loop has started. The test exercises
+// both the populated-metadata and empty-metadata branches of
+// statusFromStream.
+func TestInitModel_SeedsStatusFromStream(t *testing.T) {
+	t.Run("populates initStatusMsg with a statusMsg carrying the stream's metadata", func(t *testing.T) {
+		store := session.NewMemoryStore()
+		prov := &mockProvider{}
+		mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(),
+			session.WithDefaultMetadata(func(*session.Stream) map[string]string {
+				return map[string]string{
+					"thread_id": "abc-123",
+					"cwd":       "/tmp/ore",
+				}
+			}),
+		)
+
+		stream, err := mgr.Create()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = stream.Close() })
+
+		tui := &TUI{mgr: mgr, name: "test"}
+		eventsCh := make(chan session.Event, 10)
+		m := tui.initModel(eventsCh, stream)
+
+		require.NotNil(t, m.initStatusMsg, "initModel must seed initStatusMsg when metadata is present")
+		sm, ok := m.initStatusMsg.(statusMsg)
+		require.True(t, ok, "expected a statusMsg, got %T", m.initStatusMsg)
+		assert.Equal(t, "abc-123", sm.status["thread_id"])
+		assert.Equal(t, "/tmp/ore", sm.status["cwd"])
+	})
+
+	t.Run("leaves initStatusMsg nil when the stream has no metadata", func(t *testing.T) {
+		store := session.NewMemoryStore()
+		prov := &mockProvider{}
+		mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+		stream, err := mgr.Create()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = stream.Close() })
+
+		tui := &TUI{mgr: mgr, name: "test"}
+		eventsCh := make(chan session.Event, 10)
+		m := tui.initModel(eventsCh, stream)
+
+		assert.Nil(t, m.initStatusMsg, "initModel must leave initStatusMsg nil when there is no metadata")
+	})
+}
+
+// TestInit_DispatchesSeedCmd asserts that m.Init() returns a tea.Cmd
+// that yields the seed statusMsg, and returns nil when no seed is
+// present. This is the wiring that routes the status-bar seed through
+// the event loop's normal message channel — replacing the previous
+// (broken) t.program.Send call in Start that ran before p.Run().
+func TestInit_DispatchesSeedCmd(t *testing.T) {
+	t.Run("returns a Cmd that yields the seed statusMsg", func(t *testing.T) {
+		store := session.NewMemoryStore()
+		prov := &mockProvider{}
+		mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(),
+			session.WithDefaultMetadata(func(*session.Stream) map[string]string {
+				return map[string]string{
+					"thread_id": "abc-123",
+					"cwd":       "/tmp/ore",
+				}
+			}),
+		)
+
+		stream, err := mgr.Create()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = stream.Close() })
+
+		tui := &TUI{mgr: mgr, name: "test"}
+		eventsCh := make(chan session.Event, 10)
+		m := tui.initModel(eventsCh, stream)
+
+		cmd := m.Init()
+		require.NotNil(t, cmd, "Init must return a non-nil Cmd when a seed is present")
+
+		msg := cmd()
+		sm, ok := msg.(statusMsg)
+		require.True(t, ok, "the Cmd must yield a statusMsg, got %T", msg)
+		assert.Equal(t, "abc-123", sm.status["thread_id"])
+		assert.Equal(t, "/tmp/ore", sm.status["cwd"])
+	})
+
+	t.Run("returns nil when no seed is present", func(t *testing.T) {
+		store := session.NewMemoryStore()
+		prov := &mockProvider{}
+		mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+		stream, err := mgr.Create()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = stream.Close() })
+
+		tui := &TUI{mgr: mgr, name: "test"}
+		eventsCh := make(chan session.Event, 10)
+		m := tui.initModel(eventsCh, stream)
+
+		assert.Nil(t, m.Init(), "Init must return nil when no seed is present")
 	})
 }
