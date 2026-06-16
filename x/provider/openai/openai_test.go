@@ -675,16 +675,16 @@ func TestProviderInvoke_WithReasoningEffort(t *testing.T) {
 	// (forward compatibility).
 	tests := []struct {
 		name      string
-		level     provider.ThinkingLevel
+		level     models.ThinkingLevel
 		wantField string // expected value of reasoning_effort, "" means absent
 		hasOption bool   // whether to pass the WithThinkingLevel option
 	}{
-		{"low produces low", provider.ThinkingLevelLow, "low", true},
-		{"medium produces medium", provider.ThinkingLevelMedium, "medium", true},
-		{"high produces high", provider.ThinkingLevelHigh, "high", true},
-		{"minimal clamps to low", provider.ThinkingLevelMinimal, "low", true},
-		{"max clamps to high", provider.ThinkingLevelMax, "high", true},
-		{"off omits the field", provider.ThinkingLevelOff, "", true},
+		{"low produces low", models.ThinkingLevelLow, "low", true},
+		{"medium produces medium", models.ThinkingLevelMedium, "medium", true},
+		{"high produces high", models.ThinkingLevelHigh, "high", true},
+		{"minimal clamps to low", models.ThinkingLevelMinimal, "low", true},
+		{"max clamps to high", models.ThinkingLevelMax, "high", true},
+		{"off omits the field", models.ThinkingLevelOff, "", true},
 		{"empty omits the field", "", "", true},
 		{"absent when not provided", "", "", false},
 		{"unknown level is treated as off", "frobnicate", "", true},
@@ -732,15 +732,15 @@ func TestTranslateThinkingLevel(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		level provider.ThinkingLevel
+		level models.ThinkingLevel
 		want  string
 	}{
-		{provider.ThinkingLevelOff, ""},
-		{provider.ThinkingLevelMinimal, "low"},
-		{provider.ThinkingLevelLow, "low"},
-		{provider.ThinkingLevelMedium, "medium"},
-		{provider.ThinkingLevelHigh, "high"},
-		{provider.ThinkingLevelMax, "high"},
+		{models.ThinkingLevelOff, ""},
+		{models.ThinkingLevelMinimal, "low"},
+		{models.ThinkingLevelLow, "low"},
+		{models.ThinkingLevelMedium, "medium"},
+		{models.ThinkingLevelHigh, "high"},
+		{models.ThinkingLevelMax, "high"},
 		{"", ""},
 		{"unknown", ""},
 	}
@@ -1782,7 +1782,7 @@ func TestInvoke_WithSessionID(t *testing.T) {
 				responseBody: simpleSSE("ok"),
 			}
 
-			p, err := New(PIKey("test-key"),
+			p, err := New(WithAPIKey("test-key"),
 
 				WithBaseURL("https://api.openai.com/v1"),
 				WithHTTPClient(&http.Client{Transport: transport}),
@@ -1858,7 +1858,7 @@ func TestInvoke_WithCacheControl(t *testing.T) {
 				responseBody: simpleSSE("ok"),
 			}
 
-			p, err := New(PIKey("test-key"),
+			p, err := New(WithAPIKey("test-key"),
 
 				WithBaseURL("https://openrouter.ai/api/v1"), // exercises the reasoning.include path too
 				WithHTTPClient(&http.Client{Transport: transport}),
@@ -2375,7 +2375,7 @@ func TestProviderSerialize_ReplaysReasoning_OpenAINative(t *testing.T) {
 		responseBody: simpleSSE("ok"),
 	}
 
-	p, err := New(PIKey("test-key"),
+	p, err := New(WithAPIKey("test-key"),
 
 		WithBaseURL("https://api.openai.com/v1"),
 		WithHTTPClient(&http.Client{Transport: transport}),
@@ -2449,7 +2449,7 @@ func TestProviderSerialize_ReplaysReasoning_OpenRouter(t *testing.T) {
 		responseBody: simpleSSE("ok"),
 	}
 
-	p, err := New(PIKey("test-key"),
+	p, err := New(WithAPIKey("test-key"),
 
 		WithBaseURL("https://openrouter.ai/api/v1"),
 		WithHTTPClient(&http.Client{Transport: transport}),
@@ -2532,7 +2532,7 @@ func TestProviderSerialize_ComposesWithCacheControl(t *testing.T) {
 		responseBody: simpleSSE("ok"),
 	}
 
-	p, err := New(PIKey("test-key"),
+	p, err := New(WithAPIKey("test-key"),
 
 		WithBaseURL("https://openrouter.ai/api/v1"),
 		WithHTTPClient(&http.Client{Transport: transport}),
