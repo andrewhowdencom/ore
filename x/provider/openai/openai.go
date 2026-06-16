@@ -46,6 +46,13 @@ type Provider struct {
 	// signal that drives includeReasoning, so the read- and write-sides
 	// are guaranteed to agree.
 	isOpenRouter bool
+	// nameResolver translates the canonical [models.Spec.Name]
+	// into the wire name understood by the upstream host. Set from
+	// [WithNameResolver] at construction; defaults to identity.
+	// The resolver is invoked once per [Provider.Invoke] on the
+	// effective model. See [WithNameResolver] for the extension
+	// contract.
+	nameResolver func(string) string
 }
 
 // WithTools returns an InvokeOption that configures the set of available tools
@@ -207,6 +214,46 @@ type config struct {
 	httpClient       option.HTTPClient
 	tracer           trace.Tracer
 	reasoningInclude *bool
+	// nameResolver translates the canonical [models.Spec.Name] into
+	// the wire name understood by the upstream host. It is invoked
+	// once per [Provider.Invoke] on the effective model. The default
+	// is identity: the spec name is forwarded verbatim. The option
+	// is the extension point for gateways (OpenRouter, Vercel,
+	// etc.) that need to map canonical names to their own
+	// vendor-specific identifiers.
+	nameResolver func(string) string
+}
+
+// identityNameResolver is the default name resolver: it forwards
+// the canonical spec name unchanged. Captured as a package-level
+// var so callers can compare against the default via pointer
+// equality when they need to detect "no resolver configured" at
+// runtime.
+var identityNameResolver = func(canonical string) string { return canonical }
+
+// WithNameResolver sets a function that translates the canonical
+// [models.Spec.Name] into the wire name understood by the upstream
+// host. It is invoked once per Invoke on the effective model. The
+// default is identity: the spec name is forwarded verbatim.
+//
+// Gateways (OpenRouter, Vercel, MiniMax, …) supply a resolver that
+// maps the upstream-primary's name (e.g. "claude-opus-4-5") to the
+// gateway's vendor-specific identifier. The resolver is also the
+// extension point for any application that needs a custom mapping.
+//
+// A nil resolver is treated as identity. An empty canonical name
+// is not passed to the resolver: the caller has already enforced
+// spec.Name != "" before resolution, and a zero return is forwarded
+// as the model name (the wire layer will reject the empty string
+// if the host is strict about it).
+func WithNameResolver(r func(canonical string) string) Option {
+	return func(c *config) {
+		if r == nil {
+			c.nameResolver = identityNameResolver
+			return
+		}
+		c.nameResolver = r
+	}
 }
 
 // Option configures a Provider via the functional options pattern.
@@ -243,7 +290,10 @@ func WithTracer(tracer trace.Tracer) Option {
 
 // New creates an OpenAI-compatible provider. The model identity is
 // supplied per-call via the [models.Spec] argument to [Provider.Invoke];
-// there is no constructor option for it.
+// there is no constructor option for it. The [WithNameResolver]
+// option configures how the canonical spec name is translated to
+// the wire name understood by the configured host. The default is
+// identity: the spec name is forwarded unchanged.
 func New(opts ...Option) (*Provider, error) {
 	cfg := &config{}
 	for _, opt := range opts {
@@ -252,6 +302,13 @@ func New(opts ...Option) (*Provider, error) {
 
 	if cfg.apiKey == "" {
 		return nil, fmt.Errorf("missing required option: apiKey")
+	}
+
+	// Default to identity resolution. WithNameResolver already
+	// guards against nil resolvers, but the zero-value config
+	// (no WithNameResolver supplied) still needs a default.
+	if cfg.nameResolver == nil {
+		cfg.nameResolver = identityNameResolver
 	}
 
 	sdkOpts := []option.RequestOption{option.WithAPIKey(cfg.apiKey)}
@@ -267,6 +324,7 @@ func New(opts ...Option) (*Provider, error) {
 		tracer:           cfg.tracer,
 		includeReasoning: wantsReasoningInclude(cfg),
 		isOpenRouter:     isOpenRouter(cfg.baseURL),
+		nameResolver:     cfg.nameResolver,
 	}, nil
 }
 
@@ -509,6 +567,9 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, spec models.Spec, 
 		return fmt.Errorf("openai: spec.Name is empty; model identity is required")
 	}
 	effectiveModel := spec.Name
+	if p.nameResolver != nil {
+		effectiveModel = p.nameResolver(spec.Name)
+	}
 
 	if p.tracer != nil {
 		span.SetAttributes(attribute.String("model", effectiveModel))

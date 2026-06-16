@@ -44,6 +44,13 @@ type Provider struct {
 	// construction from the configured base URL so the auth header
 	// cannot drift between turns of the same Provider.
 	isOpenRouter bool
+	// nameResolver translates the canonical [models.Spec.Name]
+	// into the wire name understood by the upstream host. Set from
+	// [WithNameResolver] at construction; defaults to identity.
+	// The resolver is invoked once per [Provider.Invoke] on the
+	// effective model. See [WithNameResolver] for the extension
+	// contract.
+	nameResolver func(string) string
 }
 
 // WithTools returns an InvokeOption that configures the set of available tools
@@ -245,10 +252,50 @@ type config struct {
 	baseURL    string
 	httpClient option.HTTPClient
 	tracer     trace.Tracer
+	// nameResolver translates the canonical [models.Spec.Name] into
+	// the wire name understood by the upstream host. It is invoked
+	// once per [Provider.Invoke] on the effective model. The default
+	// is identity: the spec name is forwarded verbatim. The option
+	// is the extension point for gateways (OpenRouter, Vercel,
+	// etc.) that need to map canonical names to their own
+	// vendor-specific identifiers.
+	nameResolver func(string) string
 }
 
 // Option configures a Provider via the functional options pattern.
 type Option func(*config)
+
+// identityNameResolver is the default name resolver: it forwards
+// the canonical spec name unchanged. Captured as a package-level
+// var so callers can compare against the default via pointer
+// equality when they need to detect "no resolver configured" at
+// runtime.
+var identityNameResolver = func(canonical string) string { return canonical }
+
+// WithNameResolver sets a function that translates the canonical
+// [models.Spec.Name] into the wire name understood by the upstream
+// host. It is invoked once per Invoke on the effective model. The
+// default is identity: the spec name is forwarded verbatim.
+//
+// Gateways (OpenRouter, Vercel, MiniMax, …) supply a resolver that
+// maps the upstream-primary's name (e.g. "claude-opus-4-5") to the
+// gateway's vendor-specific identifier. The resolver is also the
+// extension point for any application that needs a custom mapping.
+//
+// A nil resolver is treated as identity. An empty canonical name
+// is not passed to the resolver: the caller has already enforced
+// spec.Name != "" before resolution, and a zero return is forwarded
+// as the model name (the wire layer will reject the empty string
+// if the host is strict about it).
+func WithNameResolver(r func(canonical string) string) Option {
+	return func(c *config) {
+		if r == nil {
+			c.nameResolver = identityNameResolver
+			return
+		}
+		c.nameResolver = r
+	}
+}
 
 // WithAPIKey sets the API key for the Anthropic-compatible provider. The key
 // is interpreted as an Anthropic native key when the configured base URL is
@@ -299,7 +346,10 @@ func WithTracer(tracer trace.Tracer) Option {
 //
 // The model identity is supplied per-call via the [models.Spec]
 // argument to [Provider.Invoke]; there is no constructor option for
-// it.
+// it. The [WithNameResolver] option configures how the canonical
+// spec name is translated to the wire name understood by the
+// configured host. The default is identity: the spec name is
+// forwarded unchanged.
 func New(opts ...Option) (*Provider, error) {
 	cfg := &config{}
 	for _, opt := range opts {
@@ -310,12 +360,20 @@ func New(opts ...Option) (*Provider, error) {
 		return nil, fmt.Errorf("missing required option: apiKey")
 	}
 
+	// Default to identity resolution. WithNameResolver already
+	// guards against nil resolvers, but the zero-value config
+	// (no WithNameResolver supplied) still needs a default.
+	if cfg.nameResolver == nil {
+		cfg.nameResolver = identityNameResolver
+	}
+
 	sdkOpts := buildSDKOptions(cfg)
 
 	return &Provider{
 		client:       anthropic.NewClient(sdkOpts...),
 		tracer:       cfg.tracer,
 		isOpenRouter: isOpenRouter(cfg.baseURL),
+		nameResolver: cfg.nameResolver,
 	}, nil
 }
 
@@ -396,6 +454,9 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, spec models.Spec, 
 		inv.thinkingLevelSet = true
 	}
 	effectiveModel := spec.Name
+	if p.nameResolver != nil {
+		effectiveModel = p.nameResolver(spec.Name)
+	}
 
 	if span != nil {
 		span.SetAttributes(attribute.String("model", effectiveModel))
