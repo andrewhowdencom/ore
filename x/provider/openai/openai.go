@@ -5,7 +5,9 @@ package openai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"net/http/httptrace"
 	"strconv"
 	"strings"
@@ -16,6 +18,7 @@ import (
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/tool"
+	"github.com/andrewhowdencom/ore/x/provider/retry"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/packages/param"
@@ -719,7 +722,7 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, spec models.Spec, 
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 		}
-		return fmt.Errorf("streaming chat completion: %w", err)
+		return fmt.Errorf("streaming chat completion: %w", wrapForRetry(err))
 	}
 
 	// Emit the buffered StopReason, if any. This is unconditional
@@ -1099,3 +1102,51 @@ func applyCacheControl(messages []openai.ChatCompletionMessageParamUnion, tools 
 
 	return mutatedMessages, mutatedTools, nil
 }
+
+// retriableError wraps an *openai.Error so the retry decorator can
+// recognise 5xx/429 responses via the retry.HTTPError interface
+// without depending on the SDK directly. It preserves the original
+// error chain via Unwrap, so existing code that does
+// errors.As(err, &openai.Error{}) still works.
+//
+// The wrapped value is a pointer because apierror.Error's
+// methods (including Error) are defined on the pointer receiver;
+// a value of openai.Error does not implement the error interface.
+type retriableError struct {
+	inner *openai.Error
+}
+
+func (e *retriableError) Error() string {
+	return e.inner.Error()
+}
+
+func (e *retriableError) StatusCode() int {
+	return e.inner.StatusCode
+}
+
+func (e *retriableError) Header() http.Header {
+	if e.inner.Response == nil {
+		return nil
+	}
+	return e.inner.Response.Header
+}
+
+func (e *retriableError) Unwrap() error {
+	return e.inner
+}
+
+// wrapForRetry converts an SDK error into one that implements
+// retry.HTTPError. Non-HTTP errors (and errors that are not
+// *openai.Error) are returned unchanged. The returned error
+// preserves the original chain so that errors.As(err, &openai.Error{})
+// continues to resolve downstream.
+func wrapForRetry(err error) error {
+	var oaiErr *openai.Error
+	if errors.As(err, &oaiErr) {
+		return &retriableError{inner: oaiErr}
+	}
+	return err
+}
+
+// Compile-time assertion that *retriableError satisfies retry.HTTPError.
+var _ retry.HTTPError = (*retriableError)(nil)

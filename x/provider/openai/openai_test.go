@@ -18,8 +18,10 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/x/provider/retry"
 	toolpkg "github.com/andrewhowdencom/ore/tool"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
+	"github.com/openai/openai-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/codes"
@@ -2593,4 +2595,41 @@ func TestProviderSerialize_ComposesWithCacheControl(t *testing.T) {
 	first := details[0].(map[string]any)
 	assert.Equal(t, "reasoning.text", first["type"])
 	assert.Equal(t, "thinking", first["text"])
+}
+
+// TestRetriableError_UnwrapsAndSatisfiesHTTPError verifies that an
+// openai.Error wrapped via wrapForRetry:
+//  1. Is reachable via errors.As(err, &openai.Error{}) so callers
+//     that introspect the SDK error still see the original value.
+//  2. Is reachable via errors.As(err, &retry.HTTPError) so the
+//     x/provider/retry default classifier can recognise 5xx/429.
+func TestRetriableError_UnwrapsAndSatisfiesHTTPError(t *testing.T) {
+	oai := &openai.Error{
+		StatusCode: 503,
+		Response: &http.Response{
+			StatusCode: 503,
+			Header:     http.Header{"Retry-After": []string{"1"}},
+		},
+	}
+	wrapped := wrapForRetry(oai)
+
+	var oaiOut *openai.Error
+	require.True(t, errors.As(wrapped, &oaiOut), "errors.As(err, &openai.Error{}) must resolve")
+	assert.Equal(t, 503, oaiOut.StatusCode, "StatusCode on unwrapped openai.Error")
+
+	var he retry.HTTPError
+	require.True(t, errors.As(wrapped, &he), "errors.As(err, &retry.HTTPError) must resolve")
+	assert.Equal(t, 503, he.StatusCode(), "StatusCode() on retry.HTTPError")
+	assert.Equal(t, "1", he.Header().Get("Retry-After"), "Retry-After must be readable via Header()")
+}
+
+// TestRetriableError_PassesThroughNonSDKError verifies that an
+// arbitrary non-SDK error is returned unchanged by wrapForRetry.
+// This is the path callers take when the inner provider returns
+// a context cancellation, a transport error before any HTTP
+// response, or a non-API error surfaced through the SDK.
+func TestRetriableError_PassesThroughNonSDKError(t *testing.T) {
+	in := errors.New("plain error")
+	out := wrapForRetry(in)
+	assert.Same(t, in, out, "wrapForRetry must return non-SDK errors unchanged")
 }
