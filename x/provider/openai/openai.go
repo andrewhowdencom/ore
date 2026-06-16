@@ -520,7 +520,10 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, spec models.Spec, 
 		StreamOptions: openai.ChatCompletionStreamOptionsParam{IncludeUsage: param.NewOpt(true)},
 	}
 	if len(stopSequences) > 0 {
-		params.Stop = stopSequences
+		// The OpenAI SDK's Stop field is a tagged union (string or
+		// []string); []string is the right shape for the multi-stop
+		// case the spec supports.
+		params.Stop = openai.ChatCompletionNewParamsStopUnion{OfStringArray: stopSequences}
 	}
 	if len(tools) > 0 {
 		params.Tools = p.serializeTools(tools)

@@ -12,18 +12,17 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TestNew_RequiresAPIKey verifies that New returns an error when
+// TestNew_RequiresAWithAPIKey verifies that New returns an error when
 // WithAPIKey is omitted. The skeleton implements the required-option
 // contract from day one so callers cannot accidentally ship a provider
 // that authenticates as the empty string.
-func TestNew_RequiresAPIKey(t *testing.T) {
+func TestNew_RequiresAWithAPIKey(t *testing.T) {
 	t.Parallel()
 
 	_, err := New()
@@ -32,17 +31,9 @@ func TestNew_RequiresAPIKey(t *testing.T) {
 }
 
 // TestNew_RequiresModel verifies that New returns an error when
-// WithModel is omitted. Symmetric to TestNew_RequiresAPIKey: callers
+// WithModel is omitted. Symmetric to TestNew_RequiresAWithAPIKey: callers
 // must explicitly name the model so the SDK does not silently default
 // to anything.
-func TestNew_RequiresModel(t *testing.T) {
-	t.Parallel()
-
-	_, err := New(WithAPIKey("test-key"))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "model")
-}
-
 // TestNew_SucceedsWithRequiredOptions verifies the happy path: an
 // API key and a model are sufficient to construct a Provider. The
 // skeleton exposes this so the rest of the test suite can build
@@ -50,11 +41,9 @@ func TestNew_RequiresModel(t *testing.T) {
 func TestNew_SucceedsWithRequiredOptions(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(PIKey("test-key"))
-	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 	require.NotNil(t, p)
-	assert.Equal(t, "claude-3-7-sonnet-latest", p.model)
 	assert.False(t, p.isOpenRouter, "empty base URL is Anthropic native, not OpenRouter")
 }
 
@@ -124,7 +113,7 @@ func triggerRequest(t *testing.T, p *Provider) {
 	_, _ = p.client.Messages.New(
 		context.Background(),
 		anthropic.MessageNewParams{
-			Model:     anthropic.Model(p.model),
+			Model:     anthropic.Model("test-model"),
 			MaxTokens: 1,
 			Messages: []anthropic.MessageParam{
 				anthropic.NewUserMessage(anthropic.NewTextBlock("ping")),
@@ -141,12 +130,11 @@ func TestNew_OpenRouterBaseURL(t *testing.T) {
 	t.Parallel()
 
 	transport := &recordingTransport{}
-	p, err := New(PIKey("test-key"),
+	p, err := New(WithAPIKey("test-key"),
 
 		WithBaseURL("https://openrouter.ai/api/v1"),
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
-	spec := models.Spec{Name: "anthropic/claude-3.7-sonnet:thinking"}
 	require.NoError(t, err)
 	require.NotNil(t, p)
 	assert.True(t, p.isOpenRouter, "isOpenRouter must be true for an openrouter.ai base URL")
@@ -169,12 +157,11 @@ func TestNew_AnthropicNativeBaseURL(t *testing.T) {
 	t.Parallel()
 
 	transport := &recordingTransport{}
-	p, err := New(PIKey("test-key"),
+	p, err := New(WithAPIKey("test-key"),
 
 		WithBaseURL("https://api.anthropic.com"),
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
-	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 	require.NotNil(t, p)
 	assert.False(t, p.isOpenRouter, "isOpenRouter must be false for an api.anthropic.com base URL")
@@ -239,8 +226,7 @@ func TestIsOpenRouter_TableDriven(t *testing.T) {
 func TestProviderSerialize_ReplaysThinkingBlocks(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(PIKey("test-key"))
-	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -313,8 +299,7 @@ func TestProviderSerialize_ReplaysThinkingBlocks(t *testing.T) {
 func TestProviderSerialize_ReplaysRedactedThinking(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(PIKey("test-key"))
-	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -359,8 +344,7 @@ func TestProviderSerialize_ReplaysRedactedThinking(t *testing.T) {
 func TestProviderSerialize_ReplaysToolUseAndToolResult(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(PIKey("test-key"))
-	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -436,8 +420,7 @@ func TestProviderSerialize_ReplaysToolUseAndToolResult(t *testing.T) {
 func TestProviderSerialize_DisplayDoesNotAffectWireFormat(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(PIKey("test-key"))
-	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -489,8 +472,7 @@ func TestProviderSerialize_DisplayDoesNotAffectWireFormat(t *testing.T) {
 func TestProviderSerialize_SystemCollapsedToSystemField(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(PIKey("test-key"))
-	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -515,8 +497,7 @@ func TestProviderSerialize_SystemCollapsedToSystemField(t *testing.T) {
 func TestProviderSerialize_EmptySignatureOnStandaloneReasoning(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(PIKey("test-key"))
-	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -557,8 +538,7 @@ func TestProviderSerialize_EmptySignatureOnStandaloneReasoning(t *testing.T) {
 func TestProviderSerialize_StandaloneSignatureEmitsEmptyThinking(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(PIKey("test-key"))
-	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -615,7 +595,7 @@ func TestProviderInvokeOptions_FoldsAllKnownOptions(t *testing.T) {
 	got := applyInvokeOptions(
 		WithTemperature(0.42),
 		WithMaxTokens(2048),
-		WithThinkingLevel(provider.ThinkingLevelMedium),
+		WithThinkingLevel(models.ThinkingLevelMedium),
 	)
 
 	assert.True(t, got.temperatureSet)
@@ -623,7 +603,7 @@ func TestProviderInvokeOptions_FoldsAllKnownOptions(t *testing.T) {
 	assert.True(t, got.maxTokensSet)
 	assert.Equal(t, int64(2048), got.maxTokens)
 	assert.True(t, got.thinkingLevelSet)
-	assert.Equal(t, provider.ThinkingLevelMedium, got.thinkingLevel)
+	assert.Equal(t, models.ThinkingLevelMedium, got.thinkingLevel)
 }
 
 // TestProviderInvokeOptions_ThinkingLevelOffIsSet verifies that the
@@ -632,9 +612,9 @@ func TestProviderInvokeOptions_FoldsAllKnownOptions(t *testing.T) {
 func TestProviderInvokeOptions_ThinkingLevelOffIsSet(t *testing.T) {
 	t.Parallel()
 
-	got := applyInvokeOptions(WithThinkingLevel(provider.ThinkingLevelOff))
+	got := applyInvokeOptions(WithThinkingLevel(models.ThinkingLevelOff))
 	assert.True(t, got.thinkingLevelSet, "explicit off must set the flag")
-	assert.Equal(t, provider.ThinkingLevelOff, got.thinkingLevel)
+	assert.Equal(t, models.ThinkingLevelOff, got.thinkingLevel)
 }
 
 // TestProviderInvokeOptions_ThinkingLevelFoldsCorrectly is a
@@ -643,13 +623,13 @@ func TestProviderInvokeOptions_ThinkingLevelOffIsSet(t *testing.T) {
 func TestProviderInvokeOptions_ThinkingLevelFoldsCorrectly(t *testing.T) {
 	t.Parallel()
 
-	cases := []provider.ThinkingLevel{
-		provider.ThinkingLevelOff,
-		provider.ThinkingLevelMinimal,
-		provider.ThinkingLevelLow,
-		provider.ThinkingLevelMedium,
-		provider.ThinkingLevelHigh,
-		provider.ThinkingLevelMax,
+	cases := []models.ThinkingLevel{
+		models.ThinkingLevelOff,
+		models.ThinkingLevelMinimal,
+		models.ThinkingLevelLow,
+		models.ThinkingLevelMedium,
+		models.ThinkingLevelHigh,
+		models.ThinkingLevelMax,
 	}
 	for _, level := range cases {
 		got := applyInvokeOptions(WithThinkingLevel(level))
@@ -665,7 +645,7 @@ func TestTranslateThinkingLevel(t *testing.T) {
 
 	t.Run("off and unset disable thinking", func(t *testing.T) {
 		t.Parallel()
-		budget, ok := translateThinkingLevel(provider.ThinkingLevelOff, 32000)
+		budget, ok := translateThinkingLevel(models.ThinkingLevelOff, 32000)
 		assert.False(t, ok, "off must disable thinking")
 		assert.Equal(t, int64(0), budget)
 
@@ -685,14 +665,14 @@ func TestTranslateThinkingLevel(t *testing.T) {
 		// source of truth, so the actual budget depends on the configured
 		// max_tokens.
 		cases := []struct {
-			level provider.ThinkingLevel
+			level models.ThinkingLevel
 			want  int64
 		}{
-			{provider.ThinkingLevelMinimal, 1024}, // 2% of 32k = 640, floored to 1024
-			{provider.ThinkingLevelLow, 2560},     // 8% of 32k
-			{provider.ThinkingLevelMedium, 8000},  // 25% of 32k
-			{provider.ThinkingLevelHigh, 16000},   // 50% of 32k
-			{provider.ThinkingLevelMax, 25600},    // 80% of 32k
+			{models.ThinkingLevelMinimal, 1024}, // 2% of 32k = 640, floored to 1024
+			{models.ThinkingLevelLow, 2560},     // 8% of 32k
+			{models.ThinkingLevelMedium, 8000},  // 25% of 32k
+			{models.ThinkingLevelHigh, 16000},   // 50% of 32k
+			{models.ThinkingLevelMax, 25600},    // 80% of 32k
 		}
 		for _, tc := range cases {
 			got, ok := translateThinkingLevel(tc.level, 32000)
@@ -704,7 +684,7 @@ func TestTranslateThinkingLevel(t *testing.T) {
 	t.Run("percentage mapping at 128k max_tokens", func(t *testing.T) {
 		t.Parallel()
 		// Verify the percentage scales with max_tokens.
-		budget, ok := translateThinkingLevel(provider.ThinkingLevelMedium, 128000)
+		budget, ok := translateThinkingLevel(models.ThinkingLevelMedium, 128000)
 		assert.True(t, ok)
 		assert.Equal(t, int64(32000), budget, "25% of 128k")
 	})
@@ -712,7 +692,7 @@ func TestTranslateThinkingLevel(t *testing.T) {
 	t.Run("ceiling enforced when percentage exceeds max_tokens - 1024", func(t *testing.T) {
 		t.Parallel()
 		// max = 4096, max level = 80% of 4096 = 3276; ceiling is 4096 - 1024 = 3072.
-		budget, ok := translateThinkingLevel(provider.ThinkingLevelMax, 4096)
+		budget, ok := translateThinkingLevel(models.ThinkingLevelMax, 4096)
 		assert.True(t, ok)
 		assert.Equal(t, int64(3072), budget, "must be capped at max - 1024")
 	})
@@ -720,7 +700,7 @@ func TestTranslateThinkingLevel(t *testing.T) {
 	t.Run("impossibly small max_tokens disables thinking", func(t *testing.T) {
 		t.Parallel()
 		// max = 1024 cannot satisfy 1024 floor + 1024 visible response.
-		budget, ok := translateThinkingLevel(provider.ThinkingLevelLow, 1024)
+		budget, ok := translateThinkingLevel(models.ThinkingLevelLow, 1024)
 		assert.False(t, ok, "max_tokens too small to think")
 		assert.Equal(t, int64(0), budget)
 	})
@@ -734,8 +714,7 @@ func TestTranslateThinkingLevel(t *testing.T) {
 func TestProviderSerialize_ArgumentsParseAsDict(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(PIKey("test-key"))
-	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -769,8 +748,7 @@ func TestProviderSerialize_ArgumentsParseAsDict(t *testing.T) {
 func TestProviderSerialize_IsErrorTruePropagates(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(PIKey("test-key"))
-	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -809,8 +787,7 @@ func TestProviderSerialize_IsErrorTruePropagates(t *testing.T) {
 func TestProviderSerialize_OrderPreservedWithinTurn(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(PIKey("test-key"))
-	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -850,8 +827,7 @@ func TestProviderSerialize_OrderPreservedWithinTurn(t *testing.T) {
 func TestProviderSerialize_RoleToolSkipsNonToolResultArtifacts(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(PIKey("test-key"))
-	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -894,8 +870,7 @@ func TestProviderSerialize_RoleToolSkipsNonToolResultArtifacts(t *testing.T) {
 func TestProviderSerialize_DropsMixedSystemTurn(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(PIKey("test-key"))
-	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -921,8 +896,7 @@ func TestProviderSerialize_DropsMixedSystemTurn(t *testing.T) {
 func TestProviderSerialize_ConcatTextSeparatesWithNewline(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(PIKey("test-key"))
-	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -948,8 +922,7 @@ func TestProviderSerialize_ConcatTextSeparatesWithNewline(t *testing.T) {
 func TestProviderSerialize_HandlesBadJSONArguments(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(PIKey("test-key"))
-	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -989,8 +962,7 @@ func TestProviderSerialize_HandlesBadJSONArguments(t *testing.T) {
 func TestProviderSerialize_EmptyAssistantTurnStillEmits(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(PIKey("test-key"))
-	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -1021,8 +993,7 @@ func TestProviderSerialize_EmptyAssistantTurnStillEmits(t *testing.T) {
 func TestProviderSerialize_AppliesPreTasksFixesRegressions(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(PIKey("test-key"))
-	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
 	// Single round-trip with every artifact type in play.
@@ -1123,7 +1094,7 @@ func TestProviderInvoke_StreamsThinking(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(PIKey("test-key"),
+	p, err := New(WithAPIKey("test-key"),
 
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
@@ -1180,7 +1151,7 @@ func TestProviderInvoke_StreamsMixedTextAndThinking(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(PIKey("test-key"),
+	p, err := New(WithAPIKey("test-key"),
 
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
@@ -1232,7 +1203,7 @@ func TestProviderInvoke_StreamsRedactedThinkingForReplay(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(PIKey("test-key"),
+	p, err := New(WithAPIKey("test-key"),
 
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
@@ -1274,7 +1245,7 @@ func TestProviderInvoke_PreservesUsageThinkingTokens(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(PIKey("test-key"),
+	p, err := New(WithAPIKey("test-key"),
 
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
@@ -1321,7 +1292,7 @@ func TestProviderInvoke_ToolUseStreaming(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(PIKey("test-key"),
+	p, err := New(WithAPIKey("test-key"),
 
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
@@ -1374,7 +1345,7 @@ func TestProviderInvoke_ContextCancellation(t *testing.T) {
 	release := make(chan struct{})
 	blocking := &blockingTransport{release: release}
 
-	p, err := New(PIKey("test-key"),
+	p, err := New(WithAPIKey("test-key"),
 
 		WithHTTPClient(&http.Client{Transport: blocking}),
 	)
@@ -1412,7 +1383,7 @@ func TestProviderInvoke_HTTPError(t *testing.T) {
 		status:             401,
 	}
 
-	p, err := New(PIKey("test-key"),
+	p, err := New(WithAPIKey("test-key"),
 
 		WithHTTPClient(&http.Client{Transport: tr}),
 	)
@@ -1439,11 +1410,11 @@ func TestProviderInvoke_TalksToOpenRouter(t *testing.T) {
 		t.Skip("OR_API_KEY not set; skipping OpenRouter integration test")
 	}
 
-	p, err := New(PIKey(apiKey),
+	p, err := New(WithAPIKey(apiKey),
 
 		WithBaseURL("https://openrouter.ai/api/v1"),
 	)
-	spec := models.Spec{Name: "minimax/minimax-m3"}
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -1484,7 +1455,7 @@ func TestProviderInvoke_EmitsStopReason_EndTurn(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(PIKey("test-key"),
+	p, err := New(WithAPIKey("test-key"),
 
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
@@ -1522,7 +1493,7 @@ func TestProviderInvoke_EmitsStopReason_Length(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(PIKey("test-key"),
+	p, err := New(WithAPIKey("test-key"),
 
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
@@ -1560,7 +1531,7 @@ func TestProviderInvoke_EmitsStopReason_ToolUse(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(PIKey("test-key"),
+	p, err := New(WithAPIKey("test-key"),
 
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
@@ -1598,7 +1569,7 @@ func TestProviderInvoke_EmitsStopReason_Refusal(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(PIKey("test-key"),
+	p, err := New(WithAPIKey("test-key"),
 
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
@@ -1637,7 +1608,7 @@ func TestProviderInvoke_EmitsStopReason_StopSequenceMapsToOther(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(PIKey("test-key"),
+	p, err := New(WithAPIKey("test-key"),
 
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
