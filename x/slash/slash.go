@@ -86,7 +86,7 @@ func NewRegistry() Registry {
 		}
 		sort.Strings(names)
 		for _, name := range names {
-			lines = append(lines, fmt.Sprintf("  /%s — %s", name, r.descriptions[name]))
+			lines = append(lines, fmt.Sprintf("* `/%s` — %s", name, r.descriptions[name]))
 		}
 		return Result{
 			Feedback: artifact.Text{Content: strings.Join(lines, "\n")},
