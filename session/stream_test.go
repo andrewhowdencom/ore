@@ -408,7 +408,7 @@ func TestStream_Process_EmitsLifecycleEvent(t *testing.T) {
 
 func TestStream_Process_EmitsLifecycleEvent_WithError(t *testing.T) {
 	store := NewMemoryStore()
-	mgr := NewManager(store, &mockProvider{}, func(*Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
+	mgr := NewManager(store, &mockProvider{}, func(*Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 		return st, errors.New("processor failed")
 	})
 
@@ -560,13 +560,13 @@ func TestStream_Process_EmitsLifecycleEvent_PropagatesProvenance(t *testing.T) {
 func TestStream_Process_EmitsSingleLifecycleEvent_ForMultiTurn(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 		spec := models.Spec{Name: "test-model"}
-		st, err := executor.Turn(ctx, st, spec, prov)
+		st, err := step.Turn(ctx, st, spec, prov)
 		if err != nil {
 			return st, err
 		}
-		return executor.Turn(ctx, st, spec, prov)
+		return step.Turn(ctx, st, spec, prov)
 	})
 
 	stream, err := mgr.Create()
@@ -611,7 +611,7 @@ func TestStream_Process_EmitsSingleLifecycleEvent_ForMultiTurn(t *testing.T) {
 func TestStream_Submit_NonBlocking(t *testing.T) {
 	store := NewMemoryStore()
 	sleepyProcessor := func() TurnProcessor {
-		return func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
+		return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 			time.Sleep(50 * time.Millisecond)
 			return st, nil
 		}

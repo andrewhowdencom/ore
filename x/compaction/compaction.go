@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/state"
 )
 
@@ -105,19 +106,23 @@ func (t TurnCountTrigger) ShouldCompact(turns []state.Turn) bool {
 }
 
 // TokenUsageTrigger fires when the most recent artifact.Usage in the turn
-// slice indicates total tokens exceed MaxTokens.
+// slice indicates total tokens exceed the compactor's Spec.Window.
 type TokenUsageTrigger struct {
-	MaxTokens int
+	Spec models.Spec
 }
 
 // ShouldCompact scans the turn slice from the end for the most recent
-// artifact.Usage. If found and Usage.TotalTokens > MaxTokens, it returns true.
-// If no Usage artifact is present, it returns false (graceful degradation).
+// artifact.Usage. If found and Usage.TotalTokens > Spec.Window, it returns
+// true. If no Usage artifact is present, or Spec.Window is zero, it
+// returns false (graceful degradation).
 func (t TokenUsageTrigger) ShouldCompact(turns []state.Turn) bool {
+	if t.Spec.Window == 0 {
+		return false
+	}
 	for i := len(turns) - 1; i >= 0; i-- {
 		for _, art := range turns[i].Artifacts {
 			if u, ok := art.(artifact.Usage); ok {
-				return u.TotalTokens > t.MaxTokens
+				return u.TotalTokens > t.Spec.Window
 			}
 		}
 	}

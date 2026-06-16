@@ -1,6 +1,7 @@
 package compaction
 
 import (
+	"github.com/andrewhowdencom/ore/models"
 	"context"
 	"errors"
 	"testing"
@@ -157,7 +158,7 @@ func TestTokenUsageTrigger(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tr := TokenUsageTrigger{MaxTokens: tt.maxTokens}
+			tr := TokenUsageTrigger{Spec: models.Spec{Window: tt.maxTokens}}
 			assert.Equal(t, tt.want, tr.ShouldCompact(tt.turns))
 		})
 	}

@@ -1,6 +1,7 @@
 package compaction
 
 import (
+	"github.com/andrewhowdencom/ore/models"
 	"context"
 	"errors"
 	"testing"
@@ -23,7 +24,7 @@ type mockProvider struct {
 
 var _ provider.Provider = (*mockProvider)(nil)
 
-func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	m.called = true
 	m.receivedTurns = s.Turns()
 	m.receivedOpts = opts
@@ -472,7 +473,7 @@ func TestSummarizeStrategy_AppliesCustomMaxTokens(t *testing.T) {
 		},
 	}
 
-	strategy := SummarizeStrategy{Provider: prov, MaxTokens: 4096}
+	strategy := SummarizeStrategy{Provider: prov, Spec: models.Spec{MaxOutputTokens: 4096}}
 
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
@@ -499,7 +500,7 @@ func TestSummarizeStrategy_NegativeMaxTokensFallsBackToDefault(t *testing.T) {
 		},
 	}
 
-	strategy := SummarizeStrategy{Provider: prov, MaxTokens: -1}
+	strategy := SummarizeStrategy{Provider: prov, Spec: models.Spec{MaxOutputTokens: -1}}
 
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),

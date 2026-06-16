@@ -189,7 +189,12 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 		defer s.step.SetEventContext(context.Background())
 		_, runErr = s.step.Submit(turnCtx, s.thread.State, state.RoleUser, artifact.Text{Content: e.Content})
 		if runErr == nil {
-			_, runErr = s.processor(turnCtx, s.step, s.thread.State, s.provider)
+			// Derive the per-turn Spec from session metadata. The
+			// step's configured default is used when no
+			// metadata-driven spec is present; an empty
+			// models.Spec tells the step to use that default.
+			spec, _ := s.Spec()
+			_, runErr = s.processor(turnCtx, s.step, s.thread.State, s.provider, spec)
 		}
 	case InterruptEvent:
 		// Interrupt is handled by cancelling the ongoing turn context.
