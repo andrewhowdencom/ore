@@ -79,11 +79,16 @@ type maxTokensOption struct {
 func (maxTokensOption) IsInvokeOption() {}
 
 // WithMaxTokens returns an InvokeOption that sets the maximum number of
-// tokens the model is permitted to generate on a single invocation. Callers
-// are responsible for picking a value appropriate to the model; different
-// Anthropic models have different ceilings. The default (when this option is
-// not supplied) is 1, the SDK's hard minimum, which will let the provider
-// fail loudly rather than silently truncating on an arbitrary cap.
+// tokens the model is permitted to generate on a single invocation.
+//
+// Callers are responsible for picking a value appropriate to the model
+// and the task; different Anthropic models have different output caps,
+// and a summary task typically warrants a larger budget than a
+// short-form chat turn. There is no default — omitting this option
+// leaves the Anthropic SDK / model default in effect, matching the
+// openai adapter's behavior. Long-running callers (e.g. compaction
+// strategies) should set this explicitly so the model has room to
+// produce a complete response.
 func WithMaxTokens(n int64) provider.InvokeOption {
 	return maxTokensOption{n: n}
 }
@@ -199,6 +204,16 @@ func applyInvokeOptions(opts ...provider.InvokeOption) invokeOptions {
 		case maxTokensOption:
 			out.maxTokens = o.n
 			out.maxTokensSet = true
+		case provider.MaxTokensOption:
+			// Provider-agnostic form. N <= 0 is "no opinion";
+			// the adapter does not set the wire field. Callers
+			// (e.g. SummarizeStrategy) use this option to size
+			// their own budget without importing a concrete
+			// adapter package.
+			if o.N > 0 {
+				out.maxTokens = o.N
+				out.maxTokensSet = true
+			}
 		case thinkingLevelOption:
 			out.thinkingLevel = o.level
 			out.thinkingLevelSet = true
@@ -358,9 +373,20 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	}
 
 	params := anthropic.MessageNewParams{
-		Model:     anthropic.Model(effectiveModel),
-		Messages:  serialized.messages,
-		MaxTokens: 1, // SDK minimum; overridden by per-invocation option below if set.
+		Model:    anthropic.Model(effectiveModel),
+		Messages: serialized.messages,
+		// MaxTokens is intentionally not set here. The Anthropic
+		// SDK rejects a request with MaxTokens=0, so omitting
+		// the field altogether leaves the SDK / model default
+		// in effect. This matches the openai adapter's
+		// "no default; caller must opt in" behavior, and
+		// removes the previous 'fail loudly with a 1-token
+		// response' default that produced silent garbage
+		// (a markdown heading fragment, e.g. '##') when
+		// callers forgot to set the option.
+		//
+		// If inv.maxTokensSet is true, the per-invocation value
+		// is applied below.
 	}
 	if len(serialized.system) > 0 {
 		params.System = serialized.system
@@ -388,10 +414,11 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 	// Usage artifact at message_stop. Emitting per message_delta
 	// would double-count tokens.
 	var pendingUsage *artifact.Usage
+	var pendingStopReason artifact.StopReasonKind
 
 	for stream.Next() {
 		event := stream.Current()
-		if err := p.dispatchEvent(ctx, event, ch, &pendingUsage); err != nil {
+		if err := p.dispatchEvent(ctx, event, ch, &pendingUsage, &pendingStopReason); err != nil {
 			if span != nil {
 				span.RecordError(err)
 				span.SetStatus(codes.Error, err.Error())
@@ -411,6 +438,15 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		return fmt.Errorf("anthropic streaming: %w", err)
 	}
 
+	if pendingStopReason != "" {
+		if err := sendOrCancel(ctx, ch, artifact.StopReason{Reason: pendingStopReason}); err != nil {
+			if span != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			return err
+		}
+	}
 	if pendingUsage != nil {
 		select {
 		case ch <- *pendingUsage:
@@ -429,11 +465,20 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 // ore artifact emission. The dispatch is exhaustive over the SDK's
 // typed event union; unknown variants are silently skipped so a future
 // SDK addition does not break older providers.
+//
+// pendingUsage and pendingStopReason are out-parameters for the
+// per-stream envelopes: the message_delta event carries both the
+// cumulative usage block and the upstream stop_reason, and both are
+// emitted on the channel once the stream closes (after message_stop).
+// Carrying them through the dispatch loop avoids re-reading the SSE
+// payload twice and keeps the SDK's cumulative-usage contract in one
+// place.
 func (p *Provider) dispatchEvent(
 	ctx context.Context,
 	event anthropic.MessageStreamEventUnion,
 	ch chan<- artifact.Artifact,
 	pendingUsage **artifact.Usage,
+	pendingStopReason *artifact.StopReasonKind,
 ) error {
 	switch ev := event.AsAny().(type) {
 	case anthropic.MessageStartEvent:
@@ -450,6 +495,7 @@ func (p *Provider) dispatchEvent(
 		return nil
 	case anthropic.MessageDeltaEvent:
 		bufferUsage(ev.Usage, pendingUsage)
+		bufferStopReason(ev.Delta.StopReason, pendingStopReason)
 		return nil
 	case anthropic.MessageStopEvent:
 		// Final envelope; the caller breaks out of the event
@@ -559,6 +605,46 @@ func bufferUsage(usage anthropic.MessageDeltaUsage, pending **artifact.Usage) {
 		CacheReadTokens:  int(usage.CacheReadInputTokens),
 		CacheWriteTokens: int(usage.CacheCreationInputTokens),
 		ThinkingTokens:   int(usage.OutputTokensDetails.ThinkingTokens),
+	}
+}
+
+// bufferStopReason translates the upstream stop_reason from a
+// message_delta event into the canonical artifact.StopReasonKind
+// and stores it in the pending out-parameter. The caller emits the
+// buffered StopReason once, at message_stop, immediately before the
+// buffered Usage. Like bufferUsage, this avoids the (smaller) trap
+// of translating on every event when the SDK only sends the final
+// stop_reason in the message_delta that precedes message_stop.
+func bufferStopReason(reason anthropic.StopReason, pending *artifact.StopReasonKind) {
+	*pending = translateStopReason(reason)
+}
+
+// translateStopReason normalizes an Anthropic-specific stop_reason
+// value into the canonical artifact.StopReasonKind used across all
+// adapters. The mapping mirrors the table documented in the package:
+// end_turn → stop, max_tokens → length, tool_use → tool_use,
+// refusal → refusal, and anything else (including stop_sequence and
+// future SDK additions) → other. The empty string maps to "" (no
+// reason buffered) so callers can distinguish "upstream reported no
+// reason" from "upstream reported a known reason" — although in
+// practice the SDK always reports a reason because the field is
+// api:"required" on the wire.
+func translateStopReason(s anthropic.StopReason) artifact.StopReasonKind {
+	switch s {
+	case "":
+		return ""
+	case anthropic.StopReasonEndTurn:
+		return artifact.StopReasonStop
+	case anthropic.StopReasonMaxTokens:
+		return artifact.StopReasonLength
+	case anthropic.StopReasonToolUse:
+		return artifact.StopReasonToolUse
+	case anthropic.StopReasonRefusal:
+		return artifact.StopReasonRefusal
+	default:
+		// stop_sequence, pause_turn, and any future SDK additions
+		// land here. The 'other' bucket is the forward-compat slot.
+		return artifact.StopReasonOther
 	}
 }
 

@@ -2137,6 +2137,212 @@ func TestProviderInvoke_UsageChunkNoCache(t *testing.T) {
 	assert.Equal(t, 0, u.CacheWriteTokens, "no cache fields in response should leave CacheWriteTokens zero")
 }
 
+// ---------------------------------------------------------------------------
+// StopReason mapping
+// ---------------------------------------------------------------------------
+
+// finishReasonSSE is a small fixture helper for the StopReason tests:
+// it produces an SSE stream with a single text chunk carrying the
+// given finish_reason, followed by [DONE]. The chunk is the kind
+// OpenAI emits as the final delta of a stream — content + the real
+// finish_reason on the same chunk.
+func finishReasonSSE(content, finishReason string) string {
+	return fmt.Sprintf("data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"content\":%q},\"finish_reason\":%q}]}\n\ndata: [DONE]\n\n", content, finishReason)
+}
+
+// finishReasonWithUsageSSE produces a stream with a final text chunk
+// carrying the given finish_reason, plus a separate usage chunk
+// (no choices, no delta) that surfaces Usage. The two-chunk shape
+// mirrors what production OpenAI streams do: the model-side
+// finish_reason arrives on the last delta, and the host appends a
+// trailing usage chunk after.
+func finishReasonWithUsageSSE(content, finishReason string, prompt, completion, total int64) string {
+	return fmt.Sprintf(
+		"data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"content\":%q},\"finish_reason\":%q}]}\n\n"+
+			"data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":2,\"model\":\"gpt-4\",\"choices\":[],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d}}\n\ndata: [DONE]\n\n",
+		content, finishReason, prompt, completion, total,
+	)
+}
+
+// TestProviderInvoke_EmitsStopReason_Stop asserts the canonical
+// finish_reason=stop → StopReasonStop mapping. The fixture stream
+// ends with a text chunk carrying finish_reason=stop, the most
+// common reason for a normal completion. The adapter must emit a
+// StopReason{Reason: StopReasonStop} after the text delta.
+func TestProviderInvoke_EmitsStopReason_Stop(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(finishReasonSSE("Hello, world!", "stop")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+
+	ch := make(chan artifact.Artifact, 10)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	artifacts := drainArtifacts(ch)
+
+	// text_delta, stop_reason
+	require.Len(t, artifacts, 2)
+	assert.Equal(t, "text_delta", artifacts[0].Kind())
+	assert.Equal(t, "Hello, world!", artifacts[0].(artifact.TextDelta).Content)
+	assert.Equal(t, "stop_reason", artifacts[1].Kind())
+	assert.Equal(t, artifact.StopReasonStop, artifacts[1].(artifact.StopReason).Reason)
+}
+
+// TestProviderInvoke_EmitsStopReason_Length asserts the canonical
+// finish_reason=length → StopReasonLength mapping. This is the
+// compaction-triggering case: a SummarizeStrategy that observes a
+// StopReason{Length} knows the model hit its output cap and can
+// return ErrTruncatedSummary.
+func TestProviderInvoke_EmitsStopReason_Length(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(finishReasonWithUsageSSE("##", "length", 1, 1, 2)),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "summarize this"})
+
+	ch := make(chan artifact.Artifact, 10)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	artifacts := drainArtifacts(ch)
+
+	// text_delta, usage, stop_reason.
+	//
+	// The openai wire format delivers the usage chunk in a separate
+	// stream frame after the final delta (when include_usage is on).
+	// The adapter emits usage inline as it arrives, and emits the
+	// buffered StopReason after the loop closes — so the actual
+	// channel order is text → usage → stop_reason. The anthropic
+	// adapter has the opposite order (deltas → stop_reason → usage)
+	// because it buffers both and emits them together at
+	// message_stop. Callers that care about ordering should
+	// pattern-match on Kind, not positional index.
+	require.Len(t, artifacts, 3)
+	assert.Equal(t, "text_delta", artifacts[0].Kind())
+	assert.Equal(t, "usage", artifacts[1].Kind())
+	assert.Equal(t, "stop_reason", artifacts[2].Kind())
+	assert.Equal(t, artifact.StopReasonLength, artifacts[2].(artifact.StopReason).Reason)
+}
+
+// TestProviderInvoke_EmitsStopReason_ToolCalls asserts the canonical
+// finish_reason=tool_calls → StopReasonToolUse mapping. The
+// pre-tool-calls wire form (finish_reason=function_call) is
+// structurally equivalent and covered in TestTranslateFinishReason.
+func TestProviderInvoke_EmitsStopReason_ToolCalls(t *testing.T) {
+	toolCallBody := "data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"search\",\"arguments\":\"\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n"
+
+	transport := &mockTransport{
+		response: mockResponseSSE(toolCallBody),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "find something"})
+
+	ch := make(chan artifact.Artifact, 10)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	artifacts := drainArtifacts(ch)
+
+	// tool_call_delta, stop_reason
+	require.Len(t, artifacts, 2)
+	assert.Equal(t, "tool_call_delta", artifacts[0].Kind())
+	assert.Equal(t, "stop_reason", artifacts[1].Kind())
+	assert.Equal(t, artifact.StopReasonToolUse, artifacts[1].(artifact.StopReason).Reason)
+}
+
+// TestProviderInvoke_EmitsStopReason_ContentFilter asserts the
+// canonical finish_reason=content_filter → StopReasonRefusal
+// mapping. OpenAI returns this when the safety filter omits the
+// response content; the adapter must surface it as StopReasonRefusal
+// so downstream code can distinguish a refused turn from a normal
+// completion.
+func TestProviderInvoke_EmitsStopReason_ContentFilter(t *testing.T) {
+	transport := &mockTransport{
+		response: mockResponseSSE(finishReasonSSE("", "content_filter")),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "do something dangerous"})
+
+	ch := make(chan artifact.Artifact, 10)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	artifacts := drainArtifacts(ch)
+
+	// No text_delta because the content was filtered; just stop_reason.
+	require.Len(t, artifacts, 1)
+	assert.Equal(t, "stop_reason", artifacts[0].Kind())
+	assert.Equal(t, artifact.StopReasonRefusal, artifacts[0].(artifact.StopReason).Reason)
+}
+
+// TestProviderInvoke_StopReason_NotOverwrittenByNull asserts that an
+// intermediate `finish_reason: null` chunk does not clobber a
+// previously-buffered StopReason. The OpenAI wire format sends null
+// on every intermediate delta and only sets a real value on the
+// final delta of a choice. A naive "always overwrite the buffer"
+// implementation would lose the real reason when a null passes
+// through after it; the zero-value check in translateFinishReason
+// prevents that. Here the second chunk carries a real reason and
+// the third chunk is a null — the buffer must hold the second
+// chunk's reason at the end.
+func TestProviderInvoke_StopReason_NotOverwrittenByNull(t *testing.T) {
+	body := "data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\"},\"finish_reason\":\"length\"}]}\n\n" +
+		"data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":2,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\"},\"finish_reason\":null}]}\n\n" +
+		"data: [DONE]\n\n"
+
+	transport := &mockTransport{
+		response: mockResponseSSE(body),
+	}
+
+	p, err := New(WithAPIKey("test-key"), WithModel("gpt-4"), WithHTTPClient(mockClient(transport)))
+	require.NoError(t, err)
+	mem := &state.Buffer{}
+	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+
+	ch := make(chan artifact.Artifact, 10)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	artifacts := drainArtifacts(ch)
+
+	require.Len(t, artifacts, 1)
+	assert.Equal(t, "stop_reason", artifacts[0].Kind())
+	// The second chunk's null must NOT have overwritten the first
+	// chunk's real reason.
+	assert.Equal(t, artifact.StopReasonLength, artifacts[0].(artifact.StopReason).Reason)
+}
+
+// TestTranslateFinishReason asserts the table-driven mapping for
+// every defined OpenAI finish_reason. This is a unit test for the
+// translation function itself, independent of the SSE pipeline, so
+// the mapping is locked down even if the streaming tests are
+// refactored.
+func TestTranslateFinishReason(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want artifact.StopReasonKind
+	}{
+		{"empty becomes empty", "", ""},
+		{"stop → stop", "stop", artifact.StopReasonStop},
+		{"length → length", "length", artifact.StopReasonLength},
+		{"tool_calls → tool_use", "tool_calls", artifact.StopReasonToolUse},
+		{"function_call → tool_use (deprecated)", "function_call", artifact.StopReasonToolUse},
+		{"content_filter → refusal", "content_filter", artifact.StopReasonRefusal},
+		{"unknown future reason → other", "future_value", artifact.StopReasonOther},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, translateFinishReason(tt.in))
+		})
+	}
+}
+
 // TestProviderInvoke_StreamsReasoning_FlatField verifies that an SSE
 // delta carrying `reasoning` (the flat-string shape surfaced by
 // OpenRouter for non-Anthropic reasoning routes) is read and emitted as

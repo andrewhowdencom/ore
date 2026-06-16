@@ -1,5 +1,5 @@
-github.com/andrewhowdencom/ore v0.7.3 h1:J1sGL0li/jH9KA8pMsiz73qI5SkHggPFVHA1oFOxA74=
-github.com/andrewhowdencom/ore v0.7.3/go.mod h1:KxKPSd2cTgl0NoUC+E4/Bs8e2T+Fyv46e+TiH54qxHQ=
+github.com/andrewhowdencom/ore v0.9.0 h1:7eVK/MPQnZv05n3bJ1hKtTXj2JzJN1FpjyJmVAr+TdA=
+github.com/andrewhowdencom/ore v0.9.0/go.mod h1:z8ohVfj62/vsXqVsbpqftza2GTINPPqwxzZhJbclN4g=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
