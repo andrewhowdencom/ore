@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 	"go.opentelemetry.io/otel/attribute"
@@ -25,8 +26,6 @@ import (
 type Transform interface {
 	Transform(ctx context.Context, st state.State) (state.State, error)
 }
-
-
 
 // OutputEvent represents any event emitted by a Step.
 // All output events carry a context.Context so subscribers can access
@@ -361,6 +360,9 @@ type Step struct {
 	pipeline     *Pipeline
 	eventContext context.Context
 	tracer       trace.Tracer
+	// defaultSpec is the ModelSpec to use when Turn() is called
+	// with an empty Spec. Per-call Spec overrides the default.
+	defaultSpec models.Spec
 }
 
 // New creates a Step with the given options.
@@ -474,6 +476,16 @@ func WithInvokeOptions(opts ...provider.InvokeOption) Option {
 	}
 }
 
+// WithDefaultSpec configures the default [models.Spec] used by [Step.Turn]
+// when the per-call Spec is empty. A non-empty per-call Spec always wins;
+// this is the loop-level fallback (e.g. an application-wide default model
+// that the session may override per-call).
+func WithDefaultSpec(spec models.Spec) Option {
+	return func(s *Step) {
+		s.defaultSpec = spec
+	}
+}
+
 // WithTracer configures an OpenTelemetry tracer for the Step.
 // When configured, Turn and Submit create spans for each inference turn.
 func WithTracer(tracer trace.Tracer) Option {
@@ -506,15 +518,29 @@ func (s *Step) startSpan(ctx context.Context) (context.Context, func()) {
 // is appended to state once the provider returns. After the turn completes,
 // all registered handlers are invoked on each artifact from the assistant turn.
 // The operation is fully synchronous and blocking.
-func (s *Step) Turn(ctx context.Context, st state.State, p provider.Provider, opts ...provider.InvokeOption) (state.State, error) {
+//
+// The spec carries the model identity and inference configuration. A
+// per-call spec takes precedence over the loop's default spec
+// (configured via WithDefaultSpec); an empty per-call spec falls
+// back to the default. The resolved spec is forwarded to the
+// provider's Invoke.
+func (s *Step) Turn(ctx context.Context, st state.State, spec models.Spec, p provider.Provider, opts ...provider.InvokeOption) (state.State, error) {
 	defer s.clearEventContext()
 	ctx, endSpan := s.startSpan(ctx)
 	defer endSpan()
 
+	// Per-call spec wins over the configured default.
+	if spec.Name == "" && (spec.Window == 0 && spec.MaxOutputTokens == 0 &&
+		spec.Temperature == nil && spec.ThinkingLevel == "" && spec.TopP == nil &&
+		spec.TopK == nil && spec.Seed == nil && len(spec.StopSequences) == 0 &&
+		spec.FrequencyPenalty == nil && spec.PresencePenalty == nil) {
+		spec = s.defaultSpec
+	}
+
 	s.Emit(ctx, LifecycleEvent{Phase: "submitted", Ctx: s.eventContext})
 
 	var hasStreamed bool
-	st, accumulatedArtifacts, err := s.pipeline.Turn(ctx, st, p, func(art artifact.Artifact) {
+	st, accumulatedArtifacts, err := s.pipeline.Turn(ctx, st, spec, p, func(art artifact.Artifact) {
 		if !hasStreamed {
 			hasStreamed = true
 			s.Emit(ctx, LifecycleEvent{Phase: "streaming", Ctx: s.eventContext})
