@@ -15,6 +15,7 @@ use (
 	./x/llmbytes
 	./x/provider/anthropic
 	./x/provider/openai
+	./x/provider/retry
 	./x/telemetry
 	./x/tool
 	./x/tool/bash

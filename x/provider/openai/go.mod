@@ -4,6 +4,7 @@ go 1.26.2
 
 require (
 	github.com/andrewhowdencom/ore v0.11.0
+	github.com/andrewhowdencom/ore/x/provider/retry v0.0.0
 	github.com/andrewhowdencom/ore/x/tool v0.5.0
 	github.com/openai/openai-go v1.12.0
 	github.com/stretchr/testify v1.11.1
@@ -11,6 +12,11 @@ require (
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
+)
+
+replace (
+	github.com/andrewhowdencom/ore => ../../../
+	github.com/andrewhowdencom/ore/x/provider/retry => ../retry
 )
 
 require (

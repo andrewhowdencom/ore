@@ -6,6 +6,7 @@ package anthropic
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptrace"
@@ -17,6 +18,7 @@ import (
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/tool"
+	"github.com/andrewhowdencom/ore/x/provider/retry"
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
@@ -453,7 +455,7 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, spec models.Spec, 
 				span.RecordError(err)
 				span.SetStatus(codes.Error, err.Error())
 			}
-			return err
+			return wrapForRetry(err)
 		}
 		if _, ok := event.AsAny().(anthropic.MessageStopEvent); ok {
 			break
@@ -465,7 +467,7 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, spec models.Spec, 
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 		}
-		return fmt.Errorf("anthropic streaming: %w", err)
+		return fmt.Errorf("anthropic streaming: %w", wrapForRetry(err))
 	}
 
 	if pendingStopReason != "" {
@@ -474,7 +476,7 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, spec models.Spec, 
 				span.RecordError(err)
 				span.SetStatus(codes.Error, err.Error())
 			}
-			return err
+			return wrapForRetry(err)
 		}
 	}
 	if pendingUsage != nil {
@@ -1042,3 +1044,52 @@ func onlyText(artifacts []artifact.Artifact) (string, bool) {
 	}
 	return t.Content, true
 }
+
+// retriableError wraps an *anthropic.Error so the retry decorator
+// can recognise 5xx/429 responses via the retry.HTTPError
+// interface without depending on the SDK directly. It preserves
+// the original error chain via Unwrap, so existing code that does
+// errors.As(err, &anthropic.Error{}) still works.
+//
+// The wrapped value is a pointer because apierror.Error's
+// methods (including Error) are defined on the pointer receiver;
+// a value of anthropic.Error does not implement the error
+// interface.
+type retriableError struct {
+	inner *anthropic.Error
+}
+
+func (e *retriableError) Error() string {
+	return e.inner.Error()
+}
+
+func (e *retriableError) StatusCode() int {
+	return e.inner.StatusCode
+}
+
+func (e *retriableError) Header() http.Header {
+	if e.inner.Response == nil {
+		return nil
+	}
+	return e.inner.Response.Header
+}
+
+func (e *retriableError) Unwrap() error {
+	return e.inner
+}
+
+// wrapForRetry converts an SDK error into one that implements
+// retry.HTTPError. Non-HTTP errors (and errors that are not
+// *anthropic.Error) are returned unchanged. The returned error
+// preserves the original chain so that
+// errors.As(err, &anthropic.Error{}) continues to resolve downstream.
+func wrapForRetry(err error) error {
+	var anthErr *anthropic.Error
+	if errors.As(err, &anthErr) {
+		return &retriableError{inner: anthErr}
+	}
+	return err
+}
+
+// Compile-time assertion that *retriableError satisfies retry.HTTPError.
+var _ retry.HTTPError = (*retriableError)(nil)
