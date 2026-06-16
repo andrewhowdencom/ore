@@ -71,6 +71,46 @@ func WithModel(name string) InvokeOption {
 	return ModelOption{Model: name}
 }
 
+// MaxTokensOption is a per-invocation option that sets the maximum
+// number of tokens the model is permitted to generate on a single
+// invocation. It is the provider-agnostic counterpart to
+// per-adapter helpers (e.g. anthropic.WithMaxTokens,
+// openai.WithMaxTokens) so that callers in framework code paths
+// (e.g. compaction strategies, slash commands) can request a
+// specific budget without importing a concrete adapter package.
+//
+// Adapters must translate the value into their provider's wire
+// format and must treat N <= 0 as a no-op (omit the field). A
+// zero or negative N is "the caller has no opinion; use whatever
+// default the adapter / model provides." This is symmetric with
+// ModelOption's empty-string-is-a-no-op rule.
+type MaxTokensOption struct {
+	// N is the maximum number of tokens. N <= 0 means "no
+	// opinion" — the adapter should omit the field on the wire
+	// and let its default apply. Adapters must NOT default N
+	// to a small sentinel value (e.g. 1) to "fail loudly":
+	// such a value produces silent garbage, not a loud failure.
+	N int64
+}
+
+// IsInvokeOption marks MaxTokensOption as a provider.InvokeOption.
+func (MaxTokensOption) IsInvokeOption() {}
+
+// WithMaxTokens returns an InvokeOption that sets the maximum
+// number of tokens the model is permitted to generate on a single
+// invocation. It is the provider-agnostic counterpart to
+// per-adapter helpers; adapters translate the value into their
+// own wire format at request time.
+//
+// Pass a value <= 0 to indicate "no opinion" — the adapter will
+// omit the field and use its own default. Callers that need a
+// specific budget (e.g. compaction strategies producing a long
+// summary) should pass an explicit value appropriate to the
+// model and the task.
+func WithMaxTokens(n int64) InvokeOption {
+	return MaxTokensOption{N: n}
+}
+
 // ThinkingLevel is a portable, qualitative description of how much
 // reasoning effort a model should spend on a turn. Adapters translate
 // the level into their provider's wire format at request time.

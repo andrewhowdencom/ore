@@ -1170,8 +1170,8 @@ func TestProviderInvoke_StreamsThinking(t *testing.T) {
 	require.NoError(t, p.Invoke(t.Context(), mem, ch))
 	got := drainArtifacts(ch)
 
-	// Two reasoning deltas, one signature, one usage.
-	require.Len(t, got, 4)
+	// Two reasoning deltas, one signature, one stop_reason, one usage.
+	require.Len(t, got, 5)
 	assert.Equal(t, "reasoning_delta", got[0].Kind())
 	assert.Equal(t, "Let me think", got[0].(artifact.ReasoningDelta).Content)
 	assert.Equal(t, "reasoning_delta", got[1].Kind())
@@ -1181,8 +1181,11 @@ func TestProviderInvoke_StreamsThinking(t *testing.T) {
 	assert.Equal(t, "anthropic", sig.Provider)
 	assert.Equal(t, "signature", sig.SubKind)
 	assert.Equal(t, "sig_abc", sig.Data)
-	assert.Equal(t, "usage", got[3].Kind())
-	u := got[3].(artifact.Usage)
+	assert.Equal(t, "stop_reason", got[3].Kind())
+	sr := got[3].(artifact.StopReason)
+	assert.Equal(t, artifact.StopReasonStop, sr.Reason)
+	assert.Equal(t, "usage", got[4].Kind())
+	u := got[4].(artifact.Usage)
 	assert.Equal(t, 10, u.PromptTokens)
 	assert.Equal(t, 5, u.CompletionTokens)
 	assert.Equal(t, 4, u.ThinkingTokens)
@@ -1228,16 +1231,19 @@ func TestProviderInvoke_StreamsMixedTextAndThinking(t *testing.T) {
 	//   1. ReasoningDelta "Planning..."
 	//   2. ReasoningSignature{anthropic, signature, sig1}
 	//   3. TextDelta "Hello!"
-	//   4. Usage (with thinking_tokens=1)
-	require.Len(t, got, 4)
+	//   4. StopReason{stop} (translated from upstream end_turn)
+	//   5. Usage (with thinking_tokens=1)
+	require.Len(t, got, 5)
 	assert.Equal(t, "reasoning_delta", got[0].Kind())
 	assert.Equal(t, "Planning...", got[0].(artifact.ReasoningDelta).Content)
 	assert.Equal(t, "reasoning_signature", got[1].Kind())
 	assert.Equal(t, "signature", got[1].(artifact.ReasoningSignature).SubKind)
 	assert.Equal(t, "text_delta", got[2].Kind())
 	assert.Equal(t, "Hello!", got[2].(artifact.TextDelta).Content)
-	assert.Equal(t, "usage", got[3].Kind())
-	assert.Equal(t, 1, got[3].(artifact.Usage).ThinkingTokens)
+	assert.Equal(t, "stop_reason", got[3].Kind())
+	assert.Equal(t, artifact.StopReasonStop, got[3].(artifact.StopReason).Reason)
+	assert.Equal(t, "usage", got[4].Kind())
+	assert.Equal(t, 1, got[4].(artifact.Usage).ThinkingTokens)
 }
 
 // TestProviderInvoke_StreamsRedactedThinkingForReplay asserts that a
@@ -1273,12 +1279,14 @@ func TestProviderInvoke_StreamsRedactedThinkingForReplay(t *testing.T) {
 	require.NoError(t, p.Invoke(t.Context(), mem, ch))
 	got := drainArtifacts(ch)
 
-	require.Len(t, got, 2)
+	require.Len(t, got, 3)
 	sig := got[0].(artifact.ReasoningSignature)
 	assert.Equal(t, "anthropic", sig.Provider)
 	assert.Equal(t, "redacted", sig.SubKind)
 	assert.Equal(t, opaqueData, sig.Data)
-	assert.Equal(t, "usage", got[1].Kind())
+	assert.Equal(t, "stop_reason", got[1].Kind())
+	assert.Equal(t, artifact.StopReasonStop, got[1].(artifact.StopReason).Reason)
+	assert.Equal(t, "usage", got[2].Kind())
 }
 
 // TestProviderInvoke_PreservesUsageThinkingTokens asserts that
@@ -1313,9 +1321,11 @@ func TestProviderInvoke_PreservesUsageThinkingTokens(t *testing.T) {
 	require.NoError(t, p.Invoke(t.Context(), mem, ch))
 	got := drainArtifacts(ch)
 
-	// One text_delta, one usage.
-	require.Len(t, got, 2)
-	u := got[1].(artifact.Usage)
+	// One text_delta, one stop_reason, one usage.
+	require.Len(t, got, 3)
+	assert.Equal(t, "stop_reason", got[1].Kind())
+	assert.Equal(t, artifact.StopReasonStop, got[1].(artifact.StopReason).Reason)
+	u := got[2].(artifact.Usage)
 	assert.Equal(t, 42, u.PromptTokens)
 	assert.Equal(t, 24, u.CompletionTokens)
 	assert.Equal(t, 66, u.TotalTokens)
@@ -1358,8 +1368,10 @@ func TestProviderInvoke_ToolUseStreaming(t *testing.T) {
 	require.NoError(t, p.Invoke(t.Context(), mem, ch))
 	got := drainArtifacts(ch)
 
-	// tool_call_delta x3 (ID+Name, partial JSON, partial JSON), then usage.
-	require.Len(t, got, 4)
+	// tool_call_delta x3 (ID+Name, partial JSON, partial JSON),
+	// then stop_reason (translated from upstream tool_use),
+	// then usage.
+	require.Len(t, got, 5)
 	assert.Equal(t, "tool_call_delta", got[0].Kind())
 	t0 := got[0].(artifact.ToolCallDelta)
 	assert.Equal(t, 0, t0.Index)
@@ -1379,7 +1391,9 @@ func TestProviderInvoke_ToolUseStreaming(t *testing.T) {
 	assert.Equal(t, 0, t2.Index)
 	assert.Equal(t, `"hello"}`, t2.Arguments)
 
-	assert.Equal(t, "usage", got[3].Kind())
+	assert.Equal(t, "stop_reason", got[3].Kind())
+	assert.Equal(t, artifact.StopReasonToolUse, got[3].(artifact.StopReason).Reason)
+	assert.Equal(t, "usage", got[4].Kind())
 }
 
 // TestProviderInvoke_ContextCancellation asserts that a pre-cancelled
@@ -1478,6 +1492,230 @@ func TestProviderInvoke_TalksToOpenRouter(t *testing.T) {
 	// when the model does think', so a non-empty channel is the
 	// acceptance criterion.
 	require.NotEmpty(t, got, "OpenRouter must return at least one artifact for a thinking-capable model")
+}
+
+// ---------------------------------------------------------------------------
+// StopReason mapping
+// ---------------------------------------------------------------------------
+
+// TestProviderInvoke_EmitsStopReason_EndTurn asserts the canonical
+// end_turn → stop mapping. The fixture stream ends with
+// message_delta carrying stop_reason=end_turn, the most common
+// reason for a normal completion. The adapter must emit a
+// StopReason{Reason: StopReasonStop} immediately before the final
+// Usage artifact.
+func TestProviderInvoke_EmitsStopReason_EndTurn(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingTransport{
+		contentType: "text/event-stream",
+		response: sseEvent("message_start", `{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"model":"claude-3-7-sonnet-latest","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}`) +
+			sseEvent("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`) +
+			sseEvent("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}`) +
+			sseEvent("content_block_stop", `{"type":"content_block_stop","index":0}`) +
+			sseEvent("message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":1,"output_tokens":2,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens_details":{"thinking_tokens":0}}}`) +
+			sseEvent("message_stop", `{"type":"message_stop"}`),
+	}
+
+	p, err := New(
+		WithAPIKey("test-key"),
+		WithModel("claude-3-7-sonnet-latest"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	mem := state.NewBuffer()
+	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+
+	ch := make(chan artifact.Artifact, 16)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	got := drainArtifacts(ch)
+
+	// text_delta, stop_reason, usage
+	require.Len(t, got, 3)
+	assert.Equal(t, "stop_reason", got[1].Kind())
+	assert.Equal(t, artifact.StopReasonStop, got[1].(artifact.StopReason).Reason)
+	assert.Equal(t, "usage", got[2].Kind())
+}
+
+// TestProviderInvoke_EmitsStopReason_Length asserts the canonical
+// max_tokens → length mapping. This is the compaction-triggering
+// case: a SummarizeStrategy that observes a StopReason{Length}
+// knows the model hit its output cap and can return ErrTruncatedSummary.
+func TestProviderInvoke_EmitsStopReason_Length(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingTransport{
+		contentType: "text/event-stream",
+		response: sseEvent("message_start", `{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"model":"claude-3-7-sonnet-latest","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}`) +
+			sseEvent("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`) +
+			sseEvent("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"##"}}`) +
+			sseEvent("content_block_stop", `{"type":"content_block_stop","index":0}`) +
+			sseEvent("message_delta", `{"type":"message_delta","delta":{"stop_reason":"max_tokens","stop_sequence":null},"usage":{"input_tokens":1,"output_tokens":8192,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens_details":{"thinking_tokens":0}}}`) +
+			sseEvent("message_stop", `{"type":"message_stop"}`),
+	}
+
+	p, err := New(
+		WithAPIKey("test-key"),
+		WithModel("claude-3-7-sonnet-latest"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	mem := state.NewBuffer()
+	mem.Append(state.RoleUser, artifact.Text{Content: "summarize this"})
+
+	ch := make(chan artifact.Artifact, 16)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	got := drainArtifacts(ch)
+
+	require.Len(t, got, 3)
+	assert.Equal(t, "stop_reason", got[1].Kind())
+	assert.Equal(t, artifact.StopReasonLength, got[1].(artifact.StopReason).Reason)
+	assert.Equal(t, "usage", got[2].Kind())
+}
+
+// TestProviderInvoke_EmitsStopReason_ToolUse asserts the canonical
+// tool_use → tool_use mapping. The fixture ends with
+// stop_reason=tool_use (the model emitted a tool call rather than
+// a text response); the adapter must emit a StopReason{ToolUse}
+// alongside the ToolCall deltas and before the Usage.
+func TestProviderInvoke_EmitsStopReason_ToolUse(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingTransport{
+		contentType: "text/event-stream",
+		response: sseEvent("message_start", `{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"model":"claude-3-7-sonnet-latest","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}`) +
+			sseEvent("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"search","input":{}}}`) +
+			sseEvent("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{}"}}`) +
+			sseEvent("content_block_stop", `{"type":"content_block_stop","index":0}`) +
+			sseEvent("message_delta", `{"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":1,"output_tokens":2,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens_details":{"thinking_tokens":0}}}`) +
+			sseEvent("message_stop", `{"type":"message_stop"}`),
+	}
+
+	p, err := New(
+		WithAPIKey("test-key"),
+		WithModel("claude-3-7-sonnet-latest"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	mem := state.NewBuffer()
+	mem.Append(state.RoleUser, artifact.Text{Content: "find something"})
+
+	ch := make(chan artifact.Artifact, 16)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	got := drainArtifacts(ch)
+
+	// tool_call_delta x2 (ID+Name, then input JSON), stop_reason, usage
+	require.Len(t, got, 4)
+	assert.Equal(t, "tool_call_delta", got[0].Kind())
+	assert.Equal(t, "tool_call_delta", got[1].Kind())
+	assert.Equal(t, "stop_reason", got[2].Kind())
+	assert.Equal(t, artifact.StopReasonToolUse, got[2].(artifact.StopReason).Reason)
+	assert.Equal(t, "usage", got[3].Kind())
+}
+
+// TestProviderInvoke_EmitsStopReason_Refusal asserts the canonical
+// refusal → refusal mapping. The Anthropic API returns this when
+// the safety filter rejects the prompt or response; the adapter
+// must surface it as StopReason{Refusal} so downstream code can
+// distinguish a refused turn from a normal completion.
+func TestProviderInvoke_EmitsStopReason_Refusal(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingTransport{
+		contentType: "text/event-stream",
+		response: sseEvent("message_start", `{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"model":"claude-3-7-sonnet-latest","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}`) +
+			sseEvent("message_delta", `{"type":"message_delta","delta":{"stop_reason":"refusal","stop_sequence":null},"usage":{"input_tokens":1,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens_details":{"thinking_tokens":0}}}`) +
+			sseEvent("message_stop", `{"type":"message_stop"}`),
+	}
+
+	p, err := New(
+		WithAPIKey("test-key"),
+		WithModel("claude-3-7-sonnet-latest"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	mem := state.NewBuffer()
+	mem.Append(state.RoleUser, artifact.Text{Content: "do something dangerous"})
+
+	ch := make(chan artifact.Artifact, 16)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	got := drainArtifacts(ch)
+
+	require.Len(t, got, 2)
+	assert.Equal(t, "stop_reason", got[0].Kind())
+	assert.Equal(t, artifact.StopReasonRefusal, got[0].(artifact.StopReason).Reason)
+	assert.Equal(t, "usage", got[1].Kind())
+}
+
+// TestProviderInvoke_EmitsStopReason_StopSequenceMapsToOther
+// asserts that upstream stop_reason values not in the canonical
+// set (specifically stop_sequence, and by extension any future
+// SDK addition) are translated to StopReasonOther. The 'other'
+// bucket is the forward-compat slot: new adapters and new SDK
+// versions can introduce new reasons without breaking consumers.
+func TestProviderInvoke_EmitsStopReason_StopSequenceMapsToOther(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingTransport{
+		contentType: "text/event-stream",
+		response: sseEvent("message_start", `{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"model":"claude-3-7-sonnet-latest","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}`) +
+			sseEvent("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`) +
+			sseEvent("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}`) +
+			sseEvent("content_block_stop", `{"type":"content_block_stop","index":0}`) +
+			sseEvent("message_delta", `{"type":"message_delta","delta":{"stop_reason":"stop_sequence","stop_sequence":"END"},"usage":{"input_tokens":1,"output_tokens":2,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens_details":{"thinking_tokens":0}}}`) +
+			sseEvent("message_stop", `{"type":"message_stop"}`),
+	}
+
+	p, err := New(
+		WithAPIKey("test-key"),
+		WithModel("claude-3-7-sonnet-latest"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	mem := state.NewBuffer()
+	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+
+	ch := make(chan artifact.Artifact, 16)
+	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	got := drainArtifacts(ch)
+
+	require.Len(t, got, 3)
+	assert.Equal(t, "stop_reason", got[1].Kind())
+	assert.Equal(t, artifact.StopReasonOther, got[1].(artifact.StopReason).Reason)
+	assert.Equal(t, "usage", got[2].Kind())
+}
+
+// TestTranslateStopReason asserts the table-driven mapping for
+// every defined anthropic.StopReason. This is a unit test for the
+// translation function itself, independent of the SSE pipeline, so
+// the mapping is locked down even if the streaming tests are
+// refactored.
+func TestTranslateStopReason(t *testing.T) {
+	tests := []struct {
+		name string
+		in   anthropic.StopReason
+		want artifact.StopReasonKind
+	}{
+		{"empty becomes empty", anthropic.StopReason(""), ""},
+		{"end_turn → stop", anthropic.StopReasonEndTurn, artifact.StopReasonStop},
+		{"max_tokens → length", anthropic.StopReasonMaxTokens, artifact.StopReasonLength},
+		{"tool_use → tool_use", anthropic.StopReasonToolUse, artifact.StopReasonToolUse},
+		{"refusal → refusal", anthropic.StopReasonRefusal, artifact.StopReasonRefusal},
+		{"stop_sequence → other", anthropic.StopReasonStopSequence, artifact.StopReasonOther},
+		{"pause_turn → other", anthropic.StopReasonPauseTurn, artifact.StopReasonOther},
+		{"unknown future reason → other", anthropic.StopReason("future_value"), artifact.StopReasonOther},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, translateStopReason(tt.in))
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------
