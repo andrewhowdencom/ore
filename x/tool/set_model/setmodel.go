@@ -3,10 +3,11 @@
 // no Tool() function or ToolDescriptor — because the LLM must not be able
 // to change its own model.
 //
-// The model name is written to Thread.Metadata["provider.model"] via
-// session.Stream.SetMetadata, which is the framework contract read by
-// stream.ModelOption() (and ultimately consumed by provider adapters that
-// honor provider.ModelOption, e.g. the OpenAI adapter). SetMetadata also
+// The model name is written to Thread.Metadata via
+// session.Stream.SetMetadata, using the framework contract key
+// "ore.model.name" defined in the session package. The session's Spec()
+// method reads that key (and other "ore.model.*" keys) to construct a
+// models.Spec that the loop uses for the next turn. SetMetadata also
 // emits a loop.PropertiesEvent so UI conduits can react to the change.
 //
 // Usage:
@@ -27,10 +28,11 @@ import (
 	"github.com/andrewhowdencom/ore/x/slash"
 )
 
-// metadataKey is the framework contract key consumed by stream.ModelOption.
-// It is intentionally re-declared locally rather than exported from the
-// session package, matching the private contract documented in PR #436.
-const metadataKey = "provider.model"
+// metadataKey is the framework contract key consumed by stream.Spec().
+// It is re-declared here rather than imported from the session package
+// to keep this package free of a session dependency; the session
+// package's MetadataKeyModelName constant holds the same value.
+const metadataKey = "ore.model.name"
 
 // usageFeedback is returned when the caller omits the model argument or
 // supplies only whitespace. Centralised so the slash and tool paths (the

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
@@ -26,6 +27,7 @@ type Pattern interface {
 type ReAct struct {
 	Step     loop.TurnRunner
 	Provider provider.Provider
+	Spec     models.Spec
 	tracer   trace.Tracer
 }
 
@@ -46,7 +48,7 @@ func (r *ReAct) Run(ctx context.Context, st state.State) (state.State, error) {
 	}
 
 	for {
-		result, err := r.Step.Turn(ctx, st, r.Provider)
+		result, err := r.Step.Turn(ctx, st, r.Spec, r.Provider)
 		if err != nil {
 			return result, fmt.Errorf("react turn failed: %w", err)
 		}

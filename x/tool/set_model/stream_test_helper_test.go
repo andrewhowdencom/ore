@@ -6,6 +6,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
@@ -18,7 +19,7 @@ import (
 // because they only exercise the slash command's SetMetadata codepath.
 type noopProvider struct{}
 
-func (noopProvider) Invoke(_ context.Context, _ state.State, _ chan<- artifact.Artifact, _ ...provider.InvokeOption) error {
+func (noopProvider) Invoke(_ context.Context, _ state.State, _ models.Spec, _ chan<- artifact.Artifact, _ ...provider.InvokeOption) error {
 	return nil
 }
 
