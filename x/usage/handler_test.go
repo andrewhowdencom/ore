@@ -75,9 +75,9 @@ func TestHandler_TracksLastTurnValuesAndAccumulatesTotal(t *testing.T) {
 	require.Len(t, e.events, 3)
 
 	expected := []map[string]string{
-		{"sent": "10", "received": "5", "total": "15"},
-		{"sent": "20", "received": "10", "total": "45"},
-		{"sent": "30", "received": "15", "total": "90"},
+		{"sent": "10", "received": "5", "thinking": "0", "total": "15"},
+		{"sent": "20", "received": "10", "thinking": "0", "total": "45"},
+		{"sent": "30", "received": "15", "thinking": "0", "total": "90"},
 	}
 
 	for i, exp := range expected {
@@ -135,4 +135,52 @@ func TestHandler_ConcurrentUpdates(t *testing.T) {
 	assert.Equal(t, "5", props.Properties["received"])
 	// total accumulates: 100 * 2 + 15 = 215.
 	assert.Equal(t, "215", props.Properties["total"])
+}
+
+// TestHandler_EmitsThinkingTokensPerTurn asserts that ThinkingTokens follows
+// per-turn (overwrite) semantics: each emitted PropertiesEvent carries the
+// latest value, not a running sum. This mirrors the documented contract for
+// "sent" and "received" and is the contract the TUI's Ψ indicator depends on.
+func TestHandler_EmitsThinkingTokensPerTurn(t *testing.T) {
+	h := New()
+	var e mockEmitter
+
+	usages := []artifact.Usage{
+		{ThinkingTokens: 10},
+		{ThinkingTokens: 20},
+		{ThinkingTokens: 30},
+	}
+
+	for _, u := range usages {
+		err := h.Handle(context.Background(), u, &e)
+		require.NoError(t, err)
+	}
+
+	require.Len(t, e.events, 3)
+
+	for i, want := range []string{"10", "20", "30"} {
+		pe, ok := e.events[i].(loop.PropertiesEvent)
+		require.True(t, ok)
+		assert.Equal(t, want, pe.Properties["thinking"],
+			"turn %d: thinking should be overwritten with the latest value", i)
+	}
+}
+
+// TestHandler_EmitsZeroThinking asserts that a zero ThinkingTokens count is
+// emitted as the string "0" (not omitted). The TUI's "show when zero"
+// requirement depends on the key being present even when there was no
+// extended-thinking activity this turn.
+func TestHandler_EmitsZeroThinking(t *testing.T) {
+	h := New()
+	var e mockEmitter
+
+	err := h.Handle(context.Background(), artifact.Usage{}, &e)
+	require.NoError(t, err)
+
+	require.Len(t, e.events, 1)
+	pe, ok := e.events[0].(loop.PropertiesEvent)
+	require.True(t, ok)
+	v, present := pe.Properties["thinking"]
+	assert.True(t, present, `"thinking" key must be present even when zero`)
+	assert.Equal(t, "0", v)
 }
