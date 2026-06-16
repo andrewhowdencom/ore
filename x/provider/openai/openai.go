@@ -12,6 +12,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/tool"
@@ -28,7 +29,6 @@ import (
 // official OpenAI Go SDK.
 type Provider struct {
 	client openai.Client
-	model  string
 	tracer trace.Tracer
 	// includeReasoning is the resolved decision about whether to opt into
 	// upstream reasoning traces via `reasoning: {include: true}` in the
@@ -69,8 +69,13 @@ func WithTemperature(t float64) provider.InvokeOption {
 // effort level for OpenAI-compatible providers. The level is translated
 // to OpenAI's reasoning_effort field at request time. The "off" level
 // omits the field entirely.
+//
+// Note: this option is retained for adapter-specific use cases that
+// need to override the spec's ThinkingLevel on a per-call basis. The
+// canonical way to set a thinking level is via the [models.Spec]
+// passed to Invoke.
 type thinkingLevelOption struct {
-	level provider.ThinkingLevel
+	level models.ThinkingLevel
 }
 
 func (thinkingLevelOption) IsInvokeOption() {}
@@ -80,8 +85,8 @@ func (thinkingLevelOption) IsInvokeOption() {}
 // to OpenAI's reasoning_effort vocabulary (low | medium | high);
 // levels outside that vocabulary are clamped (minimal -> low; max ->
 // high) because OpenAI's vocabulary is smaller than the framework's.
-// provider.ThinkingLevelOff and the empty level both disable reasoning.
-func WithThinkingLevel(l provider.ThinkingLevel) provider.InvokeOption {
+// models.ThinkingLevelOff and the empty level both disable reasoning.
+func WithThinkingLevel(l models.ThinkingLevel) provider.InvokeOption {
 	return thinkingLevelOption{level: l}
 }
 
@@ -89,13 +94,13 @@ func WithThinkingLevel(l provider.ThinkingLevel) provider.InvokeOption {
 // the given level, or the empty string if the request should omit the
 // field. Unknown levels return the empty string (treated as "off") for
 // forward compatibility.
-func translateThinkingLevel(l provider.ThinkingLevel) string {
+func translateThinkingLevel(l models.ThinkingLevel) string {
 	switch l {
-	case provider.ThinkingLevelMinimal, provider.ThinkingLevelLow:
+	case models.ThinkingLevelMinimal, models.ThinkingLevelLow:
 		return "low"
-	case provider.ThinkingLevelMedium:
+	case models.ThinkingLevelMedium:
 		return "medium"
-	case provider.ThinkingLevelHigh, provider.ThinkingLevelMax:
+	case models.ThinkingLevelHigh, models.ThinkingLevelMax:
 		return "high"
 	}
 	// Off, empty, and unknown all disable reasoning.
@@ -195,7 +200,6 @@ func WithCacheControl() provider.InvokeOption {
 // config holds the build-time configuration for the Provider.
 type config struct {
 	apiKey           string
-	model            string
 	baseURL          string
 	httpClient       option.HTTPClient
 	tracer           trace.Tracer
@@ -209,13 +213,6 @@ type Option func(*config)
 func WithAPIKey(key string) Option {
 	return func(c *config) {
 		c.apiKey = key
-	}
-}
-
-// WithModel sets the model identifier for the OpenAI-compatible provider.
-func WithModel(model string) Option {
-	return func(c *config) {
-		c.model = model
 	}
 }
 
@@ -241,7 +238,9 @@ func WithTracer(tracer trace.Tracer) Option {
 	}
 }
 
-// New creates an OpenAI-compatible provider.
+// New creates an OpenAI-compatible provider. The model identity is
+// supplied per-call via the [models.Spec] argument to [Provider.Invoke];
+// there is no constructor option for it.
 func New(opts ...Option) (*Provider, error) {
 	cfg := &config{}
 	for _, opt := range opts {
@@ -250,9 +249,6 @@ func New(opts ...Option) (*Provider, error) {
 
 	if cfg.apiKey == "" {
 		return nil, fmt.Errorf("missing required option: apiKey")
-	}
-	if cfg.model == "" {
-		return nil, fmt.Errorf("missing required option: model")
 	}
 
 	sdkOpts := []option.RequestOption{option.WithAPIKey(cfg.apiKey)}
@@ -265,7 +261,6 @@ func New(opts ...Option) (*Provider, error) {
 
 	return &Provider{
 		client:           openai.NewClient(sdkOpts...),
-		model:            cfg.model,
 		tracer:           cfg.tracer,
 		includeReasoning: wantsReasoningInclude(cfg),
 		isOpenRouter:     isOpenRouter(cfg.baseURL),
@@ -419,14 +414,21 @@ func concatText(artifacts []artifact.Artifact) string {
 // via the SDK and emits canonical artifact types in native SSE arrival order.
 // Tool call fragments are assembled into complete ToolCall artifacts;
 // text and reasoning deltas are emitted directly without accumulation.
-func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+//
+// The spec carries the model identity and inference configuration. The
+// adapter translates spec fields to the OpenAI wire format: spec.Name
+// is the model identifier, spec.Temperature is the sampling
+// temperature, spec.ThinkingLevel is mapped to reasoning_effort,
+// spec.MaxOutputTokens is mapped to max_tokens, and spec.StopSequences
+// to the stop field.
+func (p *Provider) Invoke(ctx context.Context, s state.State, spec models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	var span trace.Span
 	if p.tracer != nil {
 		ctx, span = p.tracer.Start(ctx, "provider.invoke", trace.WithSpanKind(trace.SpanKindClient))
-		// Note: the model attribute is set after the option-walk so it
-		// reflects the *effective* (possibly overridden) model, not the
-		// constructor default. A trace that lies about which model served
-		// a request makes per-invocation switching impossible to debug.
+		// Note: the model attribute is set after the spec-walk so it
+		// reflects the *effective* (per-call) model. A trace that lies
+		// about which model served a request makes per-invocation
+		// switching impossible to debug.
 		defer span.End()
 		// Attach httptrace hooks to record granular HTTP lifecycle events
 		// (DNS, connect, TLS, first-byte) on the provider.invoke span.
@@ -438,11 +440,11 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 
 	var tools []tool.Tool
 	var temperature float64
-	var thinkingLevel provider.ThinkingLevel
+	var thinkingLevel models.ThinkingLevel
 	var maxTokens int64
 	var sessionID string
 	var cacheControl bool
-	var modelName string
+	var stopSequences []string
 	for _, opt := range opts {
 		if to, ok := opt.(provider.ToolsOption); ok {
 			tools = to.Tools(ctx, s)
@@ -472,18 +474,38 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		if _, ok := opt.(cacheControlOption); ok {
 			cacheControl = true
 		}
-		if mo, ok := opt.(provider.ModelOption); ok {
-			modelName = mo.Model
-		}
 	}
 
-	// Effective model: per-invocation override wins; empty string falls
-	// through to the constructor default. This is the only place the
-	// precedence rule is encoded, and it is intentionally simple.
-	effectiveModel := p.model
-	if modelName != "" {
-		effectiveModel = modelName
+	// Spec fields take precedence over the per-call options above. A
+	// spec field that is the zero value (empty Name, nil pointer, etc.)
+	// leaves the corresponding value untouched. The spec is the
+	// canonical source of truth for model identity and inference
+	// configuration.
+	if spec.Name != "" {
+		// spec.Name is the model identifier; the per-call options
+		// don't override this — there is no per-call model-name
+		// option anymore.
 	}
+	if spec.Temperature != nil {
+		temperature = *spec.Temperature
+	}
+	if spec.ThinkingLevel != "" {
+		thinkingLevel = spec.ThinkingLevel
+	}
+	if spec.MaxOutputTokens > 0 {
+		maxTokens = spec.MaxOutputTokens
+	}
+	if len(spec.StopSequences) > 0 {
+		stopSequences = spec.StopSequences
+	}
+
+	// The spec's Name is the only source of model identity. An empty
+	// Name is a hard error: we cannot issue a request without knowing
+	// which model to call.
+	if spec.Name == "" {
+		return fmt.Errorf("openai: spec.Name is empty; model identity is required")
+	}
+	effectiveModel := spec.Name
 
 	if p.tracer != nil {
 		span.SetAttributes(attribute.String("model", effectiveModel))
@@ -496,6 +518,9 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, ch chan<- artifact
 		Model:         openai.ChatModel(effectiveModel),
 		Messages:      messages,
 		StreamOptions: openai.ChatCompletionStreamOptionsParam{IncludeUsage: param.NewOpt(true)},
+	}
+	if len(stopSequences) > 0 {
+		params.Stop = stopSequences
 	}
 	if len(tools) > 0 {
 		params.Tools = p.serializeTools(tools)
@@ -1003,8 +1028,8 @@ func applyCacheControl(messages []openai.ChatCompletionMessageParamUnion, tools 
 			if content, ok := mm["content"].(string); ok {
 				mm["content"] = []any{
 					map[string]any{
-						"type":         "text",
-						"text":         content,
+						"type":          "text",
+						"text":          content,
 						"cache_control": cacheControlEphemeral,
 					},
 				}
@@ -1037,8 +1062,8 @@ func applyCacheControl(messages []openai.ChatCompletionMessageParamUnion, tools 
 		}
 		m["content"] = []any{
 			map[string]any{
-				"type":         "text",
-				"text":         content,
+				"type":          "text",
+				"text":          content,
 				"cache_control": cacheControlEphemeral,
 			},
 		}

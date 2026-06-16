@@ -3,6 +3,7 @@ package anthropic
 import (
 	"context"
 	"encoding/json"
+	"github.com/andrewhowdencom/ore/models"
 	"io"
 	"net/http"
 	"os"
@@ -25,7 +26,7 @@ import (
 func TestNew_RequiresAPIKey(t *testing.T) {
 	t.Parallel()
 
-	_, err := New(WithModel("claude-3-7-sonnet-latest"))
+	_, err := New()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "apiKey")
 }
@@ -49,10 +50,8 @@ func TestNew_RequiresModel(t *testing.T) {
 func TestNew_SucceedsWithRequiredOptions(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
-	)
+	p, err := New(PIKey("test-key"))
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 	require.NotNil(t, p)
 	assert.Equal(t, "claude-3-7-sonnet-latest", p.model)
@@ -142,12 +141,12 @@ func TestNew_OpenRouterBaseURL(t *testing.T) {
 	t.Parallel()
 
 	transport := &recordingTransport{}
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("anthropic/claude-3.7-sonnet:thinking"),
+	p, err := New(PIKey("test-key"),
+
 		WithBaseURL("https://openrouter.ai/api/v1"),
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
+	spec := models.Spec{Name: "anthropic/claude-3.7-sonnet:thinking"}
 	require.NoError(t, err)
 	require.NotNil(t, p)
 	assert.True(t, p.isOpenRouter, "isOpenRouter must be true for an openrouter.ai base URL")
@@ -170,12 +169,12 @@ func TestNew_AnthropicNativeBaseURL(t *testing.T) {
 	t.Parallel()
 
 	transport := &recordingTransport{}
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
+	p, err := New(PIKey("test-key"),
+
 		WithBaseURL("https://api.anthropic.com"),
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 	require.NotNil(t, p)
 	assert.False(t, p.isOpenRouter, "isOpenRouter must be false for an api.anthropic.com base URL")
@@ -240,10 +239,8 @@ func TestIsOpenRouter_TableDriven(t *testing.T) {
 func TestProviderSerialize_ReplaysThinkingBlocks(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
-	)
+	p, err := New(PIKey("test-key"))
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -316,10 +313,8 @@ func TestProviderSerialize_ReplaysThinkingBlocks(t *testing.T) {
 func TestProviderSerialize_ReplaysRedactedThinking(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
-	)
+	p, err := New(PIKey("test-key"))
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -364,10 +359,8 @@ func TestProviderSerialize_ReplaysRedactedThinking(t *testing.T) {
 func TestProviderSerialize_ReplaysToolUseAndToolResult(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
-	)
+	p, err := New(PIKey("test-key"))
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -379,7 +372,7 @@ func TestProviderSerialize_ReplaysToolUseAndToolResult(t *testing.T) {
 	})
 	mem.Append(state.RoleTool, artifact.ToolResult{
 		ToolCallID: "toolu_abc",
-		Content:     "72F sunny",
+		Content:    "72F sunny",
 	})
 
 	got := p.serializeMessages(mem)
@@ -443,10 +436,8 @@ func TestProviderSerialize_ReplaysToolUseAndToolResult(t *testing.T) {
 func TestProviderSerialize_DisplayDoesNotAffectWireFormat(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
-	)
+	p, err := New(PIKey("test-key"))
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -498,10 +489,8 @@ func TestProviderSerialize_DisplayDoesNotAffectWireFormat(t *testing.T) {
 func TestProviderSerialize_SystemCollapsedToSystemField(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
-	)
+	p, err := New(PIKey("test-key"))
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -526,10 +515,8 @@ func TestProviderSerialize_SystemCollapsedToSystemField(t *testing.T) {
 func TestProviderSerialize_EmptySignatureOnStandaloneReasoning(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
-	)
+	p, err := New(PIKey("test-key"))
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -570,10 +557,8 @@ func TestProviderSerialize_EmptySignatureOnStandaloneReasoning(t *testing.T) {
 func TestProviderSerialize_StandaloneSignatureEmitsEmptyThinking(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
-	)
+	p, err := New(PIKey("test-key"))
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -749,10 +734,8 @@ func TestTranslateThinkingLevel(t *testing.T) {
 func TestProviderSerialize_ArgumentsParseAsDict(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
-	)
+	p, err := New(PIKey("test-key"))
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -786,10 +769,8 @@ func TestProviderSerialize_ArgumentsParseAsDict(t *testing.T) {
 func TestProviderSerialize_IsErrorTruePropagates(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
-	)
+	p, err := New(PIKey("test-key"))
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -801,8 +782,8 @@ func TestProviderSerialize_IsErrorTruePropagates(t *testing.T) {
 	})
 	mem.Append(state.RoleTool, artifact.ToolResult{
 		ToolCallID: "toolu_err",
-		Content:     "service unavailable",
-		IsError:     true,
+		Content:    "service unavailable",
+		IsError:    true,
 	})
 
 	got := p.serializeMessages(mem)
@@ -828,10 +809,8 @@ func TestProviderSerialize_IsErrorTruePropagates(t *testing.T) {
 func TestProviderSerialize_OrderPreservedWithinTurn(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
-	)
+	p, err := New(PIKey("test-key"))
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -871,10 +850,8 @@ func TestProviderSerialize_OrderPreservedWithinTurn(t *testing.T) {
 func TestProviderSerialize_RoleToolSkipsNonToolResultArtifacts(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
-	)
+	p, err := New(PIKey("test-key"))
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -917,10 +894,8 @@ func TestProviderSerialize_RoleToolSkipsNonToolResultArtifacts(t *testing.T) {
 func TestProviderSerialize_DropsMixedSystemTurn(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
-	)
+	p, err := New(PIKey("test-key"))
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -946,10 +921,8 @@ func TestProviderSerialize_DropsMixedSystemTurn(t *testing.T) {
 func TestProviderSerialize_ConcatTextSeparatesWithNewline(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
-	)
+	p, err := New(PIKey("test-key"))
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -975,10 +948,8 @@ func TestProviderSerialize_ConcatTextSeparatesWithNewline(t *testing.T) {
 func TestProviderSerialize_HandlesBadJSONArguments(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
-	)
+	p, err := New(PIKey("test-key"))
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -1018,10 +989,8 @@ func TestProviderSerialize_HandlesBadJSONArguments(t *testing.T) {
 func TestProviderSerialize_EmptyAssistantTurnStillEmits(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
-	)
+	p, err := New(PIKey("test-key"))
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -1052,10 +1021,8 @@ func TestProviderSerialize_EmptyAssistantTurnStillEmits(t *testing.T) {
 func TestProviderSerialize_AppliesPreTasksFixesRegressions(t *testing.T) {
 	t.Parallel()
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
-	)
+	p, err := New(PIKey("test-key"))
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	// Single round-trip with every artifact type in play.
@@ -1070,7 +1037,7 @@ func TestProviderSerialize_AppliesPreTasksFixesRegressions(t *testing.T) {
 	)
 	mem.Append(state.RoleTool, artifact.ToolResult{
 		ToolCallID: "toolu_1",
-		Content:     "result",
+		Content:    "result",
 	})
 
 	got := p.serializeMessages(mem)
@@ -1156,18 +1123,18 @@ func TestProviderInvoke_StreamsThinking(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
+	p, err := New(PIKey("test-key"),
+
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
 	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	got := drainArtifacts(ch)
 
 	// Two reasoning deltas, one signature, one stop_reason, one usage.
@@ -1213,18 +1180,18 @@ func TestProviderInvoke_StreamsMixedTextAndThinking(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
+	p, err := New(PIKey("test-key"),
+
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
 	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	got := drainArtifacts(ch)
 
 	// Order on the channel:
@@ -1265,18 +1232,18 @@ func TestProviderInvoke_StreamsRedactedThinkingForReplay(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
+	p, err := New(PIKey("test-key"),
+
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
 	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	got := drainArtifacts(ch)
 
 	require.Len(t, got, 3)
@@ -1307,18 +1274,18 @@ func TestProviderInvoke_PreservesUsageThinkingTokens(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
+	p, err := New(PIKey("test-key"),
+
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
 	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	got := drainArtifacts(ch)
 
 	// One text_delta, one stop_reason, one usage.
@@ -1354,18 +1321,18 @@ func TestProviderInvoke_ToolUseStreaming(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
+	p, err := New(PIKey("test-key"),
+
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
 	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	got := drainArtifacts(ch)
 
 	// tool_call_delta x3 (ID+Name, partial JSON, partial JSON),
@@ -1407,11 +1374,11 @@ func TestProviderInvoke_ContextCancellation(t *testing.T) {
 	release := make(chan struct{})
 	blocking := &blockingTransport{release: release}
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
+	p, err := New(PIKey("test-key"),
+
 		WithHTTPClient(&http.Client{Transport: blocking}),
 	)
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
@@ -1421,7 +1388,7 @@ func TestProviderInvoke_ContextCancellation(t *testing.T) {
 	cancel()
 
 	ch := make(chan artifact.Artifact, 16)
-	err = p.Invoke(ctx, mem, ch)
+	err = p.Invoke(ctx, mem, spec, ch)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 
@@ -1445,18 +1412,18 @@ func TestProviderInvoke_HTTPError(t *testing.T) {
 		status:             401,
 	}
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
+	p, err := New(PIKey("test-key"),
+
 		WithHTTPClient(&http.Client{Transport: tr}),
 	)
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
 	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
-	err = p.Invoke(t.Context(), mem, ch)
+	err = p.Invoke(t.Context(), mem, spec, ch)
 	require.Error(t, err)
 }
 
@@ -1472,18 +1439,18 @@ func TestProviderInvoke_TalksToOpenRouter(t *testing.T) {
 		t.Skip("OR_API_KEY not set; skipping OpenRouter integration test")
 	}
 
-	p, err := New(
-		WithAPIKey(apiKey),
-		WithModel("minimax/minimax-m3"),
+	p, err := New(PIKey(apiKey),
+
 		WithBaseURL("https://openrouter.ai/api/v1"),
 	)
+	spec := models.Spec{Name: "minimax/minimax-m3"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
 	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	got := drainArtifacts(ch)
 
 	// The test passes if Invoke returned without error. The exact
@@ -1517,18 +1484,18 @@ func TestProviderInvoke_EmitsStopReason_EndTurn(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
+	p, err := New(PIKey("test-key"),
+
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
 	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	got := drainArtifacts(ch)
 
 	// text_delta, stop_reason, usage
@@ -1555,18 +1522,18 @@ func TestProviderInvoke_EmitsStopReason_Length(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
+	p, err := New(PIKey("test-key"),
+
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
 	mem.Append(state.RoleUser, artifact.Text{Content: "summarize this"})
 
 	ch := make(chan artifact.Artifact, 16)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	got := drainArtifacts(ch)
 
 	require.Len(t, got, 3)
@@ -1593,18 +1560,18 @@ func TestProviderInvoke_EmitsStopReason_ToolUse(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
+	p, err := New(PIKey("test-key"),
+
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
 	mem.Append(state.RoleUser, artifact.Text{Content: "find something"})
 
 	ch := make(chan artifact.Artifact, 16)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	got := drainArtifacts(ch)
 
 	// tool_call_delta x2 (ID+Name, then input JSON), stop_reason, usage
@@ -1631,18 +1598,18 @@ func TestProviderInvoke_EmitsStopReason_Refusal(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
+	p, err := New(PIKey("test-key"),
+
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
 	mem.Append(state.RoleUser, artifact.Text{Content: "do something dangerous"})
 
 	ch := make(chan artifact.Artifact, 16)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	got := drainArtifacts(ch)
 
 	require.Len(t, got, 2)
@@ -1670,18 +1637,18 @@ func TestProviderInvoke_EmitsStopReason_StopSequenceMapsToOther(t *testing.T) {
 			sseEvent("message_stop", `{"type":"message_stop"}`),
 	}
 
-	p, err := New(
-		WithAPIKey("test-key"),
-		WithModel("claude-3-7-sonnet-latest"),
+	p, err := New(PIKey("test-key"),
+
 		WithHTTPClient(&http.Client{Transport: transport}),
 	)
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
 	mem := state.NewBuffer()
 	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
-	require.NoError(t, p.Invoke(t.Context(), mem, ch))
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
 	got := drainArtifacts(ch)
 
 	require.Len(t, got, 3)
