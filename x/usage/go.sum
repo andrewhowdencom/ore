@@ -1,5 +1,5 @@
-github.com/andrewhowdencom/ore v0.7.0 h1:r6+9aKHuh28tObSOLbpTPLvg8eMrsQ6Ny6Ig9M18BSg=
-github.com/andrewhowdencom/ore v0.7.0/go.mod h1:21KoIj06hHnZ7SPrV6chXMdU4oRjHheaCI+/kasHIFc=
+github.com/andrewhowdencom/ore v0.11.0 h1:NDMIIyNwUG9l2dibuopEFKRM+nEXs01ciWA2C/tiXJw=
+github.com/andrewhowdencom/ore v0.11.0/go.mod h1:z8ohVfj62/vsXqVsbpqftza2GTINPPqwxzZhJbclN4g=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
