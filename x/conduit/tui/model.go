@@ -162,6 +162,13 @@ type model struct {
 	// PropertiesEvent output events (e.g. thread_id, state).
 	status map[string]string
 
+	// initStatusMsg is a one-shot status seed produced by initModel from
+	// stream.AllMetadata(). It is yielded by Init() as a tea.Cmd so the
+	// existing statusMsg handler can merge it into m.status through the
+	// normal message channel — i.e., after the event loop has started.
+	// It is never read after Init() runs and can otherwise be ignored.
+	initStatusMsg tea.Msg
+
 	// zoneFormatter converts the flat status map into structured segments
 	// for zone-aware rendering. If nil, a default formatter is used.
 	zoneFormatter conduit.StatusFormatter
@@ -442,8 +449,18 @@ func (m *model) loadHistory(turns []state.Turn) {
 
 // Init returns an initial command. No periodic ticks are needed because
 // turns arrive via program.Send from the orchestrator goroutine.
+//
+// When initModel populated m.initStatusMsg, Init yields it as a tea.Cmd
+// so the statusMsg handler picks it up through the normal message
+// channel after the event loop is running. This is the only safe place
+// to dispatch a message into the program: calling program.Send from
+// before p.Run() blocks the main goroutine indefinitely.
 func (m *model) Init() tea.Cmd {
-	return nil
+	if m.initStatusMsg == nil {
+		return nil
+	}
+	seed := m.initStatusMsg
+	return func() tea.Msg { return seed }
 }
 
 // Update handles incoming messages: keyboard input, window resize, and
