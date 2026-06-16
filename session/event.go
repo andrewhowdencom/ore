@@ -61,6 +61,7 @@ type InterceptResult struct {
 //   - Return a non-nil Event in the result to rewrite the event
 //   - Return a nil Event in the result to consume the event (no further processing)
 //   - Return an error to abort processing
+//
 // Feedback messages are ephemeral UI messages that are not persisted to state.
 //
 // The *session.Stream parameter is the stream that owns the in-flight event,

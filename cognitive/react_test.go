@@ -8,6 +8,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/stretchr/testify/assert"
@@ -20,7 +21,7 @@ type simpleProvider struct {
 	err       error
 }
 
-func (p *simpleProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (p *simpleProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	for _, art := range p.artifacts {
 		select {
 		case ch <- art:
@@ -39,7 +40,7 @@ type countingProvider struct {
 	callCount int
 }
 
-func (p *countingProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (p *countingProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.callCount++
@@ -70,7 +71,7 @@ var _ provider.Provider = (*countingProvider)(nil)
 // cancelCheckingProvider checks ctx.Err() before returning artifacts.
 type cancelCheckingProvider struct{}
 
-func (p *cancelCheckingProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (p *cancelCheckingProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}

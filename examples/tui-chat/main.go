@@ -160,7 +160,7 @@ func run() error {
 	}
 	prov, err := openai.New(append([]openai.Option{
 		openai.WithAPIKey(apiKey),
-		openai.WithModel(modelName),
+		
 		openai.WithTracer(tracer),
 	}, opts...)...)
 	if err != nil {
