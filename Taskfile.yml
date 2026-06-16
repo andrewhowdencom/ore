@@ -9,6 +9,9 @@ includes:
   examples:
     taskfile: Taskfile.lib.yml
     dir: examples
+  x-catalog-models:
+    taskfile: Taskfile.lib.yml
+    dir: x/catalog/models
   x-conduit:
     taskfile: Taskfile.lib.yml
     dir: x/conduit
@@ -97,6 +100,7 @@ tasks:
     deps: [lint, test, build]
     cmds:
       - task examples:validate
+      - task x-catalog-models:validate
       - task x-conduit:validate
       - task x-conduit-http:validate
       - task x-conduit-slack:validate

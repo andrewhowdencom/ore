@@ -5,6 +5,7 @@ use (
 	./examples
 	./examples/verifier-chat
 	./x/analytics
+	./x/catalog/models
 	./x/compaction
 	./x/conduit
 	./x/conduit/http
