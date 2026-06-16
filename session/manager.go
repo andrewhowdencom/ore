@@ -62,17 +62,17 @@ func makeKindsSet(kinds []string) map[string]struct{} {
 // Manager owns the Thread↔Step binding and acts as a factory/registry for
 // Stream handles.
 type Manager struct {
-	store        Store
-	provider     provider.Provider
-	newStep      func(*Stream) ([]loop.Option, error)
-	processor    TurnProcessor
-	interceptor  Interceptor
-	sessions     map[string]*Stream
-	mu           sync.RWMutex
-	sinks        []sink
-	sinksMu      sync.RWMutex
-	sinkID       int64
-	defaultMeta  func(*Stream) map[string]string
+	store       Store
+	provider    provider.Provider
+	newStep     func(*Stream) ([]loop.Option, error)
+	processor   TurnProcessor
+	interceptor Interceptor
+	sessions    map[string]*Stream
+	mu          sync.RWMutex
+	sinks       []sink
+	sinksMu     sync.RWMutex
+	sinkID      int64
+	defaultMeta func(*Stream) map[string]string
 }
 
 // NewManager creates a new Manager with the given dependencies.

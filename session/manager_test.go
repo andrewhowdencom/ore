@@ -9,6 +9,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/stretchr/testify/assert"
@@ -49,7 +50,7 @@ type mockProvider struct {
 	err       error
 }
 
-func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	for _, art := range m.artifacts {
 		select {
 		case ch <- art:
@@ -63,7 +64,8 @@ func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- arti
 // simpleProcessor runs a single Step.Turn with the mock provider.
 func simpleProcessor() TurnProcessor {
 	return func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
-		return executor.Turn(ctx, st, prov)
+		spec := models.Spec{Name: "test-model"}
+		return executor.Turn(ctx, st, spec, prov)
 	}
 }
 
@@ -77,7 +79,7 @@ func nopProcessor() TurnProcessor {
 // blockingProvider is a provider that blocks until the context is cancelled.
 type blockingProvider struct{}
 
-func (m *blockingProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *blockingProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	<-ctx.Done()
 	return ctx.Err()
 }
@@ -1260,7 +1262,7 @@ type toolLoopProvider struct {
 	callCount int
 }
 
-func (p *toolLoopProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (p *toolLoopProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	p.callCount++
 	if p.callCount == 1 {
 		ch <- artifact.ToolCall{Name: "test_tool", Arguments: `{"query":"hello"}`}
@@ -1280,7 +1282,8 @@ func TestManager_Process_ToolLoop_NoDuplicateTurns(t *testing.T) {
 	// 3. Turn (assistant with final answer)
 	toolProc := TurnProcessor(func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
 		// First assistant turn (tool call)
-		st, err := executor.Turn(ctx, st, prov)
+		spec := models.Spec{Name: "test-model"}
+		st, err := executor.Turn(ctx, st, spec, prov)
 		if err != nil {
 			return st, err
 		}
@@ -1295,7 +1298,7 @@ func TestManager_Process_ToolLoop_NoDuplicateTurns(t *testing.T) {
 		})
 
 		// Second assistant turn (final answer)
-		return executor.Turn(ctx, st, prov)
+		return executor.Turn(ctx, st, spec, prov)
 	})
 
 	mgr := NewManager(store, prov, func(stream *Stream) ([]loop.Option, error) {

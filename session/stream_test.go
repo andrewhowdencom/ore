@@ -9,6 +9,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/stretchr/testify/assert"
@@ -560,11 +561,12 @@ func TestStream_Process_EmitsSingleLifecycleEvent_ForMultiTurn(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
 	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
-		st, err := executor.Turn(ctx, st, prov)
+		spec := models.Spec{Name: "test-model"}
+		st, err := executor.Turn(ctx, st, spec, prov)
 		if err != nil {
 			return st, err
 		}
-		return executor.Turn(ctx, st, prov)
+		return executor.Turn(ctx, st, spec, prov)
 	})
 
 	stream, err := mgr.Create()
@@ -755,7 +757,7 @@ func TestStream_ProcessAndSubmit_Mixed(t *testing.T) {
 // slowProvider sleeps for a short duration, simulating a slow turn.
 type slowProvider struct{}
 
-func (m *slowProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *slowProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	select {
 	case <-time.After(100 * time.Millisecond):
 		return nil
@@ -771,7 +773,7 @@ type serialProvider struct {
 	detected bool
 }
 
-func (m *serialProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *serialProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	m.mu.Lock()
 	if m.active {
 		m.detected = true
@@ -972,29 +974,28 @@ func TestStream_ModelOption(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = stream.Close() })
 
-	t.Run("returns nil when metadata key is absent", func(t *testing.T) {
-		assert.Nil(t, stream.ModelOption(),
-			"fresh stream has no provider.model metadata; ModelOption must return nil so the result can be appended unconditionally")
+	t.Run("returns false when metadata key is absent", func(t *testing.T) {
+		_, ok := stream.Spec()
+		assert.False(t, ok,
+			"fresh stream has no ore.model.name metadata; Spec must return false so the caller uses the loop's default")
 	})
 
-	t.Run("returns ModelOption carrying the metadata value", func(t *testing.T) {
-		stream.SetMetadata("provider.model", "gpt-4o-mini")
+	t.Run("returns Spec carrying the metadata value", func(t *testing.T) {
+		stream.SetMetadata(MetadataKeyModelName, "gpt-4o-mini")
 
-		opt := stream.ModelOption()
-		require.NotNil(t, opt)
-
-		mo, ok := opt.(provider.ModelOption)
-		require.True(t, ok, "ModelOption should produce a provider.ModelOption value")
-		assert.Equal(t, "gpt-4o-mini", mo.Model)
+		spec, ok := stream.Spec()
+		require.True(t, ok, "Spec should be present after setting ore.model.name")
+		assert.Equal(t, "gpt-4o-mini", spec.Name)
 	})
 
-	t.Run("returns nil when metadata is explicitly cleared", func(t *testing.T) {
+	t.Run("returns false when metadata is explicitly cleared", func(t *testing.T) {
 		// Even if the key was previously set, an empty string is a
-		// no-op signal. ModelOption must mirror that contract.
-		stream.SetMetadata("provider.model", "")
+		// no-op signal. Spec must mirror that contract.
+		stream.SetMetadata(MetadataKeyModelName, "")
 
-		assert.Nil(t, stream.ModelOption(),
-			"empty metadata value must produce a nil option, matching the empty-Model no-op contract")
+		_, ok := stream.Spec()
+		assert.False(t, ok,
+			"empty metadata value must produce ok=false, matching the empty-Name no-op contract")
 	})
 }
 
