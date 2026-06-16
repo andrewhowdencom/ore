@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/x/provider/openai
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.10.0
+	github.com/andrewhowdencom/ore v0.11.0
 	github.com/andrewhowdencom/ore/x/tool v0.5.0
 	github.com/openai/openai-go v1.12.0
 	github.com/stretchr/testify v1.11.1
