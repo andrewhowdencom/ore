@@ -27,9 +27,11 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/x/analytics"
 	"github.com/andrewhowdencom/ore/x/conduit/tui"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
 	"github.com/andrewhowdencom/ore/x/slash"
@@ -174,6 +176,29 @@ func run() error {
 	slashReg := slash.NewRegistry()
 	slashReg.Bind("name", "Set the conversation title", set_title.Slash())
 	slashReg.Bind("model", "Set the model for this session", set_model.Slash())
+	slashReg.Bind("analytics", "Show per-(kind, source) byte and count breakdown for this thread",
+		func(ctx context.Context, emitter loop.Emitter, cmd slash.Command) (slash.Result, error) {
+			// Read-only handler: never invokes the LLM, never mutates state.
+			// /analytics is slash-only by design — the model must not be
+			// able to spend context budget calling it.
+			//
+			// The session.Stream is nil when the slash registry is invoked
+			// outside the session pipeline (e.g. direct unit tests). Treat
+			// that the same as an empty thread so the handler never panics
+			// regardless of how it is wired.
+			_ = emitter
+			stream := cmd.Stream()
+			if stream == nil {
+				return slash.Result{
+					Feedback: artifact.Text{Content: "No artifacts in this thread yet."},
+				}, nil
+			}
+			stats := analytics.AnalyzeTurns(stream.Turns())
+			return slash.Result{
+				Feedback: artifact.Text{Content: analytics.Render(stats)},
+			}, nil
+		},
+	)
 
 	// Manager now auto-persists state via a default OnEmit callback;
 	// no custom stepFactory needed for basic TUI usage, but we wire the
