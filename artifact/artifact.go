@@ -6,6 +6,7 @@ package artifact
 import (
 	"encoding/json"
 	"strconv"
+	"time"
 )
 
 // Artifact is the base interface for all LLM response artifacts.
@@ -358,6 +359,70 @@ func (s StopReason) MarshalJSON() ([]byte, error) {
 	return json.Marshal(output{
 		Kind:   "stop_reason",
 		Reason: s.Reason,
+	})
+}
+
+// Compaction is a metadata artifact marking a state-buffer compaction
+// event. It is appended to the buffer as part of a RoleSystem turn (in
+// addition to the artifact.Text carrying the LLM-facing summary). The
+// artifact carries the structured provenance of the compaction so that
+// consumers (analytics, TUI, future routing layers) can reason about
+// what was folded without having to parse the summary text.
+//
+// Compaction is intentionally NOT a Delta and NOT Accumulable. It is
+// emitted as a single, complete artifact at the moment a compaction
+// is produced; there is no streaming form.
+//
+// Fields:
+//
+//   - CompactedThrough is the index of the compaction turn within the
+//     buffer; "everything before this index is folded behind the
+//     summary" — the cumulative projection the transform applies.
+//     Stored as the turn's own index for self-describing recovery.
+//   - DroppedTurnCount is the number of pre-compaction turns folded
+//     behind the summary. Computed at compaction time.
+//   - DroppedTokenEstimate is a best-effort LLM-visible byte/token
+//     estimate of the dropped turns, computed by summing llmbytes.Of
+//     over the dropped artifacts. It is an approximation, not a
+//     provider-reported value.
+//   - Strategy is a short identifier of the strategy that produced
+//     this compaction (e.g. "summarize"). Free-form so new strategies
+//     can be introduced without changing this struct.
+//   - Model is the identifier of the model that produced the summary
+//     text (e.g. "gpt-4o-mini"). May be empty when the strategy does
+//     not consult an LLM.
+//   - CreatedAt records when the compaction was produced.
+type Compaction struct {
+	CompactedThrough     int       `json:"compacted_through"`
+	DroppedTurnCount     int       `json:"dropped_turn_count"`
+	DroppedTokenEstimate int64     `json:"dropped_token_estimate"`
+	Strategy             string    `json:"strategy"`
+	Model                string    `json:"model,omitempty"`
+	CreatedAt            time.Time `json:"created_at"`
+}
+
+// Kind returns the artifact kind identifier.
+func (c Compaction) Kind() string { return "compaction" }
+
+// MarshalJSON serializes Compaction to JSON.
+func (c Compaction) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind                 string    `json:"kind"`
+		CompactedThrough     int       `json:"compacted_through"`
+		DroppedTurnCount     int       `json:"dropped_turn_count"`
+		DroppedTokenEstimate int64     `json:"dropped_token_estimate"`
+		Strategy             string    `json:"strategy"`
+		Model                string    `json:"model,omitempty"`
+		CreatedAt            time.Time `json:"created_at"`
+	}
+	return json.Marshal(output{
+		Kind:                 "compaction",
+		CompactedThrough:     c.CompactedThrough,
+		DroppedTurnCount:     c.DroppedTurnCount,
+		DroppedTokenEstimate: c.DroppedTokenEstimate,
+		Strategy:             c.Strategy,
+		Model:                c.Model,
+		CreatedAt:            c.CreatedAt,
 	})
 }
 
