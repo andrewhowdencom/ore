@@ -109,6 +109,109 @@ func TestStream_LoadTurns(t *testing.T) {
 	_ = stream.Close()
 }
 
+func TestStream_AppendTurn_AppendsToState(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	// Pre-existing turns from a Process call.
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hello"})
+	require.NoError(t, err)
+	require.Len(t, stream.Turns(), 2)
+
+	// Append a synthetic RoleSystem compaction turn.
+	err = stream.AppendTurn(context.Background(),
+		state.RoleSystem,
+		artifact.Text{Content: "summary"},
+		artifact.Compaction{Strategy: "summarize"},
+	)
+	require.NoError(t, err)
+
+	got := stream.Turns()
+	require.Len(t, got, 3, "AppendTurn appends to the existing buffer")
+
+	// The appended turn is at the end.
+	assert.Equal(t, state.RoleSystem, got[2].Role)
+	require.Len(t, got[2].Artifacts, 2)
+	assert.Equal(t, "summary", got[2].Artifacts[0].(artifact.Text).Content)
+	_, isCompaction := got[2].Artifacts[1].(artifact.Compaction)
+	assert.True(t, isCompaction)
+	assert.False(t, got[2].Timestamp.IsZero())
+
+	_ = stream.Close()
+}
+
+func TestStream_AppendTurn_BroadcastsTurnComplete(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	ch := stream.Subscribe("turn_complete")
+
+	err = stream.AppendTurn(
+		loop.WithProvenance(context.Background(), "external"),
+		state.RoleSystem,
+		artifact.Text{Content: "summary"},
+	)
+	require.NoError(t, err)
+
+	select {
+	case ev := <-ch:
+		tc, ok := ev.(loop.TurnCompleteEvent)
+		require.True(t, ok, "expected TurnCompleteEvent, got %T", ev)
+		assert.Equal(t, state.RoleSystem, tc.Turn.Role)
+		require.Len(t, tc.Turn.Artifacts, 1)
+		assert.Equal(t, "summary", tc.Turn.Artifacts[0].(artifact.Text).Content)
+		assert.Equal(t, "external", provenance(tc.Ctx))
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for TurnCompleteEvent")
+	}
+
+	_ = stream.Close()
+}
+
+func TestStream_AppendTurn_ClosedReturnsError(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	require.NoError(t, stream.Close())
+
+	err = stream.AppendTurn(context.Background(), state.RoleSystem, artifact.Text{Content: "after close"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "closed")
+}
+
+func TestStream_AppendTurn_NoSubscribers_NoError(t *testing.T) {
+	// AppendTurn must not block or fail when there are no live
+	// subscribers. The event still flows through the event bus; it
+	// just has no listeners.
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	// No subscription — AppendTurn returns nil and the state is updated.
+	err = stream.AppendTurn(context.Background(), state.RoleSystem, artifact.Text{Content: "no listeners"})
+	require.NoError(t, err)
+
+	require.Len(t, stream.Turns(), 1)
+	assert.Equal(t, "no listeners", stream.Turns()[0].Artifacts[0].(artifact.Text).Content)
+
+	_ = stream.Close()
+}
+
 func TestStream_AllMetadata(t *testing.T) {
 	t.Run("returns empty map for a fresh stream", func(t *testing.T) {
 		store := NewMemoryStore()

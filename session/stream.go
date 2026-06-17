@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
@@ -358,6 +359,46 @@ func (s *Stream) LoadTurns(turns []state.Turn) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.thread.State.LoadTurns(turns)
+}
+
+// AppendTurn records a turn into the thread state and broadcasts a
+// TurnCompleteEvent to all subscribers of the stream. It is the
+// canonical entry point for external producers (slash handlers,
+// compaction, future tool-side producers) that need to inject turns
+// without going through step.Turn / step.Submit.
+//
+// Behavior:
+//
+//   - The TurnCompleteEvent is emitted via s.step.Emit. The stream's
+//     default OnEmit (registered by the Manager) appends the turn to
+//     thread.State synchronously, before the event reaches the async
+//     FanOut. Subscribers see the event with the canonical state
+//     already updated, so live consumers (TUI, telemetry) do not
+//     need to call ReloadHistory to observe the new turn.
+//   - The thread is NOT auto-saved. Callers that want the change to
+//     persist to the store should call Save() explicitly, or rely on
+//     the stream's normal save flow after the next Process() call.
+//     This matches the rest of the Stream's contract: state mutations
+//     are persisted by the inference pipeline, not by ad-hoc producers.
+//
+// Errors:
+//
+//   - "session %s is closed" if the stream has been closed.
+func (s *Stream) AppendTurn(ctx context.Context, role state.Role, artifacts ...artifact.Artifact) error {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return fmt.Errorf("session %s is closed", s.id)
+	}
+	s.mu.Unlock()
+
+	turn := state.Turn{
+		Role:      role,
+		Artifacts: artifacts,
+		Timestamp: time.Now(),
+	}
+	s.step.Emit(ctx, loop.TurnCompleteEvent{Turn: turn, Ctx: ctx})
+	return nil
 }
 
 // GetMetadata retrieves a metadata value from the underlying thread.
