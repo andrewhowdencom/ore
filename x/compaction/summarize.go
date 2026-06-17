@@ -159,7 +159,6 @@ func Summarize(ctx context.Context, p provider.Provider, spec models.Spec, turns
 	summaryTurn := state.Turn{
 		Role: state.RoleSystem,
 		Artifacts: []artifact.Artifact{
-			artifact.Text{Content: summary},
 			artifact.Compaction{
 				CompactedThrough:     len(turns),
 				DroppedTurnCount:     len(turns),
@@ -168,6 +167,7 @@ func Summarize(ctx context.Context, p provider.Provider, spec models.Spec, turns
 				Model:                spec.Name,
 				CreatedAt:            now,
 			},
+			artifact.Text{Content: summary},
 		},
 		Timestamp: now,
 	}
