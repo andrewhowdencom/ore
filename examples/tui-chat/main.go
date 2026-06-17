@@ -33,7 +33,7 @@ import (
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/x/analytics"
 	"github.com/andrewhowdencom/ore/x/conduit/tui"
-	"github.com/andrewhowdencom/ore/x/wire/openai"
+	"github.com/andrewhowdencom/ore/x/provider/openai"
 	"github.com/andrewhowdencom/ore/x/slash"
 	"github.com/andrewhowdencom/ore/x/telemetry"
 	"github.com/andrewhowdencom/ore/x/tool/set_model"

@@ -15,7 +15,6 @@ require (
 	github.com/andrewhowdencom/ore/x/tool/set_model v0.0.0
 	github.com/andrewhowdencom/ore/x/tool/set_title v0.0.0
 	github.com/andrewhowdencom/ore/x/usage v0.0.0
-	github.com/andrewhowdencom/ore/x/wire/openai v0.0.0
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/sdk/metric v1.44.0
@@ -31,6 +30,7 @@ require (
 	github.com/andrewhowdencom/ore/x/llmbytes v0.1.0 // indirect
 	github.com/andrewhowdencom/ore/x/tool/truncate v0.1.0 // indirect
 	github.com/andrewhowdencom/ore/x/verifier v0.1.1 // indirect
+	github.com/andrewhowdencom/ore/x/wire/openai v0.5.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
@@ -84,6 +84,7 @@ replace (
 	github.com/andrewhowdencom/ore/x/conduit/http => ../x/conduit/http
 	github.com/andrewhowdencom/ore/x/conduit/tui => ../x/conduit/tui
 	github.com/andrewhowdencom/ore/x/llmbytes => ../x/llmbytes
+	github.com/andrewhowdencom/ore/x/provider/openai => ../x/provider/openai
 	github.com/andrewhowdencom/ore/x/telemetry => ../x/telemetry
 	github.com/andrewhowdencom/ore/x/tool => ../x/tool
 	github.com/andrewhowdencom/ore/x/tool/calculator => ../x/tool/calculator

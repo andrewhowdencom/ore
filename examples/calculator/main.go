@@ -16,7 +16,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/tool"
-	"github.com/andrewhowdencom/ore/x/wire/openai"
+	"github.com/andrewhowdencom/ore/x/provider/openai"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
 	"github.com/andrewhowdencom/ore/x/tool/calculator"
 )
