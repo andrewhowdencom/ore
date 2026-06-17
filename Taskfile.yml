@@ -12,6 +12,9 @@ includes:
   x-catalog-models:
     taskfile: Taskfile.lib.yml
     dir: x/catalog/models
+  x-provider-anthropic:
+    taskfile: Taskfile.lib.yml
+    dir: x/provider/anthropic
   x-conduit:
     taskfile: Taskfile.lib.yml
     dir: x/conduit
@@ -101,6 +104,7 @@ tasks:
     cmds:
       - task examples:validate
       - task x-catalog-models:validate
+      - task x-provider-anthropic:validate
       - task x-conduit:validate
       - task x-conduit-http:validate
       - task x-conduit-slack:validate
