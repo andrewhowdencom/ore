@@ -103,9 +103,13 @@ tasks:
       - golangci-lint run ./...
 
   generate:
-    desc: Generate code (no-op for this project)
+    desc: Regenerate the model catalog and gateway lookup tables
     cmds:
-      - echo "No code generation required"
+      - go run ./cmd/modelsdev-gen
+      # Re-run is a no-op if upstream is unchanged; the diff check below
+      # fails the task if the second run rewrites anything.
+      - go run ./cmd/modelsdev-gen
+      - git diff --exit-code x/catalog/models/ x/provider/openrouter/lookup.go x/provider/vercel/lookup.go
 
   # ---------------------------------------------------------------------------
   # Validate the whole repository

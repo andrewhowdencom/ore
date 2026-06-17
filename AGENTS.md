@@ -19,13 +19,28 @@ Follow a **cycle-free dependency graph**:
 ```
 artifact/      ← leaf package, no internal dependencies
 state/         ← depends on artifact/
-provider/      ← depends on state/, artifact/
-loop/          ← depends on artifact/, state/, provider/
-x/provider/... ← concrete adapters branch off provider/, never import loop/
+models/        ← leaf value type carried through state, loop, provider
+provider/      ← depends on state/, artifact/, models/
+loop/          ← depends on artifact/, state/, provider/, models/
+x/wire/...     ← wire-format adapters (e.g. x/wire/anthropic/, x/wire/openai/);
+                  depend only on provider/, models/, state/, artifact/
+x/provider/... ← first-party, third-party, and gateway provider packages;
+                  depend on x/wire/... and models/; never import loop/
+x/catalog/...  ← generated model catalogs (e.g. x/catalog/models/);
+                  depend only on root models/
+cmd/modelsdev-gen/  ← generator binary; stdlib-only; produces x/catalog/models/
+                       and x/provider/{openrouter,vercel}/lookup.go
 ```
 
-- **Core packages** (`artifact/`, `state/`, `provider/`, `loop/`) live at the root level so external applications can import them. Do not place framework contracts under `internal/`.
-- **Concrete provider adapters** live under `x/provider/<name>/` (e.g., `x/provider/openai/`). They implement `provider.Provider` but never import `loop/`.
+- **Core packages** (`artifact/`, `state/`, `provider/`, `loop/`, `models/`) live at the root level so external applications can import them. Do not place framework contracts under `internal/`.
+- **Wire adapters** live under `x/wire/<vendor>/` (e.g., `x/wire/anthropic/`). They translate a `models.Spec` to a vendor-specific wire format and implement `provider.Provider`. They never import `loop/`. Wire adapters are *transport*, not "the Anthropic provider" or "the OpenAI provider" — there are several distinct ways to expose each vendor (first-party, third-party mirrors, gateways), all built on top of the wires.
+- **Provider packages** live under `x/provider/<name>/` (e.g., `x/provider/openai/`, `x/provider/anthropic/`, `x/provider/minimax/`, `x/provider/openrouter/`, `x/provider/vercel/`). They are thin wrappers that compose a wire adapter with vendor-specific defaults (base URL, name resolver, auth selection) and re-export the wire's options under their own package name. Three sub-shapes coexist:
+  - **First-party** (`x/provider/anthropic/`, `x/provider/openai/`): identity resolution, no base URL, no auth overrides. The canonical entry point for direct vendor calls.
+  - **Third-party** (`x/provider/minimax/`): identity resolution, fixed base URL targeting a vendor's API mirror, two constructors (`NewAnthropic`, `NewOpenAI`) for the two wire surfaces the mirror accepts.
+  - **Gateway** (`x/provider/openrouter/`, `x/provider/vercel/`): identity resolution with a generated lookup table, fixed base URL targeting the gateway host.
+  Provider packages implement `provider.Provider` (via composition with a wire) but never import `loop/`.
+- **Catalog packages** live under `x/catalog/...` (currently `x/catalog/models/`) and contain generated `models.Spec` values keyed by canonical `Name`. The package exposes one var per upstream model (e.g. `ClaudeOpus45`, `GPT4o`); only the root `models` package is imported. The generator at `cmd/modelsdev-gen/` is the only producer; its output is committed and regenerated via `task generate`.
+- **Generator binaries** live under `cmd/<name>/` (currently `cmd/modelsdev-gen/`). They are stdlib-only CLIs that produce committed artifacts. Re-running them is part of `task generate`.
 - **Example/reference applications** live under `examples/<name>/` (e.g., `examples/single-turn-cli/`). These validate the framework and demonstrate composition patterns.
 - **Maintained applications** with longer lifespans live under `cmd/<name>/` following the Standard Go Project Layout.
 
@@ -47,7 +62,7 @@ The provider contract is intentionally minimal: a single `Invoke(ctx, state, spe
 
 ### Model
 
-The `models.ModelSpec` value type lives at the root level (`models/`, stdlib-only) and carries the model identity (`Name`) plus inference configuration (`Window`, `MaxOutputTokens`, `Temperature`, `ThinkingLevel`, `TopP`, `TopK`, `Seed`, `StopSequences`, `FrequencyPenalty`, `PresencePenalty`). The Spec is what flows through the loop, the session, and the provider; the application constructs it (or derives it from session metadata) and the framework propagates it. Per-vendor catalogs of well-known Specs live under `x/provider/<vendor>/models/` as extension subpackages.
+The `models.ModelSpec` value type lives at the root level (`models/`, stdlib-only) and carries the model identity (`Name`) plus inference configuration (`Window`, `MaxOutputTokens`, `Temperature`, `ThinkingLevel`, `TopP`, `TopK`, `Seed`, `StopSequences`, `FrequencyPenalty`, `PresencePenalty`). The Spec is what flows through the loop, the session, and the provider; the application constructs it (or derives it from session metadata) and the framework propagates it. Per-vendor catalogs of well-known Specs live under `x/catalog/models/` as a generated sub-module; one var per upstream model, keyed by canonical `Name`.
 
 ### Loop
 
