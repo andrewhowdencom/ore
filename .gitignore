@@ -1,37 +1,33 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
+# Build artifacts. None of these are tracked; ignore them so
+# they cannot accidentally end up in a commit.
 #
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-
-# Test binary, built with `go test -c`
-*.test
-
-# Code coverage profiles and other test artifacts
-*.out
-coverage.*
-*.coverprofile
-profile.cov
-
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# Go workspace file
-# go.work is checked in for monorepo workflow
-# go.work.sum is generated and ignored
-go.work.sum
-
-# env file
-.env
-
-# Editor/IDE
-# .idea/
-# .vscode/
-
-# Forge-generated example binaries
-examples/forge/http/http-chat
-examples/forge/tui/tui-chat
+# `go build ./examples/<dir>` produces a binary named after
+# `<dir>` in the current working directory (typically the
+# repo root). `go build ./cmd/<dir>` does the same. Build
+# directories whose names appear here are ignored.
+/examples/*/[!.]*
+/cmd/*/[!.]*
+# Loose build artefacts produced at the repository root by
+# `go build ./examples/<dir>` from the repo root.
+/single-turn-cli
+/calculator
+/filesystem
+/http-chat
+/tui-chat
+/verifier-chat
+# Always-tracked files in example/cmd directories. Each
+# un-ignore rule re-includes the canonical source files so
+# the broad `examples/*/[!.]*` ignore above does not hide
+# them.
+!/examples/*/*.go
+!/examples/*/go.mod
+!/examples/*/go.sum
+!/examples/*/Taskfile.lib.yml
+!/examples/*/README.md
+!/examples/*/main_test.go
+!/examples/*/doc.go
+!/cmd/*/*.go
+!/cmd/*/go.mod
+!/cmd/*/go.sum
+!/cmd/*/Taskfile.lib.yml
+!/cmd/*/README.md
