@@ -30,6 +30,8 @@ use (
 	./x/tool/truncate
 	./x/usage
 	./x/verifier
+	./x/wire/anthropic
+	./x/wire/openai
 )
 
 replace github.com/andrewhowdencom/ore v0.0.0 => .

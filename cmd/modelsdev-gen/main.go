@@ -103,7 +103,7 @@ type modelsDevLimit struct {
 // and accept the `%#g` default-precision output (e.g. "1.00000"
 // for 1.0). Keeping the literal makes the generated files clean
 // and the template trivially diff-able against the hand-curated
-// precedent at x/provider/anthropic/models/doc.go.
+// precedent at x/catalog/models/doc.go.
 //
 // Note: the generator formats the result with go/format before
 // writing, so whitespace inside the template is not significant.
