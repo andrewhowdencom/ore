@@ -4,14 +4,15 @@ go 1.26.2
 
 require (
 	github.com/andrewhowdencom/ore v0.11.0
+	github.com/andrewhowdencom/ore/x/provider/openai v0.0.0
 	github.com/andrewhowdencom/ore/x/tool v0.5.0
 	github.com/andrewhowdencom/ore/x/tool/filesystem v0.0.0
 	github.com/andrewhowdencom/ore/x/verifier v0.1.1
-	github.com/andrewhowdencom/ore/x/wire/openai v0.0.0
 )
 
 require (
 	github.com/andrewhowdencom/ore/x/tool/truncate v0.1.0 // indirect
+	github.com/andrewhowdencom/ore/x/wire/openai v0.5.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -29,6 +30,7 @@ require (
 
 replace (
 	github.com/andrewhowdencom/ore => ../..
+	github.com/andrewhowdencom/ore/x/provider/openai => ../../x/provider/openai
 	github.com/andrewhowdencom/ore/x/tool => ../../x/tool
 	github.com/andrewhowdencom/ore/x/tool/filesystem => ../../x/tool/filesystem
 	github.com/andrewhowdencom/ore/x/verifier => ../../x/verifier
