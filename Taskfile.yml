@@ -21,6 +21,12 @@ includes:
   x-provider-openai:
     taskfile: Taskfile.lib.yml
     dir: x/provider/openai
+  x-provider-openrouter:
+    taskfile: Taskfile.lib.yml
+    dir: x/provider/openrouter
+  x-provider-vercel:
+    taskfile: Taskfile.lib.yml
+    dir: x/provider/vercel
   x-conduit:
     taskfile: Taskfile.lib.yml
     dir: x/conduit
@@ -113,6 +119,8 @@ tasks:
       - task x-provider-anthropic:validate
       - task x-provider-minimax:validate
       - task x-provider-openai:validate
+      - task x-provider-openrouter:validate
+      - task x-provider-vercel:validate
       - task x-conduit:validate
       - task x-conduit-http:validate
       - task x-conduit-slack:validate

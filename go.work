@@ -7,9 +7,6 @@ use (
 	./x/analytics
 	./x/catalog/models
 	./x/compaction
-	./x/provider/anthropic
-	./x/provider/minimax
-	./x/provider/openai
 	./x/conduit
 	./x/conduit/http
 	./x/conduit/slack
@@ -18,8 +15,11 @@ use (
 	./x/conduit/tui
 	./x/llmbytes
 	./x/provider/anthropic
+	./x/provider/minimax
 	./x/provider/openai
+	./x/provider/openrouter
 	./x/provider/retry
+	./x/provider/vercel
 	./x/telemetry
 	./x/tool
 	./x/tool/bash
