@@ -50,15 +50,19 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
 
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/tool"
+	"github.com/andrewhowdencom/ore/x/compaction"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
 	"github.com/andrewhowdencom/ore/x/slash"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
@@ -209,10 +213,52 @@ func run() error {
 	})
 
 	slashReg.Bind("compact", "Compact conversation history", func(ctx context.Context, emitter loop.Emitter, cmd slash.Command) (slash.Result, error) {
+		stream := cmd.Stream()
+		if stream == nil {
+			return slash.Result{Feedback: artifact.Text{Content: "no active session"}}, nil
+		}
+
 		emitter.Emit(ctx, loop.ActivityEvent{Active: true, Description: "compacting", Ctx: ctx})
 		defer emitter.Emit(ctx, loop.ActivityEvent{Active: false, Description: "compacting", Ctx: ctx})
 		slog.Info("slash command: /compact", "args", slash.Fields(cmd.Input))
-		return slash.Result{}, nil
+
+		// Use the same model as the main conversation for summarization.
+		// Applications with unusual workloads can wire a dedicated
+		// summarization model here. The Summarize function owns its own
+		// per-invocation output budget (8K default), so we do not pass
+		// MaxOutputTokens.
+		spec := models.Spec{Name: modelName}
+
+		turn, err := compaction.Summarize(ctx, prov, spec, stream.Turns())
+		if err != nil {
+			if errors.Is(err, compaction.ErrTruncatedSummary) {
+				// Caller (us) is expected NOT to append anything on
+				// truncation; the buffer is preserved as-is. Surface
+				// the failure to the user.
+				return slash.Result{Feedback: artifact.Text{
+					Content: "compaction failed: summary was truncated; original history preserved.",
+				}}, nil
+			}
+			return slash.Result{Feedback: artifact.Text{
+				Content: fmt.Sprintf("compaction failed: %v", err),
+			}}, nil
+		}
+
+		if err := stream.AppendTurn(ctx, turn.Role, turn.Artifacts...); err != nil {
+			return slash.Result{Feedback: artifact.Text{
+				Content: fmt.Sprintf("appending compaction turn: %v", err),
+			}}, nil
+		}
+
+		// Persist the compaction. The stream's normal save flow runs
+		// after the next Process() call, but compacting without sending
+		// another message leaves the compaction in memory only. Save
+		// explicitly so the user's history is durable.
+		if err := stream.Save(); err != nil {
+			slog.Warn("compact: save failed", "err", err)
+		}
+
+		return slash.Result{Feedback: artifact.Text{Content: "compacted conversation history"}}, nil
 	})
 	slashReg.Bind("model", "Set the model for this session", set_model.Slash())
 
