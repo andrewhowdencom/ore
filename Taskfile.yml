@@ -30,12 +30,12 @@ includes:
   x-conduit-tui:
     taskfile: Taskfile.lib.yml
     dir: x/conduit/tui
-  x-provider-anthropic:
+  x-wire-anthropic:
     taskfile: Taskfile.lib.yml
-    dir: x/provider/anthropic
-  x-provider-openai:
+    dir: x/wire/anthropic
+  x-wire-openai:
     taskfile: Taskfile.lib.yml
-    dir: x/provider/openai
+    dir: x/wire/openai
   x-tool:
     taskfile: Taskfile.lib.yml
     dir: x/tool
@@ -107,8 +107,8 @@ tasks:
       - task x-conduit-stdio:validate
       - task x-conduit-telegram:validate
       - task x-conduit-tui:validate
-      - task x-provider-anthropic:validate
-      - task x-provider-openai:validate
+      - task x-wire-anthropic:validate
+      - task x-wire-openai:validate
       - task x-tool:validate
       - task x-tool-bash:validate
       - task x-tool-calculator:validate

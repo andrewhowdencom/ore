@@ -10,22 +10,17 @@ require (
 	github.com/andrewhowdencom/ore/x/provider/openai v0.5.2
 	github.com/andrewhowdencom/ore/x/telemetry v0.1.2
 	github.com/andrewhowdencom/ore/x/tool v0.5.0
-	github.com/andrewhowdencom/ore/x/tool/calculator v0.3.0
-	github.com/andrewhowdencom/ore/x/tool/filesystem v0.5.1
-	github.com/andrewhowdencom/ore/x/tool/set_model v0.1.0
-	github.com/andrewhowdencom/ore/x/tool/set_title v0.3.0
-	github.com/andrewhowdencom/ore/x/usage v0.1.3
+	github.com/andrewhowdencom/ore/x/tool/calculator v0.0.0
+	github.com/andrewhowdencom/ore/x/tool/filesystem v0.0.0
+	github.com/andrewhowdencom/ore/x/tool/set_model v0.0.0
+	github.com/andrewhowdencom/ore/x/tool/set_title v0.0.0
+	github.com/andrewhowdencom/ore/x/usage v0.0.0
+	github.com/andrewhowdencom/ore/x/wire/openai v0.0.0
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/sdk/metric v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
 )
-
-replace github.com/andrewhowdencom/ore v0.0.0 => ..
-
-replace github.com/andrewhowdencom/ore/x/telemetry v0.0.0 => ../x/telemetry
-
-replace github.com/andrewhowdencom/ore/x/usage v0.0.0 => ../x/usage
 
 require (
 	charm.land/bubbles/v2 v2.1.0 // indirect
@@ -81,4 +76,23 @@ require (
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/term v0.42.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
+)
+
+replace (
+	github.com/andrewhowdencom/ore => ..
+	github.com/andrewhowdencom/ore/x/conduit => ../x/conduit
+	github.com/andrewhowdencom/ore/x/conduit/http => ../x/conduit/http
+	github.com/andrewhowdencom/ore/x/conduit/tui => ../x/conduit/tui
+	github.com/andrewhowdencom/ore/x/llmbytes => ../x/llmbytes
+	github.com/andrewhowdencom/ore/x/telemetry => ../x/telemetry
+	github.com/andrewhowdencom/ore/x/tool => ../x/tool
+	github.com/andrewhowdencom/ore/x/tool/calculator => ../x/tool/calculator
+	github.com/andrewhowdencom/ore/x/tool/filesystem => ../x/tool/filesystem
+	github.com/andrewhowdencom/ore/x/tool/set_model => ../x/tool/set_model
+	github.com/andrewhowdencom/ore/x/tool/set_title => ../x/tool/set_title
+	github.com/andrewhowdencom/ore/x/tool/truncate => ../x/tool/truncate
+	github.com/andrewhowdencom/ore/x/usage => ../x/usage
+	github.com/andrewhowdencom/ore/x/verifier => ../x/verifier
+	github.com/andrewhowdencom/ore/x/wire/openai => ../x/wire/openai
+	github.com/andrewhowdencom/ore/x/provider/openai => ../x/provider/openai
 )

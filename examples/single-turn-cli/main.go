@@ -17,7 +17,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/state"
-	"github.com/andrewhowdencom/ore/x/provider/openai"
+	"github.com/andrewhowdencom/ore/x/wire/openai"
 )
 
 // systemPromptTransform is an inline loop.Transform that prepends a
