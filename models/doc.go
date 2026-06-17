@@ -14,11 +14,11 @@
 // framework grow new Spec fields (and lets vendors grow new catalog
 // entries) without breaking every existing call site.
 //
-// Per-vendor model catalogs live in subpackages of the corresponding
-// provider module (e.g. x/provider/openai/models, x/provider/anthropic/models).
-// Those subpackages export named Spec values for the p80 case
-// (openaimodels.GPT4o, anthropicmodels.ClaudeOpus45, …). Ad-hoc
-// construction covers the long tail:
+// Per-vendor model catalogs live in the unified catalog module
+// (x/catalog/models), exported as named Spec values for the p80 case
+// (models.Catalog().OpenAI().GPT4o, models.Catalog().Anthropic().ClaudeOpus45, …).
+// Per-vendor provider adapters in x/provider/<vendor>/ expose the same
+// names to applications; ad-hoc construction covers the long tail:
 //
 //	models.Spec{
 //	    Name: "ft:gpt-3.5-turbo:my-org:custom",

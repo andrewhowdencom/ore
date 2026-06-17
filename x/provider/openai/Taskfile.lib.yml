@@ -1,11 +1,12 @@
-# Taskfile.lib.yml — shared task definitions used by the root Taskfile and by every
-# workspace module under x/ and examples/. The validate task aggregates lint,
-# test, and build steps defined here and is reused via includes in Taskfile.yml.
 version: '3'
+
+# Taskfile.lib.yml — shared build, test, lint, and validate targets for
+# x/provider/<vendor>/ sub-modules. The includes section in the root
+# Taskfile.yml maps this file to each vendor's directory.
 
 tasks:
   build:
-    desc: Compile the application and all packages
+    desc: Compile the package
     cmds:
       - go build ./...
 
