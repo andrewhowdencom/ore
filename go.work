@@ -7,6 +7,7 @@ use (
 	./x/analytics
 	./x/catalog/models
 	./x/compaction
+	./x/provider/anthropic
 	./x/conduit
 	./x/conduit/http
 	./x/conduit/slack
