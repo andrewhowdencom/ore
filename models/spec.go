@@ -40,8 +40,11 @@ type Spec struct {
 
 	// Window is the model's context window size in tokens. Not a
 	// request budget; this is the upper bound on input the model
-	// can accept. The compactor's TokenUsageTrigger reads this
-	// field to decide when to compact.
+	// can accept. Applications that implement automatic
+	// compaction triggers may read this field to decide when to
+	// invoke compaction.Summarize; the compaction package itself
+	// does not consult it (compaction today is explicit-only via
+	// /compact).
 	Window int
 
 	// MaxOutputTokens is the per-invocation output token budget.

@@ -2128,9 +2128,10 @@ func TestProviderInvoke_EmitsStopReason_Stop(t *testing.T) {
 
 // TestProviderInvoke_EmitsStopReason_Length asserts the canonical
 // finish_reason=length → StopReasonLength mapping. This is the
-// compaction-triggering case: a SummarizeStrategy that observes a
-// StopReason{Length} knows the model hit its output cap and can
-// return ErrTruncatedSummary.
+// compaction-triggering case: compaction.Summarize observes a
+// StopReason{Length} and knows the model hit its output cap; it
+// returns the zero turn wrapped with ErrTruncatedSummary so the
+// caller does not append a truncated summary to the buffer.
 func TestProviderInvoke_EmitsStopReason_Length(t *testing.T) {
 	transport := &mockTransport{
 		response: mockResponseSSE(finishReasonWithUsageSSE("##", "length", 1, 1, 2)),

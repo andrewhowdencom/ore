@@ -55,9 +55,9 @@ const StrategyNameSummarize = "summarize"
 //
 // On ErrTruncatedSummary the returned turn is the zero value and the
 // caller MUST NOT append anything to the buffer; the buffer should be
-// left unchanged. This is the same defensive contract as the previous
-// SummarizeStrategy — truncation no longer silently writes a one-token
-// "##" fragment into the conversation.
+// left unchanged. This is the same defensive contract as before —
+// truncation no longer silently writes a one-token "##" fragment
+// into the conversation.
 //
 // The provider receives the full history loaded into a temporary
 // state.Buffer, followed by a user prompt asking for a concise summary.
