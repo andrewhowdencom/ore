@@ -8,6 +8,7 @@ use (
 	./x/catalog/models
 	./x/compaction
 	./x/provider/anthropic
+	./x/provider/openai
 	./x/conduit
 	./x/conduit/http
 	./x/conduit/slack
