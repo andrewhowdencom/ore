@@ -12,14 +12,14 @@ import (
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/x/llmbytes"
 )
 
-// ErrTruncatedSummary is the sentinel returned by SummarizeStrategy.Compact
-// when the provider produced a response whose final artifact.StopReason
-// was StopReasonLength. The error indicates the model hit its
-// output-token cap mid-summary; the returned turns slice (the caller's
-// original turns) is unchanged so callers can decide to retry, fall
-// back to a different strategy, or refuse to compact.
+// ErrTruncatedSummary is the sentinel returned by Summarize when the
+// provider produced a response whose final artifact.StopReason was
+// StopReasonLength. The error indicates the model hit its output-token
+// cap mid-summary; the returned state.Turn is the zero value, so callers
+// can detect the failure and refuse to append anything to the buffer.
 //
 // Use errors.Is to detect:
 //
@@ -29,40 +29,159 @@ import (
 // level) so callers can switch on it without parsing error strings.
 var ErrTruncatedSummary = errors.New("summarization produced truncated result")
 
-// SummarizeStrategy uses an LLM provider to summarize conversation history,
-// replacing all turns with a single synthetic system summary turn.
+// StrategyNameSummarize is the canonical value placed in
+// artifact.Compaction.Strategy when Summarize is the producer. Future
+// strategies (e.g. extractive, lossy-truncate) will introduce their
+// own constants alongside this one.
+const StrategyNameSummarize = "summarize"
+
+// Summarize calls the provider to summarize the given turns and returns
+// a single RoleSystem turn carrying both artifact.Text (the LLM-facing
+// summary) and artifact.Compaction (structured metadata describing the
+// compaction event).
 //
-// The provider is called with the full history loaded into a temporary
+// The returned turn is intended to be appended to the buffer by the
+// caller (e.g. a slash handler invoking /compact). Summarize is
+// non-destructive: the original turns slice is never modified.
+//
+// On success the returned turn carries:
+//
+//   - artifact.Text with the summary content (matches the LLM-facing
+//     contract established by the previous SummarizeStrategy design).
+//   - artifact.Compaction with CompactedThrough=len(turns),
+//     DroppedTurnCount=len(turns), DroppedTokenEstimate computed by
+//     summing llmbytes.Of over every artifact in the input slice,
+//     Strategy="summarize", Model=spec.Name, CreatedAt=time.Now().
+//
+// On ErrTruncatedSummary the returned turn is the zero value and the
+// caller MUST NOT append anything to the buffer; the buffer should be
+// left unchanged. This is the same defensive contract as the previous
+// SummarizeStrategy — truncation no longer silently writes a one-token
+// "##" fragment into the conversation.
+//
+// The provider receives the full history loaded into a temporary
 // state.Buffer, followed by a user prompt asking for a concise summary.
-// Only artifact.Text responses from the provider are collected; other artifact
-// types (Usage, Reasoning, ToolCall, etc.) are ignored. This is an MVP
-// limitation.
-type SummarizeStrategy struct {
-	Provider provider.Provider
-	// Spec is the compactor's own [models.Spec]. The strategy
-	// forwards the spec to the provider's Invoke method, including
-	// Spec.MaxOutputTokens as the per-invocation output-token budget.
-	//
-	// The compactor is conceptually a sub-agent: it runs a different
-	// (simpler) task than the main conversation, and may use a
-	// different (typically cheaper) model. The application is
-	// responsible for selecting the right Spec; the strategy
-	// consumes it transparently.
-	Spec models.Spec
-	// Prompt is an optional custom summarization prompt. When empty, a default
-	// structured handoff prompt is used.
-	Prompt string
+// The summary uses RoleSystem because it is injected context about
+// prior conversation, not a real assistant response.
+//
+// Spec.MaxOutputTokens is forwarded to the provider as the per-
+// invocation output-token budget (with a fallback of 8192 when unset).
+// This is the same self-sizing behavior that fixes the prior
+// 'compaction returns ##' bug: without an explicit budget the
+// Anthropic adapter would default to 1 token.
+//
+// Summarize only collects artifact.Text and artifact.TextDelta
+// responses from the provider. Other artifact types (Usage, Reasoning,
+// ToolCall, etc.) are silently ignored. This is an MVP limitation;
+// future work may add custom formatters or multi-modal support.
+func Summarize(ctx context.Context, p provider.Provider, spec models.Spec, turns []state.Turn) (state.Turn, error) {
+	if p == nil {
+		return state.Turn{}, fmt.Errorf("Summarize: provider must not be nil")
+	}
+	if len(turns) == 0 {
+		return state.Turn{}, nil
+	}
+
+	// Dropped metadata: count turns and sum llmbytes over every
+	// artifact in the input slice. The estimate is best-effort;
+	// it is what the TUI marker renders and what analytics
+	// attributes to the compaction, not what the provider reports.
+	var droppedBytes int64
+	for _, t := range turns {
+		for _, a := range t.Artifacts {
+			droppedBytes += llmbytes.Of(a)
+		}
+	}
+
+	buf := &state.Buffer{}
+	buf.LoadTurns(turns)
+
+	prompt := defaultPrompt
+	buf.Append(state.RoleUser, artifact.Text{Content: prompt})
+
+	// Resolve the effective max-tokens budget. Zero or negative
+	// values fall back to the framework default. The provider
+	// receives this as a single, explicit option so the model has
+	// room to produce a complete summary regardless of the
+	// adapter's per-model default.
+	maxTokens := spec.MaxOutputTokens
+	if maxTokens <= 0 {
+		maxTokens = defaultSummarizeMaxTokens
+	}
+	opts := []provider.InvokeOption{provider.WithMaxTokens(maxTokens)}
+
+	ch := make(chan artifact.Artifact, 100)
+	var texts []string
+	var lastStopReason artifact.StopReasonKind
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for art := range ch {
+			switch a := art.(type) {
+			case artifact.Text:
+				texts = append(texts, a.Content)
+			case artifact.TextDelta:
+				texts = append(texts, a.Content)
+			case artifact.StopReason:
+				// The latest non-empty StopReason wins. In
+				// practice adapters emit a single StopReason
+				// at the end of the stream, but the loop is
+				// defensive.
+				if a.Reason != "" {
+					lastStopReason = a.Reason
+				}
+			}
+		}
+	}()
+
+	if err := p.Invoke(ctx, buf, spec, ch, opts...); err != nil {
+		close(ch)
+		wg.Wait()
+		return state.Turn{}, fmt.Errorf("summarization provider call failed: %w", err)
+	}
+	close(ch)
+	wg.Wait()
+
+	// Truncation check: the provider is contractually obligated
+	// to surface a final StopReason on the channel for every
+	// successful stream. A Length reason means the model hit
+	// its output cap; the partial text we collected is not a
+	// valid summary. Returning the zero turn preserves the
+	// caller's history so they can decide policy.
+	if lastStopReason == artifact.StopReasonLength {
+		return state.Turn{}, fmt.Errorf("summarization truncated: %w", ErrTruncatedSummary)
+	}
+
+	summary := strings.Join(texts, "")
+	now := time.Now()
+	summaryTurn := state.Turn{
+		Role: state.RoleSystem,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: summary},
+			artifact.Compaction{
+				CompactedThrough:     len(turns),
+				DroppedTurnCount:     len(turns),
+				DroppedTokenEstimate: droppedBytes,
+				Strategy:             StrategyNameSummarize,
+				Model:                spec.Name,
+				CreatedAt:            now,
+			},
+		},
+		Timestamp: now,
+	}
+	return summaryTurn, nil
 }
 
 // defaultSummarizeMaxTokens is the per-invocation output budget the
-// strategy requests when MaxTokens is unset (zero). 8192 tokens is
-// large enough to produce the full five-section structured handoff
-// prompt (Primary Goal, Key Decisions, Completed Work, Current State,
-// Pending Tasks) for a typical conversation while staying well
-// within the output caps of the long-tail of supported models
-// (Sonnet 4 / 4.5, GPT-4o, etc.). Applications with unusual
-// workloads (very long histories, or summaries intended for very
-// large downstream contexts) can override via the MaxTokens field.
+// strategy requests when Spec.MaxOutputTokens is unset (zero). 8192
+// tokens is large enough to produce the full five-section structured
+// handoff prompt (Primary Goal, Key Decisions, Completed Work, Current
+// State, Pending Tasks) for a typical conversation while staying well
+// within the output caps of the long-tail of supported models (Sonnet
+// 4 / 4.5, GPT-4o, etc.). Applications with unusual workloads can
+// override via Spec.MaxOutputTokens.
 const defaultSummarizeMaxTokens int64 = 8192
 
 const defaultPrompt = `You are creating a context handoff summary for another agent that will resume this conversation.
@@ -92,110 +211,3 @@ Then, output ONLY a structured summary using the following markdown sections. Do
 
 ## Pending Tasks & Next Steps
 [What still needs to be done to complete the goal]`
-
-// Compact loads all turns into a temporary buffer, calls the provider to
-// generate a summary, and returns a single synthetic RoleSystem turn containing
-// that summary.
-//
-// If there are no turns, it returns an empty slice without calling the provider.
-//
-// The summary turn uses RoleSystem because it is injected context about prior
-// conversation, not a real assistant response.
-//
-// The strategy passes a per-invocation provider.WithMaxTokens so the model
-// has room to produce a complete summary. If the provider's response
-// carries a final artifact.StopReason of StopReasonLength, Compact
-// returns the original turns unchanged wrapped with ErrTruncatedSummary
-// so callers can retry, fall back, or refuse.
-func (s SummarizeStrategy) Compact(ctx context.Context, turns []state.Turn) ([]state.Turn, error) {
-	if s.Provider == nil {
-		return nil, fmt.Errorf("SummarizeStrategy.Provider must not be nil")
-	}
-	originalTurns := turns
-	if len(turns) == 0 {
-		return []state.Turn{}, nil
-	}
-
-	buf := &state.Buffer{}
-	buf.LoadTurns(turns)
-
-	prompt := s.Prompt
-	if prompt == "" {
-		prompt = defaultPrompt
-	}
-	buf.Append(state.RoleUser, artifact.Text{Content: prompt})
-
-	// Resolve the effective max-tokens budget. Zero or negative
-	// values fall back to the framework default. The provider
-	// receives this as a single, explicit option so the model has
-	// room to produce a complete summary regardless of the
-	// adapter's per-model default (which on the Anthropic adapter
-	// is now "no default" — see anthropic.go WithMaxTokens).
-	maxTokens := s.Spec.MaxOutputTokens
-	if maxTokens <= 0 {
-		maxTokens = defaultSummarizeMaxTokens
-	}
-	opts := []provider.InvokeOption{provider.WithMaxTokens(maxTokens)}
-
-	ch := make(chan artifact.Artifact, 100)
-	var texts []string
-	var lastStopReason artifact.StopReasonKind
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for art := range ch {
-			switch a := art.(type) {
-			case artifact.Text:
-				texts = append(texts, a.Content)
-			case artifact.TextDelta:
-				texts = append(texts, a.Content)
-			case artifact.StopReason:
-				// The latest non-empty StopReason wins. In
-				// practice adapters emit a single StopReason
-				// at the end of the stream, but the loop is
-				// defensive: if a future adapter ever emits
-				// more than one, we want the last meaningful
-				// one (matching the openai wire format's
-				// behavior of carrying the real value on
-				// the final delta and nulls elsewhere).
-				if a.Reason != "" {
-					lastStopReason = a.Reason
-				}
-			}
-		}
-	}()
-
-	if err := s.Provider.Invoke(ctx, buf, s.Spec, ch, opts...); err != nil {
-		close(ch)
-		wg.Wait()
-		return nil, fmt.Errorf("summarization provider call failed: %w", err)
-	}
-	close(ch)
-	wg.Wait()
-
-	// Truncation check. The provider is contractually obligated
-	// to surface a final StopReason on the channel for every
-	// successful stream; the stop_reason / finish_reason → canonical
-	// translation is implemented per-adapter. A Length reason
-	// means the model hit its output cap; the partial text we
-	// collected above is not a valid summary (e.g. the compaction
-	// bug produced exactly one or two tokens, which is the
-	// "##" symptom). Returning the original turns unchanged
-	// preserves the caller's history so they can decide policy:
-	// retry with a larger budget, fall back to a different
-	// strategy, or refuse to compact and let the history grow.
-	if lastStopReason == artifact.StopReasonLength {
-		return originalTurns, fmt.Errorf("summarization truncated: %w", ErrTruncatedSummary)
-	}
-
-	summary := strings.Join(texts, "")
-	summaryTurn := state.Turn{
-		Role:      state.RoleSystem,
-		Artifacts: []artifact.Artifact{artifact.Text{Content: summary}},
-		Timestamp: time.Now(),
-	}
-
-	return []state.Turn{summaryTurn}, nil
-}
