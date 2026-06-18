@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/x/tool/set_model
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.9.0
+	github.com/andrewhowdencom/ore v0.12.0
 	github.com/stretchr/testify v1.11.1
 )
 
