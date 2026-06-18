@@ -1271,6 +1271,41 @@ func TestBuildStatusLine_ThinkingKeyNotDoubleRendered(t *testing.T) {
 	assert.NotContains(t, rendered, "thinking:")
 }
 
+// TestCompactTokenSegments_NarrativeOrder asserts that compactTokenSegments
+// emits the four-token segment in the documented order
+// "↑ sent · ↓ received · Σ total · Ψ thinking" regardless of the order
+// of the input segments. Prior to the fix, sort.Strings produced
+// Unicode-byte order (Σ Ψ ↑ ↓), which grouped the Greek letters together
+// and the arrows together, splitting the cluster visually.
+func TestCompactTokenSegments_NarrativeOrder(t *testing.T) {
+	segs := []conduit.StatusSegment{
+		{Label: "total", Value: "150", Zone: "lifecycle"},
+		{Label: "thinking", Value: "7", Zone: "lifecycle"},
+		{Label: "received", Value: "50", Zone: "lifecycle"},
+		{Label: "sent", Value: "100", Zone: "lifecycle"},
+	}
+	got := compactTokenSegments(segs)
+	require.Len(t, got, 1, "expected exactly one tokens segment")
+	assert.Equal(t, "tokens", got[0].Label)
+	assert.Equal(t, "lifecycle", got[0].Zone)
+	assert.Equal(t, "↑ 100 · ↓ 50 · Σ 150 · Ψ 7", got[0].Value,
+		"tokens must render in narrative order regardless of input order")
+}
+
+// TestCompactTokenSegments_PartialKeys asserts that missing keys in the
+// input are simply skipped (not rendered as empty placeholders) and that
+// the surviving keys still appear in narrative order.
+func TestCompactTokenSegments_PartialKeys(t *testing.T) {
+	segs := []conduit.StatusSegment{
+		{Label: "thinking", Value: "7", Zone: "lifecycle"},
+		{Label: "sent", Value: "100", Zone: "lifecycle"},
+	}
+	got := compactTokenSegments(segs)
+	require.Len(t, got, 1)
+	assert.Equal(t, "↑ 100 · Ψ 7", got[0].Value,
+		"partial key set must not introduce placeholder gaps")
+}
+
 func TestBuildStatusLine_ZoneGrouping(t *testing.T) {
 	segments := []conduit.StatusSegment{
 		{Label: "phase", Value: "streaming", Zone: "lifecycle"},

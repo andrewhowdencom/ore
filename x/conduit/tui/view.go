@@ -258,36 +258,50 @@ func buildStatusLine(th *theme.Theme, status map[string]string, width int) (stri
 
 // compactTokenSegments collapses sent, received, total, and thinking into
 // a single segment named "tokens" with a compact
-// "↑ X · ↓ Y · Σ Z · Ψ T" value.
-// Segments are sorted by label for deterministic output.
+// "↑ X · ↓ Y · Σ Z · Ψ T" value. Segments are emitted in narrative
+// order: sent → received → total → thinking, mirrored from
+// buildStatusLine so the two renderers produce identical output.
 func compactTokenSegments(segs []conduit.StatusSegment) []conduit.StatusSegment {
-	var values []string
-	var filtered []conduit.StatusSegment
+	// Canonical render order, mirrored from buildStatusLine. The
+	// symbol map and the byLabel lookup replace the prior
+	// sort.Strings call, which produced Unicode-byte order
+	// (Σ X · Ψ Y · ↑ Z · ↓ T) instead of the documented order.
+	order := []string{"sent", "received", "total", "thinking"}
+	symbols := map[string]string{
+		"sent":     "↑",
+		"received": "↓",
+		"total":    "Σ",
+		"thinking": "Ψ",
+	}
+	byLabel := make(map[string]string, len(segs))
 	for _, seg := range segs {
-		var sym string
-		switch seg.Label {
-		case "sent":
-			sym = "↑"
-		case "received":
-			sym = "↓"
-		case "total":
-			sym = "Σ"
-		case "thinking":
-			sym = "Ψ"
-		default:
-			filtered = append(filtered, seg)
+		if _, ok := symbols[seg.Label]; ok && seg.Value != "" {
+			byLabel[seg.Label] = seg.Value
+		}
+	}
+	var values []string
+	for _, key := range order {
+		if v, ok := byLabel[key]; ok {
+			values = append(values, fmt.Sprintf("%s %s", symbols[key], compactNumber(v)))
+		}
+	}
+	if len(values) == 0 {
+		// No recognised token keys; pass through the input unchanged so
+		// non-token segments survive unmodified.
+		return segs
+	}
+	filtered := make([]conduit.StatusSegment, 0, len(segs))
+	for _, seg := range segs {
+		if _, ok := symbols[seg.Label]; ok {
 			continue
 		}
-		values = append(values, fmt.Sprintf("%s %s", sym, compactNumber(seg.Value)))
+		filtered = append(filtered, seg)
 	}
-	if len(values) > 0 {
-		sort.Strings(values)
-		filtered = append(filtered, conduit.StatusSegment{
-			Label: "tokens",
-			Value: strings.Join(values, " · "),
-			Zone:  segs[0].Zone,
-		})
-	}
+	filtered = append(filtered, conduit.StatusSegment{
+		Label: "tokens",
+		Value: strings.Join(values, " · "),
+		Zone:  segs[0].Zone,
+	})
 	return filtered
 }
 
