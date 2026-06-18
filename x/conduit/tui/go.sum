@@ -12,8 +12,8 @@ github.com/alecthomas/chroma/v2 v2.20.0 h1:sfIHpxPyR07/Oylvmcai3X/exDlE8+FA820NT
 github.com/alecthomas/chroma/v2 v2.20.0/go.mod h1:e7tViK0xh/Nf4BYHl00ycY6rV7b8iXBksI9E359yNmA=
 github.com/alecthomas/repr v0.5.1 h1:E3G4t2QbHTSNpPKBgMTln5KLkZHLOcU7r37J4pXBuIg=
 github.com/alecthomas/repr v0.5.1/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
-github.com/andrewhowdencom/ore v0.11.0 h1:NDMIIyNwUG9l2dibuopEFKRM+nEXs01ciWA2C/tiXJw=
-github.com/andrewhowdencom/ore v0.11.0/go.mod h1:z8ohVfj62/vsXqVsbpqftza2GTINPPqwxzZhJbclN4g=
+github.com/andrewhowdencom/ore v0.12.0 h1:57NpXBE7+4uw0LQ65GTeav6ifxdlrsnjj9dAjtBRoRM=
+github.com/andrewhowdencom/ore v0.12.0/go.mod h1:z8ohVfj62/vsXqVsbpqftza2GTINPPqwxzZhJbclN4g=
 github.com/andrewhowdencom/ore/x/conduit v0.1.3 h1:ulhVcLr0zVWbbwS32JfDWRK2Tlgrsr5+J4gqFboOljs=
 github.com/andrewhowdencom/ore/x/conduit v0.1.3/go.mod h1:83aDeFABkaP1x98A9jxkqIr3zN4XsiprPnpAxHGpPFw=
 github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
