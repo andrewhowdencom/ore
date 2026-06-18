@@ -1,7 +1,7 @@
-github.com/andrewhowdencom/ore v0.7.4 h1:/I1MqjVueZp8KmuC/GoNAEolhq24E/lxTRbseXuQgOs=
-github.com/andrewhowdencom/ore v0.7.4/go.mod h1:KxKPSd2cTgl0NoUC+E4/Bs8e2T+Fyv46e+TiH54qxHQ=
-github.com/andrewhowdencom/ore/x/llmbytes v0.1.0 h1:cCofyKKPoMGL/tB/xX4yoPsgU+5PCEmR5XsX3hdbMdk=
-github.com/andrewhowdencom/ore/x/llmbytes v0.1.0/go.mod h1:1A8XT7rqhRec4TDxEXCILWqAhgQ+GtdzP1xwpqpjnww=
+github.com/andrewhowdencom/ore v0.12.0 h1:57NpXBE7+4uw0LQ65GTeav6ifxdlrsnjj9dAjtBRoRM=
+github.com/andrewhowdencom/ore v0.12.0/go.mod h1:z8ohVfj62/vsXqVsbpqftza2GTINPPqwxzZhJbclN4g=
+github.com/andrewhowdencom/ore/x/llmbytes v0.1.1 h1:8aUIwGAjWVDpOH2P/SApzNYVkXWQem5FwFOltw/0bIM=
+github.com/andrewhowdencom/ore/x/llmbytes v0.1.1/go.mod h1:aYp7bLdMxkFpuXY1ABr4qfeoJkKVl1SIK5uMRQP/kq4=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=

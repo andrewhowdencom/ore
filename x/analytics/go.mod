@@ -3,8 +3,8 @@ module github.com/andrewhowdencom/ore/x/analytics
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.8.0
-	github.com/andrewhowdencom/ore/x/llmbytes v0.1.0
+	github.com/andrewhowdencom/ore v0.12.0
+	github.com/andrewhowdencom/ore/x/llmbytes v0.1.1
 )
 
 require (
