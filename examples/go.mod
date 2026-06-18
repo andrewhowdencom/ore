@@ -5,6 +5,7 @@ go 1.26.2
 require (
 	github.com/andrewhowdencom/ore v0.11.1
 	github.com/andrewhowdencom/ore/x/analytics v0.2.0
+	github.com/andrewhowdencom/ore/x/compaction v0.0.0
 	github.com/andrewhowdencom/ore/x/conduit/http v0.7.1
 	github.com/andrewhowdencom/ore/x/conduit/tui v0.11.0
 	github.com/andrewhowdencom/ore/x/provider/openai v0.5.2
@@ -61,7 +62,7 @@ require (
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/openai/openai-go v1.12.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/tidwall/gjson v1.14.4 // indirect
+	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
@@ -80,6 +81,7 @@ require (
 
 replace (
 	github.com/andrewhowdencom/ore => ..
+	github.com/andrewhowdencom/ore/x/compaction => ../x/compaction
 	github.com/andrewhowdencom/ore/x/conduit => ../x/conduit
 	github.com/andrewhowdencom/ore/x/conduit/http => ../x/conduit/http
 	github.com/andrewhowdencom/ore/x/conduit/tui => ../x/conduit/tui
@@ -95,5 +97,4 @@ replace (
 	github.com/andrewhowdencom/ore/x/usage => ../x/usage
 	github.com/andrewhowdencom/ore/x/verifier => ../x/verifier
 	github.com/andrewhowdencom/ore/x/wire/openai => ../x/wire/openai
-	github.com/andrewhowdencom/ore/x/provider/openai => ../x/provider/openai
 )

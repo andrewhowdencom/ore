@@ -401,8 +401,66 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role) renderedB
 			block.style = m.theme.ErrorStyle
 		}
 		return block
+	case artifact.Compaction:
+		return m.renderCompactionBlock(a)
 	}
 	return renderedBlock{}
+}
+
+// renderCompactionBlock produces a one-line marker block for an
+// artifact.Compaction. The marker is collapsed by default (just the
+// turn count and bytes saved); expanding via Ctrl+O reveals the
+// strategy, model, and timestamp as a small metadata footer.
+//
+// The compaction turn also carries an artifact.Text sibling with the
+// LLM-facing summary. That sibling is rendered separately by the
+// caller (loadHistory / TURN event handlers iterate per-artifact);
+// this function is only responsible for the Compaction artifact
+// itself.
+func (m *model) renderCompactionBlock(c artifact.Compaction) renderedBlock {
+	bytesSaved := formatByteCount(c.DroppedTokenEstimate)
+	title := fmt.Sprintf("Compacted %d turns (~%s saved)", c.DroppedTurnCount, bytesSaved)
+	marker := fmt.Sprintf("↳ compacted %d turns (~%s saved)", c.DroppedTurnCount, bytesSaved)
+
+	source := fmt.Sprintf(
+		"strategy: %s\nmodel: %s\ncompacted through turn %d\nsaved ~%s\nat: %s",
+		orDefault(c.Strategy, "(unknown)"),
+		orDefault(c.Model, "(default)"),
+		c.CompactedThrough,
+		bytesSaved,
+		c.CreatedAt.Format("15:04:05"),
+	)
+
+	return renderedBlock{
+		kind:              "compaction",
+		source:            source,
+		compact:           marker,
+		title:             title,
+		style:             m.theme.SystemStyle,
+		expandedByDefault: false,
+	}
+}
+
+// formatByteCount formats a byte count into a short human-readable
+// form (e.g. 1234 → "1.2K", 1234567 → "1.2M"). Used by the compaction
+// marker to keep titles compact.
+func formatByteCount(n int64) string {
+	switch {
+	case n < 1024:
+		return fmt.Sprintf("%dB", n)
+	case n < 1024*1024:
+		return fmt.Sprintf("%.1fK", float64(n)/1024)
+	default:
+		return fmt.Sprintf("%.1fM", float64(n)/(1024*1024))
+	}
+}
+
+// orDefault returns s if non-empty, otherwise fallback.
+func orDefault(s, fallback string) string {
+	if s == "" {
+		return fallback
+	}
+	return s
 }
 
 // renderPlainBlock constructs a renderedBlock for plain text (e.g. error or

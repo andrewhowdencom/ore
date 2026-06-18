@@ -1,12 +1,12 @@
 package compaction
 
 import (
-	"github.com/andrewhowdencom/ore/models"
 	"context"
 	"errors"
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/stretchr/testify/assert"
@@ -46,17 +46,39 @@ func textTurn(role state.Role, content string) state.Turn {
 	}
 }
 
-func TestSummarizeStrategy_ReducesTurns(t *testing.T) {
+// findCompaction extracts the artifact.Compaction from a turn's
+// artifacts slice. It fails the test if none is present.
+func findCompaction(t *testing.T, turn state.Turn) artifact.Compaction {
+	t.Helper()
+	for _, a := range turn.Artifacts {
+		if c, ok := a.(artifact.Compaction); ok {
+			return c
+		}
+	}
+	t.Fatalf("expected artifact.Compaction on turn, got artifacts: %+v", turn.Artifacts)
+	return artifact.Compaction{}
+}
+
+// findText extracts the artifact.Text from a turn's artifacts slice.
+// It fails the test if none is present.
+func findText(t *testing.T, turn state.Turn) artifact.Text {
+	t.Helper()
+	for _, a := range turn.Artifacts {
+		if tx, ok := a.(artifact.Text); ok {
+			return tx
+		}
+	}
+	t.Fatalf("expected artifact.Text on turn, got artifacts: %+v", turn.Artifacts)
+	return artifact.Text{}
+}
+
+func TestSummarize_ProducesCompactionTurn(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "Summary of earlier discussion."},
 		},
 	}
 
-	strategy := SummarizeStrategy{
-		Provider: prov,
-	}
-
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
 		textTurn(state.RoleAssistant, "aaaa"),
@@ -64,39 +86,43 @@ func TestSummarizeStrategy_ReducesTurns(t *testing.T) {
 		textTurn(state.RoleAssistant, "aaaa"),
 	}
 
-	result, err := strategy.Compact(context.Background(), turns)
+	result, err := Summarize(context.Background(), prov, models.Spec{Name: "test-model"}, turns)
 	require.NoError(t, err)
 	assert.True(t, prov.called)
-	require.Len(t, result, 1)
 
-	assert.Equal(t, state.RoleSystem, result[0].Role)
-	require.Len(t, result[0].Artifacts, 1)
-	text, ok := result[0].Artifacts[0].(artifact.Text)
-	require.True(t, ok)
-	assert.Equal(t, "Summary of earlier discussion.", text.Content)
+	// The result is a single turn with RoleSystem, carrying both
+	// artifact.Text and artifact.Compaction.
+	assert.Equal(t, state.RoleSystem, result.Role)
+
+	summary := findText(t, result)
+	assert.Equal(t, "Summary of earlier discussion.", summary.Content)
+
+	comp := findCompaction(t, result)
+	assert.Equal(t, len(turns), comp.CompactedThrough)
+	assert.Equal(t, len(turns), comp.DroppedTurnCount)
+	assert.Equal(t, StrategyNameSummarize, comp.Strategy)
+	assert.Equal(t, "test-model", comp.Model)
+	assert.False(t, comp.CreatedAt.IsZero(), "CreatedAt should be set")
+	assert.Greater(t, comp.DroppedTokenEstimate, int64(0), "DroppedTokenEstimate should reflect bytes of dropped artifacts")
 }
 
-func TestSummarizeStrategy_PropagatesProviderError(t *testing.T) {
+func TestSummarize_PropagatesProviderError(t *testing.T) {
 	wantErr := errors.New("provider failure")
 	prov := &mockProvider{err: wantErr}
 
-	strategy := SummarizeStrategy{
-		Provider: prov,
-	}
-
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
 		textTurn(state.RoleAssistant, "aaaa"),
 		textTurn(state.RoleUser, "aaaa"),
 	}
 
-	_, err := strategy.Compact(context.Background(), turns)
+	_, err := Summarize(context.Background(), prov, models.Spec{}, turns)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, wantErr)
 	assert.Contains(t, err.Error(), "summarization provider call failed")
 }
 
-func TestSummarizeStrategy_IgnoresNonTextArtifacts(t *testing.T) {
+func TestSummarize_IgnoresNonTextArtifacts(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Reasoning{Content: "thinking..."},
@@ -104,10 +130,6 @@ func TestSummarizeStrategy_IgnoresNonTextArtifacts(t *testing.T) {
 			artifact.Usage{TotalTokens: 42},
 			artifact.ToolCall{Name: "test"},
 		},
-	}
-
-	strategy := SummarizeStrategy{
-		Provider: prov,
 	}
 
 	turns := []state.Turn{
@@ -123,18 +145,15 @@ func TestSummarizeStrategy_IgnoresNonTextArtifacts(t *testing.T) {
 		textTurn(state.RoleAssistant, "aaaa"),
 	}
 
-	result, err := strategy.Compact(context.Background(), turns)
+	result, err := Summarize(context.Background(), prov, models.Spec{}, turns)
 	require.NoError(t, err)
 	assert.True(t, prov.called)
-	require.Len(t, result, 1)
 
-	require.Len(t, result[0].Artifacts, 1)
-	text, ok := result[0].Artifacts[0].(artifact.Text)
-	require.True(t, ok)
-	assert.Equal(t, "Actual summary.", text.Content)
+	summary := findText(t, result)
+	assert.Equal(t, "Actual summary.", summary.Content)
 }
 
-func TestSummarizeStrategy_MultipleTextArtifactsConcatenated(t *testing.T) {
+func TestSummarize_MultipleTextArtifactsConcatenated(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "Part one. "},
@@ -142,71 +161,53 @@ func TestSummarizeStrategy_MultipleTextArtifactsConcatenated(t *testing.T) {
 		},
 	}
 
-	strategy := SummarizeStrategy{
-		Provider: prov,
-	}
-
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
 		textTurn(state.RoleAssistant, "aaaa"),
 		textTurn(state.RoleUser, "aaaa"),
 	}
 
-	result, err := strategy.Compact(context.Background(), turns)
+	result, err := Summarize(context.Background(), prov, models.Spec{}, turns)
 	require.NoError(t, err)
 	assert.True(t, prov.called)
-	require.Len(t, result, 1)
 
-	require.Len(t, result[0].Artifacts, 1)
-	text, ok := result[0].Artifacts[0].(artifact.Text)
-	require.True(t, ok)
-	assert.Equal(t, "Part one. Part two.", text.Content)
+	summary := findText(t, result)
+	assert.Equal(t, "Part one. Part two.", summary.Content)
 }
 
-func TestSummarizeStrategy_EmptyTurns(t *testing.T) {
+func TestSummarize_EmptyTurns_ReturnsZeroTurnNoError(t *testing.T) {
 	prov := &mockProvider{}
 
-	strategy := SummarizeStrategy{
-		Provider: prov,
-	}
-
-	result, err := strategy.Compact(context.Background(), []state.Turn{})
+	result, err := Summarize(context.Background(), prov, models.Spec{}, []state.Turn{})
 	require.NoError(t, err)
-	assert.False(t, prov.called)
-	assert.Empty(t, result)
+	assert.False(t, prov.called, "provider should not be called for empty turns")
+	assert.Equal(t, state.Turn{}, result, "empty turns return the zero turn with no error")
 }
 
-func TestSummarizeStrategy_SingleTurn(t *testing.T) {
+func TestSummarize_SingleTurn(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "Summary."},
 		},
 	}
 
-	strategy := SummarizeStrategy{
-		Provider: prov,
-	}
-
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
 	}
 
-	result, err := strategy.Compact(context.Background(), turns)
+	result, err := Summarize(context.Background(), prov, models.Spec{}, turns)
 	require.NoError(t, err)
 	assert.True(t, prov.called)
-	require.Len(t, result, 1)
-	assert.Equal(t, state.RoleSystem, result[0].Role)
+	assert.Equal(t, state.RoleSystem, result.Role)
+	summary := findText(t, result)
+	assert.Equal(t, "Summary.", summary.Content)
 }
 
-func TestSummarizeStrategy_PassesAllTurns(t *testing.T) {
+func TestSummarize_PassesAllTurnsPlusPrompt(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "Summary."},
 		},
-	}
-
-	strategy := SummarizeStrategy{
-		Provider: prov,
 	}
 
 	turns := []state.Turn{
@@ -216,7 +217,7 @@ func TestSummarizeStrategy_PassesAllTurns(t *testing.T) {
 		textTurn(state.RoleAssistant, "aaaa"),
 	}
 
-	result, err := strategy.Compact(context.Background(), turns)
+	_, err := Summarize(context.Background(), prov, models.Spec{}, turns)
 	require.NoError(t, err)
 	assert.True(t, prov.called)
 
@@ -227,23 +228,18 @@ func TestSummarizeStrategy_PassesAllTurns(t *testing.T) {
 	assert.Equal(t, state.RoleUser, prov.receivedTurns[2].Role)
 	assert.Equal(t, state.RoleAssistant, prov.receivedTurns[3].Role)
 	assert.Equal(t, state.RoleUser, prov.receivedTurns[4].Role)
-
-	// Result: single summary turn
-	require.Len(t, result, 1)
-	assert.Equal(t, state.RoleSystem, result[0].Role)
 }
 
-func TestSummarizeStrategy_NilProvider(t *testing.T) {
-	strategy := SummarizeStrategy{}
+func TestSummarize_NilProvider(t *testing.T) {
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "hello"),
 	}
-	_, err := strategy.Compact(context.Background(), turns)
+	_, err := Summarize(context.Background(), nil, models.Spec{}, turns)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "Provider must not be nil")
+	assert.Contains(t, err.Error(), "provider must not be nil")
 }
 
-func TestSummarizeStrategy_NoTextArtifacts(t *testing.T) {
+func TestSummarize_NoTextArtifacts(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Usage{TotalTokens: 42},
@@ -252,46 +248,33 @@ func TestSummarizeStrategy_NoTextArtifacts(t *testing.T) {
 		},
 	}
 
-	strategy := SummarizeStrategy{
-		Provider: prov,
-	}
-
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
 		textTurn(state.RoleAssistant, "bbbb"),
 	}
 
-	result, err := strategy.Compact(context.Background(), turns)
+	result, err := Summarize(context.Background(), prov, models.Spec{}, turns)
 	require.NoError(t, err)
 	assert.True(t, prov.called)
-	require.Len(t, result, 1)
-	assert.Equal(t, state.RoleSystem, result[0].Role)
-	require.Len(t, result[0].Artifacts, 1)
-	text, ok := result[0].Artifacts[0].(artifact.Text)
-	require.True(t, ok)
-	assert.Empty(t, text.Content)
+	assert.Equal(t, state.RoleSystem, result.Role)
+	summary := findText(t, result)
+	assert.Empty(t, summary.Content)
 }
 
-func TestSummarizeStrategy_UsesDefaultPrompt(t *testing.T) {
+func TestSummarize_UsesDefaultPrompt(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "Summary."},
 		},
 	}
 
-	strategy := SummarizeStrategy{
-		Provider: prov,
-		Prompt:   "",
-	}
-
-	// With non-empty turns, summarization is triggered.
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
 		textTurn(state.RoleAssistant, "aaaa"),
 		textTurn(state.RoleUser, "aaaa"),
 	}
 
-	_, err := strategy.Compact(context.Background(), turns)
+	_, err := Summarize(context.Background(), prov, models.Spec{}, turns)
 	require.NoError(t, err)
 	assert.True(t, prov.called)
 
@@ -304,39 +287,7 @@ func TestSummarizeStrategy_UsesDefaultPrompt(t *testing.T) {
 	assert.Equal(t, defaultPrompt, text.Content)
 }
 
-func TestSummarizeStrategy_UsesCustomPrompt(t *testing.T) {
-	prov := &mockProvider{
-		artifacts: []artifact.Artifact{
-			artifact.Text{Content: "Summary."},
-		},
-	}
-
-	strategy := SummarizeStrategy{
-		Provider: prov,
-		Prompt:   "Custom override prompt",
-	}
-
-	// With non-empty turns, summarization is triggered.
-	turns := []state.Turn{
-		textTurn(state.RoleUser, "aaaa"),
-		textTurn(state.RoleAssistant, "aaaa"),
-		textTurn(state.RoleUser, "aaaa"),
-	}
-
-	_, err := strategy.Compact(context.Background(), turns)
-	require.NoError(t, err)
-	assert.True(t, prov.called)
-
-	// Provider receives all turns + appended user prompt.
-	require.Len(t, prov.receivedTurns, 4)
-	assert.Equal(t, state.RoleUser, prov.receivedTurns[3].Role)
-	require.Len(t, prov.receivedTurns[3].Artifacts, 1)
-	text, ok := prov.receivedTurns[3].Artifacts[0].(artifact.Text)
-	require.True(t, ok)
-	assert.Equal(t, "Custom override prompt", text.Content)
-}
-
-func TestSummarizeStrategy_TextDeltaArtifacts(t *testing.T) {
+func TestSummarize_TextDeltaArtifacts(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.TextDelta{Content: "Summary part one. "},
@@ -344,27 +295,19 @@ func TestSummarizeStrategy_TextDeltaArtifacts(t *testing.T) {
 		},
 	}
 
-	strategy := SummarizeStrategy{
-		Provider: prov,
-	}
-
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
 		textTurn(state.RoleAssistant, "aaaa"),
 	}
 
-	result, err := strategy.Compact(context.Background(), turns)
+	result, err := Summarize(context.Background(), prov, models.Spec{}, turns)
 	require.NoError(t, err)
 	assert.True(t, prov.called)
-	require.Len(t, result, 1)
-
-	require.Len(t, result[0].Artifacts, 1)
-	text, ok := result[0].Artifacts[0].(artifact.Text)
-	require.True(t, ok)
-	assert.Equal(t, "Summary part one. Summary part two.", text.Content)
+	summary := findText(t, result)
+	assert.Equal(t, "Summary part one. Summary part two.", summary.Content)
 }
 
-func TestSummarizeStrategy_MixedTextAndTextDelta(t *testing.T) {
+func TestSummarize_MixedTextAndTextDelta(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "Part A. "},
@@ -372,52 +315,39 @@ func TestSummarizeStrategy_MixedTextAndTextDelta(t *testing.T) {
 		},
 	}
 
-	strategy := SummarizeStrategy{
-		Provider: prov,
-	}
-
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
 		textTurn(state.RoleAssistant, "aaaa"),
 	}
 
-	result, err := strategy.Compact(context.Background(), turns)
+	result, err := Summarize(context.Background(), prov, models.Spec{}, turns)
 	require.NoError(t, err)
 	assert.True(t, prov.called)
-	require.Len(t, result, 1)
-
-	require.Len(t, result[0].Artifacts, 1)
-	text, ok := result[0].Artifacts[0].(artifact.Text)
-	require.True(t, ok)
-	assert.Equal(t, "Part A. Part B.", text.Content)
+	summary := findText(t, result)
+	assert.Equal(t, "Part A. Part B.", summary.Content)
 }
 
-func TestSummarizeStrategy_TextDeltaTimestampNonZero(t *testing.T) {
+func TestSummarize_TimestampNonZero(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
-			artifact.TextDelta{Content: "Summary."},
+			artifact.Text{Content: "Summary."},
 		},
 	}
 
-	strategy := SummarizeStrategy{
-		Provider: prov,
-	}
-
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
 		textTurn(state.RoleAssistant, "aaaa"),
 	}
 
-	result, err := strategy.Compact(context.Background(), turns)
+	result, err := Summarize(context.Background(), prov, models.Spec{}, turns)
 	require.NoError(t, err)
-	require.Len(t, result, 1)
-	assert.False(t, result[0].Timestamp.IsZero())
+	assert.False(t, result.Timestamp.IsZero())
 }
 
 // extractMaxTokensOption finds a provider.MaxTokensOption in the
-// received option slice. The summarize strategy is contractually
-// expected to pass exactly one MaxTokensOption; the helper isolates
-// the value (and asserts uniqueness) for the new tests below.
+// received option slice. Summarize is contractually expected to pass
+// exactly one MaxTokensOption; the helper isolates the value (and
+// asserts uniqueness) for the tests below.
 func extractMaxTokensOption(t *testing.T, opts []provider.InvokeOption) int64 {
 	t.Helper()
 	var got int64
@@ -434,20 +364,15 @@ func extractMaxTokensOption(t *testing.T, opts []provider.InvokeOption) int64 {
 	return got
 }
 
-// TestSummarizeStrategy_AppliesDefaultMaxTokens asserts that a
-// zero-value SummarizeStrategy (MaxTokens unset) requests the
-// default 8192-token budget from the provider. This is the
-// self-sizing behavior that fixes the original '##' compaction
-// bug: without an explicit budget, the Anthropic adapter used to
-// default to 1 token, producing a one-token response.
-func TestSummarizeStrategy_AppliesDefaultMaxTokens(t *testing.T) {
+// TestSummarize_AppliesDefaultMaxTokens asserts that a zero-value
+// Spec (MaxOutputTokens unset) requests the default 8192-token
+// budget from the provider.
+func TestSummarize_AppliesDefaultMaxTokens(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "Summary."},
 		},
 	}
-
-	strategy := SummarizeStrategy{Provider: prov}
 
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
@@ -455,25 +380,20 @@ func TestSummarizeStrategy_AppliesDefaultMaxTokens(t *testing.T) {
 		textTurn(state.RoleUser, "aaaa"),
 	}
 
-	_, err := strategy.Compact(context.Background(), turns)
+	_, err := Summarize(context.Background(), prov, models.Spec{}, turns)
 	require.NoError(t, err)
 	assert.True(t, prov.called)
 	assert.Equal(t, int64(8192), extractMaxTokensOption(t, prov.receivedOpts))
 }
 
-// TestSummarizeStrategy_AppliesCustomMaxTokens asserts that a
-// non-zero MaxTokens is forwarded verbatim. Applications with
-// unusual workloads (very long histories, or summaries intended
-// for very large downstream contexts) can override the default
-// via the struct field.
-func TestSummarizeStrategy_AppliesCustomMaxTokens(t *testing.T) {
+// TestSummarize_AppliesCustomMaxTokens asserts that a non-zero
+// MaxOutputTokens is forwarded verbatim.
+func TestSummarize_AppliesCustomMaxTokens(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "Summary."},
 		},
 	}
-
-	strategy := SummarizeStrategy{Provider: prov, Spec: models.Spec{MaxOutputTokens: 4096}}
 
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
@@ -481,26 +401,20 @@ func TestSummarizeStrategy_AppliesCustomMaxTokens(t *testing.T) {
 		textTurn(state.RoleUser, "aaaa"),
 	}
 
-	_, err := strategy.Compact(context.Background(), turns)
+	_, err := Summarize(context.Background(), prov, models.Spec{MaxOutputTokens: 4096}, turns)
 	require.NoError(t, err)
 	assert.True(t, prov.called)
 	assert.Equal(t, int64(4096), extractMaxTokensOption(t, prov.receivedOpts))
 }
 
-// TestSummarizeStrategy_NegativeMaxTokensFallsBackToDefault
-// asserts that an explicit negative value also falls back to the
-// default. Zero is the unset value (Go's zero-value idiom); a
-// negative value is a programming mistake, but the strategy
-// recovers gracefully rather than sending a malformed budget
-// request.
-func TestSummarizeStrategy_NegativeMaxTokensFallsBackToDefault(t *testing.T) {
+// TestSummarize_NegativeMaxTokensFallsBackToDefault asserts that an
+// explicit negative value falls back to the default.
+func TestSummarize_NegativeMaxTokensFallsBackToDefault(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "Summary."},
 		},
 	}
-
-	strategy := SummarizeStrategy{Provider: prov, Spec: models.Spec{MaxOutputTokens: -1}}
 
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
@@ -508,26 +422,22 @@ func TestSummarizeStrategy_NegativeMaxTokensFallsBackToDefault(t *testing.T) {
 		textTurn(state.RoleUser, "aaaa"),
 	}
 
-	_, err := strategy.Compact(context.Background(), turns)
+	_, err := Summarize(context.Background(), prov, models.Spec{MaxOutputTokens: -1}, turns)
 	require.NoError(t, err)
 	assert.Equal(t, int64(8192), extractMaxTokensOption(t, prov.receivedOpts))
 }
 
-// TestSummarizeStrategy_TruncatedResultReturnsError asserts the
-// central failure mode: when the provider's final StopReason is
-// Length, Compact returns the original turns unchanged wrapped
-// with ErrTruncatedSummary. This is the direct test of the
-// compaction bug fix — the strategy no longer silently writes
-// a one-token "##" into the conversation buffer.
-func TestSummarizeStrategy_TruncatedResultReturnsError(t *testing.T) {
+// TestSummarize_TruncatedResultReturnsError asserts the central
+// failure mode: when the provider's final StopReason is Length,
+// Summarize returns the zero turn wrapped with ErrTruncatedSummary.
+// Callers are expected to NOT append anything to the buffer.
+func TestSummarize_TruncatedResultReturnsError(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.TextDelta{Content: "##"},
 			artifact.StopReason{Reason: artifact.StopReasonLength},
 		},
 	}
-
-	strategy := SummarizeStrategy{Provider: prov}
 
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "a very long history to summarize"),
@@ -536,18 +446,16 @@ func TestSummarizeStrategy_TruncatedResultReturnsError(t *testing.T) {
 		textTurn(state.RoleAssistant, "more response"),
 	}
 
-	result, err := strategy.Compact(context.Background(), turns)
+	result, err := Summarize(context.Background(), prov, models.Spec{}, turns)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrTruncatedSummary)
-	// Original turns returned unchanged.
-	assert.Equal(t, turns, result)
+	// Zero turn returned so the caller doesn't accidentally append.
+	assert.Equal(t, state.Turn{}, result)
 }
 
-// TestSummarizeStrategy_StopReasonStopDoesNotError asserts that a
-// normal completion (StopReasonStop, the canonical 'end_turn /
-// stop' mapping) does not trigger ErrTruncatedSummary. The
-// strategy should produce the regular single-turn summary.
-func TestSummarizeStrategy_StopReasonStopDoesNotError(t *testing.T) {
+// TestSummarize_StopReasonStopDoesNotError asserts that a normal
+// completion (StopReasonStop) does not trigger ErrTruncatedSummary.
+func TestSummarize_StopReasonStopDoesNotError(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "Summary content."},
@@ -555,32 +463,21 @@ func TestSummarizeStrategy_StopReasonStopDoesNotError(t *testing.T) {
 		},
 	}
 
-	strategy := SummarizeStrategy{Provider: prov}
-
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
 		textTurn(state.RoleAssistant, "aaaa"),
 		textTurn(state.RoleUser, "aaaa"),
 	}
 
-	result, err := strategy.Compact(context.Background(), turns)
+	result, err := Summarize(context.Background(), prov, models.Spec{}, turns)
 	require.NoError(t, err)
-	require.Len(t, result, 1)
-	assert.Equal(t, state.RoleSystem, result[0].Role)
-	require.Len(t, result[0].Artifacts, 1)
-	text, ok := result[0].Artifacts[0].(artifact.Text)
-	require.True(t, ok)
-	assert.Equal(t, "Summary content.", text.Content)
+	summary := findText(t, result)
+	assert.Equal(t, "Summary content.", summary.Content)
 }
 
-// TestSummarizeStrategy_StopReasonToolUseDoesNotError asserts that
-// a tool_use reason (the model emitted a tool call rather than a
-// text response) does not trigger ErrTruncatedSummary. The
-// strategy is not a tool-caller, so a tool_use reason is an
-// oddity (it would mean the model tried to invoke a tool in
-// response to the summary prompt), but it is not a truncation
-// failure — callers can decide how to react.
-func TestSummarizeStrategy_StopReasonToolUseDoesNotError(t *testing.T) {
+// TestSummarize_StopReasonToolUseDoesNotError asserts that a
+// tool_use reason does not trigger ErrTruncatedSummary.
+func TestSummarize_StopReasonToolUseDoesNotError(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.TextDelta{Content: "Partial summary "},
@@ -589,54 +486,42 @@ func TestSummarizeStrategy_StopReasonToolUseDoesNotError(t *testing.T) {
 		},
 	}
 
-	strategy := SummarizeStrategy{Provider: prov}
-
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
 		textTurn(state.RoleAssistant, "aaaa"),
 	}
 
-	result, err := strategy.Compact(context.Background(), turns)
+	result, err := Summarize(context.Background(), prov, models.Spec{}, turns)
 	require.NoError(t, err)
-	require.Len(t, result, 1)
-	assert.Equal(t, "Partial summary before tool call.", result[0].Artifacts[0].(artifact.Text).Content)
+	summary := findText(t, result)
+	assert.Equal(t, "Partial summary before tool call.", summary.Content)
 }
 
-// TestSummarizeStrategy_NoStopReasonDoesNotError asserts that the
-// absence of a StopReason on the channel (e.g. a future adapter
-// that has not yet been updated, or a mock that does not emit
-// one) is treated as "no truncation reported" rather than as an
-// error. This is a forward-compat guarantee: older code paths
-// that don't yet emit StopReason keep working.
-func TestSummarizeStrategy_NoStopReasonDoesNotError(t *testing.T) {
+// TestSummarize_NoStopReasonDoesNotError asserts that the absence
+// of a StopReason is treated as "no truncation reported".
+func TestSummarize_NoStopReasonDoesNotError(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "Summary."},
 		},
 	}
 
-	strategy := SummarizeStrategy{Provider: prov}
-
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
 		textTurn(state.RoleAssistant, "aaaa"),
 		textTurn(state.RoleUser, "aaaa"),
 	}
 
-	result, err := strategy.Compact(context.Background(), turns)
+	result, err := Summarize(context.Background(), prov, models.Spec{}, turns)
 	require.NoError(t, err)
-	require.Len(t, result, 1)
-	assert.Equal(t, "Summary.", result[0].Artifacts[0].(artifact.Text).Content)
+	summary := findText(t, result)
+	assert.Equal(t, "Summary.", summary.Content)
 }
 
-// TestSummarizeStrategy_StopReason_InterleavedTextAndReason
-// asserts that the channel-drain goroutine correctly captures
-// the latest non-empty StopReason even when text and the reason
-// are interleaved on the channel. The openai wire format sends
-// the reason on the same final delta as the text, so the
-// goroutine may see a text delta followed by a reason in either
-// order depending on goroutine scheduling.
-func TestSummarizeStrategy_StopReason_InterleavedTextAndReason(t *testing.T) {
+// TestSummarize_StopReason_InterleavedTextAndReason asserts that
+// the channel-drain goroutine captures the latest non-empty
+// StopReason even when interleaved with text deltas.
+func TestSummarize_StopReason_InterleavedTextAndReason(t *testing.T) {
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.TextDelta{Content: "Summary "},
@@ -645,16 +530,51 @@ func TestSummarizeStrategy_StopReason_InterleavedTextAndReason(t *testing.T) {
 		},
 	}
 
-	strategy := SummarizeStrategy{Provider: prov}
-
 	turns := []state.Turn{
 		textTurn(state.RoleUser, "aaaa"),
 		textTurn(state.RoleAssistant, "aaaa"),
 		textTurn(state.RoleUser, "aaaa"),
 	}
 
-	result, err := strategy.Compact(context.Background(), turns)
+	_, err := Summarize(context.Background(), prov, models.Spec{}, turns)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrTruncatedSummary)
-	assert.Equal(t, turns, result)
+}
+
+// TestSummarize_DroppedTokenEstimateFromDroppedArtifacts asserts
+// that the artifact.Compaction.DroppedTokenEstimate reflects the
+// sum of llmbytes.Of over every artifact in the input slice.
+func TestSummarize_DroppedTokenEstimateFromDroppedArtifacts(t *testing.T) {
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.Text{Content: "Summary."},
+		},
+	}
+
+	// 3 turns with 2 text artifacts each: the DroppedTokenEstimate
+	// should equal the sum of byte lengths of those text artifacts
+	// (4 chars * 3 turns * 2 artifacts = 24 bytes, plus any
+	// additional fixed costs — but artifact.Text byte size is just
+	// len(Content), so 8+8 + 5+5 + 3+3 = 32? Let me use clearly
+	// sized content to avoid arithmetic errors in the assertion).
+	turns := []state.Turn{
+		{
+			Role: state.RoleUser,
+			Artifacts: []artifact.Artifact{
+				artifact.Text{Content: "1234567890"}, // 10 bytes
+				artifact.Text{Content: "12345"},     // 5 bytes
+			},
+		},
+		{
+			Role: state.RoleAssistant,
+			Artifacts: []artifact.Artifact{
+				artifact.Text{Content: "12345"}, // 5 bytes
+			},
+		},
+	}
+
+	result, err := Summarize(context.Background(), prov, models.Spec{}, turns)
+	require.NoError(t, err)
+	comp := findCompaction(t, result)
+	assert.Equal(t, int64(20), comp.DroppedTokenEstimate, "should sum bytes of all dropped artifacts")
 }
