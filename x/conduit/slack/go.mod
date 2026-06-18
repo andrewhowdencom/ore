@@ -3,8 +3,8 @@ module github.com/andrewhowdencom/ore/x/conduit/slack
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.7.0
-	github.com/andrewhowdencom/ore/x/conduit v0.1.3
+	github.com/andrewhowdencom/ore v0.12.0
+	github.com/andrewhowdencom/ore/x/conduit v0.1.4
 	github.com/slack-go/slack v0.23.1
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel/trace v1.44.0
