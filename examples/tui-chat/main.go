@@ -150,7 +150,11 @@ func run() error {
 	}
 
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithResource(res))
-	defer mp.Shutdown(context.Background())
+	defer func() {
+		if err := mp.Shutdown(context.Background()); err != nil {
+			slog.Warn("shutdown meter provider", "err", err)
+		}
+	}()
 
 	meter := mp.Meter("tui-chat")
 	tel := telemetry.New(meter)
@@ -211,6 +215,13 @@ func run() error {
 		}, nil
 	}, cognitive.NewTurnProcessor(cognitive.ReActFactory, tracer),
 		session.WithInterceptor(slashReg),
+		// Seed the initial model name on new threads so the first
+		// turn uses ORE_MODEL before any /model slash command runs.
+		session.WithDefaultMetadata(func(*session.Stream) map[string]string {
+			return map[string]string{
+				session.MetadataKeyModelName: modelName,
+			}
+		}),
 	)
 
 	// Create the TUI conduit, passing the thread ID via functional option.

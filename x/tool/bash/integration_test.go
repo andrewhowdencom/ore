@@ -20,10 +20,7 @@ import (
 // all supported platforms, but the seam is here for future
 // portability concerns.
 func integrationSkip() bool {
-	if os.Getenv("ORE_BASH_SKIP_LARGE_OUTPUT_TEST") != "" {
-		return true
-	}
-	return false
+	return os.Getenv("ORE_BASH_SKIP_LARGE_OUTPUT_TEST") != ""
 }
 
 // TestBash_LargeOutput_BoundedResult exercises the streaming

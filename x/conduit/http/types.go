@@ -13,7 +13,6 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/state"
 	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // artifactJSON is the JSON representation of any artifact type.
@@ -87,29 +86,6 @@ type feedbackEventJSON struct {
 	Kind    string            `json:"kind"`
 	Content string            `json:"content"`
 	Context *eventContextJSON `json:"context,omitempty"`
-}
-
-// eventContextToJSON converts a context.Context to a JSON DTO pointer.
-// Returns nil when the context carries no provenance so omitempty removes
-// it from JSON. If the context carries an active span, the traceparent is
-// extracted via W3C TraceContext propagation and included in the DTO.
-func eventContextToJSON(ctx context.Context) *eventContextJSON {
-	p, ok := loop.ProvenanceFrom(ctx)
-	if !ok || p == "" {
-		return nil
-	}
-	dto := &eventContextJSON{Provenance: p}
-
-	if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
-		carrier := propagation.MapCarrier{}
-		propagator := propagation.TraceContext{}
-		propagator.Inject(ctx, carrier)
-		if tp := carrier.Get("traceparent"); tp != "" {
-			dto.Traceparent = tp
-		}
-	}
-
-	return dto
 }
 
 // eventContextFromJSON converts a JSON DTO pointer to a context.Context.

@@ -131,6 +131,6 @@ func TestSandbox_FilesystemIntegration(t *testing.T) {
 	result, err := filesystem.ReadFile(ctx, sb, map[string]any{"path": tmpFile})
 	require.NoError(t, err)
 
-	content := result.(string)
-	assert.Contains(t, content, "1|hello world")
+	r := result.(*filesystem.ReadFileResult)
+	assert.Contains(t, r.Content, "1|hello world")
 }

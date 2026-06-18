@@ -126,7 +126,11 @@ func run() error {
 	}
 
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithResource(res))
-	defer mp.Shutdown(context.Background())
+	defer func() {
+		if err := mp.Shutdown(context.Background()); err != nil {
+			slog.Warn("shutdown meter provider", "err", err)
+		}
+	}()
 
 	meter := mp.Meter("http-chat")
 	tel := telemetry.New(meter)

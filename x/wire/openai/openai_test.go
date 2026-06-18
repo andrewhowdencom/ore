@@ -28,6 +28,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 // mockTransport is an http.RoundTripper that returns a canned response and
@@ -1567,7 +1568,7 @@ func TestProviderInvoke_HTTPTraceContext(t *testing.T) {
 			var opts []Option
 			opts = append(opts, WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 			if tt.withTracer {
-				opts = append(opts, WithTracer(trace.NewNoopTracerProvider().Tracer("test")))
+				opts = append(opts, WithTracer(noop.NewTracerProvider().Tracer("test")))
 			}
 
 			p, err := New(opts...)
@@ -1659,7 +1660,7 @@ func TestProviderInvoke_SpanLifecycle(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			sr := tracetest.NewSpanRecorder()
 			tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
-			defer tp.Shutdown(context.Background())
+			t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
 
 			var transport *mockTransport
 			if tt.statusCode == 200 {
@@ -1699,7 +1700,7 @@ func TestProviderInvoke_SpanLifecycle(t *testing.T) {
 func TestProviderInvoke_HTTPTrace_Events(t *testing.T) {
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
-	defer tp.Shutdown(context.Background())
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
 
 	transport := &hookingMockTransport{
 		response: mockResponseSSE(simpleSSE("ok")),
@@ -1726,7 +1727,7 @@ func TestProviderInvoke_HTTPTrace_Events(t *testing.T) {
 func TestProviderInvoke_WithoutSubSpans(t *testing.T) {
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
-	defer tp.Shutdown(context.Background())
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
 
 	transport := &hookingMockTransport{
 		response: mockResponseSSE(simpleSSE("ok")),

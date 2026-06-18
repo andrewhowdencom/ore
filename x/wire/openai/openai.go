@@ -542,11 +542,8 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, spec models.Spec, 
 	// leaves the corresponding value untouched. The spec is the
 	// canonical source of truth for model identity and inference
 	// configuration.
-	if spec.Name != "" {
-		// spec.Name is the model identifier; the per-call options
-		// don't override this — there is no per-call model-name
-		// option anymore.
-	}
+	// Note: spec.Name has no per-call counterpart — model identity is
+	// always derived from the spec, with an empty Name rejected below.
 	if spec.Temperature != nil {
 		temperature = *spec.Temperature
 	}
