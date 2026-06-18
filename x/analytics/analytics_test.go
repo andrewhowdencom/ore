@@ -64,12 +64,22 @@ func TestAnalyzeTurns_MixedArtifacts(t *testing.T) {
 			},
 		},
 		{
-			Role:      state.RoleAssistant,
+			// Assistant turn: the model emits the call, plus other
+			// non-tool artifacts (image, usage). The framework never
+			// co-locates tool_result with tool_call, but the analytics
+			// resolution is whole-scope so it doesn't matter.
+			Role: state.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.ToolCall{ID: "1", Name: "bash", Arguments: `{"cmd":"ls"}`},
-				artifact.ToolResult{ToolCallID: "1", Content: "ok"},
 				artifact.Image{URL: "http://example.com/img.png"},
 				artifact.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15},
+			},
+		},
+		{
+			// Tool turn: the handler emits the result separately.
+			Role: state.RoleTool,
+			Artifacts: []artifact.Artifact{
+				artifact.ToolResult{ToolCallID: "1", Content: "ok"},
 			},
 		},
 	}
@@ -116,7 +126,10 @@ func TestAnalyzeTurns_MixedArtifacts(t *testing.T) {
 
 	// tool_result: 1 artifact, len(LLMString()) = len("ok") = 2.
 	// Source is resolved by joining ToolCallID="1" against the
-	// tool_call{Name="bash", ID="1"} in the same turn.
+	// tool_call{Name="bash", ID="1"} in the assistant turn above
+	// via whole-scope resolution (the call and result are in
+	// separate state.Turn values; the framework always emits them
+	// that way).
 	if s, ok := byKind["tool_result"]; !ok {
 		t.Fatal("missing 'tool_result' kind")
 	} else if s.Source != "bash" {
@@ -194,14 +207,21 @@ func TestAnalyzeTurns_ToolCallBucketedByName(t *testing.T) {
 }
 
 // TestAnalyzeTurns_ToolResultResolvedByToolCall exercises the
-// same-turn join: a tool_result's Source is the originating
-// tool_call's Name, looked up by ToolCallID.
+// whole-scope join: a tool_result's Source is the originating
+// tool_call's Name, looked up by ToolCallID across the slice —
+// specifically across the assistant/role-tool turn boundary that
+// the framework always produces.
 func TestAnalyzeTurns_ToolResultResolvedByToolCall(t *testing.T) {
 	turns := []state.Turn{
 		{
 			Role: state.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.ToolCall{ID: "1", Name: "bash", Arguments: `{"cmd":"ls"}`},
+			},
+		},
+		{
+			Role: state.RoleTool,
+			Artifacts: []artifact.Artifact{
 				artifact.ToolResult{ToolCallID: "1", Content: "ok"},
 			},
 		},
@@ -234,18 +254,23 @@ func TestAnalyzeTurns_ToolResultResolvedByToolCall(t *testing.T) {
 }
 
 // TestAnalyzeTurns_ToolResultOrphan covers the case where a
-// tool_result's ToolCallID has no matching tool_call in the same
-// turn. The result should bucket under the Source "(unknown)" so
+// tool_result's ToolCallID has no matching tool_call anywhere in the
+// scope. The result should bucket under the Source "(unknown)" so
 // the gap is visible in the report.
 func TestAnalyzeTurns_ToolResultOrphan(t *testing.T) {
 	turns := []state.Turn{
 		{
+			// An unrelated tool_call, deliberately with a
+			// different ID than the orphan's ToolCallID.
 			Role: state.RoleAssistant,
 			Artifacts: []artifact.Artifact{
-				// An unrelated tool_call, deliberately with a
-				// different ID than the orphan's ToolCallID.
 				artifact.ToolCall{ID: "1", Name: "file_read", Arguments: `{"path":"/tmp/x"}`},
-				// Orphan: no tool_call in this turn has ID "missing".
+			},
+		},
+		{
+			// Orphan: no tool_call in this scope has ID "missing".
+			Role: state.RoleTool,
+			Artifacts: []artifact.Artifact{
 				artifact.ToolResult{ToolCallID: "missing", Content: "ok"},
 			},
 		},
@@ -389,6 +414,9 @@ func TestAnalyzeStore_Error(t *testing.T) {
 func TestAnalyzeThread_AfterJSONRoundTrip(t *testing.T) {
 	// Build a thread that exercises every kind the analytics layer knows
 	// about, so a regression in any single case branch is visible.
+	// Tool_call and tool_result are placed in the separate turns the
+	// framework actually produces: the call in RoleAssistant, the
+	// result in a subsequent RoleTool turn.
 	turns := []state.Turn{
 		{
 			Role: state.RoleUser,
@@ -396,9 +424,14 @@ func TestAnalyzeThread_AfterJSONRoundTrip(t *testing.T) {
 				artifact.Text{Content: "hi"},
 				artifact.Reasoning{Content: "think"},
 				artifact.ToolCall{ID: "1", Name: "bash", Arguments: `{"cmd":"ls"}`},
-				artifact.ToolResult{ToolCallID: "1", Content: "ok"},
 				artifact.Image{URL: "http://example.com/img.png"},
 				artifact.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15},
+			},
+		},
+		{
+			Role: state.RoleTool,
+			Artifacts: []artifact.Artifact{
+				artifact.ToolResult{ToolCallID: "1", Content: "ok"},
 			},
 		},
 	}
@@ -481,10 +514,12 @@ func TestAnalyzeThread_AfterJSONRoundTrip(t *testing.T) {
 		}
 		// Source must also round-trip identically. For tool_call and
 		// tool_result, this means the originating tool's Name must
-		// survive JSON round-trip AND the same-turn join must still
-		// find the originating call after reload.
+		// survive JSON round-trip AND the whole-scope join must still
+		// find the originating call after reload (the call is in
+		// turn 0, the result is in turn 1; resolution crosses the
+		// assistant/role-tool boundary).
 		if got[i].Source != baseline[i].Source {
-			t.Errorf("%s source: got %q, want %q (same-turn join did not "+
+			t.Errorf("%s source: got %q, want %q (whole-scope join did not "+
 				"survive the JSON round-trip)",
 				got[i].Kind, got[i].Source, baseline[i].Source)
 		}
@@ -517,9 +552,11 @@ func TestAnalyzeStore_AfterJSONRoundTrip(t *testing.T) {
 		artifact.Text{Content: "hi"},
 		artifact.Reasoning{Content: "think"},
 		artifact.ToolCall{ID: "1", Name: "bash", Arguments: `{"cmd":"ls"}`},
-		artifact.ToolResult{ToolCallID: "1", Content: "ok"},
 		artifact.Image{URL: "http://example.com/img.png"},
 		artifact.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15},
+	)
+	thr.State.Append(state.RoleTool,
+		artifact.ToolResult{ToolCallID: "1", Content: "ok"},
 	)
 	if err := store.Save(thr); err != nil {
 		t.Fatalf("save: %v", err)
@@ -612,29 +649,33 @@ func TestAnalyzeThread_NoJSONEnvelopeLeak(t *testing.T) {
 }
 
 // TestAnalyzeStore_ToolResultOrphanPerThread confirms that the
-// same-turn ToolCallID→Name join is scoped to a single thread: a
+// whole-scope ToolCallID→Name join is scoped to a single thread: a
 // tool_result in thread B whose ToolCallID matches a tool_call in
 // thread A is still an orphan, because cross-thread resolution is
 // out of scope. This guards the per-thread invariant while also
 // covering the (unknown) bucket at the store-wide aggregate level.
 func TestAnalyzeStore_ToolResultOrphanPerThread(t *testing.T) {
-	// Thread A: a tool_call and a matching tool_result in the same
-	// turn. The tool_result must resolve to "bash".
+	// Thread A: a tool_call in the assistant turn and a matching
+	// tool_result in a separate role-tool turn. The result must
+	// resolve to "bash" via the whole-scope join within thread A.
 	bufA := &state.Buffer{}
 	bufA.Append(state.RoleAssistant,
 		artifact.ToolCall{ID: "1", Name: "bash", Arguments: `{"cmd":"ls"}`},
+	)
+	bufA.Append(state.RoleTool,
 		artifact.ToolResult{ToolCallID: "1", Content: "ok"},
 	)
 
-	// Thread B: a tool_result whose ToolCallID matches a tool_call
-	// that lives in a DIFFERENT thread. By the same-turn invariant,
-	// this is an orphan and must bucket under "(unknown)".
-	//
-	// The tool_call in thread B is also present but carries a
-	// different ID ("2"), so it cannot rescue the orphan result.
+	// Thread B: a tool_call in the assistant turn and a tool_result
+	// in a separate role-tool turn whose ToolCallID does NOT match
+	// the local call ("2" vs "1"). Even though thread A has a call
+	// with the matching ID, the per-thread scope prevents it from
+	// rescuing thread B's result.
 	bufB := &state.Buffer{}
 	bufB.Append(state.RoleAssistant,
 		artifact.ToolCall{ID: "2", Name: "file_read", Arguments: `{"path":"/tmp/x"}`},
+	)
+	bufB.Append(state.RoleTool,
 		artifact.ToolResult{ToolCallID: "1", Content: "ok"},
 	)
 
@@ -660,6 +701,189 @@ func TestAnalyzeStore_ToolResultOrphanPerThread(t *testing.T) {
 	want := []analytics.Stats{
 		{Kind: "tool_call", Source: "bash", Count: 1, Bytes: 12},
 		{Kind: "tool_call", Source: "file_read", Count: 1, Bytes: 17},
+		{Kind: "tool_result", Source: "(unknown)", Count: 1, Bytes: 2},
+		{Kind: "tool_result", Source: "bash", Count: 1, Bytes: 2},
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("expected %d rows, got %d: %+v", len(want), len(got), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got[%d]: got %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+// TestAnalyzeTurns_ToolResultResolvedAcrossTurns is the regression
+// test for the cross-turn attribution bug. The framework always
+// emits tool_call in a RoleAssistant turn and tool_result in a
+// separate RoleTool turn. Under the previous same-turn resolution
+// these would never match; under whole-scope resolution they do.
+//
+// This test deliberately mirrors the architecture the framework
+// produces. If a future change makes tool_call and tool_result
+// share a turn again, this test must be updated to reflect that
+// new architecture — but it must never be re-shaped to silently
+// pass under a same-turn resolution that hides the original bug.
+func TestAnalyzeTurns_ToolResultResolvedAcrossTurns(t *testing.T) {
+	turns := []state.Turn{
+		{
+			Role: state.RoleUser,
+			Artifacts: []artifact.Artifact{
+				artifact.Text{Content: "list /tmp"},
+			},
+		},
+		{
+			Role: state.RoleAssistant,
+			Artifacts: []artifact.Artifact{
+				artifact.ToolCall{ID: "A", Name: "bash", Arguments: `{"cmd":"ls"}`},
+			},
+		},
+		{
+			Role: state.RoleTool,
+			Artifacts: []artifact.Artifact{
+				artifact.ToolResult{ToolCallID: "A", Content: "a.txt b.txt"},
+			},
+		},
+		{
+			// Subsequent assistant turn, with no new tool calls.
+			// The previous result is still in state and would be
+			// re-sent on the next API call.
+			Role: state.RoleAssistant,
+			Artifacts: []artifact.Artifact{
+				artifact.Text{Content: "you have a.txt and b.txt"},
+			},
+		},
+	}
+
+	got := analytics.AnalyzeTurns(turns)
+
+	// tool_result must resolve to "bash" via whole-scope join.
+	// Under same-turn resolution, this row would bucket as
+	// (tool_result, "(unknown)") and the test would fail.
+	var toolResult *analytics.Stats
+	for i := range got {
+		if got[i].Kind == "tool_result" {
+			toolResult = &got[i]
+		}
+	}
+	if toolResult == nil {
+		t.Fatalf("expected a tool_result row, got: %+v", got)
+	}
+	if toolResult.Source != "bash" {
+		t.Errorf("tool_result source: got %q, want %q (cross-turn "+
+			"resolution failed; this is the regression test for the "+
+			"analytics attribution bug)", toolResult.Source, "bash")
+	}
+	if toolResult.Count != 1 {
+		t.Errorf("tool_result count: got %d, want 1", toolResult.Count)
+	}
+	// Bytes: len("a.txt b.txt") = 11.
+	if toolResult.Bytes != 11 {
+		t.Errorf("tool_result bytes: got %d, want 11", toolResult.Bytes)
+	}
+}
+
+// TestAnalyzeTurns_ParallelToolCalls covers the case where the model
+// emits multiple tool_calls in one assistant turn (e.g. parallel
+// tool execution) and the framework emits multiple tool_results
+// in a single role-tool turn. Each result must resolve to the
+// originating call's Name.
+func TestAnalyzeTurns_ParallelToolCalls(t *testing.T) {
+	turns := []state.Turn{
+		{
+			Role: state.RoleAssistant,
+			Artifacts: []artifact.Artifact{
+				artifact.ToolCall{ID: "A", Name: "bash", Arguments: `{"cmd":"ls /tmp"}`},
+				artifact.ToolCall{ID: "B", Name: "bash", Arguments: `{"cmd":"ls /etc"}`},
+				artifact.ToolCall{ID: "C", Name: "file_read", Arguments: `{"path":"/etc/hosts"}`},
+			},
+		},
+		{
+			Role: state.RoleTool,
+			Artifacts: []artifact.Artifact{
+				artifact.ToolResult{ToolCallID: "A", Content: "tmp-a"},
+				artifact.ToolResult{ToolCallID: "B", Content: "etc-b"},
+				artifact.ToolResult{ToolCallID: "C", Content: "127.0.0.1 localhost"},
+			},
+		},
+	}
+
+	got := analytics.AnalyzeTurns(turns)
+
+	// tool_call: 3 artifacts, two for "bash" (different IDs), one
+	// for "file_read". Aggregated: 2 rows.
+	// tool_result: 3 artifacts, two for "bash" (different IDs but
+	// same source "bash"), one for "file_read". Aggregated: 2 rows.
+	// Total: 4 rows.
+	want := []analytics.Stats{
+		{Kind: "tool_call", Source: "bash", Count: 2, Bytes: 0},       // bytes asserted below
+		{Kind: "tool_call", Source: "file_read", Count: 1, Bytes: 0},  // bytes asserted below
+		{Kind: "tool_result", Source: "bash", Count: 2, Bytes: 0},    // bytes asserted below
+		{Kind: "tool_result", Source: "file_read", Count: 1, Bytes: 0}, // bytes asserted below
+	}
+	// Compute the expected bytes:
+	//   tool_call bash:    len(`{"cmd":"ls /tmp"}`) + len(`{"cmd":"ls /etc"}`) = 17 + 17 = 34
+	//   tool_call file_read: len(`{"path":"/etc/hosts"}`) = 21
+	//   tool_result bash:    len("tmp-a") + len("etc-b") = 5 + 5 = 10
+	//   tool_result file_read: len("127.0.0.1 localhost") = 19
+	want[0].Bytes = 34
+	want[1].Bytes = 21
+	want[2].Bytes = 10
+	want[3].Bytes = 19
+
+	if len(got) != len(want) {
+		t.Fatalf("expected %d rows, got %d: %+v", len(want), len(got), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got[%d]: got %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+// TestAnalyzeStore_PerThreadIsolation_ToolCallInThreadAResolvesOnlyInThreadA
+// confirms that a tool_call in thread A does not rescue a tool_result
+// in thread B that happens to share a ToolCallID. Each thread's
+// whole-scope join is independent.
+func TestAnalyzeStore_PerThreadIsolation_ToolCallInThreadAResolvesOnlyInThreadA(t *testing.T) {
+	// Thread A: a tool_call with ID "1" and a matching tool_result.
+	// Whole-scope join within thread A resolves the result to "bash".
+	bufA := &state.Buffer{}
+	bufA.Append(state.RoleAssistant,
+		artifact.ToolCall{ID: "1", Name: "bash", Arguments: `{"cmd":"ls"}`},
+	)
+	bufA.Append(state.RoleTool,
+		artifact.ToolResult{ToolCallID: "1", Content: "ok"},
+	)
+
+	// Thread B: a tool_result whose ToolCallID is "1" — the same ID
+	// as thread A's call. Per-thread scope prevents thread A's call
+	// from resolving thread B's result. Thread B has no local call
+	// with ID "1" → orphan.
+	bufB := &state.Buffer{}
+	bufB.Append(state.RoleTool,
+		artifact.ToolResult{ToolCallID: "1", Content: "ok"},
+	)
+
+	store := &mockStore{
+		threads: []*session.Thread{
+			{State: bufA},
+			{State: bufB},
+		},
+	}
+
+	got, err := analytics.AnalyzeStore(store)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Expected rows: thread A contributes (tool_call, bash, 1, 12)
+	// and (tool_result, bash, 1, 2). Thread B contributes
+	// (tool_result, "(unknown)", 1, 2).
+	want := []analytics.Stats{
+		{Kind: "tool_call", Source: "bash", Count: 1, Bytes: 12},
 		{Kind: "tool_result", Source: "(unknown)", Count: 1, Bytes: 2},
 		{Kind: "tool_result", Source: "bash", Count: 1, Bytes: 2},
 	}
