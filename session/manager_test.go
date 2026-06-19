@@ -105,8 +105,8 @@ func TestManager_Create(t *testing.T) {
 	assert.NotEmpty(t, stream.ID())
 
 	// Thread should exist in store.
-	thr, ok := store.Get(stream.ID())
-	assert.True(t, ok)
+	thr, err := store.Get(stream.ID())
+	assert.NoError(t, err)
 	assert.Equal(t, stream.ID(), thr.ID)
 
 	// Session should be active.
@@ -267,8 +267,8 @@ func TestManager_Process(t *testing.T) {
 	assert.True(t, turnComplete)
 
 	// Thread state should have been saved.
-	thr, ok := store.Get(stream.ID())
-	require.True(t, ok)
+	thr, err := store.Get(stream.ID())
+	require.NoError(t, err)
 	turns := thr.State.Turns()
 	require.Len(t, turns, 2) // user + assistant
 	assert.Equal(t, state.RoleUser, turns[0].Role)
@@ -504,8 +504,8 @@ func TestManager_Close(t *testing.T) {
 	require.False(t, ok, "channel should be closed")
 
 	// Thread should still exist in the store.
-	_, ok = store.Get(stream.ID())
-	assert.True(t, ok)
+	_, err = store.Get(stream.ID())
+	assert.NoError(t, err)
 }
 
 func TestManager_Close_NotFound(t *testing.T) {
@@ -1171,9 +1171,11 @@ func TestManager_RegisterSink_DoubleUnregister(t *testing.T) {
 // errStore is a Store that always returns an error from Save.
 type errStore struct{}
 
-func (e *errStore) Create() (*Thread, error)      { return NewMemoryStore().Create() }
-func (e *errStore) Get(id string) (*Thread, bool) { return NewMemoryStore().Get(id) }
-func (e *errStore) GetBy(key, value string) (*Thread, bool) {
+func (e *errStore) Create() (*Thread, error) { return NewMemoryStore().Create() }
+func (e *errStore) Get(id string) (*Thread, error) {
+	return NewMemoryStore().Get(id)
+}
+func (e *errStore) GetBy(key, value string) (*Thread, error) {
 	return NewMemoryStore().GetBy(key, value)
 }
 func (e *errStore) Save(*Thread) error       { return fmt.Errorf("save failed") }
@@ -1241,8 +1243,8 @@ func TestManager_Process_NoDuplicateTurns(t *testing.T) {
 	require.NoError(t, err)
 	_ = stream.Close()
 
-	thr, ok := store.Get(stream.ID())
-	require.True(t, ok)
+	thr, err := store.Get(stream.ID())
+	require.NoError(t, err)
 	turns := thr.State.Turns()
 
 	// Exactly 2 turns: user message + assistant response.
@@ -1313,8 +1315,8 @@ func TestManager_Process_ToolLoop_NoDuplicateTurns(t *testing.T) {
 	require.NoError(t, err)
 	_ = stream.Close()
 
-	thr, ok := store.Get(stream.ID())
-	require.True(t, ok)
+	thr, err := store.Get(stream.ID())
+	require.NoError(t, err)
 	turns := thr.State.Turns()
 
 	// Expected: user, assistant-tool-call, tool-result, assistant-final

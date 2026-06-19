@@ -647,3 +647,75 @@ func (d ToolCallDelta) MergeInto(acc Artifact) Artifact {
 	tc.Arguments += d.Arguments
 	return tc
 }
+
+// isPersistent marks the persistable concrete types in this package.
+// Each type below gains both an isPersistent() method and an init()
+// that registers its factory with the package-level registry. Delta
+// types deliberately do not implement this method.
+
+// isPersistent marks Text as persistable.
+func (Text) isPersistent() {}
+
+// isPersistent marks ToolCall as persistable.
+func (ToolCall) isPersistent() {}
+
+// isPersistent marks ToolResult as persistable.
+func (ToolResult) isPersistent() {}
+
+// isPersistent marks Usage as persistable.
+func (Usage) isPersistent() {}
+
+// isPersistent marks Image as persistable.
+func (Image) isPersistent() {}
+
+// isPersistent marks Reasoning as persistable.
+func (Reasoning) isPersistent() {}
+
+// init blocks: register each persistable type's factory with the
+// package-level registry. The factories return zero-value instances;
+// consumers use them to seed a typed pointer for json.Unmarshal.
+
+// Text
+func init() {
+	Register("text", func() Artifact { return &Text{} })
+}
+
+// ToolCall
+func init() {
+	Register("tool_call", func() Artifact { return &ToolCall{} })
+}
+
+// ToolResult
+func init() {
+	Register("tool_result", func() Artifact { return &ToolResult{} })
+}
+
+// Usage
+func init() {
+	Register("usage", func() Artifact { return &Usage{} })
+}
+
+// Image
+func init() {
+	Register("image", func() Artifact { return &Image{} })
+}
+
+// Reasoning
+func init() {
+	Register("reasoning", func() Artifact { return &Reasoning{} })
+}
+
+// StopReason
+func init() {
+	Register("stop_reason", func() Artifact { return &StopReason{} })
+}
+
+// ReasoningSignature
+func init() {
+	Register("reasoning_signature", func() Artifact { return &ReasoningSignature{} })
+}
+
+// Compaction
+func init() {
+	Register("compaction", func() Artifact { return &Compaction{} })
+}

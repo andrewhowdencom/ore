@@ -31,12 +31,12 @@ func TestMemoryStore_Get(t *testing.T) {
 	thread, err := store.Create()
 	require.NoError(t, err)
 
-	got, ok := store.Get(thread.ID)
-	assert.True(t, ok)
+	got, err := store.Get(thread.ID)
+	assert.NoError(t, err)
 	assert.Equal(t, thread.ID, got.ID)
 
-	_, ok = store.Get("nonexistent")
-	assert.False(t, ok)
+	_, err = store.Get("nonexistent")
+	assert.ErrorIs(t, err, ErrThreadNotFound)
 }
 
 func TestMemoryStore_Save(t *testing.T) {
@@ -52,8 +52,8 @@ func TestMemoryStore_Save(t *testing.T) {
 	err = store.Save(thread)
 	require.NoError(t, err)
 
-	got, ok := store.Get(thread.ID)
-	require.True(t, ok)
+	got, err := store.Get(thread.ID)
+	require.NoError(t, err)
 	assert.True(t, got.UpdatedAt.After(originalUpdatedAt), "UpdatedAt should advance after Save")
 	assert.Len(t, got.State.Turns(), 1)
 }
@@ -66,8 +66,8 @@ func TestMemoryStore_Delete(t *testing.T) {
 	ok := store.Delete(thread.ID)
 	assert.True(t, ok)
 
-	_, ok = store.Get(thread.ID)
-	assert.False(t, ok)
+	_, err = store.Get(thread.ID)
+	assert.ErrorIs(t, err, ErrThreadNotFound)
 
 	ok = store.Delete(thread.ID)
 	assert.False(t, ok)
@@ -117,12 +117,12 @@ func TestMemoryStore_GetBy(t *testing.T) {
 	err = store.Save(thread1)
 	require.NoError(t, err)
 
-	got, ok := store.GetBy("slack.thread_ts", "1234567890.123456")
-	require.True(t, ok)
+	got, err := store.GetBy("slack.thread_ts", "1234567890.123456")
+	require.NoError(t, err)
 	assert.Equal(t, thread1.ID, got.ID)
 
-	_, ok = store.GetBy("slack.thread_ts", "999")
-	assert.False(t, ok)
+	_, err = store.GetBy("slack.thread_ts", "999")
+	assert.ErrorIs(t, err, ErrThreadNotFound)
 }
 
 func TestMemoryStore_GetBy_NotFound(t *testing.T) {
@@ -130,8 +130,8 @@ func TestMemoryStore_GetBy_NotFound(t *testing.T) {
 	_, err := store.Create()
 	require.NoError(t, err)
 
-	_, ok := store.GetBy("channel_id", "999")
-	assert.False(t, ok)
+	_, err = store.GetBy("channel_id", "999")
+	assert.ErrorIs(t, err, ErrThreadNotFound)
 }
 
 func TestMemoryStore_GetBy_Duplicate(t *testing.T) {
@@ -146,8 +146,8 @@ func TestMemoryStore_GetBy_Duplicate(t *testing.T) {
 	require.NoError(t, store.Save(thread1))
 	require.NoError(t, store.Save(thread2))
 
-	got, ok := store.GetBy("channel_id", "same")
-	require.True(t, ok)
+	got, err := store.GetBy("channel_id", "same")
+	require.NoError(t, err)
 	assert.True(t, got.ID == thread1.ID || got.ID == thread2.ID)
 }
 
@@ -162,8 +162,8 @@ func TestMemoryStore_GetBy_AfterDelete(t *testing.T) {
 	ok := store.Delete(thread.ID)
 	assert.True(t, ok)
 
-	_, ok = store.GetBy("channel_id", "123")
-	assert.False(t, ok)
+	_, err = store.GetBy("channel_id", "123")
+	assert.ErrorIs(t, err, ErrThreadNotFound)
 }
 
 func TestMemoryStore_GetBy_EmptyMetadata(t *testing.T) {
@@ -171,6 +171,6 @@ func TestMemoryStore_GetBy_EmptyMetadata(t *testing.T) {
 	_, err := store.Create()
 	require.NoError(t, err)
 
-	_, ok := store.GetBy("any_key", "any_value")
-	assert.False(t, ok)
+	_, err = store.GetBy("any_key", "any_value")
+	assert.ErrorIs(t, err, ErrThreadNotFound)
 }

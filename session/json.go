@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -57,58 +58,91 @@ func (s *JSONStore) Create() (*Thread, error) {
 	return thread, nil
 }
 
-// Get retrieves a thread by ID. If not in cache, it attempts to
-// load from disk.
-func (s *JSONStore) Get(id string) (*Thread, bool) {
+// Get retrieves a thread by ID.
+//
+// Return values:
+//
+//   - (thread, nil): thread found and loaded successfully.
+//   - (nil, ErrThreadNotFound): no thread with that ID exists.
+//   - (nil, ErrThreadCorrupt wrapping cause): a thread file exists at
+//     the expected path but cannot be parsed. The wrapped error is
+//     the underlying unmarshal failure so callers can introspect it.
+//
+// The previous (thread, bool) signature silently returned (nil, false)
+// for both "not found" and "corrupt", which made any parse failure
+// indistinguishable from a missing file. Callers could not log or
+// report the real cause. See issue #453.
+func (s *JSONStore) Get(id string) (*Thread, error) {
 	s.mu.RLock()
 	thread, ok := s.cache[id]
 	s.mu.RUnlock()
 
 	if ok {
-		return thread, true
+		return thread, nil
 	}
 
 	// Attempt to load from disk.
 	path := filepath.Join(s.dir, id+".json")
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, false
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, ErrThreadNotFound
+		}
+		// Multi-%w so errors.Is(err, ErrThreadCorrupt) succeeds
+		// and the underlying read error is also reachable.
+		return nil, fmt.Errorf("read thread file %q: %w: %w", path, ErrThreadCorrupt, err)
 	}
 
 	thread = &Thread{}
 	if err := json.Unmarshal(data, thread); err != nil {
-		return nil, false
+		return nil, fmt.Errorf("unmarshal thread %q: %w: %w", id, ErrThreadCorrupt, err)
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// Another goroutine may have loaded it while we were reading.
 	if existing, ok := s.cache[id]; ok {
-		return existing, true
+		return existing, nil
 	}
 	s.cache[id] = thread
-	return thread, true
+	return thread, nil
 }
 
 // GetBy retrieves a thread by a metadata key-value pair.
 // It scans all thread files on disk and returns the first match.
-func (s *JSONStore) GetBy(key, value string) (*Thread, bool) {
+//
+// If the scan encounters a thread file that exists but cannot be
+// parsed, the parse error is returned wrapped in ErrThreadCorrupt.
+// A missing thread file is silently skipped (matching the previous
+// behavior; a single missing file in the scan is not the same as
+// "the requested thread does not exist"). If the scan completes
+// with no match, ErrThreadNotFound is returned.
+func (s *JSONStore) GetBy(key, value string) (*Thread, error) {
 	ids, err := s.listThreadIDs()
 	if err != nil {
-		return nil, false
+		return nil, fmt.Errorf("list thread ids: %w", err)
 	}
 
 	for _, id := range ids {
-		thread, ok := s.Get(id)
-		if !ok {
-			continue
+		thread, err := s.Get(id)
+		if err != nil {
+			if errors.Is(err, ErrThreadNotFound) {
+				// Should not happen — listThreadIDs only returns
+				// extant ids. Skip defensively.
+				continue
+			}
+			if errors.Is(err, ErrThreadCorrupt) {
+				// Surface the first corrupt file encountered.
+				return nil, err
+			}
+			return nil, err
 		}
 		match := thread.Metadata[key] == value
 		if match {
-			return thread, true
+			return thread, nil
 		}
 	}
-	return nil, false
+	return nil, ErrThreadNotFound
 }
 
 // Save writes the thread to disk atomically (via a temporary file
@@ -154,6 +188,14 @@ func (s *JSONStore) Delete(id string) bool {
 }
 
 // List returns all threads in the store.
+//
+// Corrupt files (files that exist but cannot be parsed) are silently
+// skipped, matching the long-standing behavior of this method. Direct
+// lookups via Get surface corruption as ErrThreadCorrupt; bulk
+// lookups via List intentionally do not, because a single corrupt
+// file in the directory shouldn't prevent the caller from seeing the
+// rest of the threads. Callers that need to find every corrupt file
+// must walk the directory themselves.
 func (s *JSONStore) List() ([]*Thread, error) {
 	ids, err := s.listThreadIDs()
 	if err != nil {
@@ -162,9 +204,13 @@ func (s *JSONStore) List() ([]*Thread, error) {
 
 	result := make([]*Thread, 0, len(ids))
 	for _, id := range ids {
-		if thread, ok := s.Get(id); ok {
-			result = append(result, thread)
+		thread, err := s.Get(id)
+		if err != nil {
+			// Skip files that have been removed between listing
+			// and reading, and skip corrupt files (see doc comment).
+			continue
 		}
+		result = append(result, thread)
 	}
 	return result, nil
 }

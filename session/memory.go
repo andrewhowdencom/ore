@@ -46,16 +46,27 @@ func (s *MemoryStore) Create() (*Thread, error) {
 }
 
 // Get retrieves a thread by ID.
-func (s *MemoryStore) Get(id string) (*Thread, bool) {
+//
+// Returns ErrThreadNotFound if no thread with the given ID is stored.
+// The previous (Thread, bool) signature has been replaced so callers
+// can distinguish a miss from a corruption; see issue #453.
+func (s *MemoryStore) Get(id string) (*Thread, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	thread, ok := s.threads[id]
-	return thread, ok
+	if !ok {
+		return nil, ErrThreadNotFound
+	}
+	return thread, nil
 }
 
 // GetBy retrieves a thread by a metadata key-value pair.
 // It performs a linear scan over all threads and returns the first match.
-func (s *MemoryStore) GetBy(key, value string) (*Thread, bool) {
+//
+// Returns ErrThreadNotFound if no thread matches the key-value pair.
+// In-memory corruption is not possible (no disk reads), so this
+// implementation never returns ErrThreadCorrupt.
+func (s *MemoryStore) GetBy(key, value string) (*Thread, error) {
 	s.mu.RLock()
 	candidates := make([]*Thread, 0, len(s.threads))
 	for _, thread := range s.threads {
@@ -66,10 +77,10 @@ func (s *MemoryStore) GetBy(key, value string) (*Thread, bool) {
 	for _, thread := range candidates {
 		match := thread.Metadata[key] == value
 		if match {
-			return thread, true
+			return thread, nil
 		}
 	}
-	return nil, false
+	return nil, ErrThreadNotFound
 }
 
 // Save updates the thread's UpdatedAt and stores it.

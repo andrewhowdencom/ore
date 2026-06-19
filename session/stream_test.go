@@ -45,8 +45,8 @@ func TestStream_Interface(t *testing.T) {
 	require.False(t, ok, "channel should be closed")
 
 	// Thread should still exist in the store.
-	_, ok = store.Get(stream.ID())
-	assert.True(t, ok)
+	_, err = store.Get(stream.ID())
+	assert.NoError(t, err)
 }
 
 func TestStream_Turns(t *testing.T) {
@@ -567,9 +567,9 @@ type saveErrStore struct {
 	inner Store
 }
 
-func (s *saveErrStore) Create() (*Thread, error)                { return s.inner.Create() }
-func (s *saveErrStore) Get(id string) (*Thread, bool)           { return s.inner.Get(id) }
-func (s *saveErrStore) GetBy(key, value string) (*Thread, bool) { return s.inner.GetBy(key, value) }
+func (s *saveErrStore) Create() (*Thread, error)                 { return s.inner.Create() }
+func (s *saveErrStore) Get(id string) (*Thread, error)            { return s.inner.Get(id) }
+func (s *saveErrStore) GetBy(key, value string) (*Thread, error) { return s.inner.GetBy(key, value) }
 func (s *saveErrStore) Save(*Thread) error                      { return errors.New("save failed") }
 func (s *saveErrStore) Delete(id string) bool                   { return s.inner.Delete(id) }
 func (s *saveErrStore) List() ([]*Thread, error)                { return s.inner.List() }

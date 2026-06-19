@@ -45,8 +45,8 @@ func TestJSONStore_SaveUpdatesFile(t *testing.T) {
 	store2, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	got, ok := store2.Get(thread.ID)
-	require.True(t, ok)
+	got, err := store2.Get(thread.ID)
+	require.NoError(t, err)
 	turns := got.State.Turns()
 	require.Len(t, turns, 1)
 	assert.Equal(t, state.RoleUser, turns[0].Role)
@@ -68,8 +68,8 @@ func TestJSONStore_GetLoadsFromDisk(t *testing.T) {
 	store2, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	got, ok := store2.Get(thread.ID)
-	require.True(t, ok)
+	got, err := store2.Get(thread.ID)
+	require.NoError(t, err)
 	assert.Equal(t, thread.ID, got.ID)
 	assert.Len(t, got.State.Turns(), 1)
 }
@@ -92,8 +92,8 @@ func TestJSONStore_DeleteRemovesFile(t *testing.T) {
 	_, err = os.Stat(path)
 	assert.True(t, os.IsNotExist(err), "expected file to be removed")
 
-	_, ok = store.Get(thread.ID)
-	assert.False(t, ok)
+	_, err = store.Get(thread.ID)
+	assert.ErrorIs(t, err, ErrThreadNotFound)
 }
 
 func TestJSONStore_RestartRecoversThreads(t *testing.T) {
@@ -117,12 +117,12 @@ func TestJSONStore_RestartRecoversThreads(t *testing.T) {
 	store2, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	got1, ok := store2.Get(thread1.ID)
-	require.True(t, ok)
+	got1, err := store2.Get(thread1.ID)
+	require.NoError(t, err)
 	assert.Len(t, got1.State.Turns(), 1)
 
-	got2, ok := store2.Get(thread2.ID)
-	require.True(t, ok)
+	got2, err := store2.Get(thread2.ID)
+	require.NoError(t, err)
 	assert.Len(t, got2.State.Turns(), 1)
 }
 
@@ -142,8 +142,8 @@ func TestJSONStore_CreatedAtPreserved(t *testing.T) {
 	store2, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	got, ok := store2.Get(thread.ID)
-	require.True(t, ok)
+	got, err := store2.Get(thread.ID)
+	require.NoError(t, err)
 	assert.True(t, createdAt.Equal(got.CreatedAt))
 	assert.True(t, got.UpdatedAt.After(createdAt))
 }
@@ -207,20 +207,24 @@ func TestJSONStore_CorruptedFile(t *testing.T) {
 	err = os.WriteFile(filepath.Join(dir, "good.json"), data, 0644)
 	require.NoError(t, err)
 
-	// Create store — corrupted file should be silently skipped.
+	// Create store — corrupted file should surface ErrThreadCorrupt on
+// direct lookup (the old code silently swallowed this and reported
+// "not found", which is the bug this test now guards against).
+// List() continues to skip corrupt files because it scans all IDs;
+// the per-file lookup is what distinguishes the two cases.
 	store, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
 	// good should be loadable.
-	got, ok := store.Get("good")
-	require.True(t, ok)
+	got, err := store.Get("good")
+	require.NoError(t, err)
 	assert.Len(t, got.State.Turns(), 1)
 
-	// bad should not be found.
-	_, ok = store.Get("bad")
-	assert.False(t, ok)
+	// bad should be reported as corrupt, not as missing.
+	_, err = store.Get("bad")
+	assert.ErrorIs(t, err, ErrThreadCorrupt)
 
-	// List should only include good.
+	// List should only include good (corrupt files are skipped on scan).
 	list, err := store.List()
 	require.NoError(t, err)
 	assert.Len(t, list, 1)
@@ -242,8 +246,8 @@ func TestJSONStore_ConcurrentCreateSaveGet(t *testing.T) {
 			thread.State.Append(state.RoleUser, artifact.Text{Content: fmt.Sprintf("msg-%d", i)})
 			require.NoError(t, store.Save(thread))
 
-			got, ok := store.Get(thread.ID)
-			require.True(t, ok)
+			got, err := store.Get(thread.ID)
+			require.NoError(t, err)
 			assert.Len(t, got.State.Turns(), 1)
 		}(i)
 	}
@@ -273,12 +277,12 @@ func TestJSONStore_GetBy(t *testing.T) {
 	store2, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	got, ok := store2.GetBy("slack.thread_ts", "1234567890.123456")
-	require.True(t, ok)
+	got, err := store2.GetBy("slack.thread_ts", "1234567890.123456")
+	require.NoError(t, err)
 	assert.Equal(t, thread1.ID, got.ID)
 
-	_, ok = store2.GetBy("slack.thread_ts", "999")
-	assert.False(t, ok)
+	_, err = store2.GetBy("slack.thread_ts", "999")
+	assert.ErrorIs(t, err, ErrThreadNotFound)
 }
 
 func TestJSONStore_GetBy_NotFound(t *testing.T) {
@@ -289,8 +293,8 @@ func TestJSONStore_GetBy_NotFound(t *testing.T) {
 	_, err = store.Create()
 	require.NoError(t, err)
 
-	_, ok := store.GetBy("channel_id", "999")
-	assert.False(t, ok)
+	_, err = store.GetBy("channel_id", "999")
+	assert.ErrorIs(t, err, ErrThreadNotFound)
 }
 
 func TestJSONStore_LegacyJSONNoMetadata(t *testing.T) {
@@ -304,13 +308,13 @@ func TestJSONStore_LegacyJSONNoMetadata(t *testing.T) {
 	store, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
-	got, ok := store.Get("legacy-thread")
-	require.True(t, ok)
+	got, err := store.Get("legacy-thread")
+	require.NoError(t, err)
 	assert.NotNil(t, got.Metadata)
 	assert.Len(t, got.Metadata, 0)
 
-	_, ok = store.GetBy("any_key", "any_value")
-	assert.False(t, ok)
+	_, err = store.GetBy("any_key", "any_value")
+	assert.ErrorIs(t, err, ErrThreadNotFound)
 }
 
 func TestJSONStore_GetBy_Duplicate(t *testing.T) {
@@ -328,8 +332,8 @@ func TestJSONStore_GetBy_Duplicate(t *testing.T) {
 	require.NoError(t, store.Save(thread1))
 	require.NoError(t, store.Save(thread2))
 
-	got, ok := store.GetBy("channel_id", "same")
-	require.True(t, ok)
+	got, err := store.GetBy("channel_id", "same")
+	require.NoError(t, err)
 	assert.True(t, got.ID == thread1.ID || got.ID == thread2.ID)
 }
 
@@ -347,8 +351,8 @@ func TestJSONStore_GetBy_AfterDelete(t *testing.T) {
 	ok := store.Delete(thread.ID)
 	assert.True(t, ok)
 
-	_, ok = store.GetBy("channel_id", "123")
-	assert.False(t, ok)
+	_, err = store.GetBy("channel_id", "123")
+	assert.ErrorIs(t, err, ErrThreadNotFound)
 }
 
 func TestJSONStore_GetBy_EmptyMetadata(t *testing.T) {
@@ -359,6 +363,6 @@ func TestJSONStore_GetBy_EmptyMetadata(t *testing.T) {
 	_, err = store.Create()
 	require.NoError(t, err)
 
-	_, ok := store.GetBy("any_key", "any_value")
-	assert.False(t, ok)
+	_, err = store.GetBy("any_key", "any_value")
+	assert.ErrorIs(t, err, ErrThreadNotFound)
 }
