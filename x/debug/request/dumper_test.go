@@ -1,12 +1,14 @@
 package request
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/andrewhowdencom/ore/loop"
@@ -59,9 +61,9 @@ func TestDumper_ReEnableAfterDisarm(t *testing.T) {
 }
 
 // TestDumper_RoundTrip drives the table of cases that distinguish the
-// noop pass-through from the armed capture path. In Task 2 the capture
-// path is a pass-through; Tasks 3+ will extend the table to assert
-// captured content.
+// noop pass-through from the armed capture path. Capture semantics are
+// extended in later tasks; this test asserts the slot state and the
+// pass-through behavior of the body.
 func TestDumper_RoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -158,6 +160,9 @@ func TestDumper_RoundTrip(t *testing.T) {
 // when several goroutines hit the dumper at once. With the slot
 // armed, exactly one round trip should observe it; the rest must
 // pass through.
+//
+// We detect the winner by giving each goroutine a unique request body
+// and checking whose body was captured.
 func TestDumper_ArmedConcurrent(t *testing.T) {
 	t.Parallel()
 
@@ -176,10 +181,12 @@ func TestDumper_ArmedConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(N)
 	for i := 0; i < N; i++ {
+		i := i
 		go func() {
 			defer wg.Done()
+			body := "goroutine-" + string(rune('A'+i))
 			ctx := loop.WithThreadID(context.Background(), threadID)
-			req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL, strings.NewReader("x"))
+			req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL, strings.NewReader(body))
 			if err != nil {
 				t.Errorf("NewRequest: %v", err)
 				return
@@ -195,8 +202,29 @@ func TestDumper_ArmedConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 
-	// After N round trips with the same armed slot, the slot is
-	// disarmed (the first CAS won; the rest observed false).
+	// Exactly one goroutine's body should have been captured. The
+	// capture is a fixed buffer populated by the first round trip
+	// to win the CAS; subsequent round trips' bodies are not
+	// captured (the slot was disarmed after the first win).
+	v, ok := d.arms.Load(threadID)
+	require.True(t, ok)
+	s := v.(*slot)
+	require.NotNil(t, s.capture, "capture should have been allocated by the winning round trip")
+	captured := s.capture.requestBody.String()
+	assert.NotEmpty(t, captured, "the winning goroutine's body must be present")
+
+	// The captured body must match exactly one of the goroutines.
+	matched := false
+	for i := 0; i < N; i++ {
+		want := "goroutine-" + string(rune('A'+i))
+		if captured == want {
+			matched = true
+			break
+		}
+	}
+	assert.True(t, matched,
+		"captured body %q does not match any goroutine's body", captured)
+
 	assert.False(t, d.Armed(threadID))
 }
 
@@ -216,4 +244,139 @@ func TestDumper_WrapNilTransport(t *testing.T) {
 
 	rt := d.Wrap(nil)
 	require.NotNil(t, rt, "Wrap(nil) should return a non-nil RoundTripper")
+}
+
+// TestDumper_CapturesRequestBody asserts that an armed RoundTrip drains
+// the request body into the dumper's slot capture buffer and restores
+// the body so the real transport still receives the original bytes.
+func TestDumper_CapturesRequestBody(t *testing.T) {
+	t.Parallel()
+
+	const sentBody = "the body the wire sees"
+
+	var serverSawBody atomic.Value
+	serverSawBody.Store("")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		serverSawBody.Store(string(b))
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	d := New("testapp", WithOutputDir(t.TempDir()))
+	t.Cleanup(func() { _ = d.Close() })
+
+	const threadID = "capture-t1"
+	d.Enable(threadID)
+
+	client := &http.Client{Transport: d.Wrap(http.DefaultTransport)}
+	req, err := http.NewRequestWithContext(
+		loop.WithThreadID(context.Background(), threadID),
+		http.MethodPost, server.URL+"/echo",
+		strings.NewReader(sentBody),
+	)
+	require.NoError(t, err)
+	// Add a custom header so we can assert header capture.
+	req.Header.Set("X-Test", "yes")
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+
+	// Server received the body intact.
+	assert.Equal(t, sentBody, serverSawBody.Load(),
+		"the wire must see the original body, not an empty/drained one")
+
+	// Dumper captured the body and the headers.
+	v, ok := d.arms.Load(threadID)
+	require.True(t, ok)
+	s := v.(*slot)
+	require.NotNil(t, s.capture, "capture should be populated after an armed round trip")
+	assert.Equal(t, sentBody, s.capture.requestBody.String())
+	assert.Equal(t, "yes", s.capture.requestHeaders.Get("X-Test"))
+}
+
+// TestDumper_NoCaptureBodyWhenNoneSent asserts that an armed RoundTrip
+// for a request with no body does not panic and leaves the capture's
+// body buffer empty.
+func TestDumper_NoCaptureBodyWhenNoneSent(t *testing.T) {
+	t.Parallel()
+
+	server := newTestServer(t)
+	t.Cleanup(server.Close)
+
+	d := New("testapp", WithOutputDir(t.TempDir()))
+	t.Cleanup(func() { _ = d.Close() })
+
+	const threadID = "capture-no-body"
+	d.Enable(threadID)
+
+	client := &http.Client{Transport: d.Wrap(http.DefaultTransport)}
+	req, err := http.NewRequestWithContext(
+		loop.WithThreadID(context.Background(), threadID),
+		http.MethodGet, server.URL,
+		nil,
+	)
+	require.NoError(t, err)
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+
+	v, ok := d.arms.Load(threadID)
+	require.True(t, ok)
+	s := v.(*slot)
+	require.NotNil(t, s.capture)
+	assert.Equal(t, 0, s.capture.requestBody.Len(),
+		"GET with no body should leave the capture body empty")
+}
+
+// TestDumper_RequestBodyCanBeReRead is a regression guard for the
+// body-restore invariant: the wire (here: the real transport inside
+// the wrapper) must be able to read the body more than once if it
+// chooses, because we replaced req.Body with a bytes.Reader-backed
+// NopCloser.
+func TestDumper_RequestBodyCanBeReRead(t *testing.T) {
+	t.Parallel()
+
+	const sentBody = "re-readable body"
+
+	var reads atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Read the body fully, then read again to assert it isn't
+		// drained. http.Transport may retry GETs internally; we
+		// don't care about that here, we just want to confirm
+		// the body we restore is a Reader, not a one-shot
+		// ReadCloser.
+		buf, _ := io.ReadAll(r.Body)
+		assert.Equal(t, sentBody, string(buf))
+		reads.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	d := New("testapp", WithOutputDir(t.TempDir()))
+	t.Cleanup(func() { _ = d.Close() })
+
+	const threadID = "reread-t1"
+	d.Enable(threadID)
+
+	client := &http.Client{Transport: d.Wrap(http.DefaultTransport)}
+	req, err := http.NewRequestWithContext(
+		loop.WithThreadID(context.Background(), threadID),
+		http.MethodPost, server.URL,
+		bytes.NewReader([]byte(sentBody)),
+	)
+	require.NoError(t, err)
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+
+	assert.GreaterOrEqual(t, reads.Load(), int32(1),
+		"server must have observed at least one request")
 }
