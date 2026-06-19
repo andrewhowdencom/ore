@@ -116,11 +116,15 @@ type slot struct {
 }
 
 // capture is the in-progress per-round-trip capture buffer. The
-// request fields are filled in before the real RoundTrip; the response
-// fields are filled in after (Task 4+).
+// request fields are filled in before the real RoundTrip; the
+// response fields are filled in after (Task 4).
 type capture struct {
 	requestHeaders http.Header
 	requestBody    bytes.Buffer
+
+	responseStatus string
+	responseHeader http.Header
+	responseBody   bytes.Buffer
 }
 
 // dumperTransport is the per-instance wrapper installed via Wrap.
@@ -176,7 +180,52 @@ func (t *dumperTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	// Hand off to the real transport.
-	return t.base.RoundTrip(req)
+	resp, err := t.base.RoundTrip(req)
+	if err != nil {
+		return resp, err
+	}
+
+	// Capture the response: copy status and headers, then wrap
+	// resp.Body so the wire still sees a stream while we tee a
+	// copy into the capture buffer.
+	c.responseStatus = resp.Status
+	c.responseHeader = resp.Header.Clone()
+	if resp.Body != nil {
+		resp.Body = &teeReadCloser{
+			rc: resp.Body,
+			dst: &c.responseBody,
+		}
+	}
+
+	return resp, nil
+}
+
+// teeReadCloser is an io.ReadCloser that copies every Read into dst
+// before returning the bytes to the caller. It is used to capture a
+// streaming response body without consuming it from the wire's point
+// of view. Close closes the underlying reader.
+type teeReadCloser struct {
+	rc  io.ReadCloser
+	dst io.Writer
+}
+
+func (t *teeReadCloser) Read(p []byte) (int, error) {
+	n, err := t.rc.Read(p)
+	if n > 0 {
+		if _, werr := t.dst.Write(p[:n]); werr != nil {
+			// Best-effort: a write failure to the capture
+			// buffer does not affect the wire. We swallow it
+			// and continue returning the bytes the
+			// underlying read produced; the wire sees the
+			// correct response.
+			_ = werr
+		}
+	}
+	return n, err
+}
+
+func (t *teeReadCloser) Close() error {
+	return t.rc.Close()
 }
 
 // drainBody reads the entire body from r into buf. It is intentionally

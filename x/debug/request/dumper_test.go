@@ -380,3 +380,118 @@ func TestDumper_RequestBodyCanBeReRead(t *testing.T) {
 	assert.GreaterOrEqual(t, reads.Load(), int32(1),
 		"server must have observed at least one request")
 }
+
+// TestDumper_CapturesResponseBody asserts that an armed RoundTrip
+// captures the response body via the tee. We send a small fixed
+// response and check that the dumper's slot.capture.responseBody
+// matches what the server wrote.
+func TestDumper_CapturesResponseBody(t *testing.T) {
+	t.Parallel()
+
+	const responseBody = "the body the wire sees back"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Echo", "yes")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(responseBody))
+	}))
+	t.Cleanup(server.Close)
+
+	d := New("testapp", WithOutputDir(t.TempDir()))
+	t.Cleanup(func() { _ = d.Close() })
+
+	const threadID = "resp-t1"
+	d.Enable(threadID)
+
+	client := &http.Client{Transport: d.Wrap(http.DefaultTransport)}
+	req, err := http.NewRequestWithContext(
+		loop.WithThreadID(context.Background(), threadID),
+		http.MethodPost, server.URL,
+		strings.NewReader("request body"),
+	)
+	require.NoError(t, err)
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+
+	// The wire must still see the body intact.
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+
+	assert.Equal(t, responseBody, string(body),
+		"wire must receive the original response body")
+
+	v, ok := d.arms.Load(threadID)
+	require.True(t, ok)
+	s := v.(*slot)
+	require.NotNil(t, s.capture)
+	assert.Equal(t, responseBody, s.capture.responseBody.String(),
+		"dumper should have captured the full response body via the tee")
+	assert.Equal(t, "201 Created", s.capture.responseStatus)
+	assert.Equal(t, "yes", s.capture.responseHeader.Get("X-Echo"))
+}
+
+// TestDumper_CapturesStreamingResponse asserts the tee sees every
+// chunk of a streaming response body, in order, before Close().
+func TestDumper_CapturesStreamingResponse(t *testing.T) {
+	t.Parallel()
+
+	chunks := []string{"chunk-one\n", "chunk-two\n", "chunk-three\n"}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.WriteHeader(http.StatusOK)
+		flusher, _ := w.(http.Flusher)
+		for _, c := range chunks {
+			_, _ = w.Write([]byte(c))
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	d := New("testapp", WithOutputDir(t.TempDir()))
+	t.Cleanup(func() { _ = d.Close() })
+
+	const threadID = "stream-t1"
+	d.Enable(threadID)
+
+	client := &http.Client{Transport: d.Wrap(http.DefaultTransport)}
+	req, err := http.NewRequestWithContext(
+		loop.WithThreadID(context.Background(), threadID),
+		http.MethodGet, server.URL,
+		nil,
+	)
+	require.NoError(t, err)
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+
+	// Drain the body chunk by chunk to mirror how a streaming
+	// consumer reads.
+	var collected bytes.Buffer
+	buf := make([]byte, 16)
+	for {
+		n, rerr := resp.Body.Read(buf)
+		if n > 0 {
+			collected.Write(buf[:n])
+		}
+		if rerr != nil {
+			break
+		}
+	}
+	require.NoError(t, resp.Body.Close())
+
+	expected := strings.Join(chunks, "")
+	assert.Equal(t, expected, collected.String(),
+		"wire must see all streaming chunks intact")
+
+	v, ok := d.arms.Load(threadID)
+	require.True(t, ok)
+	s := v.(*slot)
+	require.NotNil(t, s.capture)
+	assert.Equal(t, expected, s.capture.responseBody.String(),
+		"tee should have captured every streaming chunk in order")
+}
