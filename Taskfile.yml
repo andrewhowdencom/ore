@@ -12,6 +12,9 @@ includes:
   x-catalog-models:
     taskfile: Taskfile.lib.yml
     dir: x/catalog/models
+  x-debug-request:
+    taskfile: Taskfile.lib.yml
+    dir: x/debug/request
   x-provider-anthropic:
     taskfile: Taskfile.lib.yml
     dir: x/provider/anthropic
@@ -131,6 +134,7 @@ tasks:
       - task x-conduit-stdio:validate
       - task x-conduit-telegram:validate
       - task x-conduit-tui:validate
+      - task x-debug-request:validate
       - task x-wire-anthropic:validate
       - task x-wire-openai:validate
       - task x-tool:validate
