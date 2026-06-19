@@ -118,9 +118,7 @@ func TestMarshalArtifacts_NewlyRegisteredKinds(t *testing.T) {
 // not exercised, and vice versa. See issue #453.
 func TestMarshalArtifacts_AllRegisteredKinds(t *testing.T) {
 	var artifacts []artifact.Artifact
-	for _, a := range artifact.AllPersistent() {
-		artifacts = append(artifacts, a)
-	}
+	artifacts = append(artifacts, artifact.AllPersistent()...)
 
 	data, err := marshalArtifacts(artifacts)
 	require.NoError(t, err)
