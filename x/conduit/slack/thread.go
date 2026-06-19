@@ -1,6 +1,7 @@
 package slack
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -13,7 +14,8 @@ import (
 // Stream.
 func (c *SlackConduit) resolveThread(slackThreadID string, channelID string) (*session.Stream, error) {
 	// Try to resume an existing thread by slack_thread_id metadata.
-	if thr, ok := c.mgr.GetBy("slack_thread_id", slackThreadID); ok {
+	thr, err := c.mgr.GetBy("slack_thread_id", slackThreadID)
+	if err == nil {
 		stream, err := c.mgr.Attach(thr.ID)
 		if err != nil {
 			return nil, fmt.Errorf("attach to thread %q: %w", thr.ID, err)
@@ -22,6 +24,12 @@ func (c *SlackConduit) resolveThread(slackThreadID string, channelID string) (*s
 		c.activeStreams[stream.ID()] = stream
 		c.streamsMu.Unlock()
 		return stream, nil
+	}
+	if !errors.Is(err, session.ErrThreadNotFound) {
+		// Corruption or other store failure: surface the error
+		// rather than silently falling through to create a new
+		// thread, which would orphan the existing one.
+		return nil, fmt.Errorf("lookup thread by slack id: %w", err)
 	}
 
 	// No existing thread — create a new one.

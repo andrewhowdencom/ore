@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -134,8 +135,12 @@ func (m *Manager) Create() (*Stream, error) {
 }
 
 // Attach gets or creates an active stream for an existing thread.
-// If the thread does not exist in the store, an error is returned.
-// May also return an error if the step factory fails.
+//
+// Returns an error if the thread does not exist in the store, if the
+// stored thread file is corrupt (Store returned ErrThreadCorrupt), or
+// if the step factory fails. The "thread not found" case is the most
+// common; the caller (typically a conduit's Start path) surfaces the
+// wrapped error to the user with the appropriate context.
 func (m *Manager) Attach(threadID string) (*Stream, error) {
 	m.mu.RLock()
 	stream, ok := m.sessions[threadID]
@@ -144,9 +149,14 @@ func (m *Manager) Attach(threadID string) (*Stream, error) {
 		return stream, nil
 	}
 
-	thr, ok := m.store.Get(threadID)
-	if !ok {
-		return nil, fmt.Errorf("thread %s not found", threadID)
+	thr, err := m.store.Get(threadID)
+	if err != nil {
+		if errors.Is(err, ErrThreadNotFound) {
+			return nil, fmt.Errorf("thread %s not found", threadID)
+		}
+		// Pass the corruption through with the id in context. Callers
+		// can still distinguish via errors.Is(err, ErrThreadCorrupt).
+		return nil, fmt.Errorf("load thread %s: %w", threadID, err)
 	}
 
 	stream = &Stream{
@@ -206,13 +216,18 @@ func (m *Manager) Close(sessionID string) error {
 	return stream.Close()
 }
 
-// GetBy retrieves a thread by a metadata key-value pair.
-func (m *Manager) GetBy(key, value string) (*Thread, bool) {
+// GetBy retrieves a thread by a metadata key-value pair. The
+// returned error is the Store's error (ErrThreadNotFound,
+// ErrThreadCorrupt wrapping cause, or any other implementation-specific
+// error). The previous (Thread, bool) signature conflated these
+// cases; see issue #453.
+func (m *Manager) GetBy(key, value string) (*Thread, error) {
 	return m.store.GetBy(key, value)
 }
 
-// GetThread retrieves a thread by ID.
-func (m *Manager) GetThread(id string) (*Thread, bool) {
+// GetThread retrieves a thread by ID. The returned error is the
+// Store's error; see GetBy.
+func (m *Manager) GetThread(id string) (*Thread, error) {
 	return m.store.Get(id)
 }
 
