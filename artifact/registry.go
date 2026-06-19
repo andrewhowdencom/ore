@@ -65,3 +65,39 @@ func Registered() map[string]func() Artifact {
 	}
 	return out
 }
+
+// AllPersistent returns the canonical list of zero-value instances of
+// every persistable concrete type in this package. It is the manifest
+// the drift-detection test compares against Registered().
+//
+// Adding a new persistable artifact type requires four edits:
+//
+//  1. Declare the type and implement Artifact (Kind() method).
+//  2. Implement Persistent (the unexported isPersistent() method,
+//     sealed to this package).
+//  3. Add an init() block above that calls Register.
+//  4. Add a zero-value instance of the new type to this list.
+//
+// The drift test fails when this list and Registered() disagree, so
+// the four edits cannot drift silently.
+func AllPersistent() []Artifact {
+	out := make([]Artifact, len(allPersistent))
+	copy(out, allPersistent)
+	return out
+}
+
+// allPersistent is the source of truth for the set of persistable
+// artifact kinds. Each entry must have a corresponding Register call
+// in an init() block above; the drift test in drift_test.go enforces
+// this invariant.
+var allPersistent = []Artifact{
+	Text{},
+	ToolCall{},
+	ToolResult{},
+	Usage{},
+	Image{},
+	Reasoning{},
+	StopReason{},
+	ReasoningSignature{},
+	Compaction{},
+}

@@ -704,3 +704,18 @@ func init() {
 func init() {
 	Register("reasoning", func() Artifact { return &Reasoning{} })
 }
+
+// StopReason
+func init() {
+	Register("stop_reason", func() Artifact { return &StopReason{} })
+}
+
+// ReasoningSignature
+func init() {
+	Register("reasoning_signature", func() Artifact { return &ReasoningSignature{} })
+}
+
+// Compaction
+func init() {
+	Register("compaction", func() Artifact { return &Compaction{} })
+}

@@ -96,6 +96,11 @@ func unmarshalArtifacts(data []byte) ([]artifact.Artifact, error) {
 // to its value. For nil or unknown shapes, the input is returned
 // unchanged. This is the boundary that makes "round-tripped" and
 // "in-memory" artifacts observationally identical at the slice level.
+//
+// The set of cases below must cover every type in the artifact
+// package's Persistent manifest. The drift test in
+// ore/artifact/drift_test.go asserts that this list and
+// artifact.AllPersistent() stay in lock-step.
 func dereferenceArtifact(a artifact.Artifact) artifact.Artifact {
 	switch v := a.(type) {
 	case *artifact.Text:
@@ -109,6 +114,12 @@ func dereferenceArtifact(a artifact.Artifact) artifact.Artifact {
 	case *artifact.Image:
 		return *v
 	case *artifact.Usage:
+		return *v
+	case *artifact.StopReason:
+		return *v
+	case *artifact.ReasoningSignature:
+		return *v
+	case *artifact.Compaction:
 		return *v
 	default:
 		return a
