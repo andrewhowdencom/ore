@@ -29,7 +29,7 @@
 //	    loop.WithHandlers(handler),
 //	)
 //
-// Deprecation Consideration
+// # Deprecation Consideration
 //
 // x/telemetry provides per-artifact, per-role OpenTelemetry character metrics
 // that offer finer-grained attribution than token-level PropertiesEvent.
