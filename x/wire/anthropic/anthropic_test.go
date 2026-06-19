@@ -1128,7 +1128,8 @@ func TestProviderInvoke_StreamsThinking(t *testing.T) {
 	u := got[4].(artifact.Usage)
 	assert.Equal(t, 10, u.PromptTokens)
 	assert.Equal(t, 5, u.CompletionTokens)
-	assert.Equal(t, 4, u.ThinkingTokens)
+	require.NotNil(t, u.ThinkingTokens, "thinking_tokens was present in the SSE payload")
+	assert.Equal(t, 4, *u.ThinkingTokens)
 }
 
 // TestProviderInvoke_StreamsMixedTextAndThinking asserts that
@@ -1183,7 +1184,9 @@ func TestProviderInvoke_StreamsMixedTextAndThinking(t *testing.T) {
 	assert.Equal(t, "stop_reason", got[3].Kind())
 	assert.Equal(t, artifact.StopReasonStop, got[3].(artifact.StopReason).Reason)
 	assert.Equal(t, "usage", got[4].Kind())
-	assert.Equal(t, 1, got[4].(artifact.Usage).ThinkingTokens)
+	u4 := got[4].(artifact.Usage)
+	require.NotNil(t, u4.ThinkingTokens, "thinking_tokens was present in the SSE payload")
+	assert.Equal(t, 1, *u4.ThinkingTokens)
 }
 
 // TestProviderInvoke_StreamsRedactedThinkingForReplay asserts that a
@@ -1269,7 +1272,64 @@ func TestProviderInvoke_PreservesUsageThinkingTokens(t *testing.T) {
 	assert.Equal(t, 42, u.PromptTokens)
 	assert.Equal(t, 24, u.CompletionTokens)
 	assert.Equal(t, 66, u.TotalTokens)
-	assert.Equal(t, 11, u.ThinkingTokens)
+	require.NotNil(t, u.ThinkingTokens, "thinking_tokens was present in the SSE payload")
+	assert.Equal(t, 11, *u.ThinkingTokens)
+	assert.Equal(t, 7, u.CacheReadTokens)
+	assert.Equal(t, 3, u.CacheWriteTokens)
+}
+
+// TestProviderInvoke_NilThinkingTokensWhenAbsent asserts that an SSE
+// `message_delta` payload whose `usage` block omits
+// `output_tokens_details` entirely produces a Usage with a nil
+// ThinkingTokens pointer. This is the wire-side half of the contract
+// that drives the TUI's Ψ ? indicator. Proxies fronting the Anthropic
+// API (e.g., the one workshop uses by default) commonly omit
+// `output_tokens_details` even when thinking was enabled and produced
+// visible reasoning content; this test pins the absent-field behaviour.
+func TestProviderInvoke_NilThinkingTokensWhenAbsent(t *testing.T) {
+	// Tests that an SSE message_delta payload whose usage block
+	// omits output_tokens_details entirely produces a Usage with a
+	// nil ThinkingTokens pointer. This is the wire-side half of
+	// the contract that drives the TUI's Ψ ? indicator. Proxies
+	// fronting the Anthropic API (e.g., the one workshop uses by
+	// default) commonly omit output_tokens_details even when
+	// thinking was enabled and produced visible reasoning
+	// content; this test pins the absent-field behaviour.
+	t.Parallel()
+
+	// Note the message_delta usage has NO `output_tokens_details` key.
+	transport := &recordingTransport{
+		contentType: "text/event-stream",
+		response: sseEvent("message_start", `{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"model":"claude-3-7-sonnet-latest","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":42,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}`) +
+			sseEvent("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`) +
+			sseEvent("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}`) +
+			sseEvent("content_block_stop", `{"type":"content_block_stop","index":0}`) +
+			sseEvent("message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":42,"output_tokens":24,"cache_creation_input_tokens":3,"cache_read_input_tokens":7}}`) +
+			sseEvent("message_stop", `{"type":"message_stop"}`),
+	}
+
+	p, err := New(WithAPIKey("test-key"),
+
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+	require.NoError(t, err)
+
+	mem := state.NewBuffer()
+	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+
+	ch := make(chan artifact.Artifact, 16)
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
+	got := drainArtifacts(ch)
+
+	// One text_delta, one stop_reason, one usage.
+	require.Len(t, got, 3)
+	u := got[2].(artifact.Usage)
+	assert.Equal(t, 42, u.PromptTokens)
+	assert.Equal(t, 24, u.CompletionTokens)
+	assert.Equal(t, 66, u.TotalTokens)
+	assert.Nil(t, u.ThinkingTokens,
+		"ThinkingTokens must be nil when the SSE payload omits output_tokens_details; the TUI turns this into Ψ ?")
 	assert.Equal(t, 7, u.CacheReadTokens)
 	assert.Equal(t, 3, u.CacheWriteTokens)
 }
