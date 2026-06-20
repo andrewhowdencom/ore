@@ -59,4 +59,30 @@
 // Content functions are re-evaluated on every Transform call, so
 // applications can close over mutable state (e.g., stream.Metadata) to
 // switch personas or roles dynamically.
+//
+// # Hot-Swappable Content Sources
+//
+// When a content function's underlying state may change after the
+// Transform has been constructed — for example, a file path that should
+// reflect "the currently active identity" — implement the Resolver
+// interface and register it once:
+//
+//	import (
+//	    "github.com/andrewhowdencom/ore/x/systemprompt"
+//	    "github.com/andrewhowdencom/ore/x/systemprompt/source"
+//	)
+//
+//	active := source.NewFileResolver(initialPath)
+//	sp, _ := systemprompt.New(
+//	    systemprompt.WithContentFunc(active.Resolve),
+//	)
+//
+// To swap the active content later, mutate the resolver directly:
+//
+//	active.SetPath(newPath)
+//
+// The next Transform call reads from newPath. No new WithContentFunc
+// call is required, which avoids the "stacking" pattern that produces
+// contradictory content when multiple agent definitions are
+// concatenated into a single RoleSystem turn.
 package systemprompt
