@@ -27,7 +27,12 @@ type Handler struct {
 	prompt     int
 	completion int
 	total      int
-	thinking   int
+	// thinking holds the per-turn thinking-token count, or nil when the
+	// provider did not report `output_tokens_details` (e.g., a proxy
+	// that strips the field). When non-nil it is overwritten on every
+	// turn — never accumulated — because thinking token counts are a
+	// property of the most recent request, not the running total.
+	thinking *int
 }
 
 // New creates a new usage aggregation handler.
@@ -65,9 +70,25 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 		Properties: map[string]string{
 			"sent":     strconv.Itoa(prompt),
 			"received": strconv.Itoa(completion),
-			"thinking": strconv.Itoa(thinking),
+			"thinking": thinkingString(thinking),
 			"total":    strconv.Itoa(total),
 		},
 	})
 	return nil
+}
+
+// thinkingString renders the per-turn thinking-token count for the TUI
+// status bar. The three states map to three renderings:
+//
+//   - nil  -> "?"  (provider did not report; TUI shows Ψ ?)
+//   - &0   -> "0"  (provider reported zero; TUI shows Ψ 0)
+//   - &N   -> N    (provider reported N;    TUI shows Ψ N)
+//
+// Centralising the conversion here keeps the TUI free of pointer
+// arithmetic and lets the contract evolve in one place.
+func thinkingString(t *int) string {
+	if t == nil {
+		return "?"
+	}
+	return strconv.Itoa(*t)
 }

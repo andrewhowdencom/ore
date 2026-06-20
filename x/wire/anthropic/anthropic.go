@@ -690,6 +690,16 @@ func (p *Provider) dispatchBlockDelta(
 // buffered Usage once, at message_stop, to avoid the double-count
 // trap (the SDK reports cumulative token counts, not per-delta
 // deltas, so emitting on every message_delta would multiply-count).
+//
+// ThinkingTokens is set to nil when the upstream provider omits
+// `output_tokens_details` from the usage object entirely (e.g.,
+// proxies that don't forward the field); otherwise it is set to a
+// pointer to the reported count. encoding/json drops the nil case
+// from the JSON payload via the `omitempty` tag on artifact.Usage.
+// Detection uses the SDK's respjson.Field.Valid() metadata, which
+// is the same mechanism the SDK uses internally to enforce
+// `api:"required"`. This requires anthropic-sdk-go v1.50.0 or
+// later; the package go.mod pins v1.50.0+.
 func bufferUsage(usage anthropic.MessageDeltaUsage, pending **artifact.Usage) {
 	*pending = &artifact.Usage{
 		PromptTokens:     int(usage.InputTokens),
@@ -697,8 +707,19 @@ func bufferUsage(usage anthropic.MessageDeltaUsage, pending **artifact.Usage) {
 		TotalTokens:      int(usage.InputTokens + usage.OutputTokens),
 		CacheReadTokens:  int(usage.CacheReadInputTokens),
 		CacheWriteTokens: int(usage.CacheCreationInputTokens),
-		ThinkingTokens:   int(usage.OutputTokensDetails.ThinkingTokens),
+		ThinkingTokens:   thinkingTokensPtr(usage),
 	}
+}
+
+// thinkingTokensPtr returns nil when the upstream usage block omits
+// `output_tokens_details`, and a pointer to the count when the field
+// is present (including zero). See bufferUsage for the rationale.
+func thinkingTokensPtr(usage anthropic.MessageDeltaUsage) *int {
+	if !usage.JSON.OutputTokensDetails.Valid() {
+		return nil
+	}
+	n := int(usage.OutputTokensDetails.ThinkingTokens)
+	return &n
 }
 
 // bufferStopReason translates the upstream stop_reason from a

@@ -166,11 +166,11 @@ type MarkdownRenderer interface {
 // bounded by Format or by the framework defaults. A nil Truncation
 // means the result was not truncated.
 type ToolResult struct {
-	ToolCallID  string      `json:"tool_call_id"`
-	Content     string      `json:"content"`
-	Value       any         `json:"-"`
-	IsError     bool        `json:"is_error"`
-	Truncation  *Truncation `json:"truncation,omitempty"`
+	ToolCallID string      `json:"tool_call_id"`
+	Content    string      `json:"content"`
+	Value      any         `json:"-"`
+	IsError    bool        `json:"is_error"`
+	Truncation *Truncation `json:"truncation,omitempty"`
 }
 
 // Kind returns the artifact kind identifier.
@@ -254,15 +254,28 @@ func (t ToolResult) MarshalJSON() ([]byte, error) {
 //
 // ThinkingTokens is the count of output tokens consumed by the model's
 // extended-thinking / reasoning phase. Anthropic and Anthropic-via-OpenRouter
-// surface this on the streaming message_delta usage block; other providers
-// leave it at zero and the `omitempty` tag hides it from the JSON payload.
+// surface this on the streaming message_delta usage block.
+//
+// The field is a pointer to distinguish three states:
+//
+//   - nil — the provider did not report thinking tokens at all (e.g., a
+//     proxy that omits `output_tokens_details` from the usage block).
+//     Callers should treat this as "unknown", not as zero.
+//   - non-nil pointing to 0 — the provider reported zero thinking
+//     tokens (e.g., thinking was enabled but the model did not reason,
+//     or `adaptive` thinking returned nothing). This is a meaningful
+//     count of zero, distinct from "unknown".
+//   - non-nil pointing to N — the provider reported N thinking tokens.
+//
+// The `omitempty` JSON tag drops the field from the payload when the
+// pointer is nil; an explicit zero is encoded as `"thinking_tokens": 0`.
 type Usage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
-	CacheReadTokens  int `json:"cache_read_tokens,omitempty"`
-	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
-	ThinkingTokens   int `json:"thinking_tokens,omitempty"`
+	PromptTokens     int  `json:"prompt_tokens"`
+	CompletionTokens int  `json:"completion_tokens"`
+	TotalTokens      int  `json:"total_tokens"`
+	CacheReadTokens  int  `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens int  `json:"cache_write_tokens,omitempty"`
+	ThinkingTokens   *int `json:"thinking_tokens,omitempty"`
 }
 
 // Kind returns the artifact kind identifier.
@@ -277,7 +290,7 @@ func (u Usage) MarshalJSON() ([]byte, error) {
 		TotalTokens      int    `json:"total_tokens"`
 		CacheReadTokens  int    `json:"cache_read_tokens,omitempty"`
 		CacheWriteTokens int    `json:"cache_write_tokens,omitempty"`
-		ThinkingTokens   int    `json:"thinking_tokens,omitempty"`
+		ThinkingTokens   *int   `json:"thinking_tokens,omitempty"`
 	}
 	return json.Marshal(output{
 		Kind:             "usage",

@@ -138,9 +138,9 @@ func TestToolResult_ValueField(t *testing.T) {
 
 func TestToolResult_LLMString(t *testing.T) {
 	tests := []struct {
-		name    string
-		tr      ToolResult
-		want    string
+		name string
+		tr   ToolResult
+		want string
 	}{
 		{
 			name: "LLMRenderer takes precedence",
@@ -510,10 +510,10 @@ func TestUsage_MarshalJSON(t *testing.T) {
 
 	t.Run("cache read only is emitted without write", func(t *testing.T) {
 		data, err := json.Marshal(Usage{
-			PromptTokens:    100,
+			PromptTokens:     100,
 			CompletionTokens: 50,
-			TotalTokens:     150,
-			CacheReadTokens: 42,
+			TotalTokens:      150,
+			CacheReadTokens:  42,
 		})
 		require.NoError(t, err)
 		// cache_write_tokens is omitted because it is the zero value.
@@ -598,7 +598,7 @@ func TestReasoningSignature_AllKindValues(t *testing.T) {
 }
 
 func TestUsage_ThinkingTokens_Omitempty(t *testing.T) {
-	t.Run("zero thinking tokens are omitted", func(t *testing.T) {
+	t.Run("nil thinking tokens are omitted", func(t *testing.T) {
 		data, err := json.Marshal(Usage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30})
 		require.NoError(t, err)
 		assert.JSONEq(t,
@@ -612,7 +612,7 @@ func TestUsage_ThinkingTokens_Omitempty(t *testing.T) {
 			PromptTokens:     10,
 			CompletionTokens: 100,
 			TotalTokens:      110,
-			ThinkingTokens:   42,
+			ThinkingTokens:   ptr(42),
 		})
 		require.NoError(t, err)
 		assert.JSONEq(t,
@@ -621,12 +621,30 @@ func TestUsage_ThinkingTokens_Omitempty(t *testing.T) {
 		)
 	})
 
-	t.Run("thinking tokens round trip through marshal and unmarshal", func(t *testing.T) {
+	t.Run("explicitly-zero thinking tokens are emitted", func(t *testing.T) {
+		// A pointer to zero is distinct from a nil pointer: the provider
+		// reported "thinking tokens = 0" rather than "no thinking token
+		// info at all". encoding/json + omitempty drops nil pointers but
+		// emits a non-nil zero, which is exactly the contract we want.
+		data, err := json.Marshal(Usage{
+			PromptTokens:     10,
+			CompletionTokens: 20,
+			TotalTokens:      30,
+			ThinkingTokens:   ptr(0),
+		})
+		require.NoError(t, err)
+		assert.JSONEq(t,
+			`{"kind":"usage","prompt_tokens":10,"completion_tokens":20,"total_tokens":30,"thinking_tokens":0}`,
+			string(data),
+		)
+	})
+
+	t.Run("non-zero thinking tokens round trip through marshal and unmarshal", func(t *testing.T) {
 		original := Usage{
 			PromptTokens:     100,
 			CompletionTokens: 250,
 			TotalTokens:      350,
-			ThinkingTokens:   80,
+			ThinkingTokens:   ptr(80),
 		}
 		data, err := json.Marshal(original)
 		require.NoError(t, err)
@@ -635,7 +653,34 @@ func TestUsage_ThinkingTokens_Omitempty(t *testing.T) {
 		require.NoError(t, json.Unmarshal(data, &roundTripped))
 		assert.Equal(t, original, roundTripped)
 	})
+
+	t.Run("nil thinking tokens round trip through marshal and unmarshal", func(t *testing.T) {
+		// Catches any future refactor that removes `omitempty` and would
+		// silently turn nil into `null` on the wire.
+		original := Usage{
+			PromptTokens:     100,
+			CompletionTokens: 250,
+			TotalTokens:      350,
+			ThinkingTokens:   nil,
+		}
+		data, err := json.Marshal(original)
+		require.NoError(t, err)
+		assert.JSONEq(t,
+			`{"kind":"usage","prompt_tokens":100,"completion_tokens":250,"total_tokens":350}`,
+			string(data),
+		)
+
+		var roundTripped Usage
+		require.NoError(t, json.Unmarshal(data, &roundTripped))
+		assert.Equal(t, original, roundTripped)
+		assert.Nil(t, roundTripped.ThinkingTokens)
+	})
 }
+
+// ptr returns a pointer to v. Test-only helper for building pointer-typed
+// literal values for fields like Usage.ThinkingTokens whose semantic
+// distinguishes nil from a pointer to zero.
+func ptr[T any](v T) *T { return &v }
 
 func TestCompaction_MarshalJSON(t *testing.T) {
 	t.Run("full fields", func(t *testing.T) {
