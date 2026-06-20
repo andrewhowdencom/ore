@@ -165,3 +165,90 @@ func TestProvider(t *testing.T) {
 		})
 	}
 }
+
+func TestAgent(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func(t *testing.T) (dir, agentName string)
+		expected string
+	}{
+		{
+			name: "existing agent file returns content",
+			setup: func(t *testing.T) (string, string) {
+				dir := t.TempDir()
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "build.md"), []byte("# build agent body"), 0644))
+				return dir, "build"
+			},
+			expected: "# build agent body",
+		},
+		{
+			name: "missing agent file returns empty string",
+			setup: func(t *testing.T) (string, string) {
+				return t.TempDir(), "nope"
+			},
+			expected: "",
+		},
+		{
+			name: "missing directory returns empty string",
+			setup: func(t *testing.T) (string, string) {
+				return filepath.Join(t.TempDir(), "does-not-exist"), "build"
+			},
+			expected: "",
+		},
+		{
+			name: "empty agent file returns empty string",
+			setup: func(t *testing.T) (string, string) {
+				dir := t.TempDir()
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "build.md"), nil, 0644))
+				return dir, "build"
+			},
+			expected: "",
+		},
+		{
+			name: "filename with colons is resolved directly",
+			setup: func(t *testing.T) (string, string) {
+				dir := t.TempDir()
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "review:docs:dev.md"), []byte("review body"), 0644))
+				return dir, "review:docs:dev"
+			},
+			expected: "review body",
+		},
+		{
+			name: "raw content is preserved including frontmatter",
+			setup: func(t *testing.T) (string, string) {
+				dir := t.TempDir()
+				body := "---\ndescription: build agent\n---\n\n## Identity\nbody"
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "build.md"), []byte(body), 0644))
+				return dir, "build"
+			},
+			expected: "---\ndescription: build agent\n---\n\n## Identity\nbody",
+		},
+		{
+			name: "non-md sibling is not picked up",
+			setup: func(t *testing.T) (string, string) {
+				dir := t.TempDir()
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "build.txt"), []byte("wrong file"), 0644))
+				return dir, "build"
+			},
+			expected: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir, name := tt.setup(t)
+			assert.Equal(t, tt.expected, Agent(dir, name)())
+		})
+	}
+}
+
+func TestAgent_DynamicUpdate(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "build.md")
+	require.NoError(t, os.WriteFile(path, []byte("first"), 0644))
+
+	fn := Agent(dir, "build")
+	assert.Equal(t, "first", fn())
+
+	require.NoError(t, os.WriteFile(path, []byte("second"), 0644))
+	assert.Equal(t, "second", fn())
+}

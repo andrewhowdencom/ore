@@ -18,6 +18,26 @@ func File(path string) func() string {
 	}
 }
 
+// Agent returns a content function that reads a single agent definition file
+// from the given directory. The file is resolved as "<dir>/<name>.md" and
+// re-read on every call (mirroring File). If the file does not exist, or
+// the directory cannot be read, the returned function yields an empty string.
+//
+// Use this in preference to stacking multiple File("<dir>/<agent>.md") calls
+// when assembling a system prompt from agent definitions. Loading more than
+// one agent body into a single RoleSystem turn produces contradictory
+// Identity sections; see the "Multi-Identity Stacking" section of
+// x/systemprompt's package documentation for details.
+//
+// The raw file content is returned without any frontmatter processing —
+// the file as a whole defines the identity. Callers that need only the
+// post-frontmatter body should parse it themselves.
+func Agent(dir, name string) func() string {
+	return func() string {
+		return File(filepath.Join(dir, name+".md"))()
+	}
+}
+
 // agentsMDFiles lists the instruction file names to discover, in priority
 // order, at each directory level during the parent-directory walk.
 var agentsMDFiles = []string{"AGENTS.md", "CLAUDE.md"}
