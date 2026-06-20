@@ -46,12 +46,24 @@ func (e InterruptEvent) Kind() string { return "interrupt" }
 func (e InterruptEvent) Context() context.Context { return e.Ctx }
 
 // InterceptResult is the result of an interceptor processing an event.
+//
+// Notice carries ephemeral, user-visible messages that are emitted as
+// loop.NoticeEvent and never persisted to state. Each Notice carries
+// a Severity that conduits use to pick a rendering style (Success, Info,
+// Warn, Error). A nil slice means no notices were produced.
+//
+// Feedback is the legacy channel retained for backward compatibility
+// during the migration to Notice. New interceptors should set Notice
+// instead; Feedback will be removed in a follow-up cleanup.
 type InterceptResult struct {
 	// Event is the replacement event to continue processing. If nil, the
 	// original event is consumed and no further processing occurs.
 	Event Event
-	// Feedback holds UI-only messages (artifact.Text) that are emitted as
-	// FeedbackEvent and never persisted to state.
+	// Notice is the list of ephemeral, user-visible messages emitted as
+	// loop.NoticeEvent after Intercept returns.
+	Notice []loop.Notice
+	// Feedback is the legacy severity-less channel that emits as
+	// loop.FeedbackEvent. Deprecated: set Notice instead.
 	Feedback []artifact.Text
 }
 
@@ -62,7 +74,10 @@ type InterceptResult struct {
 //   - Return a nil Event in the result to consume the event (no further processing)
 //   - Return an error to abort processing
 //
-// Feedback messages are ephemeral UI messages that are not persisted to state.
+// Notice messages are ephemeral UI messages that are not persisted to
+// state. Each Notice carries a Severity so conduits can pick a rendering
+// style; new interceptors should populate Notice instead of the legacy
+// Feedback field.
 //
 // The *session.Stream parameter is the stream that owns the in-flight event,
 // so interceptors can call stream-scoped methods like SetMetadata. It is

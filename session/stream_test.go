@@ -1068,6 +1068,211 @@ func TestStream_Interceptor_Rewrite(t *testing.T) {
 	_ = stream.Close()
 }
 
+func TestStream_Interceptor_Notice(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	noticeInterceptor := func(ctx context.Context, event Event, stream *Stream, emitter loop.Emitter) (InterceptResult, error) {
+		return InterceptResult{
+			Notice: []loop.Notice{
+				{Content: "first notice", Severity: loop.SeverityInfo},
+				{Content: "second notice", Severity: loop.SeverityWarn},
+			},
+		}, nil
+	}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(noticeInterceptor)))
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	noticeCh := stream.Subscribe("notice")
+	turnCh := stream.Subscribe("turn_complete")
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "/test"})
+	require.NoError(t, err)
+
+	// Should receive 2 notice events in order.
+	var notices []loop.NoticeEvent
+	for i := 0; i < 2; i++ {
+		select {
+		case event := <-noticeCh:
+			n, ok := event.(loop.NoticeEvent)
+			require.True(t, ok)
+			notices = append(notices, n)
+		case <-time.After(100 * time.Millisecond):
+			t.Fatalf("timeout waiting for notice event %d", i)
+		}
+	}
+	require.Len(t, notices, 2)
+	assert.Equal(t, "first notice", notices[0].Notice.Content)
+	assert.Equal(t, loop.SeverityInfo, notices[0].Notice.Severity)
+	assert.Equal(t, "second notice", notices[1].Notice.Content)
+	assert.Equal(t, loop.SeverityWarn, notices[1].Notice.Severity)
+
+	// No turn_complete events because the event was consumed (nil Event).
+	select {
+	case event := <-turnCh:
+		t.Fatalf("expected no turn events, got %T", event)
+	case <-time.After(50 * time.Millisecond):
+		// Expected timeout — no events.
+	}
+
+	// No turns should be added to state.
+	assert.Empty(t, stream.Turns())
+
+	_ = stream.Close()
+}
+
+func TestStream_Interceptor_NoticeProvenance(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	noticeInterceptor := func(ctx context.Context, event Event, stream *Stream, emitter loop.Emitter) (InterceptResult, error) {
+		return InterceptResult{
+			Notice: []loop.Notice{{Content: "notice message", Severity: loop.SeverityInfo}},
+		}, nil
+	}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(noticeInterceptor)))
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	noticeCh := stream.Subscribe("notice")
+
+	ctx := loop.WithProvenance(context.Background(), "test-provenance")
+	err = stream.Process(ctx, UserMessageEvent{Content: "/test", Ctx: ctx})
+	require.NoError(t, err)
+
+	select {
+	case event := <-noticeCh:
+		n, ok := event.(loop.NoticeEvent)
+		require.True(t, ok)
+		assert.Equal(t, "notice message", n.Notice.Content)
+		assert.Equal(t, loop.SeverityInfo, n.Notice.Severity)
+		name, _ := loop.ProvenanceFrom(n.Ctx)
+		assert.Equal(t, "test-provenance", name, "notice event should carry the original user message provenance")
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for notice event")
+	}
+
+	_ = stream.Close()
+}
+
+func TestStream_Interceptor_NoticeWithReplaceAndMultipleNotice(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	noticeInterceptor := func(ctx context.Context, event Event, stream *Stream, emitter loop.Emitter) (InterceptResult, error) {
+		ume, ok := event.(UserMessageEvent)
+		require.True(t, ok)
+		ume.Content = "rewritten: " + ume.Content
+		return InterceptResult{
+			Event: ume,
+			Notice: []loop.Notice{
+				{Content: "n1", Severity: loop.SeverityInfo},
+				{Content: "n2", Severity: loop.SeveritySuccess},
+			},
+		}, nil
+	}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(noticeInterceptor)))
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	noticeCh := stream.Subscribe("notice")
+	turnCh := stream.Subscribe("turn_complete")
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hello"})
+	require.NoError(t, err)
+
+	// Should receive 2 notice events.
+	var notices []loop.NoticeEvent
+	for i := 0; i < 2; i++ {
+		select {
+		case event := <-noticeCh:
+			n, ok := event.(loop.NoticeEvent)
+			require.True(t, ok)
+			notices = append(notices, n)
+		case <-time.After(100 * time.Millisecond):
+			t.Fatalf("timeout waiting for notice event %d", i)
+		}
+	}
+	require.Len(t, notices, 2)
+	assert.Equal(t, "n1", notices[0].Notice.Content)
+	assert.Equal(t, loop.SeverityInfo, notices[0].Notice.Severity)
+	assert.Equal(t, "n2", notices[1].Notice.Content)
+	assert.Equal(t, loop.SeveritySuccess, notices[1].Notice.Severity)
+
+	// Should also receive turn_complete events because the event was replaced.
+	var events []loop.OutputEvent
+	for i := 0; i < 2; i++ {
+		select {
+		case event := <-turnCh:
+			events = append(events, event)
+		case <-time.After(100 * time.Millisecond):
+			t.Fatalf("timeout waiting for turn event %d", i)
+		}
+	}
+	require.Len(t, events, 2)
+
+	// Turns should have the rewritten content.
+	turns := stream.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, "rewritten: hello", turns[0].Artifacts[0].(artifact.Text).Content)
+
+	_ = stream.Close()
+}
+
+func TestStream_Interceptor_NoticeWithReplace(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	noticeInterceptor := func(ctx context.Context, event Event, stream *Stream, emitter loop.Emitter) (InterceptResult, error) {
+		ume, ok := event.(UserMessageEvent)
+		require.True(t, ok)
+		ume.Content = "rewritten: " + ume.Content
+		return InterceptResult{
+			Event:    ume,
+			Notice: []loop.Notice{{Content: "notice message", Severity: loop.SeverityError}},
+		}, nil
+	}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(InterceptorFunc(noticeInterceptor)))
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	noticeCh := stream.Subscribe("notice")
+	turnCh := stream.Subscribe("turn_complete")
+
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hello"})
+	require.NoError(t, err)
+
+	// Notice event should be received.
+	select {
+	case event := <-noticeCh:
+		n, ok := event.(loop.NoticeEvent)
+		require.True(t, ok)
+		assert.Equal(t, "notice message", n.Notice.Content)
+		assert.Equal(t, loop.SeverityError, n.Notice.Severity)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for notice event")
+	}
+
+	// Turn should complete because the event was replaced (not consumed).
+	var events []loop.OutputEvent
+	for i := 0; i < 2; i++ {
+		select {
+		case event := <-turnCh:
+			events = append(events, event)
+		case <-time.After(100 * time.Millisecond):
+			t.Fatalf("timeout waiting for turn event %d", i)
+		}
+	}
+	require.Len(t, events, 2)
+
+	turns := stream.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, "rewritten: hello", turns[0].Artifacts[0].(artifact.Text).Content)
+
+	_ = stream.Close()
+}
+
 func TestStream_ModelOption(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}

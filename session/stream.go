@@ -170,7 +170,11 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 			if err != nil {
 				return fmt.Errorf("interceptor: %w", err)
 			}
-			// Emit ephemeral feedback messages to conduits without persisting.
+			// Emit severity-tagged notices to conduits without persisting.
+			for _, n := range result.Notice {
+				s.step.Emit(context.Background(), loop.NoticeEvent{Notice: n, Ctx: ume.Ctx})
+			}
+			// Legacy severity-less feedback channel; deprecated.
 			for _, fb := range result.Feedback {
 				s.step.Emit(context.Background(), loop.FeedbackEvent{Content: fb.Content, Ctx: ume.Ctx})
 			}
