@@ -34,6 +34,8 @@ func Dark() *Theme {
 		ToolResultStyle:        lipgloss.NewStyle().Foreground(lipgloss.Color("#98C379")),
 		ErrorStyle:             lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555")),
 		SystemStyle:            lipgloss.NewStyle().Foreground(lipgloss.Color("#C678DD")),
+		SuccessStyle:           lipgloss.NewStyle().Foreground(lipgloss.Color("#98C379")),
+		WarnStyle:              lipgloss.NewStyle().Foreground(lipgloss.Color("#E5C07B")),
 		StatusStyle:            lipgloss.NewStyle().Faint(true).Italic(true),
 		ThinkingStyle:          lipgloss.NewStyle().Faint(true).Italic(true),
 		ReasoningExpandedStyle: lipgloss.NewStyle().Faint(true),

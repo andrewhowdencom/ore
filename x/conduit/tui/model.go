@@ -15,6 +15,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
@@ -68,11 +69,12 @@ type errorMsg struct {
 	err error
 }
 
-// feedbackMsg carries an ephemeral feedback message from the conduit to
-// the UI model. Feedback messages are rendered as system-styled turns
-// in the conversation but are not persisted to state.
-type feedbackMsg struct {
-	content string
+// noticeMsg carries an ephemeral Notice from the conduit to the UI
+// model. Notice messages are rendered as system-styled turns in the
+// conversation (styled by severity via the theme) but are not
+// persisted to state and never reach the LLM.
+type noticeMsg struct {
+	notice loop.Notice
 }
 
 // activityMsg carries an activity indicator update from the conduit to
@@ -716,9 +718,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.GotoBottom()
 		}
 		return m, nil
-	case feedbackMsg:
+	case noticeMsg:
 		wasAtBottom := m.viewport.AtBottom()
-		block := m.renderPlainBlock("feedback", msg.content, "System", m.theme.SystemStyle)
+		block := m.renderPlainBlock("notice", msg.notice.Content, "System", m.theme.StyleForSeverity(msg.notice.Severity))
 		m.turns = append(m.turns, renderedTurn{
 			role:   state.RoleSystem,
 			blocks: []renderedBlock{block},
