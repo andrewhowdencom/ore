@@ -14,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
@@ -2073,25 +2074,72 @@ func TestModel_Update_ReloadHistory_NilSlice(t *testing.T) {
 	assert.Empty(t, mm.currentTurn.blocks)
 }
 
-func TestModel_Update_FeedbackMsg(t *testing.T) {
-	m := newTestModel()
-	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-	m.pending = true // simulate an in-flight assistant response
+func TestModel_Update_NoticeMsg(t *testing.T) {
+	// The noticeMsg handler renders any loop.Notice as a system-role
+	// turn with kind "notice" and a style chosen by the theme based
+	// on the notice's Severity. The mapping lives in
+	// theme.StyleForSeverity — these cases assert that the renderer
+	// looks up the right style and the source is preserved verbatim.
+	//
+	// SeveritySuccess / SeverityInfo / SeverityWarn / SeverityError are
+	// each checked against the corresponding field on the theme so
+	// regressions in the theme mapping are caught here.
+	cases := []struct {
+		name     string
+		notice   loop.Notice
+		wantKind string
+		wantSty  lipgloss.Style
+	}{
+		{
+			name:     "success notice uses SuccessStyle",
+			notice:   loop.Notice{Content: "switched role", Severity: loop.SeveritySuccess},
+			wantKind: "notice",
+			wantSty:  theme.Dark().SuccessStyle,
+		},
+		{
+			name:     "info notice uses SystemStyle",
+			notice:   loop.Notice{Content: "Unknown command: /foo", Severity: loop.SeverityInfo},
+			wantKind: "notice",
+			wantSty:  theme.Dark().SystemStyle,
+		},
+		{
+			name:     "warn notice uses WarnStyle",
+			notice:   loop.Notice{Content: "compaction truncated", Severity: loop.SeverityWarn},
+			wantKind: "notice",
+			wantSty:  theme.Dark().WarnStyle,
+		},
+		{
+			name:     "error notice uses ErrorStyle",
+			notice:   loop.Notice{Content: `role "foo" not found`, Severity: loop.SeverityError},
+			wantKind: "notice",
+			wantSty:  theme.Dark().ErrorStyle,
+		},
+	}
 
-	newM, _ := m.Update(feedbackMsg{content: "Unknown command: /foo"})
-	mm := newM.(*model)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newTestModel()
+			m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+			m.pending = true // simulate an in-flight assistant response
 
-	// Should append a system turn with the feedback content.
-	require.Len(t, mm.turns, 1)
-	assert.Equal(t, state.RoleSystem, mm.turns[0].role)
-	require.Len(t, mm.turns[0].blocks, 1)
-	assert.Equal(t, "feedback", mm.turns[0].blocks[0].kind)
-	assert.Equal(t, "Unknown command: /foo", mm.turns[0].blocks[0].source)
-	assert.Equal(t, "System", mm.turns[0].blocks[0].title)
-	assert.True(t, mm.turns[0].blocks[0].expandedByDefault)
+			newM, _ := m.Update(noticeMsg{notice: tc.notice})
+			mm := newM.(*model)
 
-	// Pending should NOT be reset (feedback is not an error).
-	assert.True(t, mm.pending, "pending should remain unchanged for feedback")
+			// Should append a system turn with the notice content.
+			require.Len(t, mm.turns, 1)
+			assert.Equal(t, state.RoleSystem, mm.turns[0].role)
+			require.Len(t, mm.turns[0].blocks, 1)
+			assert.Equal(t, tc.wantKind, mm.turns[0].blocks[0].kind)
+			assert.Equal(t, tc.notice.Content, mm.turns[0].blocks[0].source)
+			assert.Equal(t, "System", mm.turns[0].blocks[0].title)
+			assert.True(t, mm.turns[0].blocks[0].expandedByDefault)
+			// Style must match what the theme returns for the severity.
+			assert.Equal(t, tc.wantSty, mm.turns[0].blocks[0].style)
+
+			// Pending should NOT be reset (a notice is not an error).
+			assert.True(t, mm.pending, "pending should remain unchanged for a notice")
+		})
+	}
 }
 
 func TestModel_Update_ActivityMsg_SetsWorkingAndDescription(t *testing.T) {

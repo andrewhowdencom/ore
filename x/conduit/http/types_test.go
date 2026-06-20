@@ -246,7 +246,6 @@ func TestRoundTrip_OutputEvent(t *testing.T) {
 		loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc", "state": "ready"}},
 		loop.LifecycleEvent{Phase: "submitted"},
 		loop.LifecycleEvent{Phase: "done", Ctx: loop.WithProvenance(context.Background(), "http")},
-		loop.FeedbackEvent{Content: "help message"},
 	}
 
 	for _, event := range events {
@@ -583,9 +582,24 @@ func TestValidateEventSchemas(t *testing.T) {
 			schemaName: "LifecycleEvent",
 		},
 		{
-			name:       "feedback",
-			event:      loop.FeedbackEvent{Content: "help message"},
-			schemaName: "FeedbackEvent",
+			name:       "notice_success",
+			event:      loop.NoticeEvent{Notice: loop.Notice{Content: "switched role", Severity: loop.SeveritySuccess}},
+			schemaName: "NoticeEvent",
+		},
+		{
+			name:       "notice_info",
+			event:      loop.NoticeEvent{Notice: loop.Notice{Content: "Unknown command: /foo", Severity: loop.SeverityInfo}},
+			schemaName: "NoticeEvent",
+		},
+		{
+			name:       "notice_warn",
+			event:      loop.NoticeEvent{Notice: loop.Notice{Content: "compaction truncated", Severity: loop.SeverityWarn}},
+			schemaName: "NoticeEvent",
+		},
+		{
+			name:       "notice_error",
+			event:      loop.NoticeEvent{Notice: loop.Notice{Content: `role "foo" not found`, Severity: loop.SeverityError}},
+			schemaName: "NoticeEvent",
 		},
 	}
 
@@ -632,9 +646,9 @@ func TestValidateEventSchemas_WithContext(t *testing.T) {
 			schemaName: "LifecycleEvent",
 		},
 		{
-			name:       "feedback_with_context",
-			event:      loop.FeedbackEvent{Content: "help message", Ctx: ctx},
-			schemaName: "FeedbackEvent",
+			name:       "notice_with_context",
+			event:      loop.NoticeEvent{Notice: loop.Notice{Content: "switched role", Severity: loop.SeveritySuccess}, Ctx: ctx},
+			schemaName: "NoticeEvent",
 		},
 	}
 
@@ -647,29 +661,69 @@ func TestValidateEventSchemas_WithContext(t *testing.T) {
 	}
 }
 
-func TestMarshalOutputEvent_Feedback(t *testing.T) {
-	event := loop.FeedbackEvent{Content: "help message"}
-	data, err := MarshalOutputEvent(event)
-	require.NoError(t, err)
-	assert.JSONEq(t, `{"kind":"feedback","content":"help message"}`, string(data))
+func TestUnmarshalOutputEvent_Notice(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  loop.NoticeEvent
+	}{
+		{
+			name:  "success severity",
+			input: `{"kind":"notice","content":"switched role","severity":"Success"}`,
+			want:  loop.NoticeEvent{Notice: loop.Notice{Content: "switched role", Severity: loop.SeveritySuccess}},
+		},
+		{
+			name:  "info severity",
+			input: `{"kind":"notice","content":"Unknown command: /foo","severity":"Info"}`,
+			want:  loop.NoticeEvent{Notice: loop.Notice{Content: "Unknown command: /foo", Severity: loop.SeverityInfo}},
+		},
+		{
+			name:  "warn severity",
+			input: `{"kind":"notice","content":"compaction truncated","severity":"Warn"}`,
+			want:  loop.NoticeEvent{Notice: loop.Notice{Content: "compaction truncated", Severity: loop.SeverityWarn}},
+		},
+		{
+			name:  "error severity",
+			input: `{"kind":"notice","content":"role \"foo\" not found","severity":"Error"}`,
+			want:  loop.NoticeEvent{Notice: loop.Notice{Content: `role "foo" not found`, Severity: loop.SeverityError}},
+		},
+		{
+			name:  "unknown severity falls back to info",
+			input: `{"kind":"notice","content":"hello","severity":"Bogus"}`,
+			want:  loop.NoticeEvent{Notice: loop.Notice{Content: "hello", Severity: loop.SeverityInfo}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := UnmarshalOutputEvent([]byte(tt.input))
+			require.NoError(t, err)
+			n, ok := got.(loop.NoticeEvent)
+			require.True(t, ok, "expected loop.NoticeEvent, got %T", got)
+			assert.Equal(t, tt.want, n)
+		})
+	}
 }
 
-func TestUnmarshalOutputEvent_Feedback(t *testing.T) {
-	got, err := UnmarshalOutputEvent([]byte(`{"kind":"feedback","content":"help message"}`))
-	require.NoError(t, err)
-	fb, ok := got.(loop.FeedbackEvent)
-	require.True(t, ok)
-	assert.Equal(t, "help message", fb.Content)
-}
+func TestRoundTrip_NoticeEvent(t *testing.T) {
+	events := []loop.NoticeEvent{
+		{Notice: loop.Notice{Content: "switched role", Severity: loop.SeveritySuccess}},
+		{Notice: loop.Notice{Content: "Unknown command: /foo", Severity: loop.SeverityInfo}},
+		{Notice: loop.Notice{Content: "compaction truncated", Severity: loop.SeverityWarn}},
+		{Notice: loop.Notice{Content: `role "foo" not found`, Severity: loop.SeverityError}},
+		{Notice: loop.Notice{Content: "with context", Severity: loop.SeverityInfo}, Ctx: loop.WithProvenance(context.Background(), "http")},
+	}
 
-func TestRoundTrip_FeedbackEvent(t *testing.T) {
-	event := loop.FeedbackEvent{Content: "help message", Ctx: loop.WithProvenance(context.Background(), "http")}
-	data, err := MarshalOutputEvent(event)
-	require.NoError(t, err)
+	for _, event := range events {
+		t.Run(event.Notice.Severity.String(), func(t *testing.T) {
+			data, err := MarshalOutputEvent(event)
+			require.NoError(t, err)
 
-	got, err := UnmarshalOutputEvent(data)
-	require.NoError(t, err)
-	assert.Equal(t, event, got)
+			got, err := UnmarshalOutputEvent(data)
+			require.NoError(t, err)
+			assert.Equal(t, event, got)
+		})
+	}
 }
 
 type unknownArtifact struct{}

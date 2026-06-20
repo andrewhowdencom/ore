@@ -29,6 +29,7 @@ type stdio struct {
 	mgr      *session.Manager
 	in       io.Reader
 	out      io.Writer
+	err      io.Writer
 	threadID string
 	tracer   trace.Tracer
 }
@@ -43,10 +44,19 @@ func WithInput(r io.Reader) Option {
 	}
 }
 
-// WithOutput sets the output writer. Defaults to os.Stdout.
+// WithOutput sets the stdout-equivalent output writer. Defaults to os.Stdout.
 func WithOutput(w io.Writer) Option {
 	return func(s *stdio) {
 		s.out = w
+	}
+}
+
+// WithStderr sets the stderr-equivalent output writer. Notice and other
+// out-of-band events are written here with a severity label prefix
+// (e.g. "Error: role \"foo\" not found"). Defaults to os.Stderr.
+func WithStderr(w io.Writer) Option {
+	return func(s *stdio) {
+		s.err = w
 	}
 }
 
@@ -73,6 +83,7 @@ func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
 		mgr: mgr,
 		in:  os.Stdin,
 		out: os.Stdout,
+		err: os.Stderr,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -96,7 +107,7 @@ func (s *stdio) Start(ctx context.Context) error {
 		return fmt.Errorf("start session: %w", err)
 	}
 
-	outputCh := stream.Subscribe("text_delta", "reasoning_delta", "tool_call_delta", "tool_call", "turn_complete", "error", "lifecycle")
+	outputCh := stream.Subscribe("text_delta", "reasoning_delta", "tool_call_delta", "tool_call", "turn_complete", "error", "lifecycle", "notice")
 
 	done := make(chan struct{})
 	stop := make(chan struct{})
@@ -173,6 +184,15 @@ func (s *stdio) Start(ctx context.Context) error {
 					turnErr = e.Err
 					fmt.Fprintf(s.out, "\nerror: %v\n", e.Err)
 					return
+
+				case loop.NoticeEvent:
+					// Notices are out-of-band UI messages (slash
+					// success, handler errors auto-converted in the
+					// slash interceptor, etc.). They go to stderr
+					// with a severity label prefix so a Unix-filter
+					// invocation can split the assistant stream
+					// (`stdout`) from the notice stream (`stderr`).
+					fmt.Fprintf(s.err, "%s: %s\n", e.Notice.Severity, e.Notice.Content)
 				}
 			case <-stop:
 				if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {

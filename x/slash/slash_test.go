@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/stretchr/testify/assert"
@@ -43,9 +42,10 @@ func TestRegistry_UnknownCommand(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed for unknown command")
-	require.Len(t, result.Feedback, 1)
-	assert.Contains(t, result.Feedback[0].Content, "Unknown command: /other")
-	assert.Contains(t, result.Feedback[0].Content, "/help")
+	require.Len(t, result.Notice, 1)
+	assert.Contains(t, result.Notice[0].Content, "Unknown command: /other")
+	assert.Contains(t, result.Notice[0].Content, "/help")
+	assert.Equal(t, loop.SeverityInfo, result.Notice[0].Severity)
 }
 
 func TestRegistry_HandlerError(t *testing.T) {
@@ -58,10 +58,37 @@ func TestRegistry_HandlerError(t *testing.T) {
 	event := session.UserMessageEvent{Content: "/fail"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
-	require.Error(t, err)
-	assert.Equal(t, expectedErr, err)
-	assert.Equal(t, event, result.Event, "error should preserve original event")
-	assert.Empty(t, result.Feedback)
+	// Error must be auto-converted into an error-severity notice and
+	// Intercept must return nil. This is the bug fix from issue #354:
+	// the error must reach conduits as a user-visible notice rather than
+	// being silently swallowed downstream.
+	require.NoError(t, err)
+	require.Len(t, result.Notice, 1)
+	assert.Equal(t, expectedErr.Error(), result.Notice[0].Content)
+	assert.Equal(t, loop.SeverityError, result.Notice[0].Severity)
+}
+
+func TestRegistry_HandlerErrorWithExplicitNotice(t *testing.T) {
+	r := NewRegistry()
+	expectedErr := errors.New("handler error")
+	r.Bind("fail", "Fail intentionally", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
+		// Handler customises its own error presentation — the explicit
+		// Notice wins over the auto-converted err.Error() message.
+		return Result{
+			Notice: loop.Notice{
+				Content:  "custom error presentation",
+				Severity: loop.SeverityWarn,
+			},
+		}, expectedErr
+	})
+
+	event := session.UserMessageEvent{Content: "/fail"}
+	result, err := r.Intercept(context.Background(), event, nil, nil)
+
+	require.NoError(t, err)
+	require.Len(t, result.Notice, 1)
+	assert.Equal(t, "custom error presentation", result.Notice[0].Content)
+	assert.Equal(t, loop.SeverityWarn, result.Notice[0].Severity)
 }
 
 func TestRegistry_RawInputParsing(t *testing.T) {
@@ -86,11 +113,14 @@ func TestRegistry_Fields(t *testing.T) {
 	assert.Equal(t, []string{"/path/with", "spaces", "and", "tabs"}, fields)
 }
 
-func TestRegistry_Feedback(t *testing.T) {
+func TestRegistry_Notice(t *testing.T) {
 	r := NewRegistry()
 	r.Bind("status", "Show status", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		return Result{
-			Feedback: artifact.Text{Content: "System status: OK"},
+			Notice: loop.Notice{
+				Content:  "System status: OK",
+				Severity: loop.SeveritySuccess,
+			},
 		}, nil
 	})
 
@@ -99,16 +129,20 @@ func TestRegistry_Feedback(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
-	require.Len(t, result.Feedback, 1)
-	assert.Equal(t, "System status: OK", result.Feedback[0].Content)
+	require.Len(t, result.Notice, 1)
+	assert.Equal(t, "System status: OK", result.Notice[0].Content)
+	assert.Equal(t, loop.SeveritySuccess, result.Notice[0].Severity)
 }
 
-func TestRegistry_FeedbackWithReplace(t *testing.T) {
+func TestRegistry_NoticeWithReplace(t *testing.T) {
 	r := NewRegistry()
 	r.Bind("switch", "Switch session", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		return Result{
-			Replace:  session.SessionSwitchEvent{SessionID: "new-session-123", Ctx: context.Background()},
-			Feedback: artifact.Text{Content: "Switched to session new-session-123"},
+			Replace: session.SessionSwitchEvent{SessionID: "new-session-123", Ctx: context.Background()},
+			Notice: loop.Notice{
+				Content:  "Switched to session new-session-123",
+				Severity: loop.SeverityInfo,
+			},
 		}, nil
 	})
 
@@ -117,8 +151,8 @@ func TestRegistry_FeedbackWithReplace(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, result.Event)
-	assert.Len(t, result.Feedback, 1)
-	assert.Equal(t, "Switched to session new-session-123", result.Feedback[0].Content)
+	assert.Len(t, result.Notice, 1)
+	assert.Equal(t, "Switched to session new-session-123", result.Notice[0].Content)
 
 	switchEvent, ok := result.Event.(session.SessionSwitchEvent)
 	require.True(t, ok, "expected SessionSwitchEvent")
@@ -137,7 +171,7 @@ func TestRegistry_NonUserMessage(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, event, result.Event, "expected event to pass through")
-	assert.Empty(t, result.Feedback)
+	assert.Empty(t, result.Notice)
 }
 
 func TestRegistry_NoSlashPrefix(t *testing.T) {
@@ -152,7 +186,7 @@ func TestRegistry_NoSlashPrefix(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, event, result.Event, "expected event to pass through")
-	assert.Empty(t, result.Feedback)
+	assert.Empty(t, result.Notice)
 }
 
 func TestRegistry_EmptyContent(t *testing.T) {
@@ -167,7 +201,7 @@ func TestRegistry_EmptyContent(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, event, result.Event, "expected event to pass through")
-	assert.Empty(t, result.Feedback)
+	assert.Empty(t, result.Notice)
 }
 
 func TestRegistry_HandlerReturnsEvent(t *testing.T) {
@@ -186,7 +220,7 @@ func TestRegistry_HandlerReturnsEvent(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, result.Event, "expected event to be replaced, not consumed")
-	assert.Empty(t, result.Feedback)
+	assert.Empty(t, result.Notice)
 
 	switchEvent, ok := result.Event.(session.SessionSwitchEvent)
 	require.True(t, ok, "expected SessionSwitchEvent")
@@ -207,9 +241,10 @@ func TestRegistry_Help(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
-	require.Len(t, result.Feedback, 1)
+	require.Len(t, result.Notice, 1)
+	assert.Equal(t, loop.SeverityInfo, result.Notice[0].Severity)
 
-	content := result.Feedback[0].Content
+	content := result.Notice[0].Content
 	assert.Contains(t, content, "Available commands:")
 	assert.Contains(t, content, "/new")
 	assert.Contains(t, content, "Create a new session")
@@ -227,9 +262,9 @@ func TestRegistry_HelpExcludesUnbound(t *testing.T) {
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
-	require.Len(t, result.Feedback, 1)
+	require.Len(t, result.Notice, 1)
 
-	content := result.Feedback[0].Content
+	content := result.Notice[0].Content
 	assert.Contains(t, content, "Available commands:")
 	assert.Contains(t, content, "/help")
 	// Should not contain any other commands.
@@ -286,7 +321,12 @@ func TestRegistry_DuplicateBind_Overwrites(t *testing.T) {
 		return Result{}, nil
 	})
 	r.Bind("test", "Second test", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
-		return Result{Feedback: artifact.Text{Content: "second handler"}}, nil
+		return Result{
+			Notice: loop.Notice{
+				Content:  "second handler",
+				Severity: loop.SeverityInfo,
+			},
+		}, nil
 	})
 
 	event := session.UserMessageEvent{Content: "/test"}
@@ -294,8 +334,8 @@ func TestRegistry_DuplicateBind_Overwrites(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.False(t, firstCalled, "first handler should not be called")
-	require.Len(t, result.Feedback, 1)
-	assert.Equal(t, "second handler", result.Feedback[0].Content)
+	require.Len(t, result.Notice, 1)
+	assert.Equal(t, "second handler", result.Notice[0].Content)
 }
 
 func TestRegistry_DuplicateBind_UpdatesDescription(t *testing.T) {
@@ -312,8 +352,8 @@ func TestRegistry_DuplicateBind_UpdatesDescription(t *testing.T) {
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
-	require.Len(t, result.Feedback, 1)
-	content := result.Feedback[0].Content
+	require.Len(t, result.Notice, 1)
+	content := result.Notice[0].Content
 	assert.Contains(t, content, "/cmd")
 	assert.Contains(t, content, "Updated cmd")
 	assert.NotContains(t, content, "Original cmd")
@@ -330,14 +370,16 @@ func TestRegistry_MixedCase(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event)
-	require.Len(t, result.Feedback, 1)
-	assert.Contains(t, result.Feedback[0].Content, "Unknown command: /HeLp")
+	require.Len(t, result.Notice, 1)
+	assert.Contains(t, result.Notice[0].Content, "Unknown command: /HeLp")
 }
 
-func TestRegistry_EmptyFeedback(t *testing.T) {
+func TestRegistry_EmptyNotice(t *testing.T) {
 	r := NewRegistry()
 	r.Bind("silent", "Silent command", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
-		return Result{Feedback: artifact.Text{Content: ""}}, nil
+		return Result{
+			Notice: loop.Notice{Content: ""},
+		}, nil
 	})
 
 	event := session.UserMessageEvent{Content: "/silent"}
@@ -345,7 +387,7 @@ func TestRegistry_EmptyFeedback(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed")
-	assert.Empty(t, result.Feedback, "empty feedback should not be emitted")
+	assert.Empty(t, result.Notice, "empty notice should not be emitted")
 }
 
 func TestRegistry_FieldsWhitespace(t *testing.T) {
@@ -369,8 +411,8 @@ func TestRegistry_Isolation(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event)
-	require.Len(t, result.Feedback, 1)
-	assert.Contains(t, result.Feedback[0].Content, "Unknown command: /foo")
+	require.Len(t, result.Notice, 1)
+	assert.Contains(t, result.Notice[0].Content, "Unknown command: /foo")
 }
 
 func TestRegistry_LeadingWhitespace(t *testing.T) {
@@ -390,27 +432,6 @@ func TestRegistry_LeadingWhitespace(t *testing.T) {
 	assert.Empty(t, capturedCmd.Input)
 }
 
-func TestRegistry_MultipleFeedback(t *testing.T) {
-	r := NewRegistry()
-	r.Bind("multi", "Multiple feedback", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
-		return Result{
-			Feedback: artifact.Text{Content: "first"},
-		}, nil
-	})
-
-	// Note: the Handler type only has a single Feedback field, not a slice.
-	// The session.Interceptor interface uses a slice, so the registry returns
-	// multiple feedback items by having a single handler return one item.
-	// This test verifies that the single feedback item is correctly passed through.
-	event := session.UserMessageEvent{Content: "/multi"}
-	result, err := r.Intercept(context.Background(), event, nil, nil)
-
-	require.NoError(t, err)
-	assert.Nil(t, result.Event, "expected event to be consumed")
-	require.Len(t, result.Feedback, 1)
-	assert.Equal(t, "first", result.Feedback[0].Content)
-}
-
 func TestRegistry_CaseSensitive(t *testing.T) {
 	r := NewRegistry()
 	r.Bind("help", "Show help", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
@@ -423,6 +444,6 @@ func TestRegistry_CaseSensitive(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Event, "expected event to be consumed for unknown command")
-	require.Len(t, result.Feedback, 1)
-	assert.Contains(t, result.Feedback[0].Content, "Unknown command: /HELP")
+	require.Len(t, result.Notice, 1)
+	assert.Contains(t, result.Notice[0].Content, "Unknown command: /HELP")
 }

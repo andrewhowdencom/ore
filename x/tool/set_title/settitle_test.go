@@ -83,7 +83,7 @@ func (m *mockEmitter) Emit(ctx context.Context, event loop.OutputEvent) {
 	m.events = append(m.events, event)
 }
 
-func TestSlash_EmptyInput_ReturnsFeedback(t *testing.T) {
+func TestSlash_EmptyInput_ReturnsNotice(t *testing.T) {
 	t.Parallel()
 
 	emitter := &mockEmitter{}
@@ -91,12 +91,12 @@ func TestSlash_EmptyInput_ReturnsFeedback(t *testing.T) {
 
 	result, err := handler(context.Background(), emitter, slash.Command{Name: "name", Input: ""})
 	require.NoError(t, err)
-	assert.Equal(t, "Usage: /name <text>", result.Feedback.Content)
+	assert.Equal(t, "Usage: /name <text>", result.Notice.Content)
 	assert.Nil(t, result.Replace)
 	assert.Empty(t, emitter.events, "no PropertiesEvent should be emitted on empty input")
 }
 
-func TestSlash_WhitespaceInput_ReturnsFeedback(t *testing.T) {
+func TestSlash_WhitespaceInput_ReturnsNotice(t *testing.T) {
 	t.Parallel()
 
 	emitter := &mockEmitter{}
@@ -104,7 +104,7 @@ func TestSlash_WhitespaceInput_ReturnsFeedback(t *testing.T) {
 
 	result, err := handler(context.Background(), emitter, slash.Command{Name: "name", Input: "   \t  "})
 	require.NoError(t, err)
-	assert.Equal(t, "Usage: /name <text>", result.Feedback.Content)
+	assert.Equal(t, "Usage: /name <text>", result.Notice.Content)
 	assert.Nil(t, result.Replace)
 	assert.Empty(t, emitter.events, "no PropertiesEvent should be emitted on whitespace-only input")
 }
@@ -117,7 +117,7 @@ func TestSlash_ValidInput_EmitsPropertiesEvent(t *testing.T) {
 
 	result, err := handler(context.Background(), emitter, slash.Command{Name: "name", Input: "Fix login bug"})
 	require.NoError(t, err)
-	assert.Empty(t, result.Feedback.Content)
+	assert.Empty(t, result.Notice.Content)
 	assert.Nil(t, result.Replace)
 
 	require.Len(t, emitter.events, 1)
@@ -135,7 +135,7 @@ func TestSlash_TrimsInput(t *testing.T) {
 
 	result, err := handler(context.Background(), emitter, slash.Command{Name: "name", Input: "  spaced  "})
 	require.NoError(t, err)
-	assert.Empty(t, result.Feedback.Content)
+	assert.Empty(t, result.Notice.Content)
 
 	require.Len(t, emitter.events, 1)
 	pe := emitter.last.(loop.PropertiesEvent)

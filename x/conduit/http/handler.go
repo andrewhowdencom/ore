@@ -322,7 +322,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 
 	// Default event kinds when none specified.
 	if len(req.Kinds) == 0 {
-		req.Kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "properties", "lifecycle", "feedback"}
+		req.Kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "properties", "lifecycle", "notice"}
 	}
 
 	// Subscribe to the session's FanOut before the goroutine starts.
@@ -427,7 +427,7 @@ func (h *Handler) sessionEvents(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 	// Default event kinds when none specified.
 	if len(kinds) == 0 {
-		kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "properties", "lifecycle", "feedback"}
+		kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "properties", "lifecycle", "notice"}
 	}
 
 	// Subscribe to the session's FanOut.

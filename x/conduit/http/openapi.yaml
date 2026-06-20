@@ -323,7 +323,7 @@ components:
         - error
         - properties
         - lifecycle
-        - feedback
+        - notice
 
     EventContext:
       type: object
@@ -423,7 +423,7 @@ components:
         - $ref: '#/components/schemas/ErrorEvent'
         - $ref: '#/components/schemas/PropertiesEvent'
         - $ref: '#/components/schemas/LifecycleEvent'
-        - $ref: '#/components/schemas/FeedbackEvent'
+        - $ref: '#/components/schemas/NoticeEvent'
       discriminator:
         propertyName: kind
         mapping:
@@ -440,7 +440,7 @@ components:
           error: '#/components/schemas/ErrorEvent'
           properties: '#/components/schemas/PropertiesEvent'
           lifecycle: '#/components/schemas/LifecycleEvent'
-          feedback: '#/components/schemas/FeedbackEvent'
+          notice: '#/components/schemas/NoticeEvent'
 
     TextEvent:
       type: object
@@ -660,17 +660,26 @@ components:
         context:
           $ref: '#/components/schemas/EventContext'
 
-    FeedbackEvent:
+    NoticeEvent:
       type: object
       required:
         - kind
         - content
+        - severity
       properties:
         kind:
           type: string
-          enum: [feedback]
+          enum: [notice]
         content:
           type: string
-          description: Human-readable feedback text
+          description: Human-readable notice text
+        severity:
+          type: string
+          enum: [Success, Info, Warn, Error]
+          description: |
+            Severity of the notice. Conduits use this to pick a rendering
+            style (Success = positive feedback, Info = neutral,
+            Warn = recoverable issue, Error = failure). Unknown values
+            should be treated as Info by clients.
         context:
           $ref: '#/components/schemas/EventContext'
