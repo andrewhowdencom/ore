@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -383,8 +384,8 @@ func TestDumper_RequestBodyCanBeReRead(t *testing.T) {
 
 // TestDumper_CapturesResponseBody asserts that an armed RoundTrip
 // captures the response body via the tee. We send a small fixed
-// response and check that the dumper's slot.capture.responseBody
-// matches what the server wrote.
+// response and check that the dumper wrote both the request and
+// response sections to the capture file with the expected content.
 func TestDumper_CapturesResponseBody(t *testing.T) {
 	t.Parallel()
 
@@ -422,14 +423,24 @@ func TestDumper_CapturesResponseBody(t *testing.T) {
 	assert.Equal(t, responseBody, string(body),
 		"wire must receive the original response body")
 
+	// File should be closed after response body Close.
 	v, ok := d.arms.Load(threadID)
 	require.True(t, ok)
 	s := v.(*slot)
 	require.NotNil(t, s.capture)
-	assert.Equal(t, responseBody, s.capture.responseBody.String(),
-		"dumper should have captured the full response body via the tee")
-	assert.Equal(t, "201 Created", s.capture.responseStatus)
-	assert.Equal(t, "yes", s.capture.responseHeader.Get("X-Echo"))
+	assert.NotEmpty(t, s.capture.Path(),
+		"capture file path should be set")
+
+	contents, err := os.ReadFile(s.capture.Path())
+	require.NoError(t, err)
+	got := string(contents)
+	assert.Contains(t, got, "=== REQUEST ===", "file should contain request section")
+	assert.Contains(t, got, "POST", "file should record request method")
+	assert.Contains(t, got, "request body", "file should record request body")
+	assert.Contains(t, got, "=== RESPONSE ===", "file should contain response section")
+	assert.Contains(t, got, "201 Created", "file should record response status")
+	assert.Contains(t, got, "X-Echo: yes", "file should record response headers")
+	assert.Contains(t, got, responseBody, "file should record response body via tee")
 }
 
 // TestDumper_CapturesStreamingResponse asserts the tee sees every
@@ -492,6 +503,52 @@ func TestDumper_CapturesStreamingResponse(t *testing.T) {
 	require.True(t, ok)
 	s := v.(*slot)
 	require.NotNil(t, s.capture)
-	assert.Equal(t, expected, s.capture.responseBody.String(),
-		"tee should have captured every streaming chunk in order")
+
+	contents, err := os.ReadFile(s.capture.Path())
+	require.NoError(t, err)
+	got := string(contents)
+	assert.Contains(t, got, expected,
+		"file should contain every streaming chunk captured via tee")
+	assert.Contains(t, got, "Content-Type: application/x-ndjson",
+		"response headers should be in the file")
+}
+
+// TestDumper_FilePathMatchesConvention asserts the on-disk path is
+// <outputDir>/<appName>.request.<RFC3339>.log.
+func TestDumper_FilePathMatchesConvention(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	dir := t.TempDir()
+	d := New("my-app", WithOutputDir(dir))
+	t.Cleanup(func() { _ = d.Close() })
+
+	const threadID = "path-t1"
+	d.Enable(threadID)
+
+	client := &http.Client{Transport: d.Wrap(http.DefaultTransport)}
+	req, err := http.NewRequestWithContext(
+		loop.WithThreadID(context.Background(), threadID),
+		http.MethodGet, server.URL, nil,
+	)
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+
+	v, ok := d.arms.Load(threadID)
+	require.True(t, ok)
+	s := v.(*slot)
+	require.NotNil(t, s.capture)
+
+	path := s.capture.Path()
+	assert.True(t, strings.HasPrefix(path, dir),
+		"path=%q should be inside %q", path, dir)
+	assert.Contains(t, path, "my-app.request.")
+	assert.Contains(t, path, ".log")
 }
