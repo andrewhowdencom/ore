@@ -94,14 +94,14 @@ var ToolDescriptor = tool.Tool{
 // handler validates the command input (non-empty after trimming) and, when
 // valid, emits a loop.PropertiesEvent directly so the slash path does not
 // need a tool-handler pipeline. Empty or whitespace-only input is reported
-// back to the user via Result.Feedback with usage information and no
+// back to the user via Result.Notice with usage information and no
 // PropertiesEvent is emitted.
 func Slash() slash.Handler {
 	return func(ctx context.Context, emitter loop.Emitter, cmd slash.Command) (slash.Result, error) {
 		title, err := emitTitle(cmd.Input)
 		if err != nil {
 			return slash.Result{
-				Feedback: artifact.Text{Content: "Usage: /name <text>"},
+				Notice: loop.Notice{Content: "Usage: /name <text>", Severity: loop.SeverityInfo},
 			}, nil
 		}
 		emitter.Emit(ctx, loop.PropertiesEvent{

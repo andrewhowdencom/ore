@@ -56,7 +56,6 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
@@ -219,7 +218,10 @@ func run() error {
 	slashReg.Bind("compact", "Compact conversation history", func(ctx context.Context, emitter loop.Emitter, cmd slash.Command) (slash.Result, error) {
 		stream := cmd.Stream()
 		if stream == nil {
-			return slash.Result{Feedback: artifact.Text{Content: "no active session"}}, nil
+			return slash.Result{Notice: loop.Notice{
+				Content:  "no active session",
+				Severity: loop.SeverityInfo,
+			}}, nil
 		}
 
 		emitter.Emit(ctx, loop.ActivityEvent{Active: true, Description: "compacting", Ctx: ctx})
@@ -239,18 +241,21 @@ func run() error {
 				// Caller (us) is expected NOT to append anything on
 				// truncation; the buffer is preserved as-is. Surface
 				// the failure to the user.
-				return slash.Result{Feedback: artifact.Text{
-					Content: "compaction failed: summary was truncated; original history preserved.",
+				return slash.Result{Notice: loop.Notice{
+					Content:  "compaction failed: summary was truncated; original history preserved.",
+					Severity: loop.SeverityWarn,
 				}}, nil
 			}
-			return slash.Result{Feedback: artifact.Text{
-				Content: fmt.Sprintf("compaction failed: %v", err),
+			return slash.Result{Notice: loop.Notice{
+				Content:  fmt.Sprintf("compaction failed: %v", err),
+				Severity: loop.SeverityError,
 			}}, nil
 		}
 
 		if err := stream.AppendTurn(ctx, turn.Role, turn.Artifacts...); err != nil {
-			return slash.Result{Feedback: artifact.Text{
-				Content: fmt.Sprintf("appending compaction turn: %v", err),
+			return slash.Result{Notice: loop.Notice{
+				Content:  fmt.Sprintf("appending compaction turn: %v", err),
+				Severity: loop.SeverityError,
 			}}, nil
 		}
 
@@ -262,7 +267,10 @@ func run() error {
 			slog.Warn("compact: save failed", "err", err)
 		}
 
-		return slash.Result{Feedback: artifact.Text{Content: "compacted conversation history"}}, nil
+		return slash.Result{Notice: loop.Notice{
+			Content:  "compacted conversation history",
+			Severity: loop.SeveritySuccess,
+		}}, nil
 	})
 	slashReg.Bind("model", "Set the model for this session", set_model.Slash())
 
