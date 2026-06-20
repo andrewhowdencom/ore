@@ -897,7 +897,7 @@ func TestHandler_ListThreads_DefaultLimit(t *testing.T) {
 
 	require.Equal(t, 200, rr.Code)
 	ids := threadIDsInPage(t, rr.Body.Bytes())
-	require.Len(t, ids, defaultThreadPageSize)
+	require.Len(t, ids, session.DefaultPageSize)
 
 	// The most recently updated (i=0) should be first.
 	assert.Equal(t, "t-00", ids[0])
@@ -1063,8 +1063,8 @@ func TestHandler_ListThreads_LimitClamped(t *testing.T) {
 		{"zero clamps to 1", "?limit=0", 1},
 		{"negative clamps to 1", "?limit=-5", 1},
 		{"huge clamps to 100", "?limit=99999", 100},
-		{"empty defaults to 20", "?limit=", defaultThreadPageSize},
-		{"non-numeric defaults to 20", "?limit=abc", defaultThreadPageSize},
+		{"empty defaults to 20", "?limit=", session.DefaultPageSize},
+		{"non-numeric defaults to 20", "?limit=abc", session.DefaultPageSize},
 		{"valid limit honoured", "?limit=7", 7},
 	}
 	for _, tt := range tests {
@@ -1086,7 +1086,7 @@ func TestHandler_LandingPage_IncludesLoadMoreWhenMorePagesExist(t *testing.T) {
 
 	// Seed more threads than the default page size so a next cursor exists.
 	now := time.Now()
-	for i := 0; i < defaultThreadPageSize+5; i++ {
+	for i := 0; i < session.DefaultPageSize+5; i++ {
 		seedThread(t, store, fmt.Sprintf("t-%02d", i), now.Add(-time.Duration(i)*time.Minute))
 	}
 
@@ -1110,7 +1110,7 @@ func TestHandler_LandingPage_IncludesLoadMoreWhenMorePagesExist(t *testing.T) {
 	require.NotEmpty(t, cursor)
 
 	// The cursor must round-trip through the decoder.
-	decoded, err := decodeThreadCursor(cursor)
+	decoded, err := session.DecodeCursor(cursor)
 	require.NoError(t, err)
 	assert.NotZero(t, decoded.UpdatedAt)
 	assert.NotEmpty(t, decoded.ID)

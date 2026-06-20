@@ -130,7 +130,7 @@ func (h *Handler) serveLanding(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		return
 	}
 
-	page, next, err := paginateAndSortThreads(threads, defaultThreadPageSize, "")
+	page, next, err := session.Paginate(threads, session.DefaultPageSize, "")
 	if err != nil {
 		// The cursor is always empty for the landing page, so any error
 		// here is unexpected and indicates a programming error.
@@ -531,9 +531,9 @@ func (h *Handler) listThreads(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 
 	limit := parseLimit(r.URL.Query().Get("limit"))
-	page, next, err := paginateAndSortThreads(threads, limit, r.URL.Query().Get("cursor"))
+	page, next, err := session.Paginate(threads, limit, r.URL.Query().Get("cursor"))
 	if err != nil {
-		if errors.Is(err, errInvalidCursor) {
+		if errors.Is(err, session.ErrInvalidCursor) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(stdhttp.StatusBadRequest)
 			_ = json.NewEncoder(w).Encode(map[string]string{
