@@ -59,4 +59,36 @@
 // Content functions are re-evaluated on every Transform call, so
 // applications can close over mutable state (e.g., stream.Metadata) to
 // switch personas or roles dynamically.
+//
+// # Multi-Identity Stacking
+//
+// The Transform has no opinion about what each fragment represents. When
+// multiple fragments each carry a complete agent definition (a body that
+// starts with "## Identity" and prescribes operational rules), the
+// resulting RoleSystem turn contains multiple "## Identity" sections with
+// mutually exclusive instructions. The LLM then has no internal mechanism
+// to determine which identity is active and may refuse valid actions or
+// perform actions it shouldn't.
+//
+// This is a consumer composition error, not a transform bug. To avoid
+// it, load agent definitions via the dedicated helpers in
+// x/systemprompt/source: source.Agent loads exactly one active identity
+// from "<dir>/<name>.md", and source.AgentReferenceIndex renders the
+// other available agents as a compact bullet list. Pair the two so the
+// active agent's full body is in context, and the rest are summarised
+// by name + description without contradicting operational rules:
+//
+//	import (
+//	    "github.com/andrewhowdencom/ore/x/systemprompt"
+//	    "github.com/andrewhowdencom/ore/x/systemprompt/source"
+//	)
+//
+//	transform, _ := systemprompt.New(
+//	    systemprompt.WithContentFuncs(
+//	        source.Agent("/path/to/agents", activeName),
+//	        source.AgentReferenceIndex("/path/to/agents", activeName),
+//	    ),
+//	)
+//
+// See x/systemprompt/source for the full agent-loading API.
 package systemprompt
