@@ -252,3 +252,312 @@ func TestAgent_DynamicUpdate(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("second"), 0644))
 	assert.Equal(t, "second", fn())
 }
+
+func TestAgentReferenceIndex(t *testing.T) {
+	const buildAgent = `---
+description: Execute a structured development plan from .plans/<plan-name>.md
+argument-hint: "<plan-name>"
+---
+
+## Identity
+You are a build agent.
+`
+	const planAgent = `---
+description: Create a structured software development plan
+argument-hint: "<plan-name> [requirements...]"
+---
+
+## Identity
+You are a planning agent.
+`
+	const ideationAgent = `---
+description: "Conversational ideation partner — explore ideas, surface tradeoffs"
+---
+
+## Identity
+You are an ideation agent.
+`
+	const malformedAgent = `# No frontmatter here
+Just a body.
+`
+	const noFieldsAgent = `---
+random-key: value
+---
+
+## Identity
+Body
+`
+
+	tests := []struct {
+		name     string
+		active   string
+		setup    func(t *testing.T) string
+		expected string
+	}{
+		{
+			name:   "missing directory returns empty string",
+			active: "build",
+			setup: func(t *testing.T) string {
+				return filepath.Join(t.TempDir(), "does-not-exist")
+			},
+			expected: "",
+		},
+		{
+			name:   "empty directory returns empty string",
+			active: "build",
+			setup: func(t *testing.T) string {
+				return t.TempDir()
+			},
+			expected: "",
+		},
+		{
+			name:   "only active agent present returns empty string",
+			active: "build",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "build.md"), []byte(buildAgent), 0644))
+				return dir
+			},
+			expected: "",
+		},
+		{
+			name:   "multiple agents, active excluded",
+			active: "build",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "build.md"), []byte(buildAgent), 0644))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "plan.md"), []byte(planAgent), 0644))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "ideation.md"), []byte(ideationAgent), 0644))
+				return dir
+			},
+			expected: "## Other Available Agents\n\n" +
+				"- **ideation**: Conversational ideation partner — explore ideas, surface tradeoffs.\n" +
+				"- **plan**: Create a structured software development plan. `<plan-name> [requirements...]`",
+		},
+		{
+			name:   "missing frontmatter fields render with filename only",
+			active: "build",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "build.md"), []byte(buildAgent), 0644))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "blank.md"), []byte(noFieldsAgent), 0644))
+				return dir
+			},
+			expected: "## Other Available Agents\n\n- **blank**",
+		},
+		{
+			name:   "malformed agent file is still listed with filename",
+			active: "build",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "build.md"), []byte(buildAgent), 0644))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "broken.md"), []byte(malformedAgent), 0644))
+				return dir
+			},
+			expected: "## Other Available Agents\n\n- **broken**",
+		},
+		{
+			name:   "non-md files are ignored",
+			active: "build",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "build.md"), []byte(buildAgent), 0644))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "plan.txt"), []byte("not markdown"), 0644))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "ideation.md.bak"), []byte("backup"), 0644))
+				return dir
+			},
+			expected: "",
+		},
+		{
+			name:   "description with surrounding quotes is stripped",
+			active: "build",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "build.md"), []byte(buildAgent), 0644))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "ideation.md"), []byte(ideationAgent), 0644))
+				return dir
+			},
+			expected: "## Other Available Agents\n\n" +
+				"- **ideation**: Conversational ideation partner — explore ideas, surface tradeoffs.",
+		},
+		{
+			name:   "empty activeName excludes nothing",
+			active: "",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "build.md"), []byte(buildAgent), 0644))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "plan.md"), []byte(planAgent), 0644))
+				return dir
+			},
+			expected: "## Other Available Agents\n\n" +
+				"- **build**: Execute a structured development plan from .plans/<plan-name>.md. `<plan-name>`\n" +
+				"- **plan**: Create a structured software development plan. `<plan-name> [requirements...]`",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := tt.setup(t)
+			assert.Equal(t, tt.expected, AgentReferenceIndex(dir, tt.active)())
+		})
+	}
+}
+
+func TestAgentReferenceIndex_DynamicUpdate(t *testing.T) {
+	dir := t.TempDir()
+	buildPath := filepath.Join(dir, "build.md")
+	planPath := filepath.Join(dir, "plan.md")
+	require.NoError(t, os.WriteFile(buildPath, []byte(`---
+description: Build agent
+---
+
+body
+`), 0644))
+
+	fn := AgentReferenceIndex(dir, "build")
+	assert.Equal(t, "", fn()) // build excluded, plan absent
+
+	require.NoError(t, os.WriteFile(planPath, []byte(`---
+description: Plan agent
+---
+
+body
+`), 0644))
+	assert.Equal(t, "## Other Available Agents\n\n- **plan**: Plan agent.", fn())
+}
+
+func TestParseAgentFrontmatter(t *testing.T) {
+	tests := []struct {
+		name              string
+		input             string
+		wantName          string
+		wantDescription   string
+		wantArgumentHint  string
+	}{
+		{
+			name: "full frontmatter with description and argument-hint",
+			input: `---
+description: Build an agent
+argument-hint: "<name>"
+---
+
+## Identity
+body
+`,
+			wantName:         "",
+			wantDescription:  "Build an agent",
+			wantArgumentHint: "<name>",
+		},
+		{
+			name: "frontmatter with description only",
+			input: `---
+description: Build an agent
+---
+
+body
+`,
+			wantName:         "",
+			wantDescription:  "Build an agent",
+			wantArgumentHint: "",
+		},
+		{
+			name: "quoted description is stripped",
+			input: `---
+description: "Quoted description"
+---
+`,
+			wantName:         "",
+			wantDescription:  "Quoted description",
+			wantArgumentHint: "",
+		},
+		{
+			name: "single-quoted description is stripped",
+			input: `---
+description: 'single quoted'
+---
+`,
+			wantName:         "",
+			wantDescription:  "single quoted",
+			wantArgumentHint: "",
+		},
+		{
+			name:             "no frontmatter delimiters returns zero values",
+			input:            "no frontmatter\njust body",
+			wantName:         "",
+			wantDescription:  "",
+			wantArgumentHint: "",
+		},
+		{
+			name: "unclosed frontmatter yields whatever lines were parseable",
+			input: `---
+description: dangling
+`,
+			wantName:         "",
+			wantDescription:  "dangling",
+			wantArgumentHint: "",
+		},
+		{
+			name:             "empty content returns zero values",
+			input:            "",
+			wantName:         "",
+			wantDescription:  "",
+			wantArgumentHint: "",
+		},
+		{
+			name: "extra keys are ignored",
+			input: `---
+name: ignored
+description: real description
+author: anonymous
+---
+`,
+			wantName:         "",
+			wantDescription:  "real description",
+			wantArgumentHint: "",
+		},
+		{
+			name: "lines without colons are skipped",
+			input: `---
+description: real
+this line has no colon
+argument-hint: "<x>"
+---
+`,
+			wantName:         "",
+			wantDescription:  "real",
+			wantArgumentHint: "<x>",
+		},
+		{
+			name: "CRLF line endings are normalized",
+			input: "---\r\ndescription: crlf\r\n---\r\n",
+			wantName:         "",
+			wantDescription:  "crlf",
+			wantArgumentHint: "",
+		},
+		{
+			name: "leading horizontal whitespace is tolerated",
+			input: "  ---\ndescription: indented\n---\n",
+			wantName:         "",
+			wantDescription:  "indented",
+			wantArgumentHint: "",
+		},
+		{
+			name: "empty description value is preserved",
+			input: `---
+description:
+argument-hint: "<x>"
+---
+`,
+			wantName:         "",
+			wantDescription:  "",
+			wantArgumentHint: "<x>",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name, description, argumentHint := parseAgentFrontmatter(tt.input)
+			assert.Equal(t, tt.wantName, name, "name")
+			assert.Equal(t, tt.wantDescription, description, "description")
+			assert.Equal(t, tt.wantArgumentHint, argumentHint, "argumentHint")
+		})
+	}
+}
