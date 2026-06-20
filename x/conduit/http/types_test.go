@@ -246,7 +246,6 @@ func TestRoundTrip_OutputEvent(t *testing.T) {
 		loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc", "state": "ready"}},
 		loop.LifecycleEvent{Phase: "submitted"},
 		loop.LifecycleEvent{Phase: "done", Ctx: loop.WithProvenance(context.Background(), "http")},
-		loop.FeedbackEvent{Content: "help message"},
 	}
 
 	for _, event := range events {
@@ -583,11 +582,6 @@ func TestValidateEventSchemas(t *testing.T) {
 			schemaName: "LifecycleEvent",
 		},
 		{
-			name:       "feedback",
-			event:      loop.FeedbackEvent{Content: "help message"},
-			schemaName: "FeedbackEvent",
-		},
-		{
 			name:       "notice_success",
 			event:      loop.NoticeEvent{Notice: loop.Notice{Content: "switched role", Severity: loop.SeveritySuccess}},
 			schemaName: "NoticeEvent",
@@ -652,11 +646,6 @@ func TestValidateEventSchemas_WithContext(t *testing.T) {
 			schemaName: "LifecycleEvent",
 		},
 		{
-			name:       "feedback_with_context",
-			event:      loop.FeedbackEvent{Content: "help message", Ctx: ctx},
-			schemaName: "FeedbackEvent",
-		},
-		{
 			name:       "notice_with_context",
 			event:      loop.NoticeEvent{Notice: loop.Notice{Content: "switched role", Severity: loop.SeveritySuccess}, Ctx: ctx},
 			schemaName: "NoticeEvent",
@@ -670,13 +659,6 @@ func TestValidateEventSchemas_WithContext(t *testing.T) {
 			validateAgainstSchema(t, tt.schemaName, data)
 		})
 	}
-}
-
-func TestMarshalOutputEvent_Feedback(t *testing.T) {
-	event := loop.FeedbackEvent{Content: "help message"}
-	data, err := MarshalOutputEvent(event)
-	require.NoError(t, err)
-	assert.JSONEq(t, `{"kind":"feedback","content":"help message"}`, string(data))
 }
 
 func TestUnmarshalOutputEvent_Notice(t *testing.T) {
@@ -742,24 +724,6 @@ func TestRoundTrip_NoticeEvent(t *testing.T) {
 			assert.Equal(t, event, got)
 		})
 	}
-}
-
-func TestUnmarshalOutputEvent_Feedback(t *testing.T) {
-	got, err := UnmarshalOutputEvent([]byte(`{"kind":"feedback","content":"help message"}`))
-	require.NoError(t, err)
-	fb, ok := got.(loop.FeedbackEvent)
-	require.True(t, ok)
-	assert.Equal(t, "help message", fb.Content)
-}
-
-func TestRoundTrip_FeedbackEvent(t *testing.T) {
-	event := loop.FeedbackEvent{Content: "help message", Ctx: loop.WithProvenance(context.Background(), "http")}
-	data, err := MarshalOutputEvent(event)
-	require.NoError(t, err)
-
-	got, err := UnmarshalOutputEvent(data)
-	require.NoError(t, err)
-	assert.Equal(t, event, got)
 }
 
 type unknownArtifact struct{}

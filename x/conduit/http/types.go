@@ -81,17 +81,6 @@ type lifecycleEventJSON struct {
 	Context *eventContextJSON `json:"context,omitempty"`
 }
 
-// feedbackEventJSON is the JSON representation of a FeedbackEvent.
-// Deprecated: the feedback channel was replaced by NoticeEvent in
-// issue #485. New clients should emit and consume NoticeEvent instead.
-// Kept temporarily for backward compatibility; will be removed once
-// issue #486 (Feedback / FeedbackEvent removal) lands.
-type feedbackEventJSON struct {
-	Kind    string            `json:"kind"`
-	Content string            `json:"content"`
-	Context *eventContextJSON `json:"context,omitempty"`
-}
-
 // noticeEventJSON is the JSON representation of a NoticeEvent.
 // Notice is the framework's unified ephemeral UI channel: every slash
 // success, slash handler error (auto-converted), and other non-inference
@@ -215,12 +204,6 @@ func UnmarshalOutputEvent(data []byte) (loop.OutputEvent, error) {
 			return nil, err
 		}
 		return loop.LifecycleEvent{Phase: dto.Phase, Ctx: eventContextFromJSON(dto.Context)}, nil
-	case "feedback":
-		var dto feedbackEventJSON
-		if err := json.Unmarshal(data, &dto); err != nil {
-			return nil, err
-		}
-		return loop.FeedbackEvent{Content: dto.Content, Ctx: eventContextFromJSON(dto.Context)}, nil
 	case "notice":
 		var dto noticeEventJSON
 		if err := json.Unmarshal(data, &dto); err != nil {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
@@ -51,10 +50,6 @@ func (e InterruptEvent) Context() context.Context { return e.Ctx }
 // loop.NoticeEvent and never persisted to state. Each Notice carries
 // a Severity that conduits use to pick a rendering style (Success, Info,
 // Warn, Error). A nil slice means no notices were produced.
-//
-// Feedback is the legacy channel retained for backward compatibility
-// during the migration to Notice. New interceptors should set Notice
-// instead; Feedback will be removed in a follow-up cleanup.
 type InterceptResult struct {
 	// Event is the replacement event to continue processing. If nil, the
 	// original event is consumed and no further processing occurs.
@@ -62,9 +57,6 @@ type InterceptResult struct {
 	// Notice is the list of ephemeral, user-visible messages emitted as
 	// loop.NoticeEvent after Intercept returns.
 	Notice []loop.Notice
-	// Feedback is the legacy severity-less channel that emits as
-	// loop.FeedbackEvent. Deprecated: set Notice instead.
-	Feedback []artifact.Text
 }
 
 // Interceptor processes events before they enter the LLM pipeline.
@@ -76,8 +68,7 @@ type InterceptResult struct {
 //
 // Notice messages are ephemeral UI messages that are not persisted to
 // state. Each Notice carries a Severity so conduits can pick a rendering
-// style; new interceptors should populate Notice instead of the legacy
-// Feedback field.
+// style.
 //
 // The *session.Stream parameter is the stream that owns the in-flight event,
 // so interceptors can call stream-scoped methods like SetMetadata. It is

@@ -174,10 +174,6 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 			for _, n := range result.Notice {
 				s.step.Emit(context.Background(), loop.NoticeEvent{Notice: n, Ctx: ume.Ctx})
 			}
-			// Legacy severity-less feedback channel; deprecated.
-			for _, fb := range result.Feedback {
-				s.step.Emit(context.Background(), loop.FeedbackEvent{Content: fb.Content, Ctx: ume.Ctx})
-			}
 			if result.Event == nil {
 				return nil
 			}

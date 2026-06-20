@@ -323,7 +323,6 @@ components:
         - error
         - properties
         - lifecycle
-        - feedback
         - notice
 
     EventContext:
@@ -424,7 +423,6 @@ components:
         - $ref: '#/components/schemas/ErrorEvent'
         - $ref: '#/components/schemas/PropertiesEvent'
         - $ref: '#/components/schemas/LifecycleEvent'
-        - $ref: '#/components/schemas/FeedbackEvent'
         - $ref: '#/components/schemas/NoticeEvent'
       discriminator:
         propertyName: kind
@@ -442,7 +440,6 @@ components:
           error: '#/components/schemas/ErrorEvent'
           properties: '#/components/schemas/PropertiesEvent'
           lifecycle: '#/components/schemas/LifecycleEvent'
-          feedback: '#/components/schemas/FeedbackEvent'
           notice: '#/components/schemas/NoticeEvent'
 
     TextEvent:
@@ -660,21 +657,6 @@ components:
             - streaming: first artifact has arrived from the provider
             - done: turn completed successfully
             - cancelled: turn was cancelled
-        context:
-          $ref: '#/components/schemas/EventContext'
-
-    FeedbackEvent:
-      type: object
-      required:
-        - kind
-        - content
-      properties:
-        kind:
-          type: string
-          enum: [feedback]
-        content:
-          type: string
-          description: Human-readable feedback text
         context:
           $ref: '#/components/schemas/EventContext'
 
