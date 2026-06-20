@@ -13,15 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// mockHTTPMarkdownValue is a test double that implements artifact.MarkdownRenderer.
-type mockHTTPMarkdownValue struct {
-	output string
-}
-
-func (m mockHTTPMarkdownValue) MarshalMarkdown() string {
-	return m.output
-}
-
 func TestUnmarshalArtifact(t *testing.T) {
 	tests := []struct {
 		name    string

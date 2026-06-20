@@ -88,7 +88,7 @@ func TestModel_View_AssistantTurn_FallbackToPlainText(t *testing.T) {
 func TestModel_View_AssistantTurn_WithReasoning(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
 			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "the answer"},
@@ -112,7 +112,7 @@ func TestModel_View_AssistantTurn_WithReasoning(t *testing.T) {
 func TestModel_View_AssistantTurn_MultiBlockSpacing(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 	m.turns = []renderedTurn{
 		{role: state.RoleAssistant, blocks: []renderedBlock{
 			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "let me think..."},
@@ -151,7 +151,7 @@ func TestModel_View_AssistantTurn_Reasoning_Rendered(t *testing.T) {
 	}
 	newM2, _ := mm.Update(turnMsg{turn: turn})
 	mm2 := newM2.(*model)
-	mm2.expandLatestDetails = true
+	mm2.expandAllDetails = true
 	mm2.contentDirty = true
 	mm2.syncViewport()
 	output := mm2.View().Content
@@ -203,7 +203,7 @@ func TestBuildContent_Reasoning_Expanded(t *testing.T) {
 			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "because 2+2=4", rendered: "rendered-reasoning"},
 		}},
 	}
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 	output := m.buildContent()
 	assert.Contains(t, output, "Assistant")
 	assert.NotContains(t, output, "· |s|")
@@ -213,7 +213,7 @@ func TestBuildContent_Reasoning_Expanded(t *testing.T) {
 	assert.NotContains(t, output, "Thinking...")
 }
 
-func TestBuildContent_Reasoning_OldTurn_AlwaysCompact(t *testing.T) {
+func TestBuildContent_Reasoning_ExpandAllDetails_GlobalScope(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
@@ -226,11 +226,18 @@ func TestBuildContent_Reasoning_OldTurn_AlwaysCompact(t *testing.T) {
 			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "latest reasoning", rendered: "latest-reasoning"},
 		}},
 	}
-	m.expandLatestDetails = true
+	// With global semantics, expandAllDetails = true must expand reasoning
+	// blocks in BOTH historical turns, not just the latest.
+	m.expandAllDetails = true
 	output := m.buildContent()
-	// The latest reasoning should be expanded
-	assert.Contains(t, output, "latest-reasoning")
-	// The old reasoning should stay compact
+	assert.Contains(t, output, "latest-reasoning", "latest turn's reasoning should be expanded")
+	assert.Contains(t, output, "first-reasoning", "historical turn's reasoning should be expanded under global scope")
+
+	// And with the flag off, neither should be expanded.
+	m.expandAllDetails = false
+	m.contentDirty = true
+	output = m.buildContent()
+	assert.NotContains(t, output, "latest-reasoning")
 	assert.NotContains(t, output, "first-reasoning")
 }
 
@@ -502,7 +509,7 @@ func TestRenderReasoning_ErrorFallback(t *testing.T) {
 	assert.Empty(t, mm2.turns[0].blocks[0].rendered, "render error should leave rendered empty")
 	assert.Equal(t, "let me think...", mm2.turns[0].blocks[0].source, "raw text should still be stored")
 
-	mm2.expandLatestDetails = true
+	mm2.expandAllDetails = true
 	mm2.contentDirty = true
 	mm2.syncViewport()
 	output := mm2.View().Content
@@ -698,13 +705,13 @@ func TestBuildContent_ExpandLatestTools_Toggle(t *testing.T) {
 	}
 
 	// Compact mode (default): blocks use borderless header styles.
-	m.expandLatestDetails = false
+	m.expandAllDetails = false
 	compactOutput := m.buildContent()
 	assert.Contains(t, compactOutput, "search_files")
 	assert.Contains(t, compactOutput, "result data")
 
 	// Expanded mode: shows full source content.
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 	m.contentDirty = true
 	expandedOutput := m.buildContent()
 	assert.Contains(t, expandedOutput, "Calling: search_files")
@@ -736,12 +743,12 @@ func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
 	}
 
 	// Compact mode: error block should be wrapped in the error style.
-	m.expandLatestDetails = false
+	m.expandAllDetails = false
 	output := m.buildContent()
 	assert.Contains(t, output, "Error: failed")
 
 	// Expanded mode: error block should be wrapped in the error style.
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 	m.contentDirty = true
 	output = m.buildContent()
 	assert.Contains(t, output, "Error: failed")
@@ -771,7 +778,7 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 	}
 
 	// Compact mode: blocks use borderless header styles.
-	m.expandLatestDetails = false
+	m.expandAllDetails = false
 	output := m.buildContent()
 	assert.Contains(t, output, "foo")
 	assert.Contains(t, output, "bar")
@@ -779,7 +786,7 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 	assert.Contains(t, output, "result2")
 
 	// Expanded mode: shows full source content.
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 	m.contentDirty = true
 	output = m.buildContent()
 	assert.Contains(t, output, "Calling: foo({})")
@@ -791,7 +798,7 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 func TestBuildContent_MixedBlocks(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 
 	// A single assistant turn can contain text, tool_call, and reasoning
 	// blocks interleaved. tool_result blocks belong in separate RoleTool turns.
@@ -856,7 +863,7 @@ func TestBuildContent_ToggleNoToolBlocks(t *testing.T) {
 	}
 
 	// Toggle on — no tool blocks, view should be unchanged
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 	output := m.buildContent()
 	assert.Contains(t, output, "Assistant")
 	assert.NotContains(t, output, "· |s|")
@@ -876,7 +883,7 @@ func TestBuildContent_CompactToolCall_BlockStyling(t *testing.T) {
 		},
 	}
 
-	m.expandLatestDetails = false
+	m.expandAllDetails = false
 	output := m.buildContent()
 	assert.Contains(t, output, "foo")
 }
@@ -919,7 +926,7 @@ func TestModel_View_IncrementalToolCall_CompactAndExpanded(t *testing.T) {
 	assert.Contains(t, output1, "foo") // compact content shown in styled block
 
 	// Toggle expanded.
-	mm.expandLatestDetails = true
+	mm.expandAllDetails = true
 	mm.contentDirty = true
 	mm.syncViewport()
 	output2 := mm.View().Content
@@ -943,7 +950,7 @@ func TestModel_View_IncrementalReasoning_ExpandCollapse(t *testing.T) {
 	assert.NotContains(t, output1, "rendered-reasoning")
 
 	// Toggle expanded.
-	mm.expandLatestDetails = true
+	mm.expandAllDetails = true
 	mm.contentDirty = true
 	mm.syncViewport()
 	output2 := mm.View().Content
@@ -953,7 +960,7 @@ func TestModel_View_IncrementalReasoning_ExpandCollapse(t *testing.T) {
 	assert.NotContains(t, output2, "Thinking...")
 
 	// Toggle collapsed again.
-	mm.expandLatestDetails = false
+	mm.expandAllDetails = false
 	mm.contentDirty = true
 	mm.syncViewport()
 	output3 := mm.View().Content
@@ -1002,7 +1009,7 @@ func TestBuildContent_CompletedReasoning_CharCount(t *testing.T) {
 func TestBuildContent_Reasoning_Expanded_NoCounter(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 	m.currentTurn.blocks = []renderedBlock{
 		{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "let me think...", rendered: "rendered-reasoning"},
 	}
@@ -1187,6 +1194,116 @@ func TestBuildStatusLine_NoTokenKeys(t *testing.T) {
 	assert.Equal(t, 1, lines)
 	assert.Contains(t, rendered, "phase: streaming")
 	assert.NotContains(t, rendered, "tokens")
+}
+
+// TestBuildStatusLine_ThinkingKeyGrouped asserts that when all four
+// token-family keys are present, the renderer produces the compact
+// "↑ X · ↓ Y · Σ Z · Ψ T" segment in the documented order, and that
+// non-token keys continue to appear separately.
+func TestBuildStatusLine_ThinkingKeyGrouped(t *testing.T) {
+	status := map[string]string{
+		"sent":      "100",
+		"received":  "50",
+		"total":     "150",
+		"thinking":  "7",
+		"phase":     "done",
+		"thread_id": "abc-123",
+	}
+	rendered, lines := buildStatusLine(theme.Dark(), status, 200)
+	assert.Equal(t, 1, lines)
+	assert.Contains(t, rendered, "↑ 100")
+	assert.Contains(t, rendered, "↓ 50")
+	assert.Contains(t, rendered, "Σ 150")
+	assert.Contains(t, rendered, "Ψ 7")
+	// Verify the four symbols appear in the documented order, joined by " · ".
+	symIdx := []int{
+		strings.Index(rendered, "↑"),
+		strings.Index(rendered, "↓"),
+		strings.Index(rendered, "Σ"),
+		strings.Index(rendered, "Ψ"),
+	}
+	for i := 1; i < len(symIdx); i++ {
+		assert.Greater(t, symIdx[i], symIdx[i-1],
+			"symbol %d must appear after symbol %d in the compact segment", i, i-1)
+	}
+	// Non-token keys must still appear.
+	assert.Contains(t, rendered, "phase: done")
+	assert.Contains(t, rendered, "thread_id: abc-123")
+	// The thinking key must not be re-emitted as "thinking: 7" by the
+	// "remaining keys alphabetically" loop.
+	assert.NotContains(t, rendered, "thinking: 7")
+}
+
+// TestBuildStatusLine_ThinkingKeyOnly asserts that a status map containing
+// only the thinking key renders "Ψ 0" and does not invent zero values for
+// the other three counters (which would only be present if the handler had
+// emitted them).
+func TestBuildStatusLine_ThinkingKeyOnly(t *testing.T) {
+	status := map[string]string{
+		"thinking": "0",
+	}
+	rendered, lines := buildStatusLine(theme.Dark(), status, 200)
+	assert.Equal(t, 1, lines)
+	assert.Contains(t, rendered, "Ψ 0")
+	assert.NotContains(t, rendered, "↑")
+	assert.NotContains(t, rendered, "↓")
+	assert.NotContains(t, rendered, "Σ")
+	// And the key must not be re-emitted by the "remaining keys" loop.
+	assert.NotContains(t, rendered, "thinking: 0")
+}
+
+// TestBuildStatusLine_ThinkingKeyNotDoubleRendered is a regression guard:
+// buildStatusLine groups token-family keys into the compact segment AND
+// skips them in the alphabetical "remaining keys" loop. If the skip
+// filter forgets the new key, "Ψ 42" would appear in the compact segment
+// AND "thinking: 42" would appear after it. This test asserts the
+// double-render cannot happen.
+func TestBuildStatusLine_ThinkingKeyNotDoubleRendered(t *testing.T) {
+	status := map[string]string{
+		"thinking": "42",
+	}
+	rendered, lines := buildStatusLine(theme.Dark(), status, 200)
+	assert.Equal(t, 1, lines)
+	assert.Equal(t, 1, strings.Count(rendered, "Ψ"),
+		"Ψ must appear exactly once in the rendered status line")
+	assert.Equal(t, 1, strings.Count(rendered, "42"),
+		"42 must appear exactly once in the rendered status line")
+	assert.NotContains(t, rendered, "thinking:")
+}
+
+// TestCompactTokenSegments_NarrativeOrder asserts that compactTokenSegments
+// emits the four-token segment in the documented order
+// "↑ sent · ↓ received · Σ total · Ψ thinking" regardless of the order
+// of the input segments. Prior to the fix, sort.Strings produced
+// Unicode-byte order (Σ Ψ ↑ ↓), which grouped the Greek letters together
+// and the arrows together, splitting the cluster visually.
+func TestCompactTokenSegments_NarrativeOrder(t *testing.T) {
+	segs := []conduit.StatusSegment{
+		{Label: "total", Value: "150", Zone: "lifecycle"},
+		{Label: "thinking", Value: "7", Zone: "lifecycle"},
+		{Label: "received", Value: "50", Zone: "lifecycle"},
+		{Label: "sent", Value: "100", Zone: "lifecycle"},
+	}
+	got := compactTokenSegments(segs)
+	require.Len(t, got, 1, "expected exactly one tokens segment")
+	assert.Equal(t, "tokens", got[0].Label)
+	assert.Equal(t, "lifecycle", got[0].Zone)
+	assert.Equal(t, "↑ 100 · ↓ 50 · Σ 150 · Ψ 7", got[0].Value,
+		"tokens must render in narrative order regardless of input order")
+}
+
+// TestCompactTokenSegments_PartialKeys asserts that missing keys in the
+// input are simply skipped (not rendered as empty placeholders) and that
+// the surviving keys still appear in narrative order.
+func TestCompactTokenSegments_PartialKeys(t *testing.T) {
+	segs := []conduit.StatusSegment{
+		{Label: "thinking", Value: "7", Zone: "lifecycle"},
+		{Label: "sent", Value: "100", Zone: "lifecycle"},
+	}
+	got := compactTokenSegments(segs)
+	require.Len(t, got, 1)
+	assert.Equal(t, "↑ 100 · Ψ 7", got[0].Value,
+		"partial key set must not introduce placeholder gaps")
 }
 
 func TestBuildStatusLine_ZoneGrouping(t *testing.T) {

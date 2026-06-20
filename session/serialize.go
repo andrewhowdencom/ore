@@ -9,24 +9,10 @@ import (
 	"github.com/andrewhowdencom/ore/state"
 )
 
-// artifactRegistry maps artifact Kind() strings to factory functions
-// that produce the corresponding concrete type. It is used during
-// unmarshaling to instantiate the correct artifact struct.
-//
-// Factories return a pointer because json.Unmarshal requires a
-// pointer target. The pointer is dereferenced in unmarshalArtifacts
-// before being stored in the returned slice, so consumers see value
-// types — matching what in-memory construction (e.g. artifact.Text{})
-// produces. This is the single shape observed at every other boundary
-// in the framework.
-var artifactRegistry = map[string]func() artifact.Artifact{
-	"text":        func() artifact.Artifact { return &artifact.Text{} },
-	"tool_call":   func() artifact.Artifact { return &artifact.ToolCall{} },
-	"tool_result": func() artifact.Artifact { return &artifact.ToolResult{} },
-	"usage":       func() artifact.Artifact { return &artifact.Usage{} },
-	"image":       func() artifact.Artifact { return &artifact.Image{} },
-	"reasoning":   func() artifact.Artifact { return &artifact.Reasoning{} },
-}
+// artifactRegistry is removed. The package-level registry in the
+// artifact package is now populated by per-type init() blocks and
+// exposed via artifact.Registered(). Keeping a parallel map here
+// would defeat the drift-detection test — see issue #453.
 
 // artifactWrapper is the JSON envelope for a single artifact.
 type artifactWrapper struct {
@@ -78,17 +64,24 @@ func marshalArtifacts(artifacts []artifact.Artifact) ([]byte, error) {
 // succeeds on round-tripped data — the silent failure mode that
 // issue #416 surfaced for the byte counter, and that affected every
 // value-form type assertion in production code, is fixed here.
+//
+// Factories are obtained from artifact.Registered() — the registry
+// is populated by per-type init() blocks in the artifact package.
+// Adding a new persistable artifact type in that package registers
+// itself automatically; forgetting to add it triggers the
+// drift-detection test in the artifact package.
 func unmarshalArtifacts(data []byte) ([]artifact.Artifact, error) {
 	var wrappers []artifactWrapper
 	if err := json.Unmarshal(data, &wrappers); err != nil {
 		return nil, fmt.Errorf("unmarshal artifact wrappers: %w", err)
 	}
 
+	registry := artifact.Registered()
 	artifacts := make([]artifact.Artifact, len(wrappers))
 	for i, w := range wrappers {
-		factory, ok := artifactRegistry[w.Kind]
+		factory, ok := registry[w.Kind]
 		if !ok {
-			return nil, fmt.Errorf("unknown artifact kind %q", w.Kind)
+			return nil, fmt.Errorf("unmarshal artifact %d: unknown artifact kind %q", i, w.Kind)
 		}
 		a := factory()
 		if err := json.Unmarshal(w.Data, a); err != nil {
@@ -103,6 +96,11 @@ func unmarshalArtifacts(data []byte) ([]artifact.Artifact, error) {
 // to its value. For nil or unknown shapes, the input is returned
 // unchanged. This is the boundary that makes "round-tripped" and
 // "in-memory" artifacts observationally identical at the slice level.
+//
+// The set of cases below must cover every type in the artifact
+// package's Persistent manifest. The drift test in
+// ore/artifact/drift_test.go asserts that this list and
+// artifact.AllPersistent() stay in lock-step.
 func dereferenceArtifact(a artifact.Artifact) artifact.Artifact {
 	switch v := a.(type) {
 	case *artifact.Text:
@@ -116,6 +114,12 @@ func dereferenceArtifact(a artifact.Artifact) artifact.Artifact {
 	case *artifact.Image:
 		return *v
 	case *artifact.Usage:
+		return *v
+	case *artifact.StopReason:
+		return *v
+	case *artifact.ReasoningSignature:
+		return *v
+	case *artifact.Compaction:
 		return *v
 	default:
 		return a

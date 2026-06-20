@@ -1,97 +1,122 @@
-// Package compaction provides a state compaction framework that reduces the
-// size of a conversation state.
+// Package compaction provides a state-buffer compaction framework for
+// ore conversations. The design is non-destructive: a compaction is an
+// in-band event recorded in the buffer, not a destructive rewrite of
+// state.
 //
-// Compaction is destructive: it mutates the canonical state.Buffer via
-// LoadTurns. The session.Store persists the compacted state. This is
-// intentional — the compactor is a state reducer, not a lens. Triggers
-// evaluate the canonical state, not a growing shadow history.
+// # Design
 //
-// The package defines two extension points:
+// Compaction in ore is *append-only* and *cumulative*:
 //
-//   - Trigger decides whether compaction should run.
-//   - Strategy decides how to reduce the turn slice.
+//   - The state buffer grows monotonically. Compaction never removes
+//     turns from the canonical buffer.
+//   - A compaction produces a single RoleSystem turn carrying an
+//     artifact.Compaction (structured metadata) and an artifact.Text
+//     (the LLM-facing summary). It is appended to the buffer by the
+//     caller (e.g. a slash handler invoking /compact).
+//   - The LLM-facing view is projected through the latest
+//     artifact.Compaction via the Transform in this package. The
+//     summary stands in for everything older than itself; multiple
+//     compactions are cumulative, with each summary absorbing
+//     everything that preceded it.
+//   - Analytics consumers walk the raw buffer unchanged. Pre-compaction
+//     turns remain in the buffer so attribution to specific tools and
+//     artifacts survives compaction.
 //
-// Default implementations are provider-agnostic and have zero external
-// dependencies. Token-aware triggers and LLM summarization strategies are
-// also provided.
+// This replaces the previous destructive model (Compactor + Trigger +
+// Strategy) in which MaybeCompact returned a replacement turn slice
+// for the caller to LoadTurns into the buffer. The destructive
+// surface has been removed entirely; there is no opt-in path for it.
+// AGENTS.md endorses aggressive refactoring at this stage of the
+// project.
 //
-// # Built-in Triggers
+// # Components
 //
-// TurnCountTrigger fires when the number of turns exceeds a threshold.
-// TokenUsageTrigger inspects the most recent artifact.Usage in the turn
-// slice and fires when Usage.TotalTokens exceeds MaxTokens. If no Usage
-// artifact is found, it returns false (graceful degradation). This trigger
-// is provider-specific because not all providers emit Usage artifacts.
+//   - Summarize: a package-level function that calls an LLM provider
+//     to produce a single RoleSystem compaction turn. The function
+//     returns (state.Turn{}, ErrTruncatedSummary) on truncation; the
+//     caller is expected to NOT append anything to the buffer in
+//     that case.
 //
-// # Built-in Strategies
+//   - Transform: a loop.Transform that scans the buffer for the
+//     latest artifact.Compaction and returns a state.View exposing
+//     only the compaction and subsequent turns. It is stateless and
+//     goroutine-safe; a single instance may be shared across many
+//     Step configurations.
 //
-// SummarizeStrategy is a strategy that calls an LLM provider to summarize
-// conversation history, replacing all turns with a single synthetic system
-// summary turn. It always summarizes the entire history; no turns are
-// preserved verbatim after compaction.
+//   - artifact.Compaction: the metadata artifact that marks a
+//     compaction turn. Defined in the root artifact/ package because
+//     it is a framework primitive.
 //
-// The provider is called with the full history loaded into a temporary
-// state.Buffer, followed by a user prompt asking for a concise summary. The
-// summary turn uses RoleSystem because it is injected context about prior
-// conversation, not a real assistant response.
+// # Explicit invocation
 //
-// SummarizeStrategy uses a default structured handoff prompt that produces
-// markdown output with five sections: Primary Goal, Key Decisions &
-// Constraints, Completed Work, Current State / Work in Progress, and Pending
-// Tasks & Next Steps. Applications can override the prompt via the Prompt
-// field.
+// Compaction is triggered explicitly by the user invoking /compact,
+// not by an automatic trigger (no token-count watcher, no turn-count
+// watcher). The slash handler in the calling application is
+// responsible for invoking Summarize and appending the result via
+// session.Stream.AppendTurn. Future work may introduce a Trigger
+// interface as a separate package if applications want automatic
+// compaction; today, the responsibility lives with the caller.
 //
-// SummarizeStrategy only collects artifact.Text responses from the provider.
-// Other artifact types (Usage, Reasoning, ToolCall, etc.) are silently
-// ignored. This is an MVP limitation; future work may add custom formatters
-// or multi-modal support.
+// # Truncation contract
 //
-// # Application wiring
+// Summarize reads the provider's final artifact.StopReason. If the
+// reason is StopReasonLength, the function returns the zero
+// state.Turn and an error wrapping ErrTruncatedSummary. This
+// replaces the previous silent-corruption behavior in which a
+// truncated summary (often a one-token '##' fragment) was written
+// into the conversation buffer as if it were valid. The contract is
+// now:
 //
-// The compactor is called by the application before step.Turn(). If
-// compaction occurs, the application must call buf.LoadTurns():
-//
-//	compactor := compaction.New(
-//		compaction.WithTrigger(compaction.TokenUsageTrigger{MaxTokens: 8000}),
-//		compaction.WithStrategy(compaction.SummarizeStrategy{Provider: prov}),
-//	)
-//
-// WithStrategy accumulates; each call appends another strategy to the
-// pipeline. Strategies execute in registration order.
-//
-//	for {
-//		turns, didCompact, err := compactor.MaybeCompact(ctx, buf.Turns())
-//		if err != nil {
-//			// Strategies are run in-place against the provided slice. On error, the
-//			// original turns are returned unchanged and didCompact is false. This
-//			// prevents callers from accidentally passing a nil slice to LoadTurns or
-//			// ReloadHistory, which would wipe the conversation history.
-//			//
-//			// Log the error and continue without replacing the state buffer.
-//			continue
-//		}
-//		if didCompact {
-//			buf.LoadTurns(turns)
-//		}
-//		_, err = step.Turn(ctx, buf, provider)
+//	turn, err := compaction.Summarize(ctx, prov, spec, stream.Turns())
+//	if errors.Is(err, compaction.ErrTruncatedSummary) {
+//	    // The model hit its output cap mid-summary. Do NOT append
+//	    // anything; surface the failure to the user.
+//	}
+//	if err != nil {
+//	    return err
+//	}
+//	if err := stream.AppendTurn(ctx, turn.Role, turn.Artifacts...); err != nil {
+//	    return err
 //	}
 //
-// The compactor does not emit events. If an application needs to log
-// compaction events, it should do so at the call site based on the bool
-// return value of MaybeCompact.
+// # LLM-facing projection
 //
-// # Defensive composition
+// The Transform is intended to be registered alongside other
+// transforms (systemprompt, guardrails) in the step's transform
+// chain. Registration order matters: system prompts that should
+// appear before the summary should be registered before the
+// compaction transform; system prompts that should override the
+// summary context should be registered after.
 //
-// On strategy error, MaybeCompact and ForceCompact return the original turn
-// slice unchanged with didCompact false. This preserves the caller's history
-// so a downstream LoadTurns or ReloadHistory call does not accidentally wipe
-// the conversation with a nil slice. Log or surface the error at the call site
-// and continue without replacing the state buffer.
+// Example:
 //
-// Applications should also protect against provider failures and context overflow
-// by setting trigger thresholds with safety margins. For example, set
-// MaxTokens well below the provider's hard limit.
+//	step := loop.New(
+//	    loop.WithTransforms(
+//	        systemprompt.New(...),    // prepends the system persona
+//	        compaction.NewTransform(), // projects through latest compaction
+//	        guardrails.New(...),      // adds safety rules on top
+//	    ),
+//	    ...
+//	)
 //
-// Compaction must be called from the same goroutine as step.Turn().
-// state.Buffer is not safe for concurrent use.
+// The canonical buffer is not affected by any of these transforms;
+// they compose purely on the LLM-facing view assembled per call.
+//
+// # Per-invocation budget
+//
+// Summarize owns its own output budget via models.Spec.MaxOutputTokens
+// (default 8192). The function passes this to the provider as a
+// per-invocation provider.WithMaxTokens option so the model has room
+// to produce a complete summary regardless of the adapter's per-model
+// default. This is the fix for the historical 'compaction returns ##'
+// bug, which was caused by an adapter-level default of 1 token
+// combined with a strategy that did not pass any invoke options.
+//
+// # Threading
+//
+// Summarize and Transform are goroutine-safe. They do not share
+// mutable state. The state.Buffer itself is not goroutine-safe, as
+// documented in package state; compaction must be called from the
+// same goroutine as the buffer's owner (typically the session's
+// worker goroutine).
 package compaction

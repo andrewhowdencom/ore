@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/x/usage
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.7.0
+	github.com/andrewhowdencom/ore v0.12.1
 	github.com/stretchr/testify v1.11.1
 )
 

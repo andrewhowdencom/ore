@@ -9,6 +9,24 @@ includes:
   examples:
     taskfile: Taskfile.lib.yml
     dir: examples
+  x-catalog-models:
+    taskfile: Taskfile.lib.yml
+    dir: x/catalog/models
+  x-provider-anthropic:
+    taskfile: Taskfile.lib.yml
+    dir: x/provider/anthropic
+  x-provider-minimax:
+    taskfile: Taskfile.lib.yml
+    dir: x/provider/minimax
+  x-provider-openai:
+    taskfile: Taskfile.lib.yml
+    dir: x/provider/openai
+  x-provider-openrouter:
+    taskfile: Taskfile.lib.yml
+    dir: x/provider/openrouter
+  x-provider-vercel:
+    taskfile: Taskfile.lib.yml
+    dir: x/provider/vercel
   x-conduit:
     taskfile: Taskfile.lib.yml
     dir: x/conduit
@@ -27,12 +45,12 @@ includes:
   x-conduit-tui:
     taskfile: Taskfile.lib.yml
     dir: x/conduit/tui
-  x-provider-anthropic:
+  x-wire-anthropic:
     taskfile: Taskfile.lib.yml
-    dir: x/provider/anthropic
-  x-provider-openai:
+    dir: x/wire/anthropic
+  x-wire-openai:
     taskfile: Taskfile.lib.yml
-    dir: x/provider/openai
+    dir: x/wire/openai
   x-tool:
     taskfile: Taskfile.lib.yml
     dir: x/tool
@@ -85,9 +103,13 @@ tasks:
       - golangci-lint run ./...
 
   generate:
-    desc: Generate code (no-op for this project)
+    desc: Regenerate the model catalog and gateway lookup tables
     cmds:
-      - echo "No code generation required"
+      - go run ./cmd/modelsdev-gen
+      # Re-run is a no-op if upstream is unchanged; the diff check below
+      # fails the task if the second run rewrites anything.
+      - go run ./cmd/modelsdev-gen
+      - git diff --exit-code x/catalog/models/ x/provider/openrouter/lookup.go x/provider/vercel/lookup.go
 
   # ---------------------------------------------------------------------------
   # Validate the whole repository
@@ -97,14 +119,20 @@ tasks:
     deps: [lint, test, build]
     cmds:
       - task examples:validate
+      - task x-catalog-models:validate
+      - task x-provider-anthropic:validate
+      - task x-provider-minimax:validate
+      - task x-provider-openai:validate
+      - task x-provider-openrouter:validate
+      - task x-provider-vercel:validate
       - task x-conduit:validate
       - task x-conduit-http:validate
       - task x-conduit-slack:validate
       - task x-conduit-stdio:validate
       - task x-conduit-telegram:validate
       - task x-conduit-tui:validate
-      - task x-provider-anthropic:validate
-      - task x-provider-openai:validate
+      - task x-wire-anthropic:validate
+      - task x-wire-openai:validate
       - task x-tool:validate
       - task x-tool-bash:validate
       - task x-tool-calculator:validate

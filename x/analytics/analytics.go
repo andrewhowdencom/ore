@@ -32,21 +32,30 @@ type statsKey struct {
 }
 
 // orphanToolSource is the Source identifier used for tool_result
-// artifacts whose ToolCallID has no matching ToolCall in the same
-// turn. It is a private constant because the label is a presentation
-// choice internal to the analytics package; callers that want to
-// detect orphans can compare against this value.
+// artifacts whose ToolCallID has no matching ToolCall within the
+// resolution scope (the slice passed to AnalyzeTurns, or the thread
+// in AnalyzeStore). It is a private constant because the label is a
+// presentation choice internal to the analytics package; callers
+// that want to detect orphans can compare against this value.
 const orphanToolSource = "(unknown)"
 
-// toolNamesInTurn builds a ToolCallID→Name map for the given turn's
-// tool_call artifacts. The map is consulted by sourceFor to resolve
-// tool_result Sources. The map is intentionally scoped to a single
-// turn: cross-turn resolution is out of scope.
-func toolNamesInTurn(turn state.Turn) map[string]string {
+// toolNamesInTurns builds a ToolCallID→Name map for the given slice
+// of turns, covering every tool_call artifact in the slice. The map
+// is consulted by sourceFor to resolve tool_result Sources.
+//
+// The scope is the entire input slice — not a single turn. The
+// framework emits tool_call in a RoleAssistant turn and tool_result
+// in a separate RoleTool turn, so a per-turn map would always be
+// empty when resolving a tool_result. The fix is to build one map
+// per scope (the slice the caller passes to AnalyzeTurns, or the
+// thread in AnalyzeStore).
+func toolNamesInTurns(turns []state.Turn) map[string]string {
 	m := make(map[string]string)
-	for _, art := range turn.Artifacts {
-		if tc, ok := art.(artifact.ToolCall); ok {
-			m[tc.ID] = tc.Name
+	for _, turn := range turns {
+		for _, art := range turn.Artifacts {
+			if tc, ok := art.(artifact.ToolCall); ok {
+				m[tc.ID] = tc.Name
+			}
 		}
 	}
 	return m
@@ -75,11 +84,16 @@ func sourceFor(art artifact.Artifact, nameByID map[string]string) string {
 // AnalyzeTurns aggregates per-(Kind, Source) statistics over a slice
 // of turns. It returns a slice of Stats sorted lexicographically by
 // (Kind, Source).
+//
+// tool_result artifacts are resolved against tool_call artifacts in
+// the same slice via a whole-slice ToolCallID→Name map. A result
+// whose ToolCallID has no matching call anywhere in the slice
+// buckets under orphanToolSource ("(unknown)").
 func AnalyzeTurns(turns []state.Turn) []Stats {
 	stats := make(map[statsKey]*Stats)
+	nameByID := toolNamesInTurns(turns)
 
 	for _, turn := range turns {
-		nameByID := toolNamesInTurn(turn)
 		for _, art := range turn.Artifacts {
 			key := statsKey{kind: art.Kind(), source: sourceFor(art, nameByID)}
 			s, ok := stats[key]
@@ -116,6 +130,11 @@ func AnalyzeThread(t *session.Thread) []Stats {
 
 // AnalyzeStore aggregates statistics across all threads in the store.
 // It returns a merged, sorted slice of Stats.
+//
+// tool_result artifacts are resolved against tool_call artifacts
+// within the same thread. Cross-thread resolution is out of scope:
+// a result in thread A whose ToolCallID matches a call in thread B
+// is treated as an orphan and buckets under orphanToolSource.
 func AnalyzeStore(store session.Store) ([]Stats, error) {
 	threads, err := store.List()
 	if err != nil {
@@ -128,8 +147,9 @@ func AnalyzeStore(store session.Store) ([]Stats, error) {
 		if th == nil || th.State == nil {
 			continue
 		}
-		for _, turn := range th.State.Turns() {
-			nameByID := toolNamesInTurn(turn)
+		thTurns := th.State.Turns()
+		nameByID := toolNamesInTurns(thTurns)
+		for _, turn := range thTurns {
 			for _, art := range turn.Artifacts {
 				key := statsKey{kind: art.Kind(), source: sourceFor(art, nameByID)}
 				s, ok := merged[key]

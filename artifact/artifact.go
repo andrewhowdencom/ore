@@ -6,6 +6,7 @@ package artifact
 import (
 	"encoding/json"
 	"strconv"
+	"time"
 )
 
 // Artifact is the base interface for all LLM response artifacts.
@@ -165,11 +166,11 @@ type MarkdownRenderer interface {
 // bounded by Format or by the framework defaults. A nil Truncation
 // means the result was not truncated.
 type ToolResult struct {
-	ToolCallID  string      `json:"tool_call_id"`
-	Content     string      `json:"content"`
-	Value       any         `json:"-"`
-	IsError     bool        `json:"is_error"`
-	Truncation  *Truncation `json:"truncation,omitempty"`
+	ToolCallID string      `json:"tool_call_id"`
+	Content    string      `json:"content"`
+	Value      any         `json:"-"`
+	IsError    bool        `json:"is_error"`
+	Truncation *Truncation `json:"truncation,omitempty"`
 }
 
 // Kind returns the artifact kind identifier.
@@ -179,7 +180,18 @@ func (t ToolResult) Kind() string { return "tool_result" }
 // for consumption by an LLM provider. It prefers the custom LLMRenderer
 // on Value, falls back to json.Marshal of Value, and finally falls back
 // to the pre-serialized Content string.
+//
+// When the result carries an error, the pre-serialized Content wins
+// regardless of what Value holds. This guarantees the `**Error:** <err>`
+// footer that the framework handler appended after truncation reaches
+// the LLM, even when Value is a typed result that would otherwise be
+// re-marshaled (and would drop the footer). Without this short-circuit,
+// a tool that returns (result, err) on the error path would render
+// only the partial result to the model — silently discarding the error.
 func (t ToolResult) LLMString() string {
+	if t.IsError && t.Content != "" {
+		return t.Content
+	}
 	if t.Value != nil {
 		if r, ok := t.Value.(LLMRenderer); ok {
 			return r.MarshalLLM()
@@ -196,6 +208,9 @@ func (t ToolResult) LLMString() string {
 // Value, falls back to json.Marshal of Value, and finally falls back
 // to the pre-serialized Content string.
 func (t ToolResult) MarkdownString() string {
+	if t.IsError && t.Content != "" {
+		return t.Content
+	}
 	if t.Value != nil {
 		if r, ok := t.Value.(MarkdownRenderer); ok {
 			return r.MarshalMarkdown()
@@ -239,15 +254,28 @@ func (t ToolResult) MarshalJSON() ([]byte, error) {
 //
 // ThinkingTokens is the count of output tokens consumed by the model's
 // extended-thinking / reasoning phase. Anthropic and Anthropic-via-OpenRouter
-// surface this on the streaming message_delta usage block; other providers
-// leave it at zero and the `omitempty` tag hides it from the JSON payload.
+// surface this on the streaming message_delta usage block.
+//
+// The field is a pointer to distinguish three states:
+//
+//   - nil — the provider did not report thinking tokens at all (e.g., a
+//     proxy that omits `output_tokens_details` from the usage block).
+//     Callers should treat this as "unknown", not as zero.
+//   - non-nil pointing to 0 — the provider reported zero thinking
+//     tokens (e.g., thinking was enabled but the model did not reason,
+//     or `adaptive` thinking returned nothing). This is a meaningful
+//     count of zero, distinct from "unknown".
+//   - non-nil pointing to N — the provider reported N thinking tokens.
+//
+// The `omitempty` JSON tag drops the field from the payload when the
+// pointer is nil; an explicit zero is encoded as `"thinking_tokens": 0`.
 type Usage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
-	CacheReadTokens  int `json:"cache_read_tokens,omitempty"`
-	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
-	ThinkingTokens   int `json:"thinking_tokens,omitempty"`
+	PromptTokens     int  `json:"prompt_tokens"`
+	CompletionTokens int  `json:"completion_tokens"`
+	TotalTokens      int  `json:"total_tokens"`
+	CacheReadTokens  int  `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens int  `json:"cache_write_tokens,omitempty"`
+	ThinkingTokens   *int `json:"thinking_tokens,omitempty"`
 }
 
 // Kind returns the artifact kind identifier.
@@ -262,7 +290,7 @@ func (u Usage) MarshalJSON() ([]byte, error) {
 		TotalTokens      int    `json:"total_tokens"`
 		CacheReadTokens  int    `json:"cache_read_tokens,omitempty"`
 		CacheWriteTokens int    `json:"cache_write_tokens,omitempty"`
-		ThinkingTokens   int    `json:"thinking_tokens,omitempty"`
+		ThinkingTokens   *int   `json:"thinking_tokens,omitempty"`
 	}
 	return json.Marshal(output{
 		Kind:             "usage",
@@ -272,6 +300,142 @@ func (u Usage) MarshalJSON() ([]byte, error) {
 		CacheReadTokens:  u.CacheReadTokens,
 		CacheWriteTokens: u.CacheWriteTokens,
 		ThinkingTokens:   u.ThinkingTokens,
+	})
+}
+
+// StopReasonKind is a canonical, provider-agnostic description of why a
+// model stopped generating. Adapters translate provider-specific values
+// (Anthropic stop_reason, OpenAI finish_reason) into one of these
+// constants at the read-side, so downstream code never has to know
+// which provider produced the stream.
+//
+// The empty string is not a valid reason. Adapters should not emit a
+// StopReason when the upstream did not report a reason; consumers
+// should treat a missing StopReason as equivalent to StopReasonOther
+// for forward compatibility.
+//
+// Adding a new value is non-breaking; renaming a value is breaking.
+type StopReasonKind string
+
+const (
+	// StopReasonStop indicates the model finished normally — it produced
+	// a complete response without hitting a length cap, calling a tool,
+	// or being interrupted by a safety filter.
+	StopReasonStop StopReasonKind = "stop"
+
+	// StopReasonLength indicates the model hit a token-output cap
+	// (Anthropic max_tokens, OpenAI length). The response may be
+	// truncated; consumers that cannot tolerate truncation should
+	// surface an error.
+	StopReasonLength StopReasonKind = "length"
+
+	// StopReasonToolUse indicates the model emitted a tool invocation
+	// block. Adapters emit a ToolCall artifact alongside.
+	StopReasonToolUse StopReasonKind = "tool_use"
+
+	// StopReasonRefusal indicates the model declined to produce a
+	// response due to a safety filter (Anthropic refusal, OpenAI
+	// content_filter).
+	StopReasonRefusal StopReasonKind = "refusal"
+
+	// StopReasonOther is the catch-all for upstream values not covered
+	// by the canonical set (e.g. Anthropic stop_sequence, or any new
+	// reason a future adapter introduces). Forward-compatible: new
+	// adapters can map unknown values to this without breaking
+	// existing consumers.
+	StopReasonOther StopReasonKind = "other"
+)
+
+// StopReason is the artifact emitted by adapters on the streaming
+// channel to communicate why the model stopped generating. It is
+// emitted immediately before the final Usage artifact at the end of
+// a successful stream.
+//
+// The Reason field is the canonical StopReasonKind. Adapters are
+// responsible for translating their provider-specific vocabulary
+// (Anthropic stop_reason, OpenAI finish_reason) into the canonical
+// set at the read-side; consumers can switch on Reason without
+// caring which provider produced the stream.
+type StopReason struct {
+	Reason StopReasonKind
+}
+
+// Kind returns the artifact kind identifier.
+func (s StopReason) Kind() string { return "stop_reason" }
+
+// MarshalJSON serializes StopReason to JSON.
+func (s StopReason) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind   string         `json:"kind"`
+		Reason StopReasonKind `json:"reason"`
+	}
+	return json.Marshal(output{
+		Kind:   "stop_reason",
+		Reason: s.Reason,
+	})
+}
+
+// Compaction is a metadata artifact marking a state-buffer compaction
+// event. It is appended to the buffer as part of a RoleSystem turn (in
+// addition to the artifact.Text carrying the LLM-facing summary). The
+// artifact carries the structured provenance of the compaction so that
+// consumers (analytics, TUI, future routing layers) can reason about
+// what was folded without having to parse the summary text.
+//
+// Compaction is intentionally NOT a Delta and NOT Accumulable. It is
+// emitted as a single, complete artifact at the moment a compaction
+// is produced; there is no streaming form.
+//
+// Fields:
+//
+//   - CompactedThrough is the index of the compaction turn within the
+//     buffer; "everything before this index is folded behind the
+//     summary" — the cumulative projection the transform applies.
+//     Stored as the turn's own index for self-describing recovery.
+//   - DroppedTurnCount is the number of pre-compaction turns folded
+//     behind the summary. Computed at compaction time.
+//   - DroppedTokenEstimate is a best-effort LLM-visible byte/token
+//     estimate of the dropped turns, computed by summing llmbytes.Of
+//     over the dropped artifacts. It is an approximation, not a
+//     provider-reported value.
+//   - Strategy is a short identifier of the strategy that produced
+//     this compaction (e.g. "summarize"). Free-form so new strategies
+//     can be introduced without changing this struct.
+//   - Model is the identifier of the model that produced the summary
+//     text (e.g. "gpt-4o-mini"). May be empty when the strategy does
+//     not consult an LLM.
+//   - CreatedAt records when the compaction was produced.
+type Compaction struct {
+	CompactedThrough     int       `json:"compacted_through"`
+	DroppedTurnCount     int       `json:"dropped_turn_count"`
+	DroppedTokenEstimate int64     `json:"dropped_token_estimate"`
+	Strategy             string    `json:"strategy"`
+	Model                string    `json:"model,omitempty"`
+	CreatedAt            time.Time `json:"created_at"`
+}
+
+// Kind returns the artifact kind identifier.
+func (c Compaction) Kind() string { return "compaction" }
+
+// MarshalJSON serializes Compaction to JSON.
+func (c Compaction) MarshalJSON() ([]byte, error) {
+	type output struct {
+		Kind                 string    `json:"kind"`
+		CompactedThrough     int       `json:"compacted_through"`
+		DroppedTurnCount     int       `json:"dropped_turn_count"`
+		DroppedTokenEstimate int64     `json:"dropped_token_estimate"`
+		Strategy             string    `json:"strategy"`
+		Model                string    `json:"model,omitempty"`
+		CreatedAt            time.Time `json:"created_at"`
+	}
+	return json.Marshal(output{
+		Kind:                 "compaction",
+		CompactedThrough:     c.CompactedThrough,
+		DroppedTurnCount:     c.DroppedTurnCount,
+		DroppedTokenEstimate: c.DroppedTokenEstimate,
+		Strategy:             c.Strategy,
+		Model:                c.Model,
+		CreatedAt:            c.CreatedAt,
 	})
 }
 
@@ -495,4 +659,76 @@ func (d ToolCallDelta) MergeInto(acc Artifact) Artifact {
 	tc.Name += d.Name
 	tc.Arguments += d.Arguments
 	return tc
+}
+
+// isPersistent marks the persistable concrete types in this package.
+// Each type below gains both an isPersistent() method and an init()
+// that registers its factory with the package-level registry. Delta
+// types deliberately do not implement this method.
+
+// isPersistent marks Text as persistable.
+func (Text) isPersistent() {}
+
+// isPersistent marks ToolCall as persistable.
+func (ToolCall) isPersistent() {}
+
+// isPersistent marks ToolResult as persistable.
+func (ToolResult) isPersistent() {}
+
+// isPersistent marks Usage as persistable.
+func (Usage) isPersistent() {}
+
+// isPersistent marks Image as persistable.
+func (Image) isPersistent() {}
+
+// isPersistent marks Reasoning as persistable.
+func (Reasoning) isPersistent() {}
+
+// init blocks: register each persistable type's factory with the
+// package-level registry. The factories return zero-value instances;
+// consumers use them to seed a typed pointer for json.Unmarshal.
+
+// Text
+func init() {
+	Register("text", func() Artifact { return &Text{} })
+}
+
+// ToolCall
+func init() {
+	Register("tool_call", func() Artifact { return &ToolCall{} })
+}
+
+// ToolResult
+func init() {
+	Register("tool_result", func() Artifact { return &ToolResult{} })
+}
+
+// Usage
+func init() {
+	Register("usage", func() Artifact { return &Usage{} })
+}
+
+// Image
+func init() {
+	Register("image", func() Artifact { return &Image{} })
+}
+
+// Reasoning
+func init() {
+	Register("reasoning", func() Artifact { return &Reasoning{} })
+}
+
+// StopReason
+func init() {
+	Register("stop_reason", func() Artifact { return &StopReason{} })
+}
+
+// ReasoningSignature
+func init() {
+	Register("reasoning_signature", func() Artifact { return &ReasoningSignature{} })
+}
+
+// Compaction
+func init() {
+	Register("compaction", func() Artifact { return &Compaction{} })
 }

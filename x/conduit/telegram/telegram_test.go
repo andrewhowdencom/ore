@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"github.com/andrewhowdencom/ore/models"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -20,7 +21,7 @@ import (
 
 type mockProvider struct{}
 
-func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	return nil
 }
 
@@ -30,7 +31,7 @@ func testManager(t *testing.T) *session.Manager {
 		session.NewMemoryStore(),
 		&mockProvider{},
 		func(*session.Stream) ([]loop.Option, error) { return nil, nil },
-		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "Test reply"})
 		},
 	)
@@ -326,7 +327,7 @@ func TestProvenanceFiltering(t *testing.T) {
 	// Create a manager with a processor that preserves the "http" provenance
 	// on the assistant turn. This simulates a multi-conduit setup where another
 	// conduit's events carry their own provenance.
-	preservingProcessor := func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+	preservingProcessor := func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 		step.SetEventContext(loop.WithProvenance(context.Background(), "http"))
 		return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "Test reply"})
 	}
@@ -383,7 +384,6 @@ func TestProvenanceFiltering(t *testing.T) {
 	}
 }
 
-
 // TestMultipleTextArtifacts verifies that multiple text artifacts from an
 // assistant turn are joined with newlines before sending.
 func TestMultipleTextArtifacts(t *testing.T) {
@@ -432,7 +432,7 @@ func TestMultipleTextArtifacts(t *testing.T) {
 		session.NewMemoryStore(),
 		&mockProvider{},
 		func(*session.Stream) ([]loop.Option, error) { return nil, nil },
-		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 			return step.Submit(ctx, st, state.RoleAssistant,
 				artifact.Text{Content: "Hello"},
 				artifact.Text{Content: "World"},
@@ -515,7 +515,7 @@ func TestEmptyAssistantTurn(t *testing.T) {
 		session.NewMemoryStore(),
 		&mockProvider{},
 		func(*session.Stream) ([]loop.Option, error) { return nil, nil },
-		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 			return step.Submit(ctx, st, state.RoleAssistant)
 		},
 	)
@@ -600,7 +600,7 @@ func TestNonTextArtifact(t *testing.T) {
 		session.NewMemoryStore(),
 		&mockProvider{},
 		func(*session.Stream) ([]loop.Option, error) { return nil, nil },
-		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 			return step.Submit(ctx, st, state.RoleAssistant, mockArtifact{})
 		},
 	)
@@ -680,7 +680,7 @@ func TestOffsetAdvancement(t *testing.T) {
 		session.NewMemoryStore(),
 		&mockProvider{},
 		func(*session.Stream) ([]loop.Option, error) { return nil, nil },
-		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "Test reply"})
 		},
 	)
@@ -731,7 +731,7 @@ func TestGetUpdatesHTTPError(t *testing.T) {
 		session.NewMemoryStore(),
 		&mockProvider{},
 		func(*session.Stream) ([]loop.Option, error) { return nil, nil },
-		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "Test reply"})
 		},
 	)
@@ -799,7 +799,7 @@ func TestNilChatField(t *testing.T) {
 		session.NewMemoryStore(),
 		&mockProvider{},
 		func(*session.Stream) ([]loop.Option, error) { return nil, nil },
-		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 			processCalled.Store(true)
 			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "reply"})
 		},

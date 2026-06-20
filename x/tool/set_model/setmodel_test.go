@@ -63,7 +63,7 @@ func TestSlash_TrimsInput(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, result.Feedback.Content)
 
-	got, ok := stream.GetMetadata("provider.model")
+	got, ok := stream.GetMetadata("ore.model.name")
 	require.True(t, ok)
 	assert.Equal(t, "gpt-4o-mini", got)
 }
@@ -80,7 +80,7 @@ func TestSlash_ValidInput_SetsMetadata(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, result.Feedback.Content, "no feedback on valid input")
 
-	got, ok := stream.GetMetadata("provider.model")
+	got, ok := stream.GetMetadata("ore.model.name")
 	require.True(t, ok, "metadata should be set after /model succeeds")
 	assert.Equal(t, "gpt-4o-mini", got)
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,6 +18,8 @@ var _ Artifact = Usage{}
 var _ Artifact = Image{}
 var _ Artifact = Reasoning{}
 var _ Artifact = ReasoningSignature{}
+var _ Artifact = StopReason{}
+var _ Artifact = Compaction{}
 
 var _ LLMRenderer = (*mockLLMRenderer)(nil)
 var _ MarkdownRenderer = (*mockMarkdownRenderer)(nil)
@@ -51,6 +54,7 @@ func TestDeltaArtifacts(t *testing.T) {
 	assert.False(t, isDelta(Image{}))
 	assert.False(t, isDelta(Reasoning{}))
 	assert.False(t, isDelta(ReasoningSignature{}))
+	assert.False(t, isDelta(Compaction{}))
 }
 
 func isDelta(a Artifact) bool {
@@ -73,6 +77,8 @@ func TestArtifactKinds(t *testing.T) {
 		{"image", Image{URL: "http://example.com/img.png"}, "image"},
 		{"reasoning", Reasoning{Content: "Let me think..."}, "reasoning"},
 		{"reasoning_signature", ReasoningSignature{Provider: "anthropic", SubKind: "signature", Data: "x"}, "reasoning_signature"},
+		{"stop_reason", StopReason{Reason: StopReasonLength}, "stop_reason"},
+		{"compaction", Compaction{Strategy: "summarize"}, "compaction"},
 	}
 
 	for _, tt := range tests {
@@ -88,6 +94,40 @@ func TestAccumulableInterface(t *testing.T) {
 	assert.Implements(t, (*Accumulable)(nil), ToolCallDelta{})
 }
 
+func TestStopReason_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		reason StopReasonKind
+		want   string
+	}{
+		{"stop", StopReasonStop, `{"kind":"stop_reason","reason":"stop"}`},
+		{"length", StopReasonLength, `{"kind":"stop_reason","reason":"length"}`},
+		{"tool_use", StopReasonToolUse, `{"kind":"stop_reason","reason":"tool_use"}`},
+		{"refusal", StopReasonRefusal, `{"kind":"stop_reason","reason":"refusal"}`},
+		{"other", StopReasonOther, `{"kind":"stop_reason","reason":"other"}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sr := StopReason{Reason: tt.reason}
+			assert.Equal(t, "stop_reason", sr.Kind())
+
+			got, err := sr.MarshalJSON()
+			require.NoError(t, err)
+			assert.JSONEq(t, tt.want, string(got))
+
+			// Round-trip: decode and re-encode; the result must match
+			// the original. This guards against a typo in the JSON
+			// tags breaking the read-side in either direction.
+			var decoded StopReason
+			require.NoError(t, json.Unmarshal(got, &decoded))
+			reEncoded, err := decoded.MarshalJSON()
+			require.NoError(t, err)
+			assert.JSONEq(t, string(got), string(reEncoded))
+		})
+	}
+}
+
 func TestToolResult_ValueField(t *testing.T) {
 	tr := ToolResult{ToolCallID: "call_1", Content: "ok", Value: 42, IsError: false}
 	assert.Equal(t, "call_1", tr.ToolCallID)
@@ -98,9 +138,9 @@ func TestToolResult_ValueField(t *testing.T) {
 
 func TestToolResult_LLMString(t *testing.T) {
 	tests := []struct {
-		name    string
-		tr      ToolResult
-		want    string
+		name string
+		tr   ToolResult
+		want string
 	}{
 		{
 			name: "LLMRenderer takes precedence",
@@ -174,6 +214,53 @@ func TestToolResult_MarkdownString(t *testing.T) {
 			assert.Equal(t, tt.want, tt.tr.MarkdownString())
 		})
 	}
+}
+
+// errorLLMValue implements LLMRenderer for the error-content test.
+type errorLLMValue struct{}
+
+func (errorLLMValue) MarshalLLM() string { return "rendered-by-error-llm" }
+
+// errorMDValue implements MarkdownRenderer for the error-content test.
+type errorMDValue struct{}
+
+func (errorMDValue) MarshalMarkdown() string { return "rendered-by-error-md" }
+
+// TestToolResult_RenderersUseContentOnError pins the short-circuit
+// in LLMString and MarkdownString: when IsError is true and Content
+// is non-empty, the renderers on Value are bypassed and Content is
+// returned verbatim. This is what makes the `**Error:** <err>` footer
+// reach both audiences — the renderers on Value would otherwise
+// re-marshal the partial result and drop the appended footer.
+func TestToolResult_RenderersUseContentOnError(t *testing.T) {
+	content := "partial body\n\n**Error:** boom"
+	tr := ToolResult{
+		ToolCallID: "call_1",
+		Content:    content,
+		Value:      errorLLMValue{}, // would otherwise produce "rendered-by-error-llm"
+		IsError:    true,
+	}
+
+	assert.Equal(t, content, tr.LLMString(),
+		"LLMString must return Content verbatim on error, "+
+			"ignoring the LLMRenderer on Value")
+
+	// MarkdownString is the human-facing view; it must also see the
+	// same body + footer.
+	assert.Equal(t, content, tr.MarkdownString(),
+		"MarkdownString must return Content verbatim on error, "+
+			"ignoring the MarkdownRenderer on Value")
+
+	// Sanity-check: a MarkdownRenderer on Value is still respected
+	// when IsError is false (this is the success path and is
+	// unchanged by the fix).
+	success := ToolResult{
+		ToolCallID: "call_1",
+		Content:    "fallback",
+		Value:      errorMDValue{},
+	}
+	assert.Equal(t, "rendered-by-error-md", success.MarkdownString(),
+		"MarkdownRenderer on Value is honoured on the success path")
 }
 
 func TestToolCall_DisplayField(t *testing.T) {
@@ -423,10 +510,10 @@ func TestUsage_MarshalJSON(t *testing.T) {
 
 	t.Run("cache read only is emitted without write", func(t *testing.T) {
 		data, err := json.Marshal(Usage{
-			PromptTokens:    100,
+			PromptTokens:     100,
 			CompletionTokens: 50,
-			TotalTokens:     150,
-			CacheReadTokens: 42,
+			TotalTokens:      150,
+			CacheReadTokens:  42,
 		})
 		require.NoError(t, err)
 		// cache_write_tokens is omitted because it is the zero value.
@@ -511,7 +598,7 @@ func TestReasoningSignature_AllKindValues(t *testing.T) {
 }
 
 func TestUsage_ThinkingTokens_Omitempty(t *testing.T) {
-	t.Run("zero thinking tokens are omitted", func(t *testing.T) {
+	t.Run("nil thinking tokens are omitted", func(t *testing.T) {
 		data, err := json.Marshal(Usage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30})
 		require.NoError(t, err)
 		assert.JSONEq(t,
@@ -525,7 +612,7 @@ func TestUsage_ThinkingTokens_Omitempty(t *testing.T) {
 			PromptTokens:     10,
 			CompletionTokens: 100,
 			TotalTokens:      110,
-			ThinkingTokens:   42,
+			ThinkingTokens:   ptr(42),
 		})
 		require.NoError(t, err)
 		assert.JSONEq(t,
@@ -534,12 +621,30 @@ func TestUsage_ThinkingTokens_Omitempty(t *testing.T) {
 		)
 	})
 
-	t.Run("thinking tokens round trip through marshal and unmarshal", func(t *testing.T) {
+	t.Run("explicitly-zero thinking tokens are emitted", func(t *testing.T) {
+		// A pointer to zero is distinct from a nil pointer: the provider
+		// reported "thinking tokens = 0" rather than "no thinking token
+		// info at all". encoding/json + omitempty drops nil pointers but
+		// emits a non-nil zero, which is exactly the contract we want.
+		data, err := json.Marshal(Usage{
+			PromptTokens:     10,
+			CompletionTokens: 20,
+			TotalTokens:      30,
+			ThinkingTokens:   ptr(0),
+		})
+		require.NoError(t, err)
+		assert.JSONEq(t,
+			`{"kind":"usage","prompt_tokens":10,"completion_tokens":20,"total_tokens":30,"thinking_tokens":0}`,
+			string(data),
+		)
+	})
+
+	t.Run("non-zero thinking tokens round trip through marshal and unmarshal", func(t *testing.T) {
 		original := Usage{
 			PromptTokens:     100,
 			CompletionTokens: 250,
 			TotalTokens:      350,
-			ThinkingTokens:   80,
+			ThinkingTokens:   ptr(80),
 		}
 		data, err := json.Marshal(original)
 		require.NoError(t, err)
@@ -547,5 +652,85 @@ func TestUsage_ThinkingTokens_Omitempty(t *testing.T) {
 		var roundTripped Usage
 		require.NoError(t, json.Unmarshal(data, &roundTripped))
 		assert.Equal(t, original, roundTripped)
+	})
+
+	t.Run("nil thinking tokens round trip through marshal and unmarshal", func(t *testing.T) {
+		// Catches any future refactor that removes `omitempty` and would
+		// silently turn nil into `null` on the wire.
+		original := Usage{
+			PromptTokens:     100,
+			CompletionTokens: 250,
+			TotalTokens:      350,
+			ThinkingTokens:   nil,
+		}
+		data, err := json.Marshal(original)
+		require.NoError(t, err)
+		assert.JSONEq(t,
+			`{"kind":"usage","prompt_tokens":100,"completion_tokens":250,"total_tokens":350}`,
+			string(data),
+		)
+
+		var roundTripped Usage
+		require.NoError(t, json.Unmarshal(data, &roundTripped))
+		assert.Equal(t, original, roundTripped)
+		assert.Nil(t, roundTripped.ThinkingTokens)
+	})
+}
+
+// ptr returns a pointer to v. Test-only helper for building pointer-typed
+// literal values for fields like Usage.ThinkingTokens whose semantic
+// distinguishes nil from a pointer to zero.
+func ptr[T any](v T) *T { return &v }
+
+func TestCompaction_MarshalJSON(t *testing.T) {
+	t.Run("full fields", func(t *testing.T) {
+		created := time.Date(2026, 6, 17, 12, 0, 0, 0, time.UTC)
+		data, err := json.Marshal(Compaction{
+			CompactedThrough:     42,
+			DroppedTurnCount:     42,
+			DroppedTokenEstimate: 12345,
+			Strategy:             "summarize",
+			Model:                "gpt-4o-mini",
+			CreatedAt:            created,
+		})
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"kind":"compaction","compacted_through":42,"dropped_turn_count":42,"dropped_token_estimate":12345,"strategy":"summarize","model":"gpt-4o-mini","created_at":"2026-06-17T12:00:00Z"}`, string(data))
+	})
+
+	t.Run("empty model is omitted", func(t *testing.T) {
+		data, err := json.Marshal(Compaction{
+			CompactedThrough:     7,
+			DroppedTurnCount:     7,
+			DroppedTokenEstimate: 100,
+			Strategy:             "summarize",
+		})
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"kind":"compaction","compacted_through":7,"dropped_turn_count":7,"dropped_token_estimate":100,"strategy":"summarize","created_at":"0001-01-01T00:00:00Z"}`, string(data))
+	})
+
+	t.Run("round trips through marshal and unmarshal", func(t *testing.T) {
+		created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		original := Compaction{
+			CompactedThrough:     10,
+			DroppedTurnCount:     10,
+			DroppedTokenEstimate: 9999,
+			Strategy:             "summarize",
+			Model:                "claude-3-5-sonnet",
+			CreatedAt:            created,
+		}
+		data, err := json.Marshal(original)
+		require.NoError(t, err)
+
+		var roundTripped Compaction
+		require.NoError(t, json.Unmarshal(data, &roundTripped))
+		assert.Equal(t, original, roundTripped)
+	})
+
+	t.Run("zero value is valid", func(t *testing.T) {
+		var c Compaction
+		assert.Equal(t, "compaction", c.Kind())
+		data, err := json.Marshal(c)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"kind":"compaction","compacted_through":0,"dropped_turn_count":0,"dropped_token_estimate":0,"strategy":"","created_at":"0001-01-01T00:00:00Z"}`, string(data))
 	})
 }

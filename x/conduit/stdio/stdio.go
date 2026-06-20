@@ -155,16 +155,16 @@ func (s *stdio) Start(ctx context.Context) error {
 					currentKind = ""
 
 				case loop.LifecycleEvent:
-				// Print phase transitions for user feedback.
-				switch e.Phase {
-				case "submitted":
-					fmt.Fprint(s.out, "\n")
-				case "done":
-					if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
-						fmt.Fprint(s.out, "\n```\n")
+					// Print phase transitions for user feedback.
+					switch e.Phase {
+					case "submitted":
+						fmt.Fprint(s.out, "\n")
+					case "done":
+						if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
+							fmt.Fprint(s.out, "\n```\n")
+						}
+						currentKind = ""
 					}
-					currentKind = ""
-				}
 
 				case loop.ErrorEvent:
 					if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {

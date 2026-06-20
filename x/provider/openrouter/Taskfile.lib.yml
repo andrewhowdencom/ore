@@ -1,0 +1,26 @@
+version: '3'
+
+# Taskfile.lib.yml — shared build, test, lint, and validate targets for
+# the openrouter gateway sub-module. The includes section in the root
+# Taskfile.yml maps this file to the module directory.
+
+tasks:
+  build:
+    desc: Compile the package
+    cmds:
+      - go build ./...
+
+  test:
+    desc: Run unit tests with race detection
+    cmds:
+      - go test -race ./...
+
+  lint:
+    desc: Run code linters
+    cmds:
+      - go vet ./...
+      - golangci-lint run ./...
+
+  validate:
+    desc: Run lints, tests, and build
+    deps: [lint, test, build]

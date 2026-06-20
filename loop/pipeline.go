@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 )
@@ -28,7 +29,10 @@ func newPipeline() *Pipeline {
 // accumulates artifacts, and invokes onArtifact for each artifact
 // (including deltas and flushed accumulated blocks). Returns the final
 // accumulated artifacts and any error.
-func (p *Pipeline) Turn(ctx context.Context, st state.State, prov provider.Provider, onArtifact func(artifact.Artifact), opts ...provider.InvokeOption) (state.State, []artifact.Artifact, error) {
+//
+// The spec carries the model identity and inference configuration;
+// it is forwarded to the provider's Invoke method.
+func (p *Pipeline) Turn(ctx context.Context, st state.State, spec models.Spec, prov provider.Provider, onArtifact func(artifact.Artifact), opts ...provider.InvokeOption) (state.State, []artifact.Artifact, error) {
 	var err error
 
 	for _, tr := range p.transforms {
@@ -89,7 +93,7 @@ func (p *Pipeline) Turn(ctx context.Context, st state.State, prov provider.Provi
 	allOpts = append(allOpts, p.invokeOpts...)
 	allOpts = append(allOpts, opts...)
 
-	err = prov.Invoke(ctx, st, provCh, allOpts...)
+	err = prov.Invoke(ctx, st, spec, provCh, allOpts...)
 	close(provCh)
 	wg.Wait()
 

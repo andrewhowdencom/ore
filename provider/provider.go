@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/tool"
 )
@@ -42,32 +43,43 @@ func WithTools(tools []tool.Tool) InvokeOption {
 	return ToolsOption{Tools: func(context.Context, state.State) []tool.Tool { return tools }}
 }
 
-// ModelOption is a per-invocation option that overrides the model name used
-// for a single provider invocation. The Model field is a string so callers
-// can source it from arbitrary input (e.g. session metadata).
+// MaxTokensOption is a per-invocation option that sets the maximum
+// number of tokens the model is permitted to generate on a single
+// invocation. It is the provider-agnostic counterpart to
+// per-adapter helpers (e.g. anthropic.WithMaxTokens,
+// openai.WithMaxTokens) so that callers in framework code paths
+// (e.g. compaction strategies, slash commands) can request a
+// specific budget without importing a concrete adapter package.
 //
-// An empty Model field is treated as a no-op by adapters; it does not clear
-// the model or fall back to a default. Adapters that honor ModelOption must
-// continue to use the value supplied at construction when Model is empty.
-// This preserves the precedence rule: per-invocation option > constructor.
-type ModelOption struct {
-	// Model is the model name to use for the current invocation. Adapters
-	// must treat an empty string as a no-op.
-	Model string
+// Adapters must translate the value into their provider's wire
+// format and must treat N <= 0 as a no-op (omit the field). A
+// zero or negative N is "the caller has no opinion; use whatever
+// default the adapter / model provides."
+type MaxTokensOption struct {
+	// N is the maximum number of tokens. N <= 0 means "no
+	// opinion" — the adapter should omit the field on the wire
+	// and let its default apply. Adapters must NOT default N
+	// to a small sentinel value (e.g. 1) to "fail loudly":
+	// such a value produces silent garbage, not a loud failure.
+	N int64
 }
 
-// IsInvokeOption marks ModelOption as a provider.InvokeOption.
-func (ModelOption) IsInvokeOption() {}
+// IsInvokeOption marks MaxTokensOption as a provider.InvokeOption.
+func (MaxTokensOption) IsInvokeOption() {}
 
-// WithModel returns an InvokeOption that overrides the model name for a
-// single provider invocation. Passing an empty string is a no-op: adapters
-// must keep using the value supplied at construction.
+// WithMaxTokens returns an InvokeOption that sets the maximum
+// number of tokens the model is permitted to generate on a single
+// invocation. It is the provider-agnostic counterpart to
+// per-adapter helpers; adapters translate the value into their
+// own wire format at request time.
 //
-// Note: the per-adapter constructor option (e.g. openai.WithModel) shares
-// the same bare name by design. Call sites should disambiguate with the
-// package qualifier, e.g. provider.WithModel(...) at the call to Invoke.
-func WithModel(name string) InvokeOption {
-	return ModelOption{Model: name}
+// Pass a value <= 0 to indicate "no opinion" — the adapter will
+// omit the field and use its own default. Callers that need a
+// specific budget (e.g. compaction strategies producing a long
+// summary) should pass an explicit value appropriate to the
+// model and the task.
+func WithMaxTokens(n int64) InvokeOption {
+	return MaxTokensOption{N: n}
 }
 
 // Provider is the interface implemented by LLM provider adapters.
@@ -85,9 +97,12 @@ type Provider interface {
 	// Adapters should not perform their own accumulation except when the
 	// native format genuinely cannot be expressed as an ore artifact type.
 	//
+	// The spec carries the model identity and inference configuration.
+	// Adapters translate the spec to their provider's wire format. A zero-
+	// value spec (empty Name, zero values for all fields) is valid: the
+	// adapter falls back to its constructor defaults and omits fields where
+	// the framework / model has a default.
+	//
 	// The channel must not be closed by the adapter.
-	Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...InvokeOption) error
+	Invoke(ctx context.Context, s state.State, spec models.Spec, ch chan<- artifact.Artifact, opts ...InvokeOption) error
 }
-
-
-

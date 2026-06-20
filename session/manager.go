@@ -2,20 +2,25 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 )
 
 // TurnProcessor runs the full inference pipeline for a single turn after
 // the user event has been submitted to state. It is called with the
-// stream's loop.Step, state, and provider.
-type TurnProcessor func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error)
+// stream's loop.Step, state, provider, and a [models.Spec] derived
+// from the session's metadata (or the empty zero value when no
+// metadata is set, in which case the step's configured default
+// spec applies).
+type TurnProcessor func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, spec models.Spec) (state.State, error)
 
 // ManagerOption configures a Manager.
 type ManagerOption func(*Manager)
@@ -62,17 +67,17 @@ func makeKindsSet(kinds []string) map[string]struct{} {
 // Manager owns the Thread↔Step binding and acts as a factory/registry for
 // Stream handles.
 type Manager struct {
-	store        Store
-	provider     provider.Provider
-	newStep      func(*Stream) ([]loop.Option, error)
-	processor    TurnProcessor
-	interceptor  Interceptor
-	sessions     map[string]*Stream
-	mu           sync.RWMutex
-	sinks        []sink
-	sinksMu      sync.RWMutex
-	sinkID       int64
-	defaultMeta  func(*Stream) map[string]string
+	store       Store
+	provider    provider.Provider
+	newStep     func(*Stream) ([]loop.Option, error)
+	processor   TurnProcessor
+	interceptor Interceptor
+	sessions    map[string]*Stream
+	mu          sync.RWMutex
+	sinks       []sink
+	sinksMu     sync.RWMutex
+	sinkID      int64
+	defaultMeta func(*Stream) map[string]string
 }
 
 // NewManager creates a new Manager with the given dependencies.
@@ -130,8 +135,12 @@ func (m *Manager) Create() (*Stream, error) {
 }
 
 // Attach gets or creates an active stream for an existing thread.
-// If the thread does not exist in the store, an error is returned.
-// May also return an error if the step factory fails.
+//
+// Returns an error if the thread does not exist in the store, if the
+// stored thread file is corrupt (Store returned ErrThreadCorrupt), or
+// if the step factory fails. The "thread not found" case is the most
+// common; the caller (typically a conduit's Start path) surfaces the
+// wrapped error to the user with the appropriate context.
 func (m *Manager) Attach(threadID string) (*Stream, error) {
 	m.mu.RLock()
 	stream, ok := m.sessions[threadID]
@@ -140,9 +149,14 @@ func (m *Manager) Attach(threadID string) (*Stream, error) {
 		return stream, nil
 	}
 
-	thr, ok := m.store.Get(threadID)
-	if !ok {
-		return nil, fmt.Errorf("thread %s not found", threadID)
+	thr, err := m.store.Get(threadID)
+	if err != nil {
+		if errors.Is(err, ErrThreadNotFound) {
+			return nil, fmt.Errorf("thread %s not found", threadID)
+		}
+		// Pass the corruption through with the id in context. Callers
+		// can still distinguish via errors.Is(err, ErrThreadCorrupt).
+		return nil, fmt.Errorf("load thread %s: %w", threadID, err)
 	}
 
 	stream = &Stream{
@@ -202,13 +216,18 @@ func (m *Manager) Close(sessionID string) error {
 	return stream.Close()
 }
 
-// GetBy retrieves a thread by a metadata key-value pair.
-func (m *Manager) GetBy(key, value string) (*Thread, bool) {
+// GetBy retrieves a thread by a metadata key-value pair. The
+// returned error is the Store's error (ErrThreadNotFound,
+// ErrThreadCorrupt wrapping cause, or any other implementation-specific
+// error). The previous (Thread, bool) signature conflated these
+// cases; see issue #453.
+func (m *Manager) GetBy(key, value string) (*Thread, error) {
 	return m.store.GetBy(key, value)
 }
 
-// GetThread retrieves a thread by ID.
-func (m *Manager) GetThread(id string) (*Thread, bool) {
+// GetThread retrieves a thread by ID. The returned error is the
+// Store's error; see GetBy.
+func (m *Manager) GetThread(id string) (*Thread, error) {
 	return m.store.Get(id)
 }
 

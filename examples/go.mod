@@ -3,41 +3,40 @@ module github.com/andrewhowdencom/ore/examples
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.9.0
-	github.com/andrewhowdencom/ore/x/conduit/http v0.7.1
-	github.com/andrewhowdencom/ore/x/conduit/tui v0.11.0
-	github.com/andrewhowdencom/ore/x/provider/openai v0.5.2
+	github.com/andrewhowdencom/ore v0.12.0
+	github.com/andrewhowdencom/ore/x/analytics v0.2.1
+	github.com/andrewhowdencom/ore/x/compaction v0.4.4
+	github.com/andrewhowdencom/ore/x/conduit/http v0.7.3
+	github.com/andrewhowdencom/ore/x/conduit/tui v0.12.1
+	github.com/andrewhowdencom/ore/x/provider/openai v0.6.2
 	github.com/andrewhowdencom/ore/x/telemetry v0.1.2
-	github.com/andrewhowdencom/ore/x/tool v0.5.0
+	github.com/andrewhowdencom/ore/x/tool v0.5.1
 	github.com/andrewhowdencom/ore/x/tool/calculator v0.3.0
 	github.com/andrewhowdencom/ore/x/tool/filesystem v0.5.1
-	github.com/andrewhowdencom/ore/x/tool/set_model v0.1.0
+	github.com/andrewhowdencom/ore/x/tool/set_model v0.1.1
 	github.com/andrewhowdencom/ore/x/tool/set_title v0.3.0
-	github.com/andrewhowdencom/ore/x/usage v0.1.3
+	github.com/andrewhowdencom/ore/x/usage v0.2.0
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/sdk/metric v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
 )
 
-replace github.com/andrewhowdencom/ore v0.0.0 => ..
-
-replace github.com/andrewhowdencom/ore/x/telemetry v0.0.0 => ../x/telemetry
-
-replace github.com/andrewhowdencom/ore/x/usage v0.0.0 => ../x/usage
-
 require (
 	charm.land/bubbles/v2 v2.1.0 // indirect
 	charm.land/bubbletea/v2 v2.0.6 // indirect
 	charm.land/lipgloss/v2 v2.0.3 // indirect
 	github.com/alecthomas/chroma/v2 v2.20.0 // indirect
-	github.com/andrewhowdencom/ore/x/conduit v0.1.3 // indirect
-	github.com/andrewhowdencom/ore/x/llmbytes v0.1.0 // indirect
+	github.com/andrewhowdencom/ore/x/conduit v0.1.4 // indirect
+	github.com/andrewhowdencom/ore/x/llmbytes v0.1.1 // indirect
+	github.com/andrewhowdencom/ore/x/provider/retry v0.0.1 // indirect
 	github.com/andrewhowdencom/ore/x/tool/truncate v0.1.0 // indirect
 	github.com/andrewhowdencom/ore/x/verifier v0.1.1 // indirect
+	github.com/andrewhowdencom/ore/x/wire/openai v0.5.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
+	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/glamour v1.0.0 // indirect
@@ -65,7 +64,7 @@ require (
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/openai/openai-go v1.12.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/tidwall/gjson v1.14.4 // indirect
+	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
@@ -80,4 +79,24 @@ require (
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/term v0.42.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
+)
+
+replace (
+	github.com/andrewhowdencom/ore => ..
+	github.com/andrewhowdencom/ore/x/compaction => ../x/compaction
+	github.com/andrewhowdencom/ore/x/conduit => ../x/conduit
+	github.com/andrewhowdencom/ore/x/conduit/http => ../x/conduit/http
+	github.com/andrewhowdencom/ore/x/conduit/tui => ../x/conduit/tui
+	github.com/andrewhowdencom/ore/x/llmbytes => ../x/llmbytes
+	github.com/andrewhowdencom/ore/x/provider/openai => ../x/provider/openai
+	github.com/andrewhowdencom/ore/x/telemetry => ../x/telemetry
+	github.com/andrewhowdencom/ore/x/tool => ../x/tool
+	github.com/andrewhowdencom/ore/x/tool/calculator => ../x/tool/calculator
+	github.com/andrewhowdencom/ore/x/tool/filesystem => ../x/tool/filesystem
+	github.com/andrewhowdencom/ore/x/tool/set_model => ../x/tool/set_model
+	github.com/andrewhowdencom/ore/x/tool/set_title => ../x/tool/set_title
+	github.com/andrewhowdencom/ore/x/tool/truncate => ../x/tool/truncate
+	github.com/andrewhowdencom/ore/x/usage => ../x/usage
+	github.com/andrewhowdencom/ore/x/verifier => ../x/verifier
+	github.com/andrewhowdencom/ore/x/wire/openai => ../x/wire/openai
 )

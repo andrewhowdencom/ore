@@ -151,16 +151,23 @@ type model struct {
 	// pending indicates an assistant response is in flight.
 	pending bool
 
-	// expandLatestDetails controls whether the latest assistant turn's
-	// details (tool calls, tool results, and reasoning) are shown expanded
-	// or compact.
-	// The flag is toggled by Ctrl+O and automatically cleared after
-	// the next assistant turn is received, restoring the default compact view.
-	expandLatestDetails bool
+	// expandAllDetails controls whether all non-text blocks across all
+	// turns (tool calls, tool results, and reasoning) are shown expanded
+	// or compact. The flag is toggled by Ctrl+O and persists across new
+	// turns and conversation boundaries, so the user's chosen view is
+	// preserved until they explicitly change it.
+	expandAllDetails bool
 
 	// Status map carries structured key-value metadata pairs received from
 	// PropertiesEvent output events (e.g. thread_id, state).
 	status map[string]string
+
+	// initStatusMsg is a one-shot status seed produced by initModel from
+	// stream.AllMetadata(). It is yielded by Init() as a tea.Cmd so the
+	// existing statusMsg handler can merge it into m.status through the
+	// normal message channel — i.e., after the event loop has started.
+	// It is never read after Init() runs and can otherwise be ignored.
+	initStatusMsg tea.Msg
 
 	// zoneFormatter converts the flat status map into structured segments
 	// for zone-aware rendering. If nil, a default formatter is used.
@@ -394,8 +401,66 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role) renderedB
 			block.style = m.theme.ErrorStyle
 		}
 		return block
+	case artifact.Compaction:
+		return m.renderCompactionBlock(a)
 	}
 	return renderedBlock{}
+}
+
+// renderCompactionBlock produces a one-line marker block for an
+// artifact.Compaction. The marker is collapsed by default (just the
+// turn count and bytes saved); expanding via Ctrl+O reveals the
+// strategy, model, and timestamp as a small metadata footer.
+//
+// The compaction turn also carries an artifact.Text sibling with the
+// LLM-facing summary. That sibling is rendered separately by the
+// caller (loadHistory / TURN event handlers iterate per-artifact);
+// this function is only responsible for the Compaction artifact
+// itself.
+func (m *model) renderCompactionBlock(c artifact.Compaction) renderedBlock {
+	bytesSaved := formatByteCount(c.DroppedTokenEstimate)
+	title := fmt.Sprintf("Compacted %d turns (~%s saved)", c.DroppedTurnCount, bytesSaved)
+	marker := fmt.Sprintf("↳ compacted %d turns (~%s saved)", c.DroppedTurnCount, bytesSaved)
+
+	source := fmt.Sprintf(
+		"strategy: %s\nmodel: %s\ncompacted through turn %d\nsaved ~%s\nat: %s",
+		orDefault(c.Strategy, "(unknown)"),
+		orDefault(c.Model, "(default)"),
+		c.CompactedThrough,
+		bytesSaved,
+		c.CreatedAt.Format("15:04:05"),
+	)
+
+	return renderedBlock{
+		kind:              "compaction",
+		source:            source,
+		compact:           marker,
+		title:             title,
+		style:             m.theme.SystemStyle,
+		expandedByDefault: false,
+	}
+}
+
+// formatByteCount formats a byte count into a short human-readable
+// form (e.g. 1234 → "1.2K", 1234567 → "1.2M"). Used by the compaction
+// marker to keep titles compact.
+func formatByteCount(n int64) string {
+	switch {
+	case n < 1024:
+		return fmt.Sprintf("%dB", n)
+	case n < 1024*1024:
+		return fmt.Sprintf("%.1fK", float64(n)/1024)
+	default:
+		return fmt.Sprintf("%.1fM", float64(n)/(1024*1024))
+	}
+}
+
+// orDefault returns s if non-empty, otherwise fallback.
+func orDefault(s, fallback string) string {
+	if s == "" {
+		return fallback
+	}
+	return s
 }
 
 // renderPlainBlock constructs a renderedBlock for plain text (e.g. error or
@@ -442,8 +507,18 @@ func (m *model) loadHistory(turns []state.Turn) {
 
 // Init returns an initial command. No periodic ticks are needed because
 // turns arrive via program.Send from the orchestrator goroutine.
+//
+// When initModel populated m.initStatusMsg, Init yields it as a tea.Cmd
+// so the statusMsg handler picks it up through the normal message
+// channel after the event loop is running. This is the only safe place
+// to dispatch a message into the program: calling program.Send from
+// before p.Run() blocks the main goroutine indefinitely.
 func (m *model) Init() tea.Cmd {
-	return nil
+	if m.initStatusMsg == nil {
+		return nil
+	}
+	seed := m.initStatusMsg
+	return func() tea.Msg { return seed }
 }
 
 // Update handles incoming messages: keyboard input, window resize, and
@@ -521,7 +596,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.currentTurn.timestamp = msg.turn.Timestamp
 			m.turns = append(m.turns, m.currentTurn)
 			m.currentTurn = renderedTurn{}
-			m.expandLatestDetails = false
 		} else {
 			// User and tool turns do not emit individual ArtifactEvents;
 			// build the turn from the full Turn content.
@@ -748,7 +822,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Ctrl+O
 		if msg.Key().Code == 'o' && msg.Key().Mod.Contains(tea.ModCtrl) {
-			m.expandLatestDetails = !m.expandLatestDetails
+			m.expandAllDetails = !m.expandAllDetails
 			m.contentDirty = true
 			m.syncViewport()
 			m.viewport.GotoBottom()

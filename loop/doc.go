@@ -25,19 +25,19 @@
 //
 // Architecture overview:
 //
-//          Step (thin orchestrator)
-//           │
-//    Emit() │          Turn()
-//           │            │
-//           ▼            ▼
-//      EventBus ◄── Pipeline (transforms, provider, accumulate, handlers)
-//           │            │
-//           │     onArtifact callback
-//           │            │
-//           │            ▼
-//           │      subscribers (channels)
-//           │
-//           └──► FanOut (broadcast)
+//	      Step (thin orchestrator)
+//	       │
+//	Emit() │          Turn()
+//	       │            │
+//	       ▼            ▼
+//	  EventBus ◄── Pipeline (transforms, provider, accumulate, handlers)
+//	       │            │
+//	       │     onArtifact callback
+//	       │            │
+//	       │            ▼
+//	       │      subscribers (channels)
+//	       │
+//	       └──► FanOut (broadcast)
 //
 // Why use transforms?
 //

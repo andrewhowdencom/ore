@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/andrewhowdencom/ore/models"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ type mockProvider struct {
 	err       error
 }
 
-func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	for _, art := range m.artifacts {
 		select {
 		case ch <- art:
@@ -42,7 +43,7 @@ type contextCancellingProvider struct {
 	cancel context.CancelFunc
 }
 
-func (p *contextCancellingProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (p *contextCancellingProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	select {
 	case ch <- artifact.TextDelta{Content: "partial"}:
 	case <-ctx.Done():
@@ -111,6 +112,7 @@ func collectEvents(ch <-chan OutputEvent, timeout time.Duration) []OutputEvent {
 }
 
 func TestStep_Turn_AppendsArtifacts(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -122,7 +124,7 @@ func TestStep_Turn_AppendsArtifacts(t *testing.T) {
 		},
 	}
 
-	result, err := s.Turn(context.Background(), mem, mock)
+	result, err := s.Turn(context.Background(), mem, spec, mock)
 	require.NoError(t, err)
 	assert.Same(t, mem, result)
 
@@ -137,6 +139,7 @@ func TestStep_Turn_AppendsArtifacts(t *testing.T) {
 }
 
 func TestStep_Turn_PropagatesError(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -144,13 +147,14 @@ func TestStep_Turn_PropagatesError(t *testing.T) {
 	wantErr := errors.New("provider failed")
 	mock := &mockProvider{err: wantErr}
 
-	_, err := s.Turn(context.Background(), mem, mock)
+	_, err := s.Turn(context.Background(), mem, spec, mock)
 	require.ErrorIs(t, err, wantErr)
 
 	assert.Len(t, mem.Turns(), 1)
 }
 
 func TestStep_Turn_AppendsReasoningArtifact(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -162,7 +166,7 @@ func TestStep_Turn_AppendsReasoningArtifact(t *testing.T) {
 		},
 	}
 
-	result, err := s.Turn(context.Background(), mem, mock)
+	result, err := s.Turn(context.Background(), mem, spec, mock)
 	require.NoError(t, err)
 	assert.Same(t, mem, result)
 
@@ -177,6 +181,7 @@ func TestStep_Turn_AppendsReasoningArtifact(t *testing.T) {
 }
 
 func TestStep_Turn_EmptyArtifacts(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -185,7 +190,7 @@ func TestStep_Turn_EmptyArtifacts(t *testing.T) {
 		artifacts: []artifact.Artifact{},
 	}
 
-	_, err := s.Turn(context.Background(), mem, mock)
+	_, err := s.Turn(context.Background(), mem, spec, mock)
 	require.NoError(t, err)
 
 	turns := mem.Turns()
@@ -197,6 +202,7 @@ func TestStep_Turn_EmptyArtifacts(t *testing.T) {
 }
 
 func TestStep_Turn_Transform_Composition(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	var order []int
 	tr1 := &mockTransform{
 		fn: func(ctx context.Context, s state.State) (state.State, error) {
@@ -220,12 +226,13 @@ func TestStep_Turn_Transform_Composition(t *testing.T) {
 		},
 	}
 
-	_, err := s.Turn(context.Background(), mem, mock)
+	_, err := s.Turn(context.Background(), mem, spec, mock)
 	require.NoError(t, err)
 	assert.Equal(t, []int{1, 2}, order)
 }
 
 func TestStep_Turn_Transform_ErrorAborts(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	wantErr := errors.New("transform failed")
 	tr := &mockTransform{
 		fn: func(ctx context.Context, s state.State) (state.State, error) {
@@ -242,7 +249,7 @@ func TestStep_Turn_Transform_ErrorAborts(t *testing.T) {
 		},
 	}
 
-	_, err := s.Turn(context.Background(), mem, mock)
+	_, err := s.Turn(context.Background(), mem, spec, mock)
 	require.ErrorIs(t, err, wantErr)
 	assert.Contains(t, err.Error(), "transform failed")
 
@@ -251,6 +258,7 @@ func TestStep_Turn_Transform_ErrorAborts(t *testing.T) {
 }
 
 func TestStep_Turn_Transform_Identity(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -261,7 +269,7 @@ func TestStep_Turn_Transform_Identity(t *testing.T) {
 		},
 	}
 
-	result, err := s.Turn(context.Background(), mem, mock)
+	result, err := s.Turn(context.Background(), mem, spec, mock)
 	require.NoError(t, err)
 	assert.Same(t, mem, result)
 
@@ -271,6 +279,7 @@ func TestStep_Turn_Transform_Identity(t *testing.T) {
 }
 
 func TestStep_Submit_DoesNotRunTransforms(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	var transformCalled bool
 	tr := &mockTransform{
 		fn: func(ctx context.Context, s state.State) (state.State, error) {
@@ -291,12 +300,13 @@ func TestStep_Submit_DoesNotRunTransforms(t *testing.T) {
 			artifact.Text{Content: "world"},
 		},
 	}
-	_, err = s.Turn(context.Background(), mem, prov)
+	_, err = s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 	assert.True(t, transformCalled, "transforms must run during Turn")
 }
 
 func TestStep_Turn_Transform_ViewChaining(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	var seenTurns []state.Turn
 	tr1 := &mockTransform{
 		fn: func(ctx context.Context, s state.State) (state.State, error) {
@@ -320,7 +330,7 @@ func TestStep_Turn_Transform_ViewChaining(t *testing.T) {
 			artifact.Text{Content: "world"},
 		},
 	}
-	_, err := s.Turn(context.Background(), mem, prov)
+	_, err := s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 
 	require.Len(t, seenTurns, 2)
@@ -329,6 +339,7 @@ func TestStep_Turn_Transform_ViewChaining(t *testing.T) {
 }
 
 func TestStep_Turn_Handler(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	h := &mockHandler{}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -341,7 +352,7 @@ func TestStep_Turn_Handler(t *testing.T) {
 		},
 	}
 
-	_, err := s.Turn(context.Background(), mem, prov)
+	_, err := s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 
 	require.Len(t, h.called, 2)
@@ -350,6 +361,7 @@ func TestStep_Turn_Handler(t *testing.T) {
 }
 
 func TestStep_Turn_HandlerAppendsToolResult(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	h := &mockHandler{
 		fn: func(ctx context.Context, art artifact.Artifact, e Emitter) error {
 			if art.Kind() == "tool_call" {
@@ -374,7 +386,7 @@ func TestStep_Turn_HandlerAppendsToolResult(t *testing.T) {
 		},
 	}
 
-	result, err := s.Turn(context.Background(), mem, prov)
+	result, err := s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 
 	turns := result.Turns()
@@ -385,6 +397,7 @@ func TestStep_Turn_HandlerAppendsToolResult(t *testing.T) {
 }
 
 func TestStep_Turn_HandlerError(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	wantErr := context.Canceled
 	h := &mockHandler{err: wantErr}
 	mem := &state.Buffer{}
@@ -397,11 +410,12 @@ func TestStep_Turn_HandlerError(t *testing.T) {
 		},
 	}
 
-	_, err := s.Turn(context.Background(), mem, prov)
+	_, err := s.Turn(context.Background(), mem, spec, prov)
 	require.ErrorIs(t, err, wantErr)
 }
 
 func TestStep_Turn_UsageArtifact(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	var capturedUsage *artifact.Usage
 	h := &mockHandler{
 		fn: func(ctx context.Context, art artifact.Artifact, e Emitter) error {
@@ -423,7 +437,7 @@ func TestStep_Turn_UsageArtifact(t *testing.T) {
 		},
 	}
 
-	_, err := s.Turn(context.Background(), mem, prov)
+	_, err := s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 
 	require.NotNil(t, capturedUsage)
@@ -433,6 +447,7 @@ func TestStep_Turn_UsageArtifact(t *testing.T) {
 }
 
 func TestStep_Turn_HandlerErrorAfterPartialProcessing(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	h := &mockHandler{
 		fn: func(ctx context.Context, art artifact.Artifact, e Emitter) error {
 			if art.Kind() == "text" {
@@ -452,7 +467,7 @@ func TestStep_Turn_HandlerErrorAfterPartialProcessing(t *testing.T) {
 		},
 	}
 
-	_, err := s.Turn(context.Background(), mem, prov)
+	_, err := s.Turn(context.Background(), mem, spec, prov)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "handler failed on second artifact")
 
@@ -462,6 +477,7 @@ func TestStep_Turn_HandlerErrorAfterPartialProcessing(t *testing.T) {
 }
 
 func TestStep_Turn_OutputEvents(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -475,7 +491,7 @@ func TestStep_Turn_OutputEvents(t *testing.T) {
 		},
 	}
 
-	result, err := s.Turn(context.Background(), mem, prov)
+	result, err := s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 	assert.Same(t, mem, result)
 
@@ -512,6 +528,7 @@ func TestStep_Turn_OutputEvents(t *testing.T) {
 }
 
 func TestStep_Turn_AccumulatesInterleavedDeltas(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -524,7 +541,7 @@ func TestStep_Turn_AccumulatesInterleavedDeltas(t *testing.T) {
 		},
 	}
 
-	result, err := s.Turn(context.Background(), mem, prov)
+	result, err := s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 	assert.Same(t, mem, result)
 
@@ -545,6 +562,7 @@ func TestStep_Turn_AccumulatesInterleavedDeltas(t *testing.T) {
 }
 
 func TestStep_Turn_AccumulatesAdjacentDeltas(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -558,7 +576,7 @@ func TestStep_Turn_AccumulatesAdjacentDeltas(t *testing.T) {
 		},
 	}
 
-	result, err := s.Turn(context.Background(), mem, prov)
+	result, err := s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 	assert.Same(t, mem, result)
 
@@ -579,6 +597,7 @@ func TestStep_Turn_AccumulatesAdjacentDeltas(t *testing.T) {
 }
 
 func TestStep_Turn_AccumulatesInterleavedToolCalls(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -592,7 +611,7 @@ func TestStep_Turn_AccumulatesInterleavedToolCalls(t *testing.T) {
 		},
 	}
 
-	result, err := s.Turn(context.Background(), mem, prov)
+	result, err := s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 	assert.Same(t, mem, result)
 
@@ -617,6 +636,7 @@ func TestStep_Turn_AccumulatesInterleavedToolCalls(t *testing.T) {
 }
 
 func TestStep_Turn_MultiKeyAccumulationOrder(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -634,7 +654,7 @@ func TestStep_Turn_MultiKeyAccumulationOrder(t *testing.T) {
 		},
 	}
 
-	result, err := s.Turn(context.Background(), mem, prov)
+	result, err := s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 
 	turns := result.Turns()
@@ -665,6 +685,7 @@ func TestStep_Turn_MultiKeyAccumulationOrder(t *testing.T) {
 }
 
 func TestStep_Turn_OutputEventsWithHandler(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -689,7 +710,7 @@ func TestStep_Turn_OutputEventsWithHandler(t *testing.T) {
 		},
 	}
 
-	result, err := s.Turn(context.Background(), mem, prov)
+	result, err := s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 
 	events := collectEvents(ch, 100*time.Millisecond)
@@ -708,6 +729,7 @@ func TestStep_Turn_OutputEventsWithHandler(t *testing.T) {
 }
 
 func TestStep_Turn_OutputEvents_OnlyCompletes(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -719,7 +741,7 @@ func TestStep_Turn_OutputEvents_OnlyCompletes(t *testing.T) {
 		},
 	}
 
-	result, err := s.Turn(context.Background(), mem, prov)
+	result, err := s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 	assert.Same(t, mem, result)
 
@@ -741,6 +763,7 @@ func TestStep_Turn_OutputEvents_OnlyCompletes(t *testing.T) {
 }
 
 func TestStep_Turn_DeltasDroppedWithoutSubscriber(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -752,7 +775,7 @@ func TestStep_Turn_DeltasDroppedWithoutSubscriber(t *testing.T) {
 		},
 	}
 
-	result, err := s.Turn(context.Background(), mem, prov)
+	result, err := s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 	assert.Same(t, mem, result)
 
@@ -772,6 +795,7 @@ func TestStep_Turn_DeltasDroppedWithoutSubscriber(t *testing.T) {
 }
 
 func TestStep_Turn_CompleteArtifactEvent(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -783,7 +807,7 @@ func TestStep_Turn_CompleteArtifactEvent(t *testing.T) {
 		},
 	}
 
-	result, err := s.Turn(context.Background(), mem, prov)
+	result, err := s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 	assert.Same(t, mem, result)
 
@@ -811,6 +835,7 @@ func TestStep_Turn_CompleteArtifactEvent(t *testing.T) {
 }
 
 func TestStep_Turn_ErrorEmitsCompleteArtifacts(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -824,7 +849,7 @@ func TestStep_Turn_ErrorEmitsCompleteArtifacts(t *testing.T) {
 		err: wantErr,
 	}
 
-	_, err := s.Turn(context.Background(), mem, prov)
+	_, err := s.Turn(context.Background(), mem, spec, prov)
 	require.ErrorIs(t, err, wantErr)
 
 	events := collectEvents(ch, 100*time.Millisecond)
@@ -844,6 +869,7 @@ func TestStep_Turn_ErrorEmitsCompleteArtifacts(t *testing.T) {
 }
 
 func TestStep_Turn_ErrorEvent(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -857,7 +883,7 @@ func TestStep_Turn_ErrorEvent(t *testing.T) {
 		err: wantErr,
 	}
 
-	_, err := s.Turn(context.Background(), mem, prov)
+	_, err := s.Turn(context.Background(), mem, spec, prov)
 	require.ErrorIs(t, err, wantErr)
 
 	events := collectEvents(ch, 100*time.Millisecond)
@@ -871,6 +897,7 @@ func TestStep_Turn_ErrorEvent(t *testing.T) {
 }
 
 func TestStep_Turn_ContextCancellationMidAccumulation(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -880,7 +907,7 @@ func TestStep_Turn_ContextCancellationMidAccumulation(t *testing.T) {
 
 	ch := s.Subscribe("error")
 
-	_, err := s.Turn(ctx, mem, prov)
+	_, err := s.Turn(ctx, mem, spec, prov)
 	require.ErrorIs(t, err, context.Canceled)
 
 	// No ErrorEvent should be emitted for context cancellation.
@@ -980,6 +1007,7 @@ func TestStep_Submit_MultipleInOrder(t *testing.T) {
 }
 
 func TestStep_Submit_ThenTurn_EventsInOrder(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 
 	s := stepWithState(mem)
@@ -993,7 +1021,7 @@ func TestStep_Submit_ThenTurn_EventsInOrder(t *testing.T) {
 		},
 	}
 
-	_, err = s.Turn(context.Background(), mem, prov)
+	_, err = s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 
 	events := collectEvents(ch, 100*time.Millisecond)
@@ -1139,6 +1167,7 @@ func TestStep_SetEventContext_PropagatesToSubmit(t *testing.T) {
 }
 
 func TestStep_SetEventContext_PropagatesToTurn(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -1153,7 +1182,7 @@ func TestStep_SetEventContext_PropagatesToTurn(t *testing.T) {
 	}
 
 	s.SetEventContext(WithProvenance(context.Background(), "test-provenance"))
-	_, err := s.Turn(context.Background(), mem, prov)
+	_, err := s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 
 	events := collectEvents(ch, 100*time.Millisecond)
@@ -1179,6 +1208,7 @@ func TestStep_SetEventContext_PropagatesToTurn(t *testing.T) {
 }
 
 func TestStep_SetEventContext_PropagatesToError(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -1188,7 +1218,7 @@ func TestStep_SetEventContext_PropagatesToError(t *testing.T) {
 	prov := &mockProvider{err: wantErr}
 
 	s.SetEventContext(WithProvenance(context.Background(), "test-provenance"))
-	_, err := s.Turn(context.Background(), mem, prov)
+	_, err := s.Turn(context.Background(), mem, spec, prov)
 	require.ErrorIs(t, err, wantErr)
 
 	events := collectEvents(ch, 100*time.Millisecond)
@@ -1230,6 +1260,7 @@ func TestStep_SetEventContext_Cleared(t *testing.T) {
 }
 
 func TestStep_ContextClearedOnError(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -1239,7 +1270,7 @@ func TestStep_ContextClearedOnError(t *testing.T) {
 	prov := &mockProvider{err: wantErr}
 
 	s.SetEventContext(WithProvenance(context.Background(), "first"))
-	_, err := s.Turn(context.Background(), mem, prov)
+	_, err := s.Turn(context.Background(), mem, spec, prov)
 	require.ErrorIs(t, err, wantErr)
 
 	events := collectEvents(ch, 100*time.Millisecond)
@@ -1267,7 +1298,7 @@ type testCustomEvent struct {
 	Ctx   context.Context
 }
 
-func (e testCustomEvent) Kind() string          { return "test_custom" }
+func (e testCustomEvent) Kind() string             { return "test_custom" }
 func (e testCustomEvent) Context() context.Context { return e.Ctx }
 
 func TestStep_Emit_DeliversCustomEvents(t *testing.T) {
@@ -1286,6 +1317,7 @@ func TestStep_Emit_DeliversCustomEvents(t *testing.T) {
 }
 
 func TestOnEmit_MultipleCallbacks_Order(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -1319,7 +1351,7 @@ func TestOnEmit_MultipleCallbacks_Order(t *testing.T) {
 		},
 	}
 
-	_, err := s.Turn(context.Background(), mem, prov)
+	_, err := s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 
 	// Verify cb1 ran completely before cb2 started, and cb2 observed cb1's state mutation
@@ -1327,6 +1359,7 @@ func TestOnEmit_MultipleCallbacks_Order(t *testing.T) {
 }
 
 func TestEmit_NoCallbacks(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	s := New()
 	ch := s.Subscribe("turn_complete")
 	mem := &state.Buffer{}
@@ -1338,7 +1371,7 @@ func TestEmit_NoCallbacks(t *testing.T) {
 		},
 	}
 
-	_, err := s.Turn(context.Background(), mem, prov)
+	_, err := s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
 
 	// Event should still be emitted to FanOut even with no OnEmit callbacks
@@ -1353,6 +1386,7 @@ func TestEmit_NoCallbacks(t *testing.T) {
 }
 
 func TestOnEmit_ErrorEvent_ContextPropagation(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	var receivedCtx context.Context
 	cb := func(ctx context.Context, event OutputEvent) {
 		receivedCtx = event.Context()
@@ -1366,7 +1400,7 @@ func TestOnEmit_ErrorEvent_ContextPropagation(t *testing.T) {
 	prov := &mockProvider{err: wantErr}
 
 	s.SetEventContext(WithProvenance(context.Background(), "test-provenance"))
-	_, err := s.Turn(context.Background(), mem, prov)
+	_, err := s.Turn(context.Background(), mem, spec, prov)
 	require.ErrorIs(t, err, wantErr)
 
 	name, _ := ProvenanceFrom(receivedCtx)
@@ -1381,7 +1415,7 @@ func TestPropertiesEvent_Kind(t *testing.T) {
 func TestPropertiesEvent_Context(t *testing.T) {
 	event := PropertiesEvent{
 		Properties: map[string]string{"key": "val"},
-		Ctx:    WithProvenance(context.Background(), "test"),
+		Ctx:        WithProvenance(context.Background(), "test"),
 	}
 	name, _ := ProvenanceFrom(event.Context())
 	assert.Equal(t, "test", name)
@@ -1393,7 +1427,7 @@ func TestPropertiesEvent_EmitAndReceive(t *testing.T) {
 
 	s.Emit(context.Background(), PropertiesEvent{
 		Properties: map[string]string{"thread_id": "abc-123", "state": "thinking..."},
-		Ctx:    WithProvenance(context.Background(), "test"),
+		Ctx:        WithProvenance(context.Background(), "test"),
 	})
 
 	events := collectEvents(ch, 100*time.Millisecond)
@@ -1418,26 +1452,27 @@ func TestLifecycleEvent_Context(t *testing.T) {
 }
 
 func TestTurn_LifecyclePhases(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	tests := []struct {
-		name      string
-		artifacts []artifact.Artifact
-		wantErr   error
+		name       string
+		artifacts  []artifact.Artifact
+		wantErr    error
 		wantPhases []string
 	}{
 		{
-			name:      "artifacts emit submitted streaming",
-			artifacts: []artifact.Artifact{artifact.TextDelta{Content: "Hello"}},
+			name:       "artifacts emit submitted streaming",
+			artifacts:  []artifact.Artifact{artifact.TextDelta{Content: "Hello"}},
 			wantPhases: []string{"submitted", "streaming"},
 		},
 		{
-			name:      "no artifacts emit submitted only",
-			artifacts: nil,
+			name:       "no artifacts emit submitted only",
+			artifacts:  nil,
 			wantPhases: []string{"submitted"},
 		},
 		{
-			name:      "provider error emits submitted only",
-			artifacts: nil,
-			wantErr:   fmt.Errorf("provider failed"),
+			name:       "provider error emits submitted only",
+			artifacts:  nil,
+			wantErr:    fmt.Errorf("provider failed"),
 			wantPhases: []string{"submitted"},
 		},
 	}
@@ -1450,7 +1485,7 @@ func TestTurn_LifecyclePhases(t *testing.T) {
 			prov := &mockProvider{artifacts: tt.artifacts, err: tt.wantErr}
 			st := &state.Buffer{}
 
-			_, err := step.Turn(context.Background(), st, prov)
+			_, err := step.Turn(context.Background(), st, spec, prov)
 			if tt.wantErr != nil {
 				require.Error(t, err)
 			} else {
@@ -1474,6 +1509,7 @@ func TestTurn_LifecyclePhases(t *testing.T) {
 // This is a regression guard for the ErrorEvent emission path that uses
 // context.Background() instead of the cancelled turn context.
 func TestStep_Turn_ErrorEvent_NoSubscriber(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 
@@ -1483,7 +1519,7 @@ func TestStep_Turn_ErrorEvent_NoSubscriber(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := s.Turn(context.Background(), mem, prov)
+		_, err := s.Turn(context.Background(), mem, spec, prov)
 		done <- err
 	}()
 

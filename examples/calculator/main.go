@@ -14,6 +14,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
@@ -89,7 +90,7 @@ func run() error {
 	}
 	prov, err := openai.New(append([]openai.Option{
 		openai.WithAPIKey(apiKey),
-		openai.WithModel(model),
+		
 	}, opts...)...)
 	if err != nil {
 		return fmt.Errorf("create openai provider: %w", err)
@@ -114,6 +115,7 @@ func run() error {
 	react := &cognitive.ReAct{
 		Step:     step,
 		Provider: prov,
+		Spec:     models.Spec{Name: model},
 	}
 
 	result, err := react.Run(ctx, mem)

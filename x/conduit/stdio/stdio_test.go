@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/andrewhowdencom/ore/models"
 	"strings"
 	"testing"
 	"time"
@@ -21,7 +22,7 @@ type mockProvider struct {
 	err       error
 }
 
-func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	for _, art := range m.artifacts {
 		select {
 		case ch <- art:
@@ -34,7 +35,7 @@ func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- arti
 
 type blockingProvider struct{}
 
-func (p *blockingProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (p *blockingProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	<-ctx.Done()
 	return ctx.Err()
 }
@@ -43,7 +44,7 @@ type multiTurnProvider struct {
 	invocations int
 }
 
-func (m *multiTurnProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *multiTurnProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	m.invocations++
 	switch m.invocations {
 	case 1:
@@ -57,8 +58,9 @@ func (m *multiTurnProvider) Invoke(ctx context.Context, s state.State, ch chan<-
 }
 
 func simpleProcessor() session.TurnProcessor {
-	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
-		return step.Turn(ctx, st, prov)
+	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+		spec := models.Spec{Name: "test-model"}; _ = spec
+		return step.Turn(ctx, st, spec, prov)
 	}
 }
 
@@ -224,9 +226,10 @@ func TestStart_WithThreadID(t *testing.T) {
 
 func TestStart_ProvenanceFiltering(t *testing.T) {
 	store := session.NewMemoryStore()
-	foreignProcessor := func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
+	foreignProcessor := func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 		step.SetEventContext(loop.WithProvenance(context.Background(), "other"))
-		return step.Turn(ctx, st, prov)
+		spec := models.Spec{Name: "test-model"}; _ = spec
+		return step.Turn(ctx, st, spec, prov)
 	}
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
@@ -272,12 +275,13 @@ func TestStart_ContextCancellation(t *testing.T) {
 func TestStart_MultiTurnCapture(t *testing.T) {
 	prov := &multiTurnProvider{}
 	store := session.NewMemoryStore()
-	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider) (state.State, error) {
-		st, err := step.Turn(ctx, st, prov)
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+		spec := models.Spec{Name: "test-model"}
+		st, err := step.Turn(ctx, st, spec, prov)
 		if err != nil {
 			return st, err
 		}
-		return step.Turn(ctx, st, prov)
+		return step.Turn(ctx, st, spec, prov)
 	})
 
 	out := &bytes.Buffer{}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
@@ -1124,25 +1125,25 @@ func TestUnknownArtifact_Ignored(t *testing.T) {
 	assert.Empty(t, mm.turns[0].blocks, "unknown artifact should produce no blocks")
 }
 
-func TestModel_Update_KeyCtrlO_TogglesExpandLatestDetails(t *testing.T) {
+func TestModel_Update_KeyCtrlO_TogglesExpandAllDetails(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 
-	assert.False(t, m.expandLatestDetails)
+	assert.False(t, m.expandAllDetails)
 
 	newM, _ := m.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	mm := newM.(*model)
-	assert.True(t, mm.expandLatestDetails)
+	assert.True(t, mm.expandAllDetails)
 
 	newM2, _ := mm.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	mm2 := newM2.(*model)
-	assert.False(t, mm2.expandLatestDetails)
+	assert.False(t, mm2.expandAllDetails)
 }
 
-func TestModel_Update_Turn_Assistant_ResetsExpandLatestDetails(t *testing.T) {
+func TestModel_Update_Turn_Assistant_DoesNotResetExpandAllDetails(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 
 	turn := state.Turn{
 		Role: state.RoleAssistant,
@@ -1152,7 +1153,7 @@ func TestModel_Update_Turn_Assistant_ResetsExpandLatestDetails(t *testing.T) {
 	}
 	newM, _ := m.Update(turnMsg{turn: turn})
 	mm := newM.(*model)
-	assert.False(t, mm.expandLatestDetails)
+	assert.True(t, mm.expandAllDetails, "new assistant turn should not reset expandAllDetails")
 }
 
 func TestModel_Update_UserAfterTool_DoesNotResetExpand(t *testing.T) {
@@ -1169,9 +1170,9 @@ func TestModel_Update_UserAfterTool_DoesNotResetExpand(t *testing.T) {
 		role:   state.RoleTool,
 		blocks: []renderedBlock{{title: "Tool Result", style: m.theme.ToolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"}},
 	})
-	m.expandLatestDetails = true
+	m.expandAllDetails = true
 
-	// User turn should NOT reset expandLatestDetails
+	// User turn should NOT reset expandAllDetails
 	turn := state.Turn{
 		Role: state.RoleUser,
 		Artifacts: []artifact.Artifact{
@@ -1181,7 +1182,7 @@ func TestModel_Update_UserAfterTool_DoesNotResetExpand(t *testing.T) {
 	newM, _ := m.Update(turnMsg{turn: turn})
 	mm := newM.(*model)
 
-	assert.True(t, mm.expandLatestDetails, "user turn should not reset expandLatestDetails")
+	assert.True(t, mm.expandAllDetails, "user turn should not reset expandAllDetails")
 
 	// Previous assistant turn's tool blocks remain expanded
 	output := mm.buildContent()
@@ -1196,7 +1197,7 @@ func TestModel_Update_KeyCtrlO_WhilePending(t *testing.T) {
 	// Toggle should not panic while a response is pending
 	newM, _ := m.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	mm := newM.(*model)
-	assert.True(t, mm.expandLatestDetails)
+	assert.True(t, mm.expandAllDetails)
 	assert.True(t, mm.pending)
 
 	// View should still show the pending placeholder
@@ -1212,15 +1213,15 @@ func TestModel_Update_KeyCtrlO_RapidToggles(t *testing.T) {
 
 	newM, _ := m.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	mm := newM.(*model)
-	assert.True(t, mm.expandLatestDetails)
+	assert.True(t, mm.expandAllDetails)
 
 	newM2, _ := mm.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	mm2 := newM2.(*model)
-	assert.False(t, mm2.expandLatestDetails)
+	assert.False(t, mm2.expandAllDetails)
 
 	newM3, _ := mm2.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	mm3 := newM3.(*model)
-	assert.True(t, mm3.expandLatestDetails)
+	assert.True(t, mm3.expandAllDetails)
 }
 
 func TestModel_Update_AudioMsg(t *testing.T) {
@@ -2105,4 +2106,130 @@ func TestModel_Update_ActivityMsg_SetsWorkingAndDescription(t *testing.T) {
 	mm2 := newM2.(*model)
 	assert.False(t, mm2.working, "activityMsg should clear working")
 	assert.Empty(t, mm2.workingDescription, "activityMsg should clear description")
+}
+
+func TestModel_RenderArtifact_Compaction(t *testing.T) {
+	m := newTestModel()
+
+	t.Run("builds a one-line marker block", func(t *testing.T) {
+		now := time.Date(2026, 6, 17, 12, 0, 0, 0, time.UTC)
+		c := artifact.Compaction{
+			CompactedThrough:     42,
+			DroppedTurnCount:     42,
+			DroppedTokenEstimate: 24576, // 24K bytes
+			Strategy:             "summarize",
+			Model:                "gpt-4o-mini",
+			CreatedAt:            now,
+		}
+		block := m.renderCompactionBlock(c)
+
+		assert.Equal(t, "compaction", block.kind)
+		assert.False(t, block.expandedByDefault)
+		assert.Contains(t, block.title, "42 turns")
+		assert.Contains(t, block.title, "saved")
+		assert.Contains(t, block.compact, "↳ compacted")
+		assert.Contains(t, block.compact, "42 turns")
+
+		// Source is the multi-line metadata footer, expanded on Ctrl+O.
+		assert.Contains(t, block.source, "strategy: summarize")
+		assert.Contains(t, block.source, "model: gpt-4o-mini")
+		assert.Contains(t, block.source, "compacted through turn 42")
+	})
+
+	t.Run("uses fallback labels when fields are empty", func(t *testing.T) {
+		c := artifact.Compaction{DroppedTurnCount: 7, DroppedTokenEstimate: 1024}
+		block := m.renderCompactionBlock(c)
+
+		assert.Contains(t, block.source, "strategy: (unknown)")
+		assert.Contains(t, block.source, "model: (default)")
+		assert.Contains(t, block.source, "compacted through turn 0")
+		assert.Contains(t, block.title, "7 turns")
+		assert.Contains(t, block.title, "1.0K")
+	})
+
+	t.Run("uses SystemStyle", func(t *testing.T) {
+		c := artifact.Compaction{DroppedTurnCount: 1}
+		block := m.renderCompactionBlock(c)
+		assert.Equal(t, m.theme.SystemStyle, block.style)
+	})
+}
+
+func TestModel_LoadHistory_WithCompactionTurn(t *testing.T) {
+	m := newTestModel()
+
+	// A compaction turn typically has [Compaction, Text] artifacts:
+	// the marker comes first (visible at top of the conversation),
+	// the summary text comes second (the body to expand).
+	turns := []state.Turn{
+		{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}},
+		{
+			Role: state.RoleSystem,
+			Artifacts: []artifact.Artifact{
+				artifact.Compaction{DroppedTurnCount: 1, Strategy: "summarize"},
+				artifact.Text{Content: "Summary of earlier discussion."},
+			},
+		},
+		{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "ok, continue"}}},
+	}
+
+	m.loadHistory(turns)
+
+	require.Len(t, m.turns, 3)
+	require.Len(t, m.turns[1].blocks, 2, "compaction turn produces two blocks: marker + summary text")
+
+	// First block on the compaction turn is the marker.
+	assert.Equal(t, "compaction", m.turns[1].blocks[0].kind)
+	assert.Contains(t, m.turns[1].blocks[0].title, "1 turns")
+
+	// Second block is the regular Text rendering.
+	assert.Equal(t, "text", m.turns[1].blocks[1].kind)
+	assert.Equal(t, "System", m.turns[1].blocks[1].title)
+	assert.Equal(t, "Summary of earlier discussion.", m.turns[1].blocks[1].source)
+
+	assert.True(t, m.contentDirty)
+}
+
+func TestModel_LoadHistory_StandaloneCompactionArtifact_NoText(t *testing.T) {
+	// Defensive: a Compaction artifact with no sibling Text should
+	// still render as a marker block. The marker block alone (no
+	// summary body) is a valid edge case — e.g. an application that
+	// wants to record a "compaction happened" event without exposing
+	// a summary to the LLM.
+	m := newTestModel()
+	turns := []state.Turn{
+		{
+			Role: state.RoleSystem,
+			Artifacts: []artifact.Artifact{
+				artifact.Compaction{DroppedTurnCount: 5, Strategy: "summarize"},
+			},
+		},
+	}
+	m.loadHistory(turns)
+
+	require.Len(t, m.turns, 1)
+	require.Len(t, m.turns[0].blocks, 1, "compaction alone is one block")
+	assert.Equal(t, "compaction", m.turns[0].blocks[0].kind)
+	assert.Contains(t, m.turns[0].blocks[0].title, "5 turns")
+}
+
+func TestFormatByteCount(t *testing.T) {
+	tests := []struct {
+		name string
+		in   int64
+		want string
+	}{
+		{"zero", 0, "0B"},
+		{"small", 512, "512B"},
+		{"just under 1K", 1023, "1023B"},
+		{"exactly 1K", 1024, "1.0K"},
+		{"a few K", 5120, "5.0K"},
+		{"almost 1M", 1024*1024 - 1, "1024.0K"},
+		{"exactly 1M", 1024 * 1024, "1.0M"},
+		{"many M", 50 * 1024 * 1024, "50.0M"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, formatByteCount(tt.in))
+		})
+	}
 }

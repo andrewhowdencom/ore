@@ -71,6 +71,68 @@ func TestUnmarshalArtifacts_UnknownKind(t *testing.T) {
 	assert.Contains(t, err.Error(), "unknown artifact kind")
 }
 
+// TestMarshalArtifacts_NewlyRegisteredKinds exercises the three
+// artifact kinds that were missing from the original artifactRegistry:
+// StopReason, ReasoningSignature, Compaction. Before the fix in
+// issue #453, these could not round-trip through JSONStore; sessions
+// that produced them failed to resume with a misleading "thread not
+// found" error.
+func TestMarshalArtifacts_NewlyRegisteredKinds(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	artifacts := []artifact.Artifact{
+		artifact.StopReason{Reason: artifact.StopReasonToolUse},
+		artifact.ReasoningSignature{
+			Provider: "anthropic",
+			SubKind:  "signature",
+			Data:     "7e049340988074aa478d783de41b63ea79c8f3ca25cbd0427c4f7a0ad1da14a1",
+		},
+		artifact.Compaction{
+			CompactedThrough:     4,
+			DroppedTurnCount:     4,
+			DroppedTokenEstimate: 12345,
+			Strategy:             "summarize",
+			Model:                "gpt-4o-mini",
+			CreatedAt:            now,
+		},
+	}
+
+	data, err := marshalArtifacts(artifacts)
+	require.NoError(t, err)
+
+	got, err := unmarshalArtifacts(data)
+	require.NoError(t, err)
+	require.Len(t, got, len(artifacts))
+
+	// Each round-tripped artifact must be the value form (matching
+	// the in-memory shape) and must carry the same fields.
+	for i, want := range artifacts {
+		assert.Equal(t, want.Kind(), got[i].Kind(), "artifact %d kind", i)
+		assert.Equal(t, want, got[i], "artifact %d value", i)
+	}
+}
+
+// TestMarshalArtifacts_AllRegisteredKinds is the broader version of
+// the above: iterate the artifact package's AllPersistent manifest
+// and round-trip one of each. Combined with the drift test, this is
+// the safety net that catches future kinds that are registered but
+// not exercised, and vice versa. See issue #453.
+func TestMarshalArtifacts_AllRegisteredKinds(t *testing.T) {
+	var artifacts []artifact.Artifact
+	artifacts = append(artifacts, artifact.AllPersistent()...)
+
+	data, err := marshalArtifacts(artifacts)
+	require.NoError(t, err)
+
+	got, err := unmarshalArtifacts(data)
+	require.NoError(t, err)
+	require.Len(t, got, len(artifacts))
+
+	for i, want := range artifacts {
+		assert.Equal(t, want.Kind(), got[i].Kind())
+		assert.Equal(t, want, got[i])
+	}
+}
+
 func TestMarshalTurns_Empty(t *testing.T) {
 	data, err := marshalTurns(nil)
 	require.NoError(t, err)

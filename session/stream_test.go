@@ -9,6 +9,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/stretchr/testify/assert"
@@ -44,8 +45,8 @@ func TestStream_Interface(t *testing.T) {
 	require.False(t, ok, "channel should be closed")
 
 	// Thread should still exist in the store.
-	_, ok = store.Get(stream.ID())
-	assert.True(t, ok)
+	_, err = store.Get(stream.ID())
+	assert.NoError(t, err)
 }
 
 func TestStream_Turns(t *testing.T) {
@@ -106,6 +107,174 @@ func TestStream_LoadTurns(t *testing.T) {
 	assert.Equal(t, "replaced", got[0].Artifacts[0].(artifact.Text).Content)
 
 	_ = stream.Close()
+}
+
+func TestStream_AppendTurn_AppendsToState(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	// Pre-existing turns from a Process call.
+	err = stream.Process(context.Background(), UserMessageEvent{Content: "hello"})
+	require.NoError(t, err)
+	require.Len(t, stream.Turns(), 2)
+
+	// Append a synthetic RoleSystem compaction turn.
+	err = stream.AppendTurn(context.Background(),
+		state.RoleSystem,
+		artifact.Text{Content: "summary"},
+		artifact.Compaction{Strategy: "summarize"},
+	)
+	require.NoError(t, err)
+
+	got := stream.Turns()
+	require.Len(t, got, 3, "AppendTurn appends to the existing buffer")
+
+	// The appended turn is at the end.
+	assert.Equal(t, state.RoleSystem, got[2].Role)
+	require.Len(t, got[2].Artifacts, 2)
+	assert.Equal(t, "summary", got[2].Artifacts[0].(artifact.Text).Content)
+	_, isCompaction := got[2].Artifacts[1].(artifact.Compaction)
+	assert.True(t, isCompaction)
+	assert.False(t, got[2].Timestamp.IsZero())
+
+	_ = stream.Close()
+}
+
+func TestStream_AppendTurn_BroadcastsTurnComplete(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	ch := stream.Subscribe("turn_complete")
+
+	err = stream.AppendTurn(
+		loop.WithProvenance(context.Background(), "external"),
+		state.RoleSystem,
+		artifact.Text{Content: "summary"},
+	)
+	require.NoError(t, err)
+
+	select {
+	case ev := <-ch:
+		tc, ok := ev.(loop.TurnCompleteEvent)
+		require.True(t, ok, "expected TurnCompleteEvent, got %T", ev)
+		assert.Equal(t, state.RoleSystem, tc.Turn.Role)
+		require.Len(t, tc.Turn.Artifacts, 1)
+		assert.Equal(t, "summary", tc.Turn.Artifacts[0].(artifact.Text).Content)
+		assert.Equal(t, "external", provenance(tc.Ctx))
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for TurnCompleteEvent")
+	}
+
+	_ = stream.Close()
+}
+
+func TestStream_AppendTurn_ClosedReturnsError(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	require.NoError(t, stream.Close())
+
+	err = stream.AppendTurn(context.Background(), state.RoleSystem, artifact.Text{Content: "after close"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "closed")
+}
+
+func TestStream_AppendTurn_NoSubscribers_NoError(t *testing.T) {
+	// AppendTurn must not block or fail when there are no live
+	// subscribers. The event still flows through the event bus; it
+	// just has no listeners.
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	// No subscription — AppendTurn returns nil and the state is updated.
+	err = stream.AppendTurn(context.Background(), state.RoleSystem, artifact.Text{Content: "no listeners"})
+	require.NoError(t, err)
+
+	require.Len(t, stream.Turns(), 1)
+	assert.Equal(t, "no listeners", stream.Turns()[0].Artifacts[0].(artifact.Text).Content)
+
+	_ = stream.Close()
+}
+
+func TestStream_AllMetadata(t *testing.T) {
+	t.Run("returns empty map for a fresh stream", func(t *testing.T) {
+		store := NewMemoryStore()
+		prov := &mockProvider{}
+		mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+		stream, err := mgr.Create()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = stream.Close() })
+
+		meta := stream.AllMetadata()
+		require.NotNil(t, meta, "AllMetadata must return a non-nil map for safe iteration")
+		assert.Empty(t, meta)
+	})
+
+	t.Run("returns seeded keys after SetMetadata", func(t *testing.T) {
+		store := NewMemoryStore()
+		prov := &mockProvider{}
+		mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+		stream, err := mgr.Create()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = stream.Close() })
+
+		stream.SetMetadata("thread_id", "abc")
+		stream.SetMetadata("cwd", "/tmp")
+		stream.SetMetadata("role", "reviewer")
+
+		meta := stream.AllMetadata()
+		assert.Equal(t, "abc", meta["thread_id"])
+		assert.Equal(t, "/tmp", meta["cwd"])
+		assert.Equal(t, "reviewer", meta["role"])
+		assert.Len(t, meta, 3)
+	})
+
+	t.Run("returns a defensive copy that does not alias the thread's map", func(t *testing.T) {
+		store := NewMemoryStore()
+		prov := &mockProvider{}
+		mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+		stream, err := mgr.Create()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = stream.Close() })
+
+		stream.SetMetadata("thread_id", "abc")
+		stream.SetMetadata("role", "reviewer")
+
+		// Mutate the returned map in every way a caller could.
+		meta := stream.AllMetadata()
+		meta["injected"] = "evil"
+		delete(meta, "thread_id")
+		meta["role"] = "tampered"
+
+		// Re-read; the stream's metadata must be unaffected. This also
+		// proves the returned map is a fresh reference (aliasing would
+		// have shown the mutations on re-read).
+		fresh := stream.AllMetadata()
+		assert.Len(t, fresh, 2, "the thread's metadata must be unchanged after mutating the returned map")
+		assert.Equal(t, "abc", fresh["thread_id"])
+		assert.Equal(t, "reviewer", fresh["role"])
+		_, leaked := fresh["injected"]
+		assert.False(t, leaked, "the injected key must not leak into the thread's metadata")
+	})
 }
 
 func TestStream_Process_ContextPropagation(t *testing.T) {
@@ -342,7 +511,7 @@ func TestStream_Process_EmitsLifecycleEvent(t *testing.T) {
 
 func TestStream_Process_EmitsLifecycleEvent_WithError(t *testing.T) {
 	store := NewMemoryStore()
-	mgr := NewManager(store, &mockProvider{}, func(*Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
+	mgr := NewManager(store, &mockProvider{}, func(*Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 		return st, errors.New("processor failed")
 	})
 
@@ -398,9 +567,9 @@ type saveErrStore struct {
 	inner Store
 }
 
-func (s *saveErrStore) Create() (*Thread, error)                { return s.inner.Create() }
-func (s *saveErrStore) Get(id string) (*Thread, bool)           { return s.inner.Get(id) }
-func (s *saveErrStore) GetBy(key, value string) (*Thread, bool) { return s.inner.GetBy(key, value) }
+func (s *saveErrStore) Create() (*Thread, error)                 { return s.inner.Create() }
+func (s *saveErrStore) Get(id string) (*Thread, error)            { return s.inner.Get(id) }
+func (s *saveErrStore) GetBy(key, value string) (*Thread, error) { return s.inner.GetBy(key, value) }
 func (s *saveErrStore) Save(*Thread) error                      { return errors.New("save failed") }
 func (s *saveErrStore) Delete(id string) bool                   { return s.inner.Delete(id) }
 func (s *saveErrStore) List() ([]*Thread, error)                { return s.inner.List() }
@@ -494,12 +663,13 @@ func TestStream_Process_EmitsLifecycleEvent_PropagatesProvenance(t *testing.T) {
 func TestStream_Process_EmitsSingleLifecycleEvent_ForMultiTurn(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
-		st, err := executor.Turn(ctx, st, prov)
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+		spec := models.Spec{Name: "test-model"}
+		st, err := step.Turn(ctx, st, spec, prov)
 		if err != nil {
 			return st, err
 		}
-		return executor.Turn(ctx, st, prov)
+		return step.Turn(ctx, st, spec, prov)
 	})
 
 	stream, err := mgr.Create()
@@ -544,7 +714,7 @@ func TestStream_Process_EmitsSingleLifecycleEvent_ForMultiTurn(t *testing.T) {
 func TestStream_Submit_NonBlocking(t *testing.T) {
 	store := NewMemoryStore()
 	sleepyProcessor := func() TurnProcessor {
-		return func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
+		return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 			time.Sleep(50 * time.Millisecond)
 			return st, nil
 		}
@@ -690,7 +860,7 @@ func TestStream_ProcessAndSubmit_Mixed(t *testing.T) {
 // slowProvider sleeps for a short duration, simulating a slow turn.
 type slowProvider struct{}
 
-func (m *slowProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *slowProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	select {
 	case <-time.After(100 * time.Millisecond):
 		return nil
@@ -706,7 +876,7 @@ type serialProvider struct {
 	detected bool
 }
 
-func (m *serialProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *serialProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	m.mu.Lock()
 	if m.active {
 		m.detected = true
@@ -907,29 +1077,28 @@ func TestStream_ModelOption(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = stream.Close() })
 
-	t.Run("returns nil when metadata key is absent", func(t *testing.T) {
-		assert.Nil(t, stream.ModelOption(),
-			"fresh stream has no provider.model metadata; ModelOption must return nil so the result can be appended unconditionally")
+	t.Run("returns false when metadata key is absent", func(t *testing.T) {
+		_, ok := stream.Spec()
+		assert.False(t, ok,
+			"fresh stream has no ore.model.name metadata; Spec must return false so the caller uses the loop's default")
 	})
 
-	t.Run("returns ModelOption carrying the metadata value", func(t *testing.T) {
-		stream.SetMetadata("provider.model", "gpt-4o-mini")
+	t.Run("returns Spec carrying the metadata value", func(t *testing.T) {
+		stream.SetMetadata(MetadataKeyModelName, "gpt-4o-mini")
 
-		opt := stream.ModelOption()
-		require.NotNil(t, opt)
-
-		mo, ok := opt.(provider.ModelOption)
-		require.True(t, ok, "ModelOption should produce a provider.ModelOption value")
-		assert.Equal(t, "gpt-4o-mini", mo.Model)
+		spec, ok := stream.Spec()
+		require.True(t, ok, "Spec should be present after setting ore.model.name")
+		assert.Equal(t, "gpt-4o-mini", spec.Name)
 	})
 
-	t.Run("returns nil when metadata is explicitly cleared", func(t *testing.T) {
+	t.Run("returns false when metadata is explicitly cleared", func(t *testing.T) {
 		// Even if the key was previously set, an empty string is a
-		// no-op signal. ModelOption must mirror that contract.
-		stream.SetMetadata("provider.model", "")
+		// no-op signal. Spec must mirror that contract.
+		stream.SetMetadata(MetadataKeyModelName, "")
 
-		assert.Nil(t, stream.ModelOption(),
-			"empty metadata value must produce a nil option, matching the empty-Model no-op contract")
+		_, ok := stream.Spec()
+		assert.False(t, ok,
+			"empty metadata value must produce ok=false, matching the empty-Name no-op contract")
 	})
 }
 

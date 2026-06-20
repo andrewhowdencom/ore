@@ -1,6 +1,7 @@
 package http
 
 import (
+	"github.com/andrewhowdencom/ore/models"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -30,7 +31,7 @@ type mockProvider struct {
 	err       error
 }
 
-func (m *mockProvider) Invoke(ctx context.Context, s state.State, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	for _, art := range m.artifacts {
 		select {
 		case ch <- art:
@@ -61,14 +62,15 @@ func (e *errorFS) ReadFile(name string) ([]byte, error) { return nil, fs.ErrNotE
 
 // simpleProcessor runs a single Step.Turn with the mock provider.
 func simpleProcessor() session.TurnProcessor {
-	return func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
-		return executor.Turn(ctx, st, prov)
+	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+		spec := models.Spec{Name: "test-model"}
+		return step.Turn(ctx, st, spec, prov)
 	}
 }
 
 // boomProcessor always fails.
 func boomProcessor() session.TurnProcessor {
-	return func(ctx context.Context, executor loop.TurnExecutor, st state.State, prov provider.Provider) (state.State, error) {
+	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 		return st, fmt.Errorf("boom")
 	}
 }
@@ -76,9 +78,9 @@ func boomProcessor() session.TurnProcessor {
 // errStore is a Store that always returns an error from Create.
 type errStore struct{}
 
-func (e *errStore) Create() (*session.Thread, error)             { return nil, fmt.Errorf("store error") }
-func (e *errStore) Get(string) (*session.Thread, bool)           { return nil, false }
-func (e *errStore) GetBy(string, string) (*session.Thread, bool) { return nil, false }
+func (e *errStore) Create() (*session.Thread, error)              { return nil, fmt.Errorf("store error") }
+func (e *errStore) Get(string) (*session.Thread, error)           { return nil, session.ErrThreadNotFound }
+func (e *errStore) GetBy(string, string) (*session.Thread, error) { return nil, session.ErrThreadNotFound }
 func (e *errStore) Save(*session.Thread) error                   { return nil }
 func (e *errStore) Delete(string) bool                           { return false }
 func (e *errStore) List() ([]*session.Thread, error)             { return nil, nil }
@@ -92,9 +94,11 @@ func newSaveErrStore() *saveErrStore {
 	return &saveErrStore{inner: session.NewMemoryStore()}
 }
 
-func (s *saveErrStore) Create() (*session.Thread, error)      { return s.inner.Create() }
-func (s *saveErrStore) Get(id string) (*session.Thread, bool) { return s.inner.Get(id) }
-func (s *saveErrStore) GetBy(key, value string) (*session.Thread, bool) {
+func (s *saveErrStore) Create() (*session.Thread, error)     { return s.inner.Create() }
+func (s *saveErrStore) Get(id string) (*session.Thread, error) {
+	return s.inner.Get(id)
+}
+func (s *saveErrStore) GetBy(key, value string) (*session.Thread, error) {
 	return s.inner.GetBy(key, value)
 }
 func (s *saveErrStore) Save(*session.Thread) error       { return fmt.Errorf("save failed") }
@@ -104,9 +108,9 @@ func (s *saveErrStore) List() ([]*session.Thread, error) { return s.inner.List()
 // listErrStore is a Store whose List always returns an error.
 type listErrStore struct{}
 
-func (s *listErrStore) Create() (*session.Thread, error)             { return nil, nil }
-func (s *listErrStore) Get(string) (*session.Thread, bool)           { return nil, false }
-func (s *listErrStore) GetBy(string, string) (*session.Thread, bool) { return nil, false }
+func (s *listErrStore) Create() (*session.Thread, error)              { return nil, nil }
+func (s *listErrStore) Get(string) (*session.Thread, error)           { return nil, session.ErrThreadNotFound }
+func (s *listErrStore) GetBy(string, string) (*session.Thread, error) { return nil, session.ErrThreadNotFound }
 func (s *listErrStore) Save(*session.Thread) error                   { return nil }
 func (s *listErrStore) Delete(string) bool                           { return false }
 func (s *listErrStore) List() ([]*session.Thread, error)             { return nil, fmt.Errorf("list failed") }
@@ -247,8 +251,8 @@ func TestHandler_CreateSession(t *testing.T) {
 	assert.Equal(t, "/sessions/"+resp["id"]+"/events", resp["events_url"])
 
 	// Verify the thread exists in the store.
-	_, ok := store.Get(resp["id"])
-	assert.True(t, ok)
+	_, err := store.Get(resp["id"])
+	assert.NoError(t, err)
 }
 
 func TestHandler_CreateSession_StoreError(t *testing.T) {
@@ -344,8 +348,8 @@ func TestHandler_DeleteSession(t *testing.T) {
 	require.Error(t, err)
 
 	// Verify the thread still exists in the store.
-	_, ok := store.Get(sessionID)
-	assert.True(t, ok)
+	_, err = store.Get(sessionID)
+	assert.NoError(t, err)
 }
 
 func TestHandler_DeleteSession_NotFound(t *testing.T) {
@@ -398,8 +402,8 @@ func TestHandler_SendMessage(t *testing.T) {
 	require.NotEmpty(t, lines)
 
 	// Verify thread state after processing.
-	thr, ok := store.Get(sessionID)
-	require.True(t, ok)
+	thr, err := store.Get(sessionID)
+	require.NoError(t, err)
 	turns := thr.State.Turns()
 	require.GreaterOrEqual(t, len(turns), 2)
 
@@ -461,8 +465,8 @@ func TestHandler_SendMessage_NoKinds(t *testing.T) {
 	require.Equal(t, 200, rr.Code)
 
 	// Verify thread state after processing.
-	thr, ok := store.Get(sessionID)
-	require.True(t, ok)
+	thr, err := store.Get(sessionID)
+	require.NoError(t, err)
 	turns := thr.State.Turns()
 	require.GreaterOrEqual(t, len(turns), 2)
 

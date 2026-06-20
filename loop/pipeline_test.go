@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"errors"
+	"github.com/andrewhowdencom/ore/models"
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
@@ -25,6 +26,7 @@ func (m *mockEmitter) Emit(ctx context.Context, event OutputEvent) {
 // TestPipeline_Turn_AccumulatesDeltas verifies that Pipeline.Turn accumulates
 // adjacent TextDelta artifacts into a single Text block.
 func TestPipeline_Turn_AccumulatesDeltas(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	p := newPipeline()
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -38,7 +40,7 @@ func TestPipeline_Turn_AccumulatesDeltas(t *testing.T) {
 	}
 
 	var emittedArtifacts []artifact.Artifact
-	st, accumulated, err := p.Turn(context.Background(), mem, prov, func(art artifact.Artifact) {
+	st, accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {
 		emittedArtifacts = append(emittedArtifacts, art)
 	})
 
@@ -66,6 +68,7 @@ func TestPipeline_Turn_AccumulatesDeltas(t *testing.T) {
 // deltas are flushed before a non-delta artifact is processed, and remaining
 // deltas are flushed at stream end.
 func TestPipeline_Turn_FlushesAccumulatorsOnNonDelta(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	p := newPipeline()
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -80,7 +83,7 @@ func TestPipeline_Turn_FlushesAccumulatorsOnNonDelta(t *testing.T) {
 	}
 
 	var emittedArtifacts []artifact.Artifact
-	st, accumulated, err := p.Turn(context.Background(), mem, prov, func(art artifact.Artifact) {
+	st, accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {
 		emittedArtifacts = append(emittedArtifacts, art)
 	})
 
@@ -105,6 +108,7 @@ func TestPipeline_Turn_FlushesAccumulatorsOnNonDelta(t *testing.T) {
 // TestPipeline_Turn_ErrorPropagatesProviderError verifies that a provider
 // error is returned along with any accumulated artifacts.
 func TestPipeline_Turn_ErrorPropagatesProviderError(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	p := newPipeline()
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
@@ -117,7 +121,7 @@ func TestPipeline_Turn_ErrorPropagatesProviderError(t *testing.T) {
 	}
 
 	var emittedArtifacts []artifact.Artifact
-	st, accumulated, err := p.Turn(context.Background(), mem, prov, func(art artifact.Artifact) {
+	st, accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {
 		emittedArtifacts = append(emittedArtifacts, art)
 	})
 
@@ -138,6 +142,7 @@ func TestPipeline_Turn_ErrorPropagatesProviderError(t *testing.T) {
 // registration order and an error aborts the turn before the provider is
 // invoked.
 func TestPipeline_Turn_TransformErrorAborts(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	p := newPipeline()
 	wantErr := errors.New("transform failed")
 	p.transforms = []Transform{
@@ -157,7 +162,7 @@ func TestPipeline_Turn_TransformErrorAborts(t *testing.T) {
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 	prov := &mockProvider{}
 
-	st, accumulated, err := p.Turn(context.Background(), mem, prov, func(art artifact.Artifact) {})
+	st, accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {})
 
 	require.ErrorIs(t, err, wantErr)
 	assert.Empty(t, accumulated)
@@ -167,6 +172,7 @@ func TestPipeline_Turn_TransformErrorAborts(t *testing.T) {
 // TestPipeline_Turn_TransformOrdering verifies that transforms run in
 // registration order and each receives the state returned by the previous one.
 func TestPipeline_Turn_TransformOrdering(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	p := newPipeline()
 	var order []int
 	p.transforms = []Transform{
@@ -188,7 +194,7 @@ func TestPipeline_Turn_TransformOrdering(t *testing.T) {
 	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
 	prov := &mockProvider{artifacts: []artifact.Artifact{artifact.Text{Content: "response"}}}
 
-	_, _, err := p.Turn(context.Background(), mem, prov, func(art artifact.Artifact) {})
+	_, _, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {})
 	require.NoError(t, err)
 
 	assert.Equal(t, []int{1, 2, 3}, order)
@@ -256,6 +262,7 @@ func TestPipeline_RunHandlers_EmitterPassedToHandler(t *testing.T) {
 // TestPipeline_Turn_ApplyDisplayHints verifies that Pipeline.Turn attaches
 // display hints to ToolCall artifacts when a matching ToolsOption is present.
 func TestPipeline_Turn_ApplyDisplayHints(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	p := newPipeline()
 	p.invokeOpts = []provider.InvokeOption{
 		provider.ToolsOption{
@@ -280,7 +287,7 @@ func TestPipeline_Turn_ApplyDisplayHints(t *testing.T) {
 		},
 	}
 
-	st, accumulated, err := p.Turn(context.Background(), mem, prov, func(art artifact.Artifact) {})
+	st, accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {})
 	require.NoError(t, err)
 	require.Len(t, accumulated, 1)
 
@@ -293,6 +300,7 @@ func TestPipeline_Turn_ApplyDisplayHints(t *testing.T) {
 // TestPipeline_Turn_ApplyDisplayHints_NoMatchingHint verifies that ToolCall
 // artifacts are left unchanged when no matching display hint is found.
 func TestPipeline_Turn_ApplyDisplayHints_NoMatchingHint(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
 	p := newPipeline()
 	p.invokeOpts = []provider.InvokeOption{
 		provider.ToolsOption{
@@ -317,7 +325,7 @@ func TestPipeline_Turn_ApplyDisplayHints_NoMatchingHint(t *testing.T) {
 		},
 	}
 
-	st, accumulated, err := p.Turn(context.Background(), mem, prov, func(art artifact.Artifact) {})
+	st, accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {})
 	require.NoError(t, err)
 	require.Len(t, accumulated, 1)
 

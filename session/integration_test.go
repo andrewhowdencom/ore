@@ -39,8 +39,8 @@ func TestJSONStore_CrossConduitContinuity(t *testing.T) {
 	require.NoError(t, err)
 
 	// Step 5: Load the thread and verify turns.
-	got, ok := store2.Get(thread.ID)
-	require.True(t, ok)
+	got, err := store2.Get(thread.ID)
+	require.NoError(t, err)
 	assert.Equal(t, thread.ID, got.ID)
 
 	turns := got.State.Turns()

@@ -275,7 +275,7 @@ func TestHandler_TraceAttributesOnTruncation(t *testing.T) {
 
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
-	defer tp.Shutdown(context.Background())
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
 
 	r := toolpkg.NewRegistry()
 	require.NoError(t, r.Register(toolpkg.Tool{Name: "big"}, func(ctx context.Context, _ toolpkg.Sandbox, args map[string]any) (any, error) {

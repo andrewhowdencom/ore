@@ -10,7 +10,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
 	"github.com/charmbracelet/x/ansi"
@@ -110,7 +109,7 @@ func compactGeneric(content string, width int) string {
 //
 // The result is memoized: when contentDirty is false and cachedContent is
 // non-empty, the cached string is returned immediately without recomputing.
-// Callers that mutate visual state (turns, pending, expandLatestDetails)
+// Callers that mutate visual state (turns, pending, expandAllDetails)
 // must set contentDirty = true before the next buildContent call so the
 // cache is rebuilt. In practice Update() does this via syncViewport().
 func (m *model) buildContent() string {
@@ -121,23 +120,12 @@ func (m *model) buildContent() string {
 	var b strings.Builder
 	width := m.viewport.Width()
 
-	// Find the last assistant turn index.
-	lastAssistantIdx := -1
-	for i, turn := range m.turns {
-		if turn.role == state.RoleAssistant {
-			lastAssistantIdx = i
-		}
-	}
-
-	// Render conversation history.
-	for turnIdx, turn := range m.turns {
-		isLatestAssistant := turn.role == state.RoleAssistant && turnIdx == lastAssistantIdx
-		isAfterLatestAssistant := turnIdx > lastAssistantIdx
+	// Render conversation history. The expandAllDetails flag applies
+	// globally to all non-text blocks across every turn, so a single
+	// check is enough regardless of turn position.
+	for _, turn := range m.turns {
 		for i, block := range turn.blocks {
-			expanded := block.expandedByDefault
-			if !block.expandedByDefault && (isLatestAssistant || isAfterLatestAssistant) {
-				expanded = m.expandLatestDetails
-			}
+			expanded := block.expandedByDefault || m.expandAllDetails
 			b.WriteString(renderBlockUnified(block, turn.timestamp, expanded, width))
 			if i < len(turn.blocks)-1 {
 				b.WriteString(m.theme.Gap(m.theme.InterBlockGap))
@@ -149,7 +137,7 @@ func (m *model) buildContent() string {
 	// Render the in-progress assistant turn accumulated from ArtifactEvents.
 	if len(m.currentTurn.blocks) > 0 {
 		for i, block := range m.currentTurn.blocks {
-			expanded := m.expandLatestDetails || block.expandedByDefault
+			expanded := block.expandedByDefault || m.expandAllDetails
 			b.WriteString(renderBlockUnified(block, time.Time{}, expanded, width))
 			if i < len(m.currentTurn.blocks)-1 {
 				b.WriteString(m.theme.Gap(m.theme.InterBlockGap))
@@ -206,9 +194,9 @@ func compactNumber(s string) string {
 // buildStatusLine renders the status map into a single wrapped line using
 // "key: value · key: value" format with ANSI styling.
 //
-// Token-usage keys (sent, received, total) are grouped into a single compact
-// segment with display symbols (↑, ↓, Σ) so the status bar is not flooded
-// with three separate entries.
+// Token-usage keys (sent, received, total, thinking) are grouped into a
+// single compact segment with display symbols (↑, ↓, Σ, Ψ) so the status
+// bar is not flooded with four separate entries.
 //
 // It returns the rendered string and the number of display lines it
 // occupies at the given width. Returns 0 lines when all values are empty.
@@ -221,7 +209,7 @@ func buildStatusLine(th *theme.Theme, status map[string]string, width int) (stri
 
 	// Group token-usage keys into one segment with display symbols.
 	var tokens []string
-	for _, key := range []string{"sent", "received", "total"} {
+	for _, key := range []string{"sent", "received", "total", "thinking"} {
 		if v, ok := status[key]; ok && v != "" {
 			var sym string
 			switch key {
@@ -231,6 +219,8 @@ func buildStatusLine(th *theme.Theme, status map[string]string, width int) (stri
 				sym = "↓"
 			case "total":
 				sym = "Σ"
+			case "thinking":
+				sym = "Ψ"
 			}
 			tokens = append(tokens, fmt.Sprintf("%s %s", sym, compactNumber(v)))
 		}
@@ -242,7 +232,7 @@ func buildStatusLine(th *theme.Theme, status map[string]string, width int) (stri
 	// Render remaining keys alphabetically.
 	var keys []string
 	for k := range status {
-		if k == "sent" || k == "received" || k == "total" {
+		if k == "sent" || k == "received" || k == "total" || k == "thinking" {
 			continue
 		}
 		keys = append(keys, k)
@@ -266,35 +256,52 @@ func buildStatusLine(th *theme.Theme, status map[string]string, width int) (stri
 	return wrapped, lines
 }
 
-// compactTokenSegments collapses sent, received, and total into a single
-// segment named "tokens" with a compact "↑ X · ↓ Y · Σ Z" value.
-// Segments are sorted by label for deterministic output.
+// compactTokenSegments collapses sent, received, total, and thinking into
+// a single segment named "tokens" with a compact
+// "↑ X · ↓ Y · Σ Z · Ψ T" value. Segments are emitted in narrative
+// order: sent → received → total → thinking, mirrored from
+// buildStatusLine so the two renderers produce identical output.
 func compactTokenSegments(segs []conduit.StatusSegment) []conduit.StatusSegment {
-	var values []string
-	var filtered []conduit.StatusSegment
+	// Canonical render order, mirrored from buildStatusLine. The
+	// symbol map and the byLabel lookup replace the prior
+	// sort.Strings call, which produced Unicode-byte order
+	// (Σ X · Ψ Y · ↑ Z · ↓ T) instead of the documented order.
+	order := []string{"sent", "received", "total", "thinking"}
+	symbols := map[string]string{
+		"sent":     "↑",
+		"received": "↓",
+		"total":    "Σ",
+		"thinking": "Ψ",
+	}
+	byLabel := make(map[string]string, len(segs))
 	for _, seg := range segs {
-		var sym string
-		switch seg.Label {
-		case "sent":
-			sym = "↑"
-		case "received":
-			sym = "↓"
-		case "total":
-			sym = "Σ"
-		default:
-			filtered = append(filtered, seg)
+		if _, ok := symbols[seg.Label]; ok && seg.Value != "" {
+			byLabel[seg.Label] = seg.Value
+		}
+	}
+	var values []string
+	for _, key := range order {
+		if v, ok := byLabel[key]; ok {
+			values = append(values, fmt.Sprintf("%s %s", symbols[key], compactNumber(v)))
+		}
+	}
+	if len(values) == 0 {
+		// No recognised token keys; pass through the input unchanged so
+		// non-token segments survive unmodified.
+		return segs
+	}
+	filtered := make([]conduit.StatusSegment, 0, len(segs))
+	for _, seg := range segs {
+		if _, ok := symbols[seg.Label]; ok {
 			continue
 		}
-		values = append(values, fmt.Sprintf("%s %s", sym, compactNumber(seg.Value)))
+		filtered = append(filtered, seg)
 	}
-	if len(values) > 0 {
-		sort.Strings(values)
-		filtered = append(filtered, conduit.StatusSegment{
-			Label: "tokens",
-			Value: strings.Join(values, " · "),
-			Zone:  segs[0].Zone,
-		})
-	}
+	filtered = append(filtered, conduit.StatusSegment{
+		Label: "tokens",
+		Value: strings.Join(values, " · "),
+		Zone:  segs[0].Zone,
+	})
 	return filtered
 }
 
