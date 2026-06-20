@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/x/wire/anthropic
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.12.0
+	github.com/andrewhowdencom/ore v0.12.1
 	github.com/andrewhowdencom/ore/x/provider/retry v0.0.1
 	github.com/anthropics/anthropic-sdk-go v1.50.1
 	github.com/stretchr/testify v1.11.1
