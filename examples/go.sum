@@ -12,8 +12,8 @@ github.com/alecthomas/chroma/v2 v2.20.0 h1:sfIHpxPyR07/Oylvmcai3X/exDlE8+FA820NT
 github.com/alecthomas/chroma/v2 v2.20.0/go.mod h1:e7tViK0xh/Nf4BYHl00ycY6rV7b8iXBksI9E359yNmA=
 github.com/alecthomas/repr v0.5.1 h1:E3G4t2QbHTSNpPKBgMTln5KLkZHLOcU7r37J4pXBuIg=
 github.com/alecthomas/repr v0.5.1/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
-github.com/andrewhowdencom/ore/x/analytics v0.2.0 h1:B2abyODg2W/G5jkoLRWo3VwTYJvDyMO5Nf3hatEGqK4=
-github.com/andrewhowdencom/ore/x/analytics v0.2.0/go.mod h1:Ml6yEcVd71cIUn3VetEyb7AYRyGT9mZH+qmm0E5ky8U=
+github.com/andrewhowdencom/ore/x/analytics v0.2.2 h1:mYpkobJhb2dm/4uY3HkOm7rR0fgyv+ANn2qy+86gLrw=
+github.com/andrewhowdencom/ore/x/analytics v0.2.2/go.mod h1:VHpDVge31USsA9x97+1uiHj6pDnD627YbblzBeM+7yk=
 github.com/andrewhowdencom/ore/x/provider/retry v0.0.1 h1:EzHH2kaaYCMy+yuUZA1Yf/yoOk/OILaNzeq90zEjqHE=
 github.com/andrewhowdencom/ore/x/provider/retry v0.0.1/go.mod h1:rOSReTP2vkmDXeaVsC2GpBnmkhU+szH0zpgfCupqsWo=
 github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
