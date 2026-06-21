@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/state"
 	glamouransi "github.com/charmbracelet/glamour/ansi"
 )
@@ -43,6 +44,12 @@ type Theme struct {
 	ErrorStyle lipgloss.Style
 	// SystemStyle styles the "System" header for system-level messages.
 	SystemStyle lipgloss.Style
+	// SuccessStyle styles the header for loop.NoticeEvent with
+	// SeveritySuccess — positive feedback such as "switched role".
+	SuccessStyle lipgloss.Style
+	// WarnStyle styles the header for loop.NoticeEvent with
+	// SeverityWarn — recoverable issues such as truncated compaction.
+	WarnStyle lipgloss.Style
 	// StatusStyle styles the status line.
 	StatusStyle lipgloss.Style
 	// ThinkingStyle styles the "Thinking" header for reasoning blocks.
@@ -101,5 +108,27 @@ func (t *Theme) StyleForRole(role state.Role) lipgloss.Style {
 		// Unknown roles fall back to the assistant style so unrecognised
 		// state (including the empty role) still renders legibly.
 		return t.AssistantStyle
+	}
+}
+
+// StyleForSeverity returns the lipgloss style appropriate for a
+// loop.Severity carried on a Notice. The mapping mirrors the natural
+// severity colour palette: success is the same green as successful
+// tool results, info uses the system style (neutral, non-urgent),
+// warn is the warning yellow, and error is the red error style.
+// Unknown values fall back to the system style so unrecognised
+// severities still render legibly.
+func (t *Theme) StyleForSeverity(s loop.Severity) lipgloss.Style {
+	switch s {
+	case loop.SeveritySuccess:
+		return t.SuccessStyle
+	case loop.SeverityInfo:
+		return t.SystemStyle
+	case loop.SeverityWarn:
+		return t.WarnStyle
+	case loop.SeverityError:
+		return t.ErrorStyle
+	default:
+		return t.SystemStyle
 	}
 }

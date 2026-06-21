@@ -53,6 +53,21 @@ func WithContentFuncs(fns ...func() string) Option {
 	}
 }
 
+// Resolver is the contract for content sources whose value is determined
+// lazily on each call. The system prompt transform invokes Resolve on
+// every Transform, so a Resolver whose underlying state mutates between
+// calls (e.g., via SetPath on a *source.FileResolver) appears in the
+// prompt without re-registration.
+//
+// Register a Resolver with WithContentFunc(src.Resolve). Callers that
+// need to "swap" the active content (for example, when the user switches
+// role mid-session) mutate the resolver's state directly instead of
+// stacking another WithContentFunc call — the original bug behind
+// multi-identity agent contexts.
+type Resolver interface {
+	Resolve() string
+}
+
 // WithContextContentFunc adds a single function that receives the Transform
 // context and returns a prompt fragment. Multiple calls accumulate;
 // fragments are evaluated after all regular contentFuncs, in order,

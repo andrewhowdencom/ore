@@ -199,6 +199,43 @@ func TestStart_ErrorEvent(t *testing.T) {
 	require.Contains(t, out.String(), "provider failure")
 }
 
+func TestStart_NoticeEvent(t *testing.T) {
+	// Build a custom processor that emits a NoticeEvent in addition to
+	// the normal provider-driven turn. NoticeEvents flow through the
+	// session.Stream's FanOut alongside the other output events.
+	store := session.NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+		spec := models.Spec{Name: "test-model"}
+		st, err := step.Turn(ctx, st, spec, prov)
+		if err != nil {
+			return st, err
+		}
+		step.Emit(ctx, loop.NoticeEvent{
+			Notice: loop.Notice{Content: `role "foo" not found`, Severity: loop.SeverityError},
+			Ctx:    loop.WithProvenance(ctx, "stdio"),
+		})
+		return st, nil
+	})
+
+	out := &bytes.Buffer{}
+	errBuf := &bytes.Buffer{}
+	in := bytes.NewBufferString("hi")
+	c, err := New(mgr, WithInput(in), WithOutput(out), WithStderr(errBuf))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = c.Start(ctx)
+	require.NoError(t, err)
+	// Notice goes to stderr, prefixed with the severity label.
+	require.Contains(t, errBuf.String(), `Error: role "foo" not found`)
+	// Assistant stream stays clean (no notice on stdout).
+	require.NotContains(t, out.String(), "role \"foo\" not found")
+	require.NotContains(t, out.String(), "Error:")
+}
+
 func TestStart_WithThreadID(t *testing.T) {
 	store := session.NewMemoryStore()
 	prov := &mockProvider{

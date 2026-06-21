@@ -23,7 +23,7 @@ func (m *mockEmitter) Emit(_ context.Context, e loop.OutputEvent) {
 	m.events = append(m.events, e)
 }
 
-func TestSlash_EmptyInput_ReturnsFeedback(t *testing.T) {
+func TestSlash_EmptyInput_ReturnsNotice(t *testing.T) {
 	t.Parallel()
 
 	emitter := &mockEmitter{}
@@ -31,11 +31,11 @@ func TestSlash_EmptyInput_ReturnsFeedback(t *testing.T) {
 
 	result, err := handler(context.Background(), emitter, slash.Command{Name: "model", Input: ""})
 	require.NoError(t, err)
-	assert.Equal(t, "Usage: /model <name>", result.Feedback.Content)
+	assert.Equal(t, "Usage: /model <name>", result.Notice.Content)
 	assert.Empty(t, emitter.events, "no events should be emitted on empty input")
 }
 
-func TestSlash_WhitespaceInput_ReturnsFeedback(t *testing.T) {
+func TestSlash_WhitespaceInput_ReturnsNotice(t *testing.T) {
 	t.Parallel()
 
 	emitter := &mockEmitter{}
@@ -43,7 +43,7 @@ func TestSlash_WhitespaceInput_ReturnsFeedback(t *testing.T) {
 
 	result, err := handler(context.Background(), emitter, slash.Command{Name: "model", Input: "   \t  "})
 	require.NoError(t, err)
-	assert.Equal(t, "Usage: /model <name>", result.Feedback.Content)
+	assert.Equal(t, "Usage: /model <name>", result.Notice.Content)
 	assert.Empty(t, emitter.events, "no events should be emitted on whitespace-only input")
 }
 
@@ -61,7 +61,7 @@ func TestSlash_TrimsInput(t *testing.T) {
 	cmd := slash.NewCommandForTest("model", "  gpt-4o-mini  ", stream)
 	result, err := handler(context.Background(), emitter, cmd)
 	require.NoError(t, err)
-	assert.Empty(t, result.Feedback.Content)
+	assert.Empty(t, result.Notice.Content)
 
 	got, ok := stream.GetMetadata("ore.model.name")
 	require.True(t, ok)
@@ -78,7 +78,7 @@ func TestSlash_ValidInput_SetsMetadata(t *testing.T) {
 	cmd := slash.NewCommandForTest("model", "gpt-4o-mini", stream)
 	result, err := handler(context.Background(), emitter, cmd)
 	require.NoError(t, err)
-	assert.Empty(t, result.Feedback.Content, "no feedback on valid input")
+	assert.Empty(t, result.Notice.Content, "no notice on valid input")
 
 	got, ok := stream.GetMetadata("ore.model.name")
 	require.True(t, ok, "metadata should be set after /model succeeds")
@@ -90,7 +90,7 @@ func TestSlash_ValidInput_SetsMetadata(t *testing.T) {
 	assert.Empty(t, emitter.events, "the slash handler must not emit events directly; SetMetadata handles emission")
 }
 
-func TestSlash_NilStream_ReturnsFeedback(t *testing.T) {
+func TestSlash_NilStream_ReturnsNotice(t *testing.T) {
 	t.Parallel()
 
 	emitter := &mockEmitter{}
@@ -104,9 +104,12 @@ func TestSlash_NilStream_ReturnsFeedback(t *testing.T) {
 		// stream is nil here.
 	})
 	require.NoError(t, err)
-	require.NotEmpty(t, result.Feedback.Content)
-	assert.Contains(t, result.Feedback.Content, "Usage: /model <name>")
-	assert.Contains(t, result.Feedback.Content, "no active session")
+	require.NotEmpty(t, result.Notice.Content)
+	assert.Contains(t, result.Notice.Content, "Usage: /model <name>")
+	assert.Contains(t, result.Notice.Content, "no active session")
+	// The "no active session" path warns (recovery is possible on the
+	// user's next session); the empty-input path is purely informational.
+	assert.Equal(t, loop.SeverityWarn, result.Notice.Severity)
 }
 
 func TestSlash_ImplementsSlashHandler(t *testing.T) {

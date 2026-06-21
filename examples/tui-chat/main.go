@@ -27,7 +27,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
@@ -194,12 +193,18 @@ func run() error {
 			stream := cmd.Stream()
 			if stream == nil {
 				return slash.Result{
-					Feedback: artifact.Text{Content: "No artifacts in this thread yet."},
+					Notice: loop.Notice{
+						Content:  "No artifacts in this thread yet.",
+						Severity: loop.SeverityInfo,
+					},
 				}, nil
 			}
 			stats := analytics.AnalyzeTurns(stream.Turns())
 			return slash.Result{
-				Feedback: artifact.Text{Content: analytics.Render(stats)},
+				Notice: loop.Notice{
+					Content:  analytics.Render(stats),
+					Severity: loop.SeverityInfo,
+				},
 			}, nil
 		},
 	)

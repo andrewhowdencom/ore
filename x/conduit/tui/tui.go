@@ -276,7 +276,7 @@ func (t *TUI) Start(ctx context.Context) error {
 	// Subscribe to the stream's output, including delta artifact kinds so
 	// the TUI can accumulate assistant content incrementally as each delta
 	// chunk arrives, rather than waiting for TurnCompleteEvent.
-	outputCh := stream.Subscribe("text_delta", "reasoning_delta", "tool_call", "tool_result", "turn_complete", "error", "properties", "lifecycle", "feedback", "activity")
+	outputCh := stream.Subscribe("text_delta", "reasoning_delta", "tool_call", "tool_result", "turn_complete", "error", "properties", "lifecycle", "notice", "activity")
 
 	// Goroutine to stream output events into the Bubble Tea message loop.
 	go func() {
@@ -298,8 +298,8 @@ func (t *TUI) Start(ctx context.Context) error {
 				t.program.Send(statusMsg{status: e.Properties})
 			case loop.ActivityEvent:
 				t.program.Send(activityMsg{active: e.Active, description: e.Description})
-			case loop.FeedbackEvent:
-				t.program.Send(feedbackMsg{content: e.Content})
+			case loop.NoticeEvent:
+				t.program.Send(noticeMsg{notice: e.Notice})
 			}
 		}
 	}()

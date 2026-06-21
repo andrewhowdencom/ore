@@ -3,11 +3,11 @@ package slash
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
 
-	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 )
@@ -33,17 +33,29 @@ type Command struct {
 func (c Command) Stream() *session.Stream { return c.stream }
 
 // Result is the return value from a slash command handler.
+//
+// Notice carries an ephemeral, user-visible message that the slash
+// interceptor emits as a loop.NoticeEvent. The Severity lets conduits
+// pick a rendering style (Success, Info, Warn, Error). A zero-value
+// Notice means "no notice to emit"; an empty Content is also skipped.
 type Result struct {
-	Replace  session.Event // nil = consume, non-nil = continue with this event
-	Feedback artifact.Text // single ephemeral UI message, not persisted
+	Replace session.Event  // nil = consume, non-nil = continue with this event
+	Notice  loop.Notice    // single ephemeral UI message, not persisted
 }
 
 // Handler is a slash command handler. It receives the parsed command and
-// a loop.Emitter for signaling activity. It returns a Result.
-// A nil Result.Replace with nil error means the event is consumed (no LLM
-// processing). A non-nil Result.Replace means the event is replaced with the
-// returned one. Result.Feedback emits an ephemeral UI message that is not
-// persisted to state.
+// a loop.Emitter for signaling activity. It returns a Result and an error.
+//
+// Error handling: a non-nil error from a handler is intercepted at the
+// registry boundary and converted into a Notice{Severity: SeverityError}
+// carrying the error's message. The error is also logged via slog.Debug
+// for telemetry consumers. Intercept always returns nil in that case so
+// conduits see the failure as a user-visible notice rather than having
+// it silently dropped.
+//
+// If a handler sets Result.Notice and also returns a non-nil error, the
+// explicit Notice takes precedence — handlers can customise error
+// presentation by populating Notice themselves.
 type Handler func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error)
 
 // Fields is a convenience helper that splits the raw command input on
@@ -89,7 +101,10 @@ func NewRegistry() Registry {
 			lines = append(lines, fmt.Sprintf("* `/%s` — %s", name, r.descriptions[name]))
 		}
 		return Result{
-			Feedback: artifact.Text{Content: strings.Join(lines, "\n")},
+			Notice: loop.Notice{
+				Content:  strings.Join(lines, "\n"),
+				Severity: loop.SeverityInfo,
+			},
 		}, nil
 	})
 	return r
@@ -114,6 +129,12 @@ func (r *registry) Bind(name string, description string, handler Handler) {
 // The active *session.Stream is threaded through to the parsed Command so
 // handlers that need to mutate thread state (e.g. via SetMetadata) can
 // recover it via Command.Stream().
+//
+// Error handling: handler errors are auto-converted into
+// Notice{Severity: SeverityError} and Intercept returns nil. This replaces
+// the previous behaviour of propagating the error downstream where it was
+// silently dropped. The error is also logged via slog.Debug so existing
+// telemetry consumers that grep slog output continue to see it.
 func (r *registry) Intercept(ctx context.Context, event session.Event, stream *session.Stream, emitter loop.Emitter) (session.InterceptResult, error) {
 	ume, ok := event.(session.UserMessageEvent)
 	if !ok {
@@ -148,23 +169,39 @@ func (r *registry) Intercept(ctx context.Context, event session.Event, stream *s
 	r.mu.RUnlock()
 
 	if !ok {
-		// Unknown command — emit feedback without triggering inference.
+		// Unknown command — emit an info-severity notice without triggering inference.
 		return session.InterceptResult{
-			Feedback: []artifact.Text{
-				{Content: fmt.Sprintf("Unknown command: /%s. Type /help for available commands.", command)},
-			},
+			Notice: []loop.Notice{{
+				Content:  fmt.Sprintf("Unknown command: /%s. Type /help for available commands.", command),
+				Severity: loop.SeverityInfo,
+			}},
 		}, nil
 	}
 
 	result, err := handler(ctx, emitter, Command{Name: command, Input: input, stream: stream})
 	if err != nil {
-		return session.InterceptResult{Event: event}, err
+		// Auto-convert handler errors into error-severity notices so the
+		// user sees the failure as a chat message rather than having it
+		// silently dropped downstream. If the handler also set a Notice,
+		// prefer that — handlers can customise error presentation.
+		slog.Debug("slash handler returned error", "command", command, "err", err)
+
+		var notices []loop.Notice
+		if result.Notice.Content != "" {
+			notices = append(notices, result.Notice)
+		} else {
+			notices = append(notices, loop.Notice{
+				Content:  err.Error(),
+				Severity: loop.SeverityError,
+			})
+		}
+		return session.InterceptResult{Notice: notices}, nil
 	}
 
 	var interceptResult session.InterceptResult
 	interceptResult.Event = result.Replace
-	if result.Feedback.Content != "" {
-		interceptResult.Feedback = []artifact.Text{result.Feedback}
+	if result.Notice.Content != "" {
+		interceptResult.Notice = []loop.Notice{result.Notice}
 	}
 	return interceptResult, nil
 }

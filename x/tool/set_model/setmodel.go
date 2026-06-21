@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/x/slash"
 )
@@ -34,28 +33,30 @@ import (
 // package's MetadataKeyModelName constant holds the same value.
 const metadataKey = "ore.model.name"
 
-// usageFeedback is returned when the caller omits the model argument or
+// usageNotice is returned when the caller omits the model argument or
 // supplies only whitespace. Centralised so the slash and tool paths (the
 // latter doesn't exist today but might be added later) can return the same
-// message without copy-paste drift.
-var usageFeedback = artifact.Text{Content: "Usage: /model <name>"}
+// message without copy-paste drift. Info severity matches the other
+// informational notices (e.g. /help) so the renderer picks the neutral
+// style.
+var usageNotice = loop.Notice{Content: "Usage: /model <name>", Severity: loop.SeverityInfo}
 
 // Slash returns a slash.Handler that sets the model on the current
 // session's thread metadata. When the trimmed input is empty, the handler
-// returns Result.Feedback with usage information and no state change. When
+// returns Result.Notice with usage information and no state change. When
 // the input is non-empty, the handler calls SetMetadata (which atomically
 // writes Thread.Metadata["provider.model"] and emits a loop.PropertiesEvent
 // for UI subscribers).
 //
 // The handler is nil-safe: a slash command parsed in a context where no
 // *session.Stream is available (e.g. unit tests that exercise the registry
-// directly) returns the usage feedback instead of panicking. The framework
+// directly) returns the usage notice instead of panicking. The framework
 // guarantees a non-nil stream for handlers running inside session.processOne.
 func Slash() slash.Handler {
 	return func(ctx context.Context, emitter loop.Emitter, cmd slash.Command) (slash.Result, error) {
 		name := strings.TrimSpace(cmd.Input)
 		if name == "" {
-			return slash.Result{Feedback: usageFeedback}, nil
+			return slash.Result{Notice: usageNotice}, nil
 		}
 
 		stream := cmd.Stream()
@@ -63,11 +64,15 @@ func Slash() slash.Handler {
 			// Defensive: this should not happen when the slash registry
 			// is wired via session.WithInterceptor, but a custom host
 			// could invoke the handler outside the session pipeline. Return
-			// the usage feedback rather than panicking so the user gets a
-			// sensible error.
+			// the usage notice rather than panicking so the user gets a
+			// sensible error. The "no active session" suffix is a warning
+			// because the slash interceptor was unable to resolve the
+			// stream — the user's instruction may still be valid for
+			// their next session.
 			return slash.Result{
-				Feedback: artifact.Text{
-					Content: fmt.Sprintf("%s (no active session)", usageFeedback.Content),
+				Notice: loop.Notice{
+					Content:  fmt.Sprintf("%s (no active session)", usageNotice.Content),
+					Severity: loop.SeverityWarn,
 				},
 			}, nil
 		}

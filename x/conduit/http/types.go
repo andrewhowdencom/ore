@@ -81,11 +81,17 @@ type lifecycleEventJSON struct {
 	Context *eventContextJSON `json:"context,omitempty"`
 }
 
-// feedbackEventJSON is the JSON representation of a FeedbackEvent.
-type feedbackEventJSON struct {
-	Kind    string            `json:"kind"`
-	Content string            `json:"content"`
-	Context *eventContextJSON `json:"context,omitempty"`
+// noticeEventJSON is the JSON representation of a NoticeEvent.
+// Notice is the framework's unified ephemeral UI channel: every slash
+// success, slash handler error (auto-converted), and other non-inference
+// feedback reaches conduits through this kind. The Severity field lets
+// conduits pick a rendering style; downstream consumers should ignore
+// unknown severities and default to info styling.
+type noticeEventJSON struct {
+	Kind     string            `json:"kind"`
+	Content  string            `json:"content"`
+	Severity string            `json:"severity"`
+	Context  *eventContextJSON `json:"context,omitempty"`
 }
 
 // eventContextFromJSON converts a JSON DTO pointer to a context.Context.
@@ -198,12 +204,15 @@ func UnmarshalOutputEvent(data []byte) (loop.OutputEvent, error) {
 			return nil, err
 		}
 		return loop.LifecycleEvent{Phase: dto.Phase, Ctx: eventContextFromJSON(dto.Context)}, nil
-	case "feedback":
-		var dto feedbackEventJSON
+	case "notice":
+		var dto noticeEventJSON
 		if err := json.Unmarshal(data, &dto); err != nil {
 			return nil, err
 		}
-		return loop.FeedbackEvent{Content: dto.Content, Ctx: eventContextFromJSON(dto.Context)}, nil
+		return loop.NoticeEvent{Notice: loop.Notice{
+			Content:  dto.Content,
+			Severity: severityFromJSON(dto.Severity),
+		}, Ctx: eventContextFromJSON(dto.Context)}, nil
 	default:
 		// Treat as artifact.
 		var dto artifactEventJSON
@@ -241,4 +250,26 @@ func turnFromJSON(dto turnJSON) (state.Turn, error) {
 		turn.Timestamp = ts
 	}
 	return turn, nil
+}
+
+// severityFromJSON converts the wire-format severity string into a
+// loop.Severity. The wire format is the canonical human label
+// ("Success", "Info", "Warn", "Error") because the marshaller emits
+// the same form via Severity.String(). Unknown or empty values fall
+// back to SeverityInfo so unrecognised severities — including a
+// client speaking a slightly older protocol — still render as a
+// neutral informational message rather than being dropped.
+func severityFromJSON(s string) loop.Severity {
+	switch s {
+	case "Success":
+		return loop.SeveritySuccess
+	case "Info":
+		return loop.SeverityInfo
+	case "Warn":
+		return loop.SeverityWarn
+	case "Error":
+		return loop.SeverityError
+	default:
+		return loop.SeverityInfo
+	}
 }
