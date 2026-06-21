@@ -1,4 +1,4 @@
-package agent
+package harness
 
 import (
 	"context"
@@ -22,24 +22,24 @@ func (m *mockConduit) Start(ctx context.Context) error {
 }
 
 func TestNew(t *testing.T) {
-	a := New(nil)
-	require.NotNil(t, a)
+	h := New(nil)
+	require.NotNil(t, h)
 }
 
-func TestAgent_Add(t *testing.T) {
-	a := New(nil)
+func TestHost_Add(t *testing.T) {
+	h := New(nil)
 	m := &mockConduit{startFunc: func(context.Context) error { return nil }}
-	a.Add(m)
-	require.Len(t, a.conduits, 1)
+	h.Add(m)
+	require.Len(t, h.conduits, 1)
 }
 
-func TestAgent_Add_Nil(t *testing.T) {
-	a := New(nil)
-	a.Add(nil)
-	require.Len(t, a.conduits, 0)
+func TestHost_Add_Nil(t *testing.T) {
+	h := New(nil)
+	h.Add(nil)
+	require.Len(t, h.conduits, 0)
 }
 
-func TestAgent_Run(t *testing.T) {
+func TestHost_Run(t *testing.T) {
 	tests := []struct {
 		name      string
 		conduits  []func(context.Context) error
@@ -97,9 +97,9 @@ func TestAgent_Run(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := New(nil)
+			h := New(nil)
 			for _, fn := range tt.conduits {
-				a.Add(&mockConduit{startFunc: fn})
+				h.Add(&mockConduit{startFunc: fn})
 			}
 
 			ctx := context.Background()
@@ -112,7 +112,7 @@ func TestAgent_Run(t *testing.T) {
 				}()
 			}
 
-			err := a.Run(ctx)
+			err := h.Run(ctx)
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
@@ -129,12 +129,12 @@ func TestAgent_Run(t *testing.T) {
 	}
 }
 
-func TestAgent_Run_ConcurrentStartup(t *testing.T) {
-	a := New(nil)
+func TestHost_Run_ConcurrentStartup(t *testing.T) {
+	h := New(nil)
 	started := make(chan struct{}, 3)
 
 	for i := 0; i < 3; i++ {
-		a.Add(&mockConduit{startFunc: func(ctx context.Context) error {
+		h.Add(&mockConduit{startFunc: func(ctx context.Context) error {
 			started <- struct{}{}
 			<-ctx.Done()
 			return ctx.Err()
@@ -151,6 +151,6 @@ func TestAgent_Run_ConcurrentStartup(t *testing.T) {
 	}()
 
 	// Run returns nil when context is cancelled externally
-	err := a.Run(ctx)
+	err := h.Run(ctx)
 	require.NoError(t, err)
 }
