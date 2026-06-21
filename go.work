@@ -20,6 +20,7 @@ use (
 	./x/provider/openrouter
 	./x/provider/retry
 	./x/provider/vercel
+	./x/subagent
 	./x/telemetry
 	./x/tool
 	./x/tool/bash
