@@ -1306,6 +1306,126 @@ func TestCompactTokenSegments_PartialKeys(t *testing.T) {
 		"partial key set must not introduce placeholder gaps")
 }
 
+// TestBuildStatusLine_CacheKeysGrouped asserts that when all six
+// token-family keys are present, buildStatusLine produces the compact
+// "↑ X · ↻ Y · ⊕ Z · ↓ A · Σ B · Ψ C" segment in the documented
+// order, and that non-token keys continue to appear separately.
+func TestBuildStatusLine_CacheKeysGrouped(t *testing.T) {
+	status := map[string]string{
+		"sent":        "2000",
+		"cache_read":  "148000",
+		"cache_write": "5000",
+		"received":    "800",
+		"total":       "155800",
+		"thinking":    "5",
+		"phase":       "done",
+		"thread_id":   "abc-123",
+	}
+	rendered, lines := buildStatusLine(theme.Dark(), status, 200)
+	assert.Equal(t, 1, lines)
+	assert.Contains(t, rendered, "↑ 2.0K")
+	assert.Contains(t, rendered, "↻ 148K")
+	assert.Contains(t, rendered, "⊕ 5.0K")
+	assert.Contains(t, rendered, "↓ 800")
+	assert.Contains(t, rendered, "Σ 156K")
+	assert.Contains(t, rendered, "Ψ 5")
+	// Verify the six symbols appear in the documented order.
+	symIdx := []int{
+		strings.Index(rendered, "↑"),
+		strings.Index(rendered, "↻"),
+		strings.Index(rendered, "⊕"),
+		strings.Index(rendered, "↓"),
+		strings.Index(rendered, "Σ"),
+		strings.Index(rendered, "Ψ"),
+	}
+	for i := 1; i < len(symIdx); i++ {
+		assert.Greater(t, symIdx[i], symIdx[i-1],
+			"symbol %d must appear after symbol %d in the compact segment", i, i-1)
+	}
+	// Non-token keys must still appear.
+	assert.Contains(t, rendered, "phase: done")
+	assert.Contains(t, rendered, "thread_id: abc-123")
+}
+
+// TestBuildStatusLine_CacheKeysHiddenWhenAbsent asserts that when
+// cache_read and cache_write are absent from the status map (e.g.,
+// a provider that doesn't report caching, or a turn where the
+// upstream handler omitted zero values), the rendered bar contains
+// no ↻ or ⊕ segments. The previous four-segment layout must be
+// preserved exactly.
+func TestBuildStatusLine_CacheKeysHiddenWhenAbsent(t *testing.T) {
+	status := map[string]string{
+		"sent":     "100",
+		"received": "50",
+		"total":    "150",
+		"thinking": "7",
+	}
+	rendered, lines := buildStatusLine(theme.Dark(), status, 200)
+	assert.Equal(t, 1, lines)
+	assert.NotContains(t, rendered, "↻", "↻ must not appear when cache_read is absent")
+	assert.NotContains(t, rendered, "⊕", "⊕ must not appear when cache_write is absent")
+	assert.Contains(t, rendered, "↑ 100")
+	assert.Contains(t, rendered, "↓ 50")
+	assert.Contains(t, rendered, "Σ 150")
+	assert.Contains(t, rendered, "Ψ 7")
+}
+
+// TestCompactTokenSegments_CacheKeysNarrativeOrder asserts that
+// compactTokenSegments emits the six-token segment in the documented
+// order "↑ sent · ↻ cache_read · ⊕ cache_write · ↓ received · Σ total
+// · Ψ thinking" regardless of the order of the input segments.
+func TestCompactTokenSegments_CacheKeysNarrativeOrder(t *testing.T) {
+	segs := []conduit.StatusSegment{
+		{Label: "thinking", Value: "5", Zone: "lifecycle"},
+		{Label: "cache_write", Value: "5000", Zone: "lifecycle"},
+		{Label: "total", Value: "155800", Zone: "lifecycle"},
+		{Label: "received", Value: "800", Zone: "lifecycle"},
+		{Label: "cache_read", Value: "148000", Zone: "lifecycle"},
+		{Label: "sent", Value: "2000", Zone: "lifecycle"},
+	}
+	got := compactTokenSegments(segs)
+	require.Len(t, got, 1, "expected exactly one tokens segment")
+	assert.Equal(t, "tokens", got[0].Label)
+	assert.Equal(t, "lifecycle", got[0].Zone)
+	assert.Equal(t, "↑ 2.0K · ↻ 148K · ⊕ 5.0K · ↓ 800 · Σ 156K · Ψ 5", got[0].Value,
+		"tokens must render in narrative order with cache keys between sent and received")
+}
+
+// TestCompactTokenSegments_CacheKeysPartial asserts that when only
+// one of cache_read or cache_write is present, it appears in the
+// correct position; the other is skipped (not rendered as a
+// placeholder) and the surviving keys still appear in narrative
+// order. This is the rendering of a turn where the conversation
+// has hit cache_read but not cache_creation (typical mid-session
+// steady state), or vice versa (rare; cache_creation without
+// cache_read would be a fresh conversation).
+func TestCompactTokenSegments_CacheKeysPartial(t *testing.T) {
+	t.Run("cache_read only", func(t *testing.T) {
+		segs := []conduit.StatusSegment{
+			{Label: "sent", Value: "2000", Zone: "lifecycle"},
+			{Label: "cache_read", Value: "148000", Zone: "lifecycle"},
+			{Label: "received", Value: "800", Zone: "lifecycle"},
+			{Label: "total", Value: "150800", Zone: "lifecycle"},
+		}
+		got := compactTokenSegments(segs)
+		require.Len(t, got, 1)
+		assert.Equal(t, "↑ 2.0K · ↻ 148K · ↓ 800 · Σ 151K", got[0].Value,
+			"⊕ must be skipped, not rendered as a placeholder, when cache_write is absent")
+	})
+	t.Run("cache_write only", func(t *testing.T) {
+		segs := []conduit.StatusSegment{
+			{Label: "sent", Value: "2000", Zone: "lifecycle"},
+			{Label: "cache_write", Value: "5000", Zone: "lifecycle"},
+			{Label: "received", Value: "800", Zone: "lifecycle"},
+			{Label: "total", Value: "7800", Zone: "lifecycle"},
+		}
+		got := compactTokenSegments(segs)
+		require.Len(t, got, 1)
+		assert.Equal(t, "↑ 2.0K · ⊕ 5.0K · ↓ 800 · Σ 7.8K", got[0].Value,
+			"↻ must be skipped, not rendered as a placeholder, when cache_read is absent")
+	})
+}
+
 func TestBuildStatusLine_ZoneGrouping(t *testing.T) {
 	segments := []conduit.StatusSegment{
 		{Label: "phase", Value: "streaming", Zone: "lifecycle"},

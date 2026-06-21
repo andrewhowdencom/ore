@@ -207,6 +207,99 @@ func TestHandler_EmitsUnknownWhenNil(t *testing.T) {
 	assert.Equal(t, "?", v)
 }
 
+// TestHandler_EmitsCacheReadAndCacheWrite asserts that non-zero
+// CacheReadTokens and CacheWriteTokens flow through to the
+// PropertiesEvent as per-turn "cache_read" and "cache_write" keys. Both
+// fields are sourced from Anthropic-style prompt caching
+// (cache_read_input_tokens and cache_creation_input_tokens) and are
+// emitted verbatim — the framework does not sum them, leaving the
+// per-provider window arithmetic to the user.
+func TestHandler_EmitsCacheReadAndCacheWrite(t *testing.T) {
+	h := New()
+	var e mockEmitter
+
+	err := h.Handle(context.Background(), artifact.Usage{
+		PromptTokens:     2000,
+		CompletionTokens: 800,
+		TotalTokens:      2800,
+		CacheReadTokens:  148000,
+		CacheWriteTokens: 5000,
+	}, &e)
+	require.NoError(t, err)
+
+	require.Len(t, e.events, 1)
+	pe, ok := e.events[0].(loop.PropertiesEvent)
+	require.True(t, ok)
+	assert.Equal(t, "2000", pe.Properties["sent"])
+	assert.Equal(t, "800", pe.Properties["received"])
+	assert.Equal(t, "2800", pe.Properties["total"])
+	assert.Equal(t, "148000", pe.Properties["cache_read"])
+	assert.Equal(t, "5000", pe.Properties["cache_write"])
+}
+
+// TestHandler_OmitsCacheKeysWhenZero asserts that the producer-side
+// hide-when-zero rule is enforced here: when CacheReadTokens and
+// CacheWriteTokens are both zero, neither key is emitted, so the
+// renderer's empty-string filter drops the segment and the status
+// bar stays at its previous four-segment layout. This is the
+// behaviour observed on providers that do not report caching
+// (cache_read, cache_write omitted entirely) and on turns where the
+// cache buckets are naturally empty.
+func TestHandler_OmitsCacheKeysWhenZero(t *testing.T) {
+	h := New()
+	var e mockEmitter
+
+	err := h.Handle(context.Background(), artifact.Usage{
+		PromptTokens:     100,
+		CompletionTokens: 50,
+		TotalTokens:      150,
+		// CacheReadTokens and CacheWriteTokens left at zero value.
+	}, &e)
+	require.NoError(t, err)
+
+	require.Len(t, e.events, 1)
+	pe, ok := e.events[0].(loop.PropertiesEvent)
+	require.True(t, ok)
+	_, hasRead := pe.Properties["cache_read"]
+	_, hasWrite := pe.Properties["cache_write"]
+	assert.False(t, hasRead, "cache_read must be omitted when CacheReadTokens is zero")
+	assert.False(t, hasWrite, "cache_write must be omitted when CacheWriteTokens is zero")
+}
+
+// TestHandler_CacheKeysArePerTurn asserts that cache_read and
+// cache_write follow the same per-turn overwrite convention as
+// prompt and completion: a later call's values replace the
+// earlier values; no accumulation. This matches the documented
+// contract that cache counts are a property of the most recent
+// request, not the running total.
+func TestHandler_CacheKeysArePerTurn(t *testing.T) {
+	h := New()
+	var e mockEmitter
+
+	usages := []artifact.Usage{
+		{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15,
+			CacheReadTokens: 100, CacheWriteTokens: 50},
+		{PromptTokens: 20, CompletionTokens: 10, TotalTokens: 30,
+			CacheReadTokens: 200, CacheWriteTokens: 0},
+	}
+
+	for _, u := range usages {
+		err := h.Handle(context.Background(), u, &e)
+		require.NoError(t, err)
+	}
+
+	require.Len(t, e.events, 2)
+
+	first := e.events[0].(loop.PropertiesEvent).Properties
+	assert.Equal(t, "100", first["cache_read"], "first call's cache_read must persist")
+	assert.Equal(t, "50", first["cache_write"], "first call's cache_write must persist")
+
+	second := e.events[1].(loop.PropertiesEvent).Properties
+	assert.Equal(t, "200", second["cache_read"], "second call's cache_read must overwrite")
+	_, hasWrite := second["cache_write"]
+	assert.False(t, hasWrite, "second call's zero cache_write must be omitted (not preserved as 0)")
+}
+
 // ptr returns a pointer to v. Test-only helper for building pointer-typed
 // literal values for Usage.ThinkingTokens, whose semantic distinguishes nil
 // (provider did not report) from a pointer to zero (provider reported zero).
