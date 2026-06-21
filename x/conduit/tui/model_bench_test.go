@@ -2,9 +2,10 @@
 //
 // # Benchmark comparison
 //
-// Baseline (main@ee1a83b, before fix on plan/tui-render-tick-perf):
 // Captured on Linux amd64, Intel Core i7-10700 @ 2.90GHz, Go 1.26.2,
 // benchtime=2s, b.ReportAllocs(). ns/op is the median.
+//
+// Baseline (main@ee1a83b, before fix on plan/tui-render-tick-perf):
 //
 // | Bench | Sub-bench | ns/op | B/op | allocs/op |
 // | --- | --- | --- | --- | --- |
@@ -22,6 +23,24 @@
 // | BenchmarkStreamingTick_Combined | short_session | 1,703,349 | 573,819 | 15,846 |
 // | BenchmarkStreamingTick_Combined | long_session | 28,226,115 | 11,475,930 | 316,986 |
 //
+// After fix (plan/tui-render-tick-perf, commit 0ad6a92):
+//
+// | Bench | Sub-bench | ns/op | B/op | allocs/op | vs. baseline |
+// | --- | --- | --- | --- | --- | --- |
+// | BenchmarkRenderMarkdown | bytes=200 | 209,960 | 90,243 | 1,083 | ~unchanged |
+// | BenchmarkRenderMarkdown | bytes=2,000 | 813,737 | 263,113 | 8,117 | ~unchanged |
+// | BenchmarkRenderMarkdown | bytes=20,000 | 6,769,733 | 1,783,310 | 70,923 | ~unchanged |
+// | BenchmarkBuildContent | turns=10 | 626,348 | 277,052 | 782 | ~unchanged |
+// | BenchmarkBuildContent | turns=50 | 2,463,916 | 1,539,589 | 3,870 | ~unchanged |
+// | BenchmarkBuildContent | turns=100 | 4,849,417 | 3,239,522 | 7,724 | ~unchanged |
+// | BenchmarkBuildContent | turns=200 | 8,590,876 | 6,630,393 | 15,428 | ~unchanged |
+// | BenchmarkRenderTick | current_blocks=1 | 12,608 | 224 | 2 | 153x faster |
+// | BenchmarkRenderTick | current_blocks=5 | 47,167 | 1,024 | 2 | 211x faster |
+// | BenchmarkRenderTick | current_blocks=20 | 181,179 | 2,767 | 2 | 169x faster |
+// | BenchmarkRenderTick | current_blocks=50 | 434,713 | 5,670 | 2 | 166x faster |
+// | BenchmarkStreamingTick_Combined | short_session | 251,647 | 4,203 | 2 | 6.8x faster |
+// | BenchmarkStreamingTick_Combined | long_session | 2,592,262 | 46,480 | 12 | 10.9x faster |
+//
 // Key observations:
 //   - Glamour allocates heavily per call: 1,083 allocs for a 200-byte string,
 //     8,117 for 2,000 bytes. This is a known glamour characteristic; the
@@ -36,16 +55,17 @@
 //     it is 4.9 ms, well under the target, so the buildContent leg of
 //     the tick is acceptable on its own.
 //
-// After fix (Task 3, on plan/tui-render-tick-perf branch):
-//
-// | Bench | Sub-bench | ns/op | B/op | allocs/op |
-// | --- | --- | --- | --- | --- | --- |
-// | TBD | TBD | TBD | TBD | TBD |
-//
 // Threshold: BenchmarkStreamingTick_Combined/long_session ≤ 16ms median
-// (i.e. ≤ 16,000,000 ns/op). Per-block, renderTick should drop from
-// ~1.4 ms/block to ~0.1 ms/block (only the in-flight text block
-// re-renders, the rest are cache hits).
+// (i.e. ≤ 16,000,000 ns/op). Result: 2.59 ms — threshold met with
+// ~6x headroom.
+//
+// The fix (see model.go commit 0ad6a92) adds a width-tracked
+// renderedWidth field to renderedBlock and centralises the
+// stale-detection in rerenderIfStale. Only the streaming tick
+// path was modified by the fix; BenchmarkRenderMarkdown and
+// BenchmarkBuildContent are unchanged, confirming the fix targets
+// exactly the wasted glamour re-renders and does not regress
+// anything else.
 package tui
 
 import (
