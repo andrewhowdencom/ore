@@ -194,9 +194,12 @@ func compactNumber(s string) string {
 // buildStatusLine renders the status map into a single wrapped line using
 // "key: value · key: value" format with ANSI styling.
 //
-// Token-usage keys (sent, received, total, thinking) are grouped into a
-// single compact segment with display symbols (↑, ↓, Σ, Ψ) so the status
-// bar is not flooded with four separate entries.
+// Token-usage keys (sent, cache_read, cache_write, received, total,
+// thinking) are grouped into a single compact segment with display
+// symbols (↑, ↻, ⊕, ↓, Σ, Ψ) so the status bar is not flooded with
+// six separate entries. Cache fields appear only when the upstream
+// `usage.Handler` actually emitted them (it omits zero values), so a
+// provider that doesn't report cache produces a clean four-segment bar.
 //
 // It returns the rendered string and the number of display lines it
 // occupies at the given width. Returns 0 lines when all values are empty.
@@ -208,13 +211,19 @@ func buildStatusLine(th *theme.Theme, status map[string]string, width int) (stri
 	var parts []string
 
 	// Group token-usage keys into one segment with display symbols.
+	// Render order is documented in the package-level summary and
+	// mirrored in compactTokenSegments below.
 	var tokens []string
-	for _, key := range []string{"sent", "received", "total", "thinking"} {
+	for _, key := range []string{"sent", "cache_read", "cache_write", "received", "total", "thinking"} {
 		if v, ok := status[key]; ok && v != "" {
 			var sym string
 			switch key {
 			case "sent":
 				sym = "↑"
+			case "cache_read":
+				sym = "↻"
+			case "cache_write":
+				sym = "⊕"
 			case "received":
 				sym = "↓"
 			case "total":
@@ -232,7 +241,8 @@ func buildStatusLine(th *theme.Theme, status map[string]string, width int) (stri
 	// Render remaining keys alphabetically.
 	var keys []string
 	for k := range status {
-		if k == "sent" || k == "received" || k == "total" || k == "thinking" {
+		if k == "sent" || k == "cache_read" || k == "cache_write" ||
+			k == "received" || k == "total" || k == "thinking" {
 			continue
 		}
 		keys = append(keys, k)
@@ -256,22 +266,30 @@ func buildStatusLine(th *theme.Theme, status map[string]string, width int) (stri
 	return wrapped, lines
 }
 
-// compactTokenSegments collapses sent, received, total, and thinking into
-// a single segment named "tokens" with a compact
-// "↑ X · ↓ Y · Σ Z · Ψ T" value. Segments are emitted in narrative
-// order: sent → received → total → thinking, mirrored from
-// buildStatusLine so the two renderers produce identical output.
+// compactTokenSegments collapses sent, cache_read, cache_write,
+// received, total, and thinking into a single segment named "tokens"
+// with a compact "↑ X · ↻ Y · ⊕ Z · ↓ A · Σ B · Ψ C" value.
+// Segments are emitted in narrative order:
+// sent → cache_read → cache_write → received → total → thinking,
+// mirrored from buildStatusLine so the two renderers produce
+// identical output.
+//
+// Cache fields appear only when `usage.Handler` emitted them (it
+// omits zero values). A provider that doesn't report cache produces
+// a four-segment output identical to the previous behaviour.
 func compactTokenSegments(segs []conduit.StatusSegment) []conduit.StatusSegment {
 	// Canonical render order, mirrored from buildStatusLine. The
 	// symbol map and the byLabel lookup replace the prior
 	// sort.Strings call, which produced Unicode-byte order
 	// (Σ X · Ψ Y · ↑ Z · ↓ T) instead of the documented order.
-	order := []string{"sent", "received", "total", "thinking"}
+	order := []string{"sent", "cache_read", "cache_write", "received", "total", "thinking"}
 	symbols := map[string]string{
-		"sent":     "↑",
-		"received": "↓",
-		"total":    "Σ",
-		"thinking": "Ψ",
+		"sent":        "↑",
+		"cache_read":  "↻",
+		"cache_write": "⊕",
+		"received":    "↓",
+		"total":       "Σ",
+		"thinking":    "Ψ",
 	}
 	byLabel := make(map[string]string, len(segs))
 	for _, seg := range segs {
