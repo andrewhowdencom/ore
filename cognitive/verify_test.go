@@ -24,6 +24,8 @@ func (m *mockPattern) Run(ctx context.Context, st state.State) (state.State, err
 	return m.returnState, m.err
 }
 
+func (m *mockPattern) Name() string { return "mock" }
+
 var _ Pattern = (*mockPattern)(nil)
 
 type mockVerifier struct {

@@ -221,9 +221,12 @@ func applyInvokeOptions(opts ...provider.InvokeOption) invokeOptions {
 		case provider.MaxTokensOption:
 			// Provider-agnostic form. N <= 0 is "no opinion";
 			// the adapter does not set the wire field. Callers
-			// (e.g. compaction.Summarize) use this option to
-			// size their own budget without importing a concrete
-			// adapter package.
+			// that need an explicit output budget configure
+			// models.Spec.MaxOutputTokens on the agent bundle
+			// (or pass it through agent.WithSpec); the agent's
+			// step forwards the spec to the provider, which
+			// translates MaxOutputTokens into the wire format
+			// here.
 			if o.N > 0 {
 				out.maxTokens = o.N
 				out.maxTokensSet = true

@@ -100,3 +100,7 @@ func (p *verifyingPattern) Run(ctx context.Context, st state.State) (state.State
 
 // Compile-time assertion that verifyingPattern implements Pattern.
 var _ Pattern = (*verifyingPattern)(nil)
+
+// Name returns the pattern identifier, used by the agent bundle for
+// tracing the agent.run span. Stable across versions.
+func (p *verifyingPattern) Name() string { return "verified" }

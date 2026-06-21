@@ -16,8 +16,14 @@ import (
 // Pattern is a cognitive pattern that can run a multi-turn inference loop
 // starting from a given state. Implementations decide when to stop based on
 // the conversation state (e.g., when no pending tool calls remain).
+//
+// Name returns a stable, lowercase identifier for the pattern (e.g.
+// "react", "single_shot", "verified") used by the agent bundle for tracing
+// and observability. It is part of the Pattern contract: any new pattern
+// must implement it.
 type Pattern interface {
 	Run(ctx context.Context, st state.State) (state.State, error)
+	Name() string
 }
 
 // ReAct is a cognitive pattern that implements the ReAct feedback loop:
@@ -33,6 +39,23 @@ type ReAct struct {
 
 // Compile-time assertion that ReAct implements Pattern.
 var _ Pattern = (*ReAct)(nil)
+
+// SetRuntime is implemented by patterns that want the agent bundle
+// to inject its runtime dependencies at construction. The agent's
+// New type-asserts to this anonymous interface and calls it after
+// building the step. Patterns that do not implement SetRuntime
+// cannot be used with the agent bundle (their Step/Provider/Spec
+// fields would remain nil).
+func (r *ReAct) SetRuntime(step loop.TurnRunner, provider provider.Provider, spec models.Spec, tracer trace.Tracer) {
+	r.Step = step
+	r.Provider = provider
+	r.Spec = spec
+	r.tracer = tracer
+}
+
+// Name returns the pattern identifier, used by the agent bundle for
+// tracing the agent.run span. Stable across versions.
+func (r *ReAct) Name() string { return "react" }
 
 // Run executes the ReAct feedback loop starting from the given state.
 // It returns when the last turn is from the assistant (no pending tool
