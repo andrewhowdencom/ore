@@ -7,6 +7,7 @@ import (
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/state"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // SingleShot is a cognitive pattern that runs exactly one inference
@@ -39,3 +40,19 @@ func (s *SingleShot) Run(ctx context.Context, st state.State) (state.State, erro
 // Name returns the pattern identifier, used by the agent bundle for
 // tracing the agent.run span. Stable across versions.
 func (s *SingleShot) Name() string { return "single_shot" }
+
+// SetRuntime is implemented by patterns that want the agent bundle
+// to inject its runtime dependencies at construction. The agent's
+// New type-asserts to this anonymous interface and calls it after
+// building the step. Patterns that do not implement SetRuntime
+// cannot be used with the agent bundle (their Step/Provider/Spec
+// fields would remain nil).
+//
+// tracer is accepted for interface uniformity but is unused by
+// SingleShot (the pattern emits no spans of its own; the agent's
+// agent.run span is the only one).
+func (s *SingleShot) SetRuntime(step loop.TurnRunner, provider provider.Provider, spec models.Spec, _ trace.Tracer) {
+	s.Step = step
+	s.Provider = provider
+	s.Spec = spec
+}

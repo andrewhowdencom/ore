@@ -61,6 +61,16 @@ func New(name string, opts ...Option) *Agent {
 		stepOpts = append(stepOpts, loop.WithState(a.state))
 	}
 	a.step = loop.New(stepOpts...)
+
+	// Inject the agent's runtime dependencies into the pattern. Patterns
+	// implement SetRuntime to opt in; this lets the agent own the
+	// step's lifecycle while the pattern keeps strongly-typed
+	// references for the duration of Run.
+	if setter, ok := a.pattern.(interface {
+		SetRuntime(loop.TurnRunner, provider.Provider, models.Spec, trace.Tracer)
+	}); ok {
+		setter.SetRuntime(a.step, a.provider, a.spec, a.tracer)
+	}
 	return a
 }
 

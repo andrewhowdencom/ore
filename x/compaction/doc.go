@@ -31,7 +31,8 @@
 //
 // # Components
 //
-//   - Summarize: a package-level function that calls an LLM provider
+//   - Summarize: a package-level function that runs a caller-supplied
+//     agent.Agent (configured with a cognitive.SingleShot pattern)
 //     to produce a single RoleSystem compaction turn. The function
 //     returns (state.Turn{}, ErrTruncatedSummary) on truncation; the
 //     caller is expected to NOT append anything to the buffer in
@@ -52,22 +53,29 @@
 // Compaction is triggered explicitly by the user invoking /compact,
 // not by an automatic trigger (no token-count watcher, no turn-count
 // watcher). The slash handler in the calling application is
-// responsible for invoking Summarize and appending the result via
-// session.Stream.AppendTurn. Future work may introduce a Trigger
-// interface as a separate package if applications want automatic
-// compaction; today, the responsibility lives with the caller.
+// responsible for building the compactor agent, invoking Summarize,
+// and appending the result via session.Stream.AppendTurn. Future
+// work may introduce a Trigger interface as a separate package if
+// applications want automatic compaction; today, the responsibility
+// lives with the caller.
 //
 // # Truncation contract
 //
-// Summarize reads the provider's final artifact.StopReason. If the
-// reason is StopReasonLength, the function returns the zero
+// Summarize reads the agent's produced turn for artifact.StopReason.
+// If the reason is StopReasonLength, the function returns the zero
 // state.Turn and an error wrapping ErrTruncatedSummary. This
 // replaces the previous silent-corruption behavior in which a
 // truncated summary (often a one-token '##' fragment) was written
 // into the conversation buffer as if it were valid. The contract is
 // now:
 //
-//	turn, err := compaction.Summarize(ctx, prov, spec, stream.Turns())
+//	compactAgent := agent.New("compactor",
+//	    agent.WithProvider(prov),
+//	    agent.WithSpec(spec),
+//	    agent.WithPattern(&cognitive.SingleShot{}),
+//	)
+//	defer compactAgent.Close()
+//	turn, err := compaction.Summarize(ctx, compactAgent, stream.Turns())
 //	if errors.Is(err, compaction.ErrTruncatedSummary) {
 //	    // The model hit its output cap mid-summary. Do NOT append
 //	    // anything; surface the failure to the user.
@@ -82,13 +90,15 @@
 // # LLM-facing projection
 //
 // The Transform is intended to be registered alongside other
-// transforms (systemprompt, guardrails) in the step's transform
+// transforms (systemprompt, guardrails) in the agent's transform
 // chain. Registration order matters: system prompts that should
 // appear before the summary should be registered before the
 // compaction transform; system prompts that should override the
 // summary context should be registered after.
 //
-// Example:
+// Example (composing transforms on the main conversation step; the
+// compactor's own agent does not need the system-prompt transform
+// unless the summarization model requires it):
 //
 //	step := loop.New(
 //	    loop.WithTransforms(
@@ -104,13 +114,17 @@
 //
 // # Per-invocation budget
 //
-// Summarize owns its own output budget via models.Spec.MaxOutputTokens
-// (default 8192). The function passes this to the provider as a
-// per-invocation provider.WithMaxTokens option so the model has room
-// to produce a complete summary regardless of the adapter's per-model
-// default. This is the fix for the historical 'compaction returns ##'
-// bug, which was caused by an adapter-level default of 1 token
-// combined with a strategy that did not pass any invoke options.
+// The compactor's caller controls the summarization output budget via
+// models.Spec.MaxOutputTokens on the compactor agent (set via
+// agent.WithSpec). The agent's step forwards the spec to the
+// provider, which translates MaxOutputTokens into the wire format.
+//
+// There is no internal default. Callers that want an explicit budget
+// (the recommended path — too-small caps reproduce the historical
+// 'compaction returns ##' bug) set the spec.MaxOutputTokens field on
+// the compactor agent. A common value is 8192 tokens, which is
+// enough for the standard five-section handoff summary and stays
+// within the long-tail of supported model output caps.
 //
 // # Threading
 //
@@ -119,4 +133,11 @@
 // documented in package state; compaction must be called from the
 // same goroutine as the buffer's owner (typically the session's
 // worker goroutine).
+//
+// Summarize subscribes to the compactor agent's "turn_complete"
+// event and uses a goroutine to capture the produced turn. The
+// goroutine exits after the first matching event; the event channel
+// is left unread for the remainder of the agent's lifetime but is
+// closed when the caller closes the agent (typically via a
+// defer).
 package compaction
