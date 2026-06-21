@@ -3,9 +3,9 @@ module github.com/andrewhowdencom/ore/examples
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.12.2
+	github.com/andrewhowdencom/ore v0.12.3
 	github.com/andrewhowdencom/ore/x/analytics v0.2.2
-	github.com/andrewhowdencom/ore/x/compaction v0.4.4
+	github.com/andrewhowdencom/ore/x/compaction v0.4.5
 	github.com/andrewhowdencom/ore/x/conduit/http v0.7.5
 	github.com/andrewhowdencom/ore/x/conduit/tui v0.12.3
 	github.com/andrewhowdencom/ore/x/provider/openai v0.6.2
@@ -29,7 +29,7 @@ require (
 	github.com/alecthomas/chroma/v2 v2.20.0 // indirect
 	github.com/andrewhowdencom/ore/x/conduit v0.1.4 // indirect
 	github.com/andrewhowdencom/ore/x/llmbytes v0.1.1 // indirect
-	github.com/andrewhowdencom/ore/x/provider/retry v0.0.1 // indirect
+	github.com/andrewhowdencom/ore/x/provider/retry v0.0.2 // indirect
 	github.com/andrewhowdencom/ore/x/tool/truncate v0.1.0 // indirect
 	github.com/andrewhowdencom/ore/x/verifier v0.1.1 // indirect
 	github.com/andrewhowdencom/ore/x/wire/openai v0.5.0 // indirect
