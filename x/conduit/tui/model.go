@@ -103,15 +103,47 @@ type reloadHistoryMsg struct {
 // compact holds the one-line summary used when the UI is in compact mode
 // (Ctrl+O collapsed). It is computed during turn processing to avoid
 // repeated JSON parsing on every viewport refresh.
+// renderedWidth records the viewport width at which `rendered` was
+// produced. The renderTickMsg handler skips a glamour re-render when
+// `rendered` is non-empty and `renderedWidth` matches the current
+// viewport width — i.e. nothing in the block has changed since the
+// last render. A value of 0 means "not yet rendered" or "source has
+// changed since last render", forcing a fresh render.
 type renderedBlock struct {
 	kind              string         // "text", "reasoning", "tool_call", or "tool_result"
 	source            string         // original content
 	compact           string         // compact single-line representation
 	rendered          string         // pre-rendered ANSI output (for text, reasoning, tool_call and tool_result blocks)
+	renderedWidth     int            // viewport width at which `rendered` was produced; 0 means stale
 	toolCallID        string         // ID pairing tool_call with its corresponding tool_result
 	title             string         // display title for the unified header
 	style             lipgloss.Style // color/style applied to the header
 	expandedByDefault bool           // whether this block type defaults to expanded body
+}
+
+// rerenderIfStale re-renders `block` via the supplied renderFn iff the
+// cached `rendered` is empty, `renderedWidth` does not match `width`,
+// or the source has changed since the last render. It returns true if
+// a re-render was performed.
+//
+// Centralising the check here keeps the tick handler, the final
+// turnMsg pass, and the resize cascade consistent: every site that
+// walks blocks uses the same stale-detection logic.
+func rerenderIfStale(block *renderedBlock, source string, width int, renderFn func(string, int) (string, error)) bool {
+	if !isRerenderableKind(block.kind) || source == "" {
+		return false
+	}
+	if block.rendered != "" && block.renderedWidth == width && block.source == source {
+		return false
+	}
+	rendered, err := renderFn(source, width)
+	if err != nil {
+		return false
+	}
+	block.source = source
+	block.rendered = rendered
+	block.renderedWidth = width
+	return true
 }
 
 // rerenderableKinds lists block kinds that may be re-rendered when the
@@ -338,6 +370,7 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role) renderedB
 		rendered, err := m.renderMarkdown(a.Content, m.viewport.Width())
 		if err == nil {
 			block.rendered = rendered
+			block.renderedWidth = m.viewport.Width()
 		}
 		return block
 	case artifact.Reasoning:
@@ -351,6 +384,7 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role) renderedB
 		rendered, err := m.renderMarkdown(a.Content, m.viewport.Width())
 		if err == nil {
 			block.rendered = rendered
+			block.renderedWidth = m.viewport.Width()
 		}
 		return block
 	case artifact.ToolCall:
@@ -373,6 +407,7 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role) renderedB
 		rendered, err := m.renderMarkdown(source, m.viewport.Width())
 		if err == nil {
 			block.rendered = rendered
+			block.renderedWidth = m.viewport.Width()
 		}
 		return block
 	case artifact.ToolResult:
@@ -391,6 +426,7 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role) renderedB
 		rendered, err := m.renderMarkdown(source, m.viewport.Width())
 		if err == nil {
 			block.rendered = rendered
+			block.renderedWidth = m.viewport.Width()
 		}
 		// Derive compact from rendered Markdown output, falling back to raw
 		// source when rendering is unavailable (e.g. user turns or errors).
@@ -479,6 +515,7 @@ func (m *model) renderPlainBlock(kind, source, title string, style lipgloss.Styl
 	rendered, err := m.renderMarkdown(source, m.viewport.Width())
 	if err == nil {
 		block.rendered = rendered
+		block.renderedWidth = m.viewport.Width()
 	}
 	return block
 }
@@ -538,6 +575,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.currentTurn.blocks[i].kind == "text" {
 					m.currentTurn.blocks[i].source += a.Content
 					m.currentTurn.blocks[i].rendered = ""
+					m.currentTurn.blocks[i].renderedWidth = 0
 					found = true
 					break
 				}
@@ -554,6 +592,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.currentTurn.blocks[i].kind == "reasoning" {
 					m.currentTurn.blocks[i].source += a.Content
 					m.currentTurn.blocks[i].rendered = ""
+					m.currentTurn.blocks[i].renderedWidth = 0
 					found = true
 					break
 				}
@@ -581,14 +620,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Final render pass on the accumulated blocks before
 			// moving them into the permanent conversation history.
+			// The width-tracked check in rerenderIfStale ensures blocks
+			// whose source and viewport width are unchanged since the
+			// last render are skipped.
+			width := m.viewport.Width()
 			for j := range m.currentTurn.blocks {
 				block := &m.currentTurn.blocks[j]
-				if isRerenderableKind(block.kind) && block.source != "" {
-					rendered, err := m.renderMarkdown(block.source, m.viewport.Width())
-					if err == nil {
-						block.rendered = rendered
-					}
-				}
+				rerenderIfStale(block, block.source, width, m.renderMarkdown)
 			}
 
 			// Finalize the currentTurn that was built incrementally from
@@ -735,14 +773,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.renderScheduled {
 			return m, nil
 		}
+		// The width-tracked check in rerenderIfStale ensures blocks whose
+		// source and viewport width are unchanged since the last render
+		// are skipped. This eliminates the wasted glamour re-renders on
+		// tool_call and tool_result blocks (which arrive fully formed
+		// via renderArtifact and never have their `rendered` cleared
+		// by the delta path) that previously dominated the tick cost.
+		width := m.viewport.Width()
 		for j := range m.currentTurn.blocks {
 			block := &m.currentTurn.blocks[j]
-			if isRerenderableKind(block.kind) && block.source != "" {
-				rendered, err := m.renderMarkdown(block.source, m.viewport.Width())
-				if err == nil {
-					block.rendered = rendered
-				}
-			}
+			rerenderIfStale(block, block.source, width, m.renderMarkdown)
 		}
 		wasAtBottom := m.viewport.AtBottom()
 		m.syncViewport()
@@ -858,27 +898,30 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.textarea.MaxHeight = max(3, msg.Height/3)
 		m.recalcLayout()
 		// Re-render assistant turn blocks with the new terminal width
-		// so cached Markdown output remains correctly wrapped.
+		// so cached Markdown output remains correctly wrapped. The
+		// width-tracked check in rerenderIfStale skips blocks whose
+		// renderedWidth already matches the new width, so the cascade
+		// is cheap on repeated resizes. Historical assistant turns
+		// are not touched by the streaming tick, so this cascade is
+		// the only place that refreshes their cache after a width
+		// change.
+		width := m.viewport.Width()
 		for i, turn := range m.turns {
-			if turn.role == state.RoleAssistant {
-				for j, block := range turn.blocks {
-					if isRerenderableKind(block.kind) && block.source != "" {
-						rendered, err := m.renderMarkdown(block.source, m.viewport.Width())
-						if err == nil {
-							m.turns[i].blocks[j].rendered = rendered
-						}
-					}
-				}
+			if turn.role != state.RoleAssistant {
+				continue
+			}
+			for j := range turn.blocks {
+				block := &m.turns[i].blocks[j]
+				rerenderIfStale(block, block.source, width, m.renderMarkdown)
 			}
 		}
-		// Also re-render the in-progress currentTurn blocks.
-		for j, block := range m.currentTurn.blocks {
-			if isRerenderableKind(block.kind) && block.source != "" {
-				rendered, err := m.renderMarkdown(block.source, m.viewport.Width())
-				if err == nil {
-					m.currentTurn.blocks[j].rendered = rendered
-				}
-			}
+		// Also re-render the in-progress currentTurn blocks. Note
+		// that the streaming tick handler in renderTickMsg would
+		// catch these on the next delta; this cascade is here for
+		// the brief window between the resize and the next delta.
+		for j := range m.currentTurn.blocks {
+			block := &m.currentTurn.blocks[j]
+			rerenderIfStale(block, block.source, width, m.renderMarkdown)
 		}
 		m.renderScheduled = false
 		m.contentDirty = true
