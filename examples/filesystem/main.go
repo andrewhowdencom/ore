@@ -1,7 +1,8 @@
-// filesystem is a reference application demonstrating filesystem tool calling
-// with ore. It registers read_file, write_file, edit_file, list_directory and
-// search_files tools, configures an OpenAI provider with them, and runs a
-// simple loop that continues while the assistant makes tool calls.
+// filesystem is a reference application demonstrating filesystem tool
+// calling with ore using the agent.Agent primitive. It registers
+// read_file, write_file, edit_file, list_directory, and search_files
+// tools, configures an OpenAI provider with them, and runs a ReAct
+// loop that continues while the assistant makes tool calls.
 package main
 
 import (
@@ -11,9 +12,9 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/andrewhowdencom/ore/agent"
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
-	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/tool"
@@ -109,27 +110,25 @@ func run() error {
 	mem := &state.Buffer{}
 	mem.Append(state.RoleUser, artifact.Text{Content: message})
 
-	// Create step with tool handler and pre-bound tool options.
-	step := loop.New(
-		loop.WithHandlers(xtool.NewHandler(registry)),
-		loop.WithInvokeOptions(openai.WithTools(registry.Tools())),
-		loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
-			if tc, ok := event.(loop.TurnCompleteEvent); ok {
-				mem.Append(tc.Turn.Role, tc.Turn.Artifacts...)
-			}
-		}),
+	// Construct the agent: provider, model spec, ReAct pattern, tool
+	// handler, pre-bound tool options, and a bound state. The pattern
+	// is configured empty — its Step, Provider, Spec, and tracer are
+	// injected at agent construction time via SetRuntime. The bound
+	// state's auto-append path replaces the explicit OnEmit callback
+	// the old code used to copy turns into mem.
+	a := agent.New("filesystem",
+		agent.WithProvider(prov),
+		agent.WithSpec(models.Spec{Name: model}),
+		agent.WithPattern(&cognitive.ReAct{}),
+		agent.WithHandlers(xtool.NewHandler(registry)),
+		agent.WithInvokeOptions(openai.WithTools(registry.Tools())),
+		agent.WithState(mem),
 	)
+	defer a.Close()
 
-	// Run the cognitive pattern.
-	react := &cognitive.ReAct{
-		Step:     step,
-		Provider: prov,
-		Spec:     models.Spec{Name: model},
-	}
-
-	result, err := react.Run(ctx, mem)
+	result, err := a.Run(ctx, mem)
 	if err != nil {
-		return fmt.Errorf("react failed: %w", err)
+		return fmt.Errorf("agent run failed: %w", err)
 	}
 
 	// Print assistant artifacts from the final response.
