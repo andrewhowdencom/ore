@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/x/subagent
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.12.2
+	github.com/andrewhowdencom/ore v0.12.3
 	github.com/stretchr/testify v1.11.1
 )
 
