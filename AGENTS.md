@@ -220,6 +220,8 @@ configured the instrumentation is a no-op.
 **Span hierarchy:**
 - Conduit server spans (e.g. `http.send_message`, `tui.turn`, `slack.turn`,
   `telegram.turn`, `stdio.turn`) — `SpanKindServer`
+- `agent.Agent.Run()` — `agent.run` — `SpanKindInternal` (attributes:
+  `agent.name`, `agent.pattern`)
 - `cognitive.ReAct.Run()` — `react.run` — `SpanKindInternal`
 - `loop.Step.Turn()` / `Submit()` — `loop.turn` — `SpanKindInternal`
 - `x/provider/retry.Provider.Invoke()` — `retry.invoke` —
