@@ -225,3 +225,63 @@ func TestNewView_Turns_Filtering(t *testing.T) {
 	assert.Equal(t, RoleUser, turns[0].Role)
 	assert.Equal(t, RoleAssistant, turns[1].Role)
 }
+
+// TestNewView_Meta_DelegatesToBase verifies that Meta() on a View returns
+// the base's Meta, so writes through a view propagate to the underlying
+// buffer.
+func TestNewView_Meta_DelegatesToBase(t *testing.T) {
+	base := &Buffer{}
+	v := NewView(base, nil)
+
+	v.Meta().Set("alpha", "1")
+
+	got, ok := base.Meta().Get("alpha")
+	assert.True(t, ok, "write through View's Meta must be visible on the base")
+	assert.Equal(t, "1", got)
+}
+
+// TestPrepend_Meta_DelegatesToBase verifies the same delegation through a
+// prependView wrapper.
+func TestPrepend_Meta_DelegatesToBase(t *testing.T) {
+	base := &Buffer{}
+	pv := Prepend(base, nil)
+
+	pv.Meta().Set("beta", "2")
+
+	got, ok := base.Meta().Get("beta")
+	assert.True(t, ok)
+	assert.Equal(t, "2", got)
+}
+
+// TestBuffer_Meta_LazilyInitialized verifies that calling Meta() on a
+// Buffer with no prior writes does not allocate the underlying map
+// until a Set happens. Reads against an unset map return ok=false
+// cleanly.
+func TestBuffer_Meta_LazilyInitialized(t *testing.T) {
+	b := &Buffer{}
+
+	v, ok := b.Meta().Get("never-set")
+	assert.False(t, ok, "unset key must return ok=false")
+	assert.Equal(t, "", v)
+
+	b.Meta().Set("now-set", "value")
+	v, ok = b.Meta().Get("now-set")
+	assert.True(t, ok)
+	assert.Equal(t, "value", v)
+}
+
+// TestBuffer_Meta_All_DefensiveCopy verifies that mutations to the
+// map returned by All() do not affect the buffer's metadata.
+func TestBuffer_Meta_All_DefensiveCopy(t *testing.T) {
+	b := &Buffer{}
+	b.Meta().Set("k", "v")
+
+	all := b.Meta().All()
+	all["k"] = "tampered"
+	all["new"] = "leaked"
+
+	got, _ := b.Meta().Get("k")
+	assert.Equal(t, "v", got, "tampering All() must not affect the underlying map")
+	_, hasNew := b.Meta().Get("new")
+	assert.False(t, hasNew, "new keys inserted into All() must not leak back")
+}
