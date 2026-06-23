@@ -353,6 +353,21 @@ func (s *Stream) Turns() []state.Turn {
 	return s.thread.State.Turns()
 }
 
+// State returns the thread's mutable conversation state. The handle
+// is the same State the loop pipeline uses (via loop.WithState); reads
+// observe the current turn history, and writes through the returned
+// Meta propagate to subsequent reads.
+//
+// As with the rest of the State interface, the returned handle is not
+// safe for concurrent use; the stream serializes access to its own
+// turns and metadata, but the State object itself shares the
+// Buffer's "serial pipeline only" contract.
+func (s *Stream) State() state.State {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.thread.State
+}
+
 // LoadTurns replaces the thread's turn state with the provided slice.
 // It acquires the stream's mutex to ensure thread-safe state mutation.
 func (s *Stream) LoadTurns(turns []state.Turn) {

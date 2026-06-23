@@ -68,6 +68,10 @@ func encodeBoundaryInfo(info BoundaryInfo) (string, error) {
 // [encodeBoundaryInfo]. A missing key (encoded as empty string) is
 // not an error: the returned BoundaryInfo is the zero value, which is
 // what callers should treat as "no info recorded".
+//
+// Exposed as [DecodeBoundaryInfo] for callers outside the package
+// (notably the TUI) that need to read a boundary recorded by
+// [Summarize] from state.Meta.
 func decodeBoundaryInfo(encoded string) (BoundaryInfo, error) {
 	if encoded == "" {
 		return BoundaryInfo{}, nil
@@ -77,6 +81,13 @@ func decodeBoundaryInfo(encoded string) (BoundaryInfo, error) {
 		return BoundaryInfo{}, fmt.Errorf("decode boundary info: %w", err)
 	}
 	return info, nil
+}
+
+// DecodeBoundaryInfo is the public form of [decodeBoundaryInfo]. It
+// returns the zero BoundaryInfo (and no error) when the encoded value
+// is empty, which is the "no boundary recorded" signal.
+func DecodeBoundaryInfo(encoded string) (BoundaryInfo, error) {
+	return decodeBoundaryInfo(encoded)
 }
 
 // ErrTruncatedSummary is the sentinel returned by Summarize when the

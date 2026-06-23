@@ -38,10 +38,33 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/x/compaction"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
 	"go.opentelemetry.io/otel/trace"
 )
+
+// readBoundaryFromStream fetches the current compaction BoundaryInfo
+// from the stream's state.Meta, returning the zero value if no
+// boundary has been recorded. The TUI uses this to render the
+// collapse marker at startup; the value is purely advisory
+// (the rendered marker has no semantic effect on the conversation).
+func readBoundaryFromStream(s *session.Stream) compaction.BoundaryInfo {
+	if s == nil {
+		return compaction.BoundaryInfo{}
+	}
+	encoded, ok := s.State().Meta().Get(compaction.MetaKeyBoundaryInfo)
+	if !ok {
+		return compaction.BoundaryInfo{}
+	}
+	info, err := compaction.DecodeBoundaryInfo(encoded)
+	if err != nil {
+		// Treat a malformed boundary as "no boundary"; the TUI
+		// should not surface a decode error in the conversation view.
+		return compaction.BoundaryInfo{}
+	}
+	return info
+}
 
 // TUI is a terminal user interface conduit. It hides all Bubble Tea internals
 // from callers.
@@ -217,7 +240,9 @@ func (t *TUI) initModel(eventsCh chan session.Event, stream *session.Stream) mod
 	}
 
 	// Pre-populate the model with historical turns when resuming a thread.
-	m.loadHistory(stream.Turns())
+	// The boundary info is read from state.Meta; loadHistory renders the
+	// collapse marker if one is present.
+	m.loadHistory(stream.Turns(), readBoundaryFromStream(stream))
 
 	// Resolve the status-bar seed up front. It is delivered via Init()'s
 	// tea.Cmd (not via a direct Send) so the message reaches the
@@ -368,9 +393,13 @@ func (t *TUI) PlayError(ctx context.Context) error {
 // downstream applications (e.g., a slash command handler or compaction
 // processor) call after replacing the stream's persistent state via
 // stream.LoadTurns so the TUI view stays synchronized with the backend.
-func (t *TUI) ReloadHistory(turns []state.Turn) error {
+//
+// boundary is the BoundaryInfo for the latest compaction, if any.
+// Pass the zero value when no compaction has occurred; the TUI
+// renders no collapse marker in that case.
+func (t *TUI) ReloadHistory(turns []state.Turn, boundary compaction.BoundaryInfo) error {
 	if t.program != nil {
-		t.program.Send(reloadHistoryMsg{turns: turns})
+		t.program.Send(reloadHistoryMsg{turns: turns, boundary: boundary})
 	}
 	return nil
 }
