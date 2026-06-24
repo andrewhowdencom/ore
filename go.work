@@ -14,6 +14,7 @@ use (
 	./x/conduit/stdio
 	./x/conduit/telegram
 	./x/conduit/tui
+	./x/debug/request
 	./x/llmbytes
 	./x/provider/anthropic
 	./x/provider/minimax
