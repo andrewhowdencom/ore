@@ -122,11 +122,13 @@ func TestStream_AppendTurn_AppendsToState(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, stream.Turns(), 2)
 
-	// Append a synthetic RoleSystem compaction turn.
+	// Append a synthetic RoleSystem turn that mirrors the post-refactor
+	// compaction shape: the LLM-facing summary as Text. The boundary
+	// marker used to be a sibling artifact.Compaction artifact; it
+	// now lives in state.Meta (see x/compaction).
 	err = stream.AppendTurn(context.Background(),
 		state.RoleSystem,
 		artifact.Text{Content: "summary"},
-		artifact.Compaction{Strategy: "summarize"},
 	)
 	require.NoError(t, err)
 
@@ -135,10 +137,8 @@ func TestStream_AppendTurn_AppendsToState(t *testing.T) {
 
 	// The appended turn is at the end.
 	assert.Equal(t, state.RoleSystem, got[2].Role)
-	require.Len(t, got[2].Artifacts, 2)
+	require.Len(t, got[2].Artifacts, 1)
 	assert.Equal(t, "summary", got[2].Artifacts[0].(artifact.Text).Content)
-	_, isCompaction := got[2].Artifacts[1].(artifact.Compaction)
-	assert.True(t, isCompaction)
 	assert.False(t, got[2].Timestamp.IsZero())
 
 	_ = stream.Close()

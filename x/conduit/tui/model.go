@@ -409,14 +409,6 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role) renderedB
 			block.style = m.theme.ErrorStyle
 		}
 		return block
-	case artifact.Compaction:
-		// Defensive: in the canonical post-refactor path, Compaction
-		// is no longer in the artifact stream — the TUI reads it
-		// from state.Meta via the loadHistory path. If a custom
-		// caller somehow appends a Compaction artifact directly,
-		// we still render it rather than panic, falling back to a
-		// zero BoundaryInfo.
-		return m.renderCompactionBlock(compaction.BoundaryInfo{})
 	}
 	return renderedBlock{}
 }

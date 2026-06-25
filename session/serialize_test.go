@@ -78,21 +78,12 @@ func TestUnmarshalArtifacts_UnknownKind(t *testing.T) {
 // that produced them failed to resume with a misleading "thread not
 // found" error.
 func TestMarshalArtifacts_NewlyRegisteredKinds(t *testing.T) {
-	now := time.Now().UTC().Truncate(time.Second)
 	artifacts := []artifact.Artifact{
 		artifact.StopReason{Reason: artifact.StopReasonToolUse},
 		artifact.ReasoningSignature{
 			Provider: "anthropic",
 			SubKind:  "signature",
 			Data:     "7e049340988074aa478d783de41b63ea79c8f3ca25cbd0427c4f7a0ad1da14a1",
-		},
-		artifact.Compaction{
-			CompactedThrough:     4,
-			DroppedTurnCount:     4,
-			DroppedTokenEstimate: 12345,
-			Strategy:             "summarize",
-			Model:                "gpt-4o-mini",
-			CreatedAt:            now,
 		},
 	}
 

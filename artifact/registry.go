@@ -99,5 +99,4 @@ var allPersistent = []Artifact{
 	Reasoning{},
 	StopReason{},
 	ReasoningSignature{},
-	Compaction{},
 }
