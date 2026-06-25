@@ -81,6 +81,17 @@ func (c *Thread) UnmarshalJSON(data []byte) error {
 	c.State = &state.Buffer{}
 	c.State.LoadTurns(turns)
 
+	// Restore the compaction boundary from thread.Metadata to
+	// state.Meta under the ore.compaction.boundary.* keys. This
+	// is the symmetric read of Stream.Save's write — the boundary
+	// is the only state-level fact that round-trips through
+	// thread.Metadata today.
+	for _, key := range []string{boundaryKeyIndex, boundaryKeyInfo} {
+		if v, ok := c.Metadata[key]; ok {
+			c.State.Meta().Set(key, v)
+		}
+	}
+
 	return nil
 }
 

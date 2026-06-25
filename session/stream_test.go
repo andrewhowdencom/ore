@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -1345,4 +1346,59 @@ func TestStream_Interceptor_NonUserMessage(t *testing.T) {
 	assert.Nil(t, calledWith)
 
 	_ = stream.Close()
+}
+
+// TestStream_MarkBoundary_RoundTrip verifies that a boundary
+// recorded via MarkBoundary persists across Save/Load through the
+// in-memory store. The boundary index and the encoded info
+// round-trip through thread.Metadata under the
+// ore.compaction.boundary.* keys and are restored to state.Meta
+// on the loaded stream.
+func TestStream_MarkBoundary_RoundTrip(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+
+	// Drive a turn so the buffer has at least one row.
+	require.NoError(t, stream.Process(context.Background(), UserMessageEvent{Content: "hi"}))
+	turnsBefore := stream.Turns()
+
+	// Mark a boundary at the end of the buffer, mimicking a
+	// compaction that just appended its summary turn.
+	boundaryIdx := len(turnsBefore) - 1
+	info := `{"strategy":"summarize","dropped_turn_count":1}`
+	require.NoError(t, stream.MarkBoundary(boundaryIdx, info))
+
+	// Save and load via the in-memory store.
+	require.NoError(t, stream.Save())
+	threadID := stream.ID()
+	require.NoError(t, mgr.Close(threadID))
+
+	// Re-attach the loaded thread to a fresh stream manager.
+	mgr2 := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	stream2, err := mgr2.Attach(threadID)
+	require.NoError(t, err)
+	defer mgr2.Close(threadID)
+
+	// The loaded buffer should carry the boundary keys on state.Meta.
+	got, ok := stream2.State().Meta().Get("ore.compaction.boundary.index")
+	require.True(t, ok, "boundary index must round-trip via state.Meta")
+	assert.Equal(t, boundaryIdx, mustAtoi(t, got))
+	gotInfo, ok := stream2.State().Meta().Get("ore.compaction.boundary.info")
+	require.True(t, ok, "boundary info must round-trip via state.Meta")
+	assert.Equal(t, info, gotInfo)
+}
+
+// mustAtoi parses a decimal integer and fails the test on error.
+// Used to read the boundary index from state.Meta.
+func mustAtoi(t *testing.T, s string) int {
+	t.Helper()
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		t.Fatalf("parse int %q: %v", s, err)
+	}
+	return n
 }

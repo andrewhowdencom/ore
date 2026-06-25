@@ -64,6 +64,14 @@ func encodeBoundaryInfo(info BoundaryInfo) (string, error) {
 	return string(b), nil
 }
 
+// EncodeBoundaryInfo is the public form of [encodeBoundaryInfo],
+// exposed for callers outside the package (notably
+// session.Stream.MarkBoundary) that need to write a BoundaryInfo
+// into state.Meta.
+func EncodeBoundaryInfo(info BoundaryInfo) (string, error) {
+	return encodeBoundaryInfo(info)
+}
+
 // decodeBoundaryInfo parses a BoundaryInfo previously produced by
 // [encodeBoundaryInfo]. A missing key (encoded as empty string) is
 // not an error: the returned BoundaryInfo is the zero value, which is
