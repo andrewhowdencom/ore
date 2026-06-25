@@ -1,7 +1,5 @@
-github.com/andrewhowdencom/ore v0.12.2 h1:T635FZCH0hpKfmBpCpeVQxOobK12x8ozFL5kTDR08M8=
-github.com/andrewhowdencom/ore v0.12.2/go.mod h1:wbcYBur2kowhMdpeD2U6101g1oent+NoOtpuWorsJis=
-github.com/andrewhowdencom/ore/x/conduit v0.1.4 h1:t2ilOrjbs/cdGTWUPvRNwxVSwz6xdZOhAMHT0YnlZEk=
-github.com/andrewhowdencom/ore/x/conduit v0.1.4/go.mod h1:83aDeFABkaP1x98A9jxkqIr3zN4XsiprPnpAxHGpPFw=
+github.com/andrewhowdencom/ore v0.12.3 h1:14ppFK7ryzxDRmgjvCZKDQlCSP/azBDqqpwm5vh4+Mw=
+github.com/andrewhowdencom/ore v0.12.3/go.mod h1:wbcYBur2kowhMdpeD2U6101g1oent+NoOtpuWorsJis=
 github.com/andrewhowdencom/ore/x/llmbytes v0.1.1 h1:8aUIwGAjWVDpOH2P/SApzNYVkXWQem5FwFOltw/0bIM=
 github.com/andrewhowdencom/ore/x/llmbytes v0.1.1/go.mod h1:aYp7bLdMxkFpuXY1ABr4qfeoJkKVl1SIK5uMRQP/kq4=
 github.com/andrewhowdencom/ore/x/verifier v0.1.1 h1:RkRd3gFkX/Pd1pJuXmNpO23ZHVorgaqXEnKQuHzTN0M=

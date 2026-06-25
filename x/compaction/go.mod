@@ -3,13 +3,12 @@ module github.com/andrewhowdencom/ore/x/compaction
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.12.3
+	github.com/andrewhowdencom/ore v0.12.4
 	github.com/andrewhowdencom/ore/x/llmbytes v0.1.1
 	github.com/stretchr/testify v1.11.1
 )
 
 require (
-	github.com/andrewhowdencom/ore/x/conduit v0.1.4 // indirect
 	github.com/andrewhowdencom/ore/x/verifier v0.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
