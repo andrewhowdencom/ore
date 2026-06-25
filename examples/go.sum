@@ -14,8 +14,8 @@ github.com/alecthomas/repr v0.5.1 h1:E3G4t2QbHTSNpPKBgMTln5KLkZHLOcU7r37J4pXBuIg
 github.com/alecthomas/repr v0.5.1/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
 github.com/andrewhowdencom/ore/x/analytics v0.2.2 h1:mYpkobJhb2dm/4uY3HkOm7rR0fgyv+ANn2qy+86gLrw=
 github.com/andrewhowdencom/ore/x/analytics v0.2.2/go.mod h1:VHpDVge31USsA9x97+1uiHj6pDnD627YbblzBeM+7yk=
-github.com/andrewhowdencom/ore/x/provider/retry v0.0.1 h1:EzHH2kaaYCMy+yuUZA1Yf/yoOk/OILaNzeq90zEjqHE=
-github.com/andrewhowdencom/ore/x/provider/retry v0.0.1/go.mod h1:rOSReTP2vkmDXeaVsC2GpBnmkhU+szH0zpgfCupqsWo=
+github.com/andrewhowdencom/ore/x/provider/retry v0.0.2 h1:5REZw234+ux1o7GtXuGd9cZWORa/WY758EqqAtQ20e4=
+github.com/andrewhowdencom/ore/x/provider/retry v0.0.2/go.mod h1:fQ5SLvu79G///qvHC4rhOMeLkcfMfI+40zSH/YCbCsk=
 github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
 github.com/atotto/clipboard v0.1.4/go.mod h1:ZY9tmq7sm5xIbd9bOK4onWV4S6X0u6GY7Vn0Yu86PYI=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=
