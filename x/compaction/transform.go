@@ -2,34 +2,32 @@ package compaction
 
 import (
 	"context"
+	"strconv"
 
-	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/state"
 )
 
 // Transform is a loop.Transform that projects the buffer through the
-// most recent artifact.Compaction marker.
+// latest compaction boundary recorded in state.Meta.
 //
-// On every LLM call, the transform scans the buffer from the end for
-// the latest turn carrying an artifact.Compaction. When found, it
-// returns a state.View that exposes only the compaction turn and the
-// turns that follow it. Pre-compaction turns remain in the canonical
-// buffer (so analytics, audit, and replay still see them) but are
-// invisible to the provider — the summary stands in for everything
-// older than itself. This is the cumulative projection semantic
-// agreed in the design phase: each compaction absorbs everything that
-// preceded it.
+// On every LLM call, the transform reads the boundary index from
+// state.Meta under [MetaKeyBoundaryIndex]. When present, it returns a
+// state.View that exposes only the compaction turn and the turns that
+// follow it. Pre-compaction turns remain in the canonical buffer (so
+// analytics, audit, and replay still see them) but are invisible to
+// the provider — the summary stands in for everything older than
+// itself. This is the cumulative projection semantic: each compaction
+// absorbs everything that preceded it.
 //
-// When no Compaction artifact is present, the transform returns the
-// base state unchanged (identity).
+// When no boundary is recorded, the transform returns the base state
+// unchanged (identity).
 //
 // The transform is stateless and goroutine-safe; a single instance
-// may be shared across many Step configurations. The scan is O(N) in
-// the number of turns; for typical conversation histories this is
-// negligible. If profiling later identifies the scan as a hot spot,
-// the optimization is a cached "latest compaction index" on the
-// thread — out of scope here.
+// may be shared across many Step configurations. The cost of looking
+// up the boundary is O(1); the projection itself is a slice copy of
+// size O(N - idx). For typical conversation histories both are
+// negligible.
 type Transform struct{}
 
 // NewTransform returns a configured Transform. No options are
@@ -47,10 +45,17 @@ func (t *Transform) Transform(_ context.Context, st state.State) (state.State, e
 	}
 
 	turns := st.Turns()
-	idx := latestCompactionIndex(turns)
-	if idx < 0 {
+	idx, ok := readBoundaryIndex(st)
+	if !ok {
 		// No compaction in the buffer; the base state is already
 		// the full projection.
+		return st, nil
+	}
+	if idx < 0 || idx >= len(turns) {
+		// The boundary was set against a different buffer shape
+		// (e.g. an out-of-range index after a partial reset).
+		// Treat as no boundary; the caller can re-MarkBoundary
+		// against the new state.
 		return st, nil
 	}
 
@@ -59,17 +64,18 @@ func (t *Transform) Transform(_ context.Context, st state.State) (state.State, e
 	return state.NewView(st, projected), nil
 }
 
-// latestCompactionIndex returns the index of the most recent turn
-// carrying an artifact.Compaction, or -1 if none is present. The
-// scan walks backward so the latest marker wins — earlier compactions
-// are absorbed by the projection.
-func latestCompactionIndex(turns []state.Turn) int {
-	for i := len(turns) - 1; i >= 0; i-- {
-		for _, art := range turns[i].Artifacts {
-			if _, ok := art.(artifact.Compaction); ok {
-				return i
-			}
-		}
+// readBoundaryIndex pulls the boundary index from the state's metadata
+// channel. The "ok" return distinguishes "no boundary set" (false,
+// empty string) from "boundary set to a non-integer" (false, malformed
+// value); both fall through to the identity path in Transform.
+func readBoundaryIndex(st state.State) (int, bool) {
+	raw, ok := st.Meta().Get(MetaKeyBoundaryIndex)
+	if !ok {
+		return 0, false
 	}
-	return -1
+	idx, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, false
+	}
+	return idx, true
 }

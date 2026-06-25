@@ -22,6 +22,7 @@ func (realClock) Now() time.Time { return time.Now() }
 type Buffer struct {
 	turns []Turn
 	clock Clock
+	meta  map[string]string
 }
 
 // WithClock configures Buffer to use a custom Clock for turn timestamps.
@@ -74,4 +75,51 @@ func (m *Buffer) now() time.Time {
 // rather than re-Append them (which would overwrite timestamps).
 func (m *Buffer) LoadTurns(turns []Turn) {
 	m.turns = append([]Turn(nil), turns...)
+}
+
+// Meta returns the metadata handle for this buffer. The handle is live:
+// reads and writes operate on the buffer's internal map. Multiple calls
+// return handles that share the same backing storage, so writes through
+// one are visible through any other.
+//
+// As with the rest of Buffer's API, the Meta handle is not safe for
+// concurrent use; the same serial-call contract applies.
+func (m *Buffer) Meta() Meta {
+	if m.meta == nil {
+		m.meta = make(map[string]string)
+	}
+	return &bufferMeta{b: m}
+}
+
+// bufferMeta is the concrete [Meta] implementation for [Buffer]. It holds
+// a pointer to the owning buffer so writes flow directly into the
+// buffer's metadata map.
+type bufferMeta struct {
+	b *Buffer
+}
+
+// Get implements [Meta].
+func (m *bufferMeta) Get(key string) (string, bool) {
+	if m.b.meta == nil {
+		return "", false
+	}
+	v, ok := m.b.meta[key]
+	return v, ok
+}
+
+// Set implements [Meta].
+func (m *bufferMeta) Set(key, value string) {
+	if m.b.meta == nil {
+		m.b.meta = make(map[string]string)
+	}
+	m.b.meta[key] = value
+}
+
+// All implements [Meta].
+func (m *bufferMeta) All() map[string]string {
+	out := make(map[string]string, len(m.b.meta))
+	for k, v := range m.b.meta {
+		out[k] = v
+	}
+	return out
 }

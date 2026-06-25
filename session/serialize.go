@@ -119,8 +119,6 @@ func dereferenceArtifact(a artifact.Artifact) artifact.Artifact {
 		return *v
 	case *artifact.ReasoningSignature:
 		return *v
-	case *artifact.Compaction:
-		return *v
 	default:
 		return a
 	}

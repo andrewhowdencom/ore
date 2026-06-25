@@ -867,8 +867,9 @@ func TestProviderSerialize_RoleToolSkipsNonToolResultArtifacts(t *testing.T) {
 
 // TestProviderSerialize_DropsMixedSystemTurn verifies the conservative
 // policy: a system turn containing any non-text artifact is dropped
-// from the system field rather than mis-routed. The framework does
-// not currently emit such turns, so this is a defensive check.
+// from the system field rather than mis-routed. The dropped turn
+// emits nothing on the request-level `system` field; the subsequent
+// user turn is unaffected.
 func TestProviderSerialize_DropsMixedSystemTurn(t *testing.T) {
 	t.Parallel()
 
@@ -889,6 +890,29 @@ func TestProviderSerialize_DropsMixedSystemTurn(t *testing.T) {
 	userBytes, err := json.Marshal(got.messages[0])
 	require.NoError(t, err)
 	assert.NotContains(t, string(userBytes), "you are terse")
+}
+
+// TestProviderSerialize_HoistsTextOnlySystemTurn verifies the canonical
+// post-compaction path: a RoleSystem turn carrying only a Text
+// artifact is hoisted onto the request-level `system` field. This
+// is the shape produced by x/compaction.Summarize for the
+// LLM-facing summary; the boundary marker now lives in state.Meta
+// (see state.Meta and x/compaction.BoundaryInfo) and does not
+// appear in the artifact stream.
+func TestProviderSerialize_HoistsTextOnlySystemTurn(t *testing.T) {
+	t.Parallel()
+
+	p, err := New(WithAPIKey("test-key"))
+	require.NoError(t, err)
+
+	mem := state.NewBuffer()
+	mem.Append(state.RoleSystem, artifact.Text{Content: "you are terse"})
+	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+
+	got := p.serializeMessages(mem)
+	require.Len(t, got.system, 1, "text-only system turn must be hoisted to system field")
+	assert.Equal(t, "you are terse", got.system[0].Text)
+	require.Len(t, got.messages, 1, "only the user turn should appear in messages")
 }
 
 // TestProviderSerialize_ConcatTextSeparatesWithNewline verifies the

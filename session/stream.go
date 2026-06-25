@@ -15,6 +15,23 @@ import (
 	"github.com/andrewhowdencom/ore/state"
 )
 
+// Compaction boundary metadata keys. The session package defines these
+// directly to avoid an import cycle: x/compaction imports agent, and
+// agent's runtime path imports session, so depending on x/compaction
+// here would be a cycle. The values must match the constants in
+// x/compaction:
+//
+//	MetaKeyBoundaryIndex = "ore.compaction.boundary.index"
+//	MetaKeyBoundaryInfo  = "ore.compaction.boundary.info"
+//
+// Any drift between these and x/compaction's constants is caught
+// by TestStream_MarkBoundary_RoundTrip which exercises the
+// end-to-end Save/Load via the in-memory store.
+const (
+	boundaryKeyIndex = "ore.compaction.boundary.index"
+	boundaryKeyInfo  = "ore.compaction.boundary.info"
+)
+
 // Stream is a per-session primitive that owns the loop.Step, Thread,
 // TurnProcessor, and provider for a single active conversation. It provides
 // ingress (Process, Submit) and egress (Subscribe) for the session, plus
@@ -353,6 +370,21 @@ func (s *Stream) Turns() []state.Turn {
 	return s.thread.State.Turns()
 }
 
+// State returns the thread's mutable conversation state. The handle
+// is the same State the loop pipeline uses (via loop.WithState); reads
+// observe the current turn history, and writes through the returned
+// Meta propagate to subsequent reads.
+//
+// As with the rest of the State interface, the returned handle is not
+// safe for concurrent use; the stream serializes access to its own
+// turns and metadata, but the State object itself shares the
+// Buffer's "serial pipeline only" contract.
+func (s *Stream) State() state.State {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.thread.State
+}
+
 // LoadTurns replaces the thread's turn state with the provided slice.
 // It acquires the stream's mutex to ensure thread-safe state mutation.
 func (s *Stream) LoadTurns(turns []state.Turn) {
@@ -437,6 +469,37 @@ func (s *Stream) SetMetadata(key, value string) {
 	})
 }
 
+// MarkBoundary records a compaction boundary on the stream's
+// conversation state. idx is the index in state.Turns() of the
+// turn that marks the boundary (typically the index of the
+// just-appended compaction summary turn). info is the JSON-encoded
+// BoundaryInfo — the caller is expected to pass the result of
+// x/compaction.EncodeBoundaryInfo on the BoundaryInfo returned
+// by compaction.Summarize.
+//
+// The boundary index is written to state.Meta under
+// "ore.compaction.boundary.index", and the encoded info under
+// "ore.compaction.boundary.info". Subsequent Transform calls see
+// the boundary and project the buffer from idx onward.
+//
+// MarkBoundary is the canonical way to record a compaction. The
+// caller is responsible for appending the summary turn (via
+// AppendTurn) before calling MarkBoundary; the function does not
+// mutate the turn list.
+//
+// MarkBoundary holds the stream mutex for the duration of the
+// Meta writes. The Meta handles share the underlying State
+// implementation's "serial pipeline only" contract.
+func (s *Stream) MarkBoundary(idx int, info string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	st := s.thread.State
+	st.Meta().Set(boundaryKeyIndex, strconv.Itoa(idx))
+	st.Meta().Set(boundaryKeyInfo, info)
+	return nil
+}
+
 // Model metadata keys. These are the framework contract keys that
 // the slash command in x/tool/set_model (and any other session-level
 // model configurator) writes into Thread.Metadata. The session
@@ -495,7 +558,33 @@ func (s *Stream) Spec() (models.Spec, bool) {
 }
 
 func (s *Stream) Save() error {
+	// Sync the compaction-boundary metadata from state.Meta to
+	// thread.Metadata under the ore.compaction.boundary.* namespace.
+	// The boundary is the only state-level fact currently carried
+	// in state.Meta; persisting it under the existing Metadata
+	// channel avoids introducing a new JSON field on Thread. Other
+	// state.Meta entries (none today) would require extending this
+	// sync path before they could be persisted.
+	s.mu.Lock()
+	s.syncBoundaryToMetadataLocked()
+	s.mu.Unlock()
+
 	return s.store.Save(s.thread)
+}
+
+// syncBoundaryToMetadataLocked copies the compaction boundary from
+// state.Meta into thread.Metadata under the ore.compaction.boundary.*
+// keys. Must be called with s.mu held.
+func (s *Stream) syncBoundaryToMetadataLocked() {
+	if s.thread == nil || s.thread.State == nil {
+		return
+	}
+	meta := s.thread.State.Meta()
+	for _, key := range []string{boundaryKeyIndex, boundaryKeyInfo} {
+		if v, ok := meta.Get(key); ok {
+			s.thread.Metadata[key] = v
+		}
+	}
 }
 
 // Close closes the stream's Step and marks it as closed.

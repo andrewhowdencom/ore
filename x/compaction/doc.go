@@ -9,13 +9,17 @@
 //
 //   - The state buffer grows monotonically. Compaction never removes
 //     turns from the canonical buffer.
-//   - A compaction produces a single RoleSystem turn carrying an
-//     artifact.Compaction (structured metadata) and an artifact.Text
-//     (the LLM-facing summary). It is appended to the buffer by the
-//     caller (e.g. a slash handler invoking /compact).
-//   - The LLM-facing view is projected through the latest
-//     artifact.Compaction via the Transform in this package. The
-//     summary stands in for everything older than itself; multiple
+//   - A compaction produces a single RoleSystem turn carrying only
+//     an artifact.Text (the LLM-facing summary), and a companion
+//     BoundaryInfo struct (the structured provenance of the
+//     compaction event). The turn is appended to the buffer by the
+//     caller; the BoundaryInfo is written to state.Meta under the
+//     ore.compaction.boundary.* keys (see [MetaKeyBoundaryIndex] and
+//     [MetaKeyBoundaryInfo]) via stream.MarkBoundary or an equivalent
+//     helper.
+//   - The LLM-facing view is projected through the boundary recorded
+//     in state.Meta via the Transform in this package. The summary
+//     stands in for everything older than itself; multiple
 //     compactions are cumulative, with each summary absorbing
 //     everything that preceded it.
 //   - Analytics consumers walk the raw buffer unchanged. Pre-compaction
@@ -33,20 +37,41 @@
 //
 //   - Summarize: a package-level function that runs a caller-supplied
 //     agent.Agent (configured with a cognitive.SingleShot pattern)
-//     to produce a single RoleSystem compaction turn. The function
-//     returns (state.Turn{}, ErrTruncatedSummary) on truncation; the
-//     caller is expected to NOT append anything to the buffer in
-//     that case.
+//     to produce a single RoleSystem compaction turn carrying only
+//     artifact.Text, plus a BoundaryInfo describing the event. The
+//     function returns (state.Turn{}, BoundaryInfo{}, ErrTruncatedSummary)
+//     on truncation; the caller is expected to NOT append anything
+//     to the buffer in that case.
 //
-//   - Transform: a loop.Transform that scans the buffer for the
-//     latest artifact.Compaction and returns a state.View exposing
-//     only the compaction and subsequent turns. It is stateless and
+//   - Transform: a loop.Transform that reads the boundary index from
+//     state.Meta and returns a state.View exposing only the
+//     boundary turn and subsequent turns. It is stateless and
 //     goroutine-safe; a single instance may be shared across many
 //     Step configurations.
 //
-//   - artifact.Compaction: the metadata artifact that marks a
-//     compaction turn. Defined in the root artifact/ package because
-//     it is a framework primitive.
+//   - BoundaryInfo: the structured provenance of a compaction
+//     event — turn count, byte estimate, strategy, model, timestamp.
+//     Lives in this package because it is a compaction-specific
+//     concern; the state package remains agnostic.
+//
+// # Why the boundary is in state.Meta, not the artifact stream
+//
+// The artifact stream ([state.Turn.Artifacts]) is a journal of what
+// was produced in a conversation. Every artifact kind that lives
+// there describes something produced by its turn — content
+// (artifact.Text, artifact.ToolCall, …), in-flight fragments
+// (artifact.TextDelta, …), or per-turn/per-artifact metadata
+// (artifact.Usage, artifact.StopReason, artifact.ReasoningSignature).
+//
+// A compaction boundary does not describe a turn; it describes a
+// fact about the buffer as a whole. Smuggling it through the
+// artifact stream forced every consumer (the Anthropic wire's
+// onlyText predicate, the TUI, the session serializer) to either
+// know about the boundary, tolerate it, or silently fail when
+// encountering it. The boundary now lives in state.Meta — a
+// generic metadata channel added to state.State for state-level
+// facts (compaction boundaries, future checkpoint markers) that
+// are not turn-level artifacts.
 //
 // # Explicit invocation
 //
@@ -54,20 +79,21 @@
 // not by an automatic trigger (no token-count watcher, no turn-count
 // watcher). The slash handler in the calling application is
 // responsible for building the compactor agent, invoking Summarize,
-// and appending the result via session.Stream.AppendTurn. Future
-// work may introduce a Trigger interface as a separate package if
-// applications want automatic compaction; today, the responsibility
-// lives with the caller.
+// appending the summary turn via session.Stream.AppendTurn, and
+// recording the boundary via stream.MarkBoundary. Future work may
+// introduce a Trigger interface as a separate package if applications
+// want automatic compaction; today, the responsibility lives with
+// the caller.
 //
 // # Truncation contract
 //
 // Summarize reads the agent's produced turn for artifact.StopReason.
 // If the reason is StopReasonLength, the function returns the zero
-// state.Turn and an error wrapping ErrTruncatedSummary. This
-// replaces the previous silent-corruption behavior in which a
-// truncated summary (often a one-token '##' fragment) was written
-// into the conversation buffer as if it were valid. The contract is
-// now:
+// state.Turn, the zero BoundaryInfo, and an error wrapping
+// ErrTruncatedSummary. This replaces the previous silent-corruption
+// behavior in which a truncated summary (often a one-token '##'
+// fragment) was written into the conversation buffer as if it were
+// valid. The contract is now:
 //
 //	compactAgent := agent.New("compactor",
 //	    agent.WithProvider(prov),
@@ -75,7 +101,7 @@
 //	    agent.WithPattern(&cognitive.SingleShot{}),
 //	)
 //	defer compactAgent.Close()
-//	turn, err := compaction.Summarize(ctx, compactAgent, stream.Turns())
+//	turn, info, err := compaction.Summarize(ctx, compactAgent, stream.Turns())
 //	if errors.Is(err, compaction.ErrTruncatedSummary) {
 //	    // The model hit its output cap mid-summary. Do NOT append
 //	    // anything; surface the failure to the user.
@@ -84,6 +110,9 @@
 //	    return err
 //	}
 //	if err := stream.AppendTurn(ctx, turn.Role, turn.Artifacts...); err != nil {
+//	    return err
+//	}
+//	if err := stream.MarkBoundary(len(stream.Turns())-1, info); err != nil {
 //	    return err
 //	}
 //

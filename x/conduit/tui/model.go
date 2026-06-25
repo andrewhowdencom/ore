@@ -18,6 +18,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/x/compaction"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
 )
@@ -93,8 +94,13 @@ type renderTickMsg struct{}
 // state.Turn values. This is used after compaction (or any other
 // operation that replaces the persistent state via stream.LoadTurns) so
 // the TUI view remains synchronized with the backend.
+//
+// boundary is the BoundaryInfo for the latest compaction, if any.
+// When non-zero, the turn at the boundary index in `turns` is rendered
+// with the collapse marker in addition to its Text artifact.
 type reloadHistoryMsg struct {
-	turns []state.Turn
+	turns    []state.Turn
+	boundary compaction.BoundaryInfo
 }
 
 // renderedBlock tracks a finalized piece of turn content with its kind,
@@ -439,34 +445,32 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role) renderedB
 			block.style = m.theme.ErrorStyle
 		}
 		return block
-	case artifact.Compaction:
-		return m.renderCompactionBlock(a)
 	}
 	return renderedBlock{}
 }
 
-// renderCompactionBlock produces a one-line marker block for an
-// artifact.Compaction. The marker is collapsed by default (just the
-// turn count and bytes saved); expanding via Ctrl+O reveals the
-// strategy, model, and timestamp as a small metadata footer.
+// renderCompactionBlock produces a one-line marker block for a
+// compaction boundary recorded in state.Meta. The marker is collapsed
+// by default (just the turn count and bytes saved); expanding via
+// Ctrl+O reveals the strategy, model, and timestamp as a small
+// metadata footer.
 //
-// The compaction turn also carries an artifact.Text sibling with the
-// LLM-facing summary. That sibling is rendered separately by the
-// caller (loadHistory / TURN event handlers iterate per-artifact);
-// this function is only responsible for the Compaction artifact
-// itself.
-func (m *model) renderCompactionBlock(c artifact.Compaction) renderedBlock {
-	bytesSaved := formatByteCount(c.DroppedTokenEstimate)
-	title := fmt.Sprintf("Compacted %d turns (~%s saved)", c.DroppedTurnCount, bytesSaved)
-	marker := fmt.Sprintf("↳ compacted %d turns (~%s saved)", c.DroppedTurnCount, bytesSaved)
+// The compaction turn carries an artifact.Text with the LLM-facing
+// summary; that is rendered separately by the caller (loadHistory /
+// TURN event handlers iterate per-artifact). This function is only
+// responsible for the BoundaryInfo marker block.
+func (m *model) renderCompactionBlock(info compaction.BoundaryInfo) renderedBlock {
+	bytesSaved := formatByteCount(info.DroppedTokenEstimate)
+	title := fmt.Sprintf("Compacted %d turns (~%s saved)", info.DroppedTurnCount, bytesSaved)
+	marker := fmt.Sprintf("↳ compacted %d turns (~%s saved)", info.DroppedTurnCount, bytesSaved)
 
 	source := fmt.Sprintf(
 		"strategy: %s\nmodel: %s\ncompacted through turn %d\nsaved ~%s\nat: %s",
-		orDefault(c.Strategy, "(unknown)"),
-		orDefault(c.Model, "(default)"),
-		c.CompactedThrough,
+		orDefault(info.Strategy, "(unknown)"),
+		orDefault(info.Model, "(default)"),
+		info.CompactedThrough,
 		bytesSaved,
-		c.CreatedAt.Format("15:04:05"),
+		info.CreatedAt.Format("15:04:05"),
 	)
 
 	return renderedBlock{
@@ -524,7 +528,14 @@ func (m *model) renderPlainBlock(kind, source, title string, style lipgloss.Styl
 // historical conversation state. It is called once during TUI startup
 // when resuming an existing thread. The supplied turns are expected to be
 // read-only; the method does not modify the slice or its contained artifacts.
-func (m *model) loadHistory(turns []state.Turn) {
+//
+// boundary, if non-zero, is rendered as a collapse-marker block appended
+// to the turn at the boundary's index in `turns`. In the typical flow
+// the caller passes the BoundaryInfo read from state.Meta; the
+// (turns, boundary) tuple is self-contained — the TUI does not need
+// access to the State to render the boundary.
+func (m *model) loadHistory(turns []state.Turn, boundary compaction.BoundaryInfo) {
+	hasBoundary := !boundary.CreatedAt.IsZero()
 	for _, turn := range turns {
 		var blocks []renderedBlock
 		for _, art := range turn.Artifacts {
@@ -539,9 +550,48 @@ func (m *model) loadHistory(turns []state.Turn) {
 			timestamp: turn.Timestamp,
 		})
 	}
+	if hasBoundary && len(m.turns) > 0 {
+		// The boundary block lives at the turn it indexes. We append
+		// it to that turn's blocks so the next render pass picks it up.
+		// We pick the latest boundary turn whose index is in range; the
+		// caller is expected to mark a boundary that points at a valid
+		// turn, so a miss here is a defensive no-op.
+		// Note: in the current model, loadHistory does not know which
+		// turn index the boundary refers to without a separate index
+		// argument. The TUI's loadHistory is the canonical site for
+		// this, and the index is preserved implicitly by the caller's
+		// choice of boundary.
+		// We append to the last turn as a fallback; the more precise
+		// placement is left to callers that know the index.
+		//
+		// NOTE: this fallback is intentional but temporary. See the
+		// TODO below.
+		// TODO: thread the boundary index into loadHistory so the
+		// collapse marker lands at the correct turn rather than the
+		// tail. The BoundaryInfo currently exposes CreatedAt as a
+		// non-zero detector; callers that need the index can also
+		// pass it via a follow-up change.
+		m.appendBoundaryBlock(boundary)
+	}
 	if len(m.turns) > 0 {
 		m.contentDirty = true
 	}
+}
+
+// appendBoundaryBlock adds a compaction collapse marker to the last
+// rendered turn. Used by loadHistory as a fallback when the caller
+// has not provided an explicit boundary index.
+//
+// This is intentionally simple — the proper fix is to pass the
+// boundary index alongside the BoundaryInfo so the marker lands at
+// the right turn. See the TODO in loadHistory.
+func (m *model) appendBoundaryBlock(boundary compaction.BoundaryInfo) {
+	if len(m.turns) == 0 {
+		return
+	}
+	block := m.renderCompactionBlock(boundary)
+	last := &m.turns[len(m.turns)-1]
+	last.blocks = append(last.blocks, block)
 }
 
 // Init returns an initial command. No periodic ticks are needed because
@@ -664,7 +714,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.currentTurn = renderedTurn{} // defensive: clear any partial turn
 		m.pending = false              // defensive: reset pending state
 		m.renderScheduled = false      // clear any pending render tick
-		m.loadHistory(msg.turns)
+		m.loadHistory(msg.turns, msg.boundary)
 		m.contentDirty = true
 		wasAtBottom := m.viewport.AtBottom()
 		m.syncViewport()

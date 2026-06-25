@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/andrewhowdencom/ore/agent"
 	"github.com/andrewhowdencom/ore/artifact"
@@ -74,28 +75,18 @@ func findText(t *testing.T, turn state.Turn) artifact.Text {
 	return artifact.Text{}
 }
 
-func findCompaction(t *testing.T, turn state.Turn) artifact.Compaction {
-	t.Helper()
-	for _, a := range turn.Artifacts {
-		if c, ok := a.(artifact.Compaction); ok {
-			return c
-		}
-	}
-	t.Fatalf("expected artifact.Compaction on turn, got artifacts: %+v", turn.Artifacts)
-	return artifact.Compaction{}
-}
-
-func TestSummarize_EmptyTurns_ReturnsZeroTurnNoError(t *testing.T) {
+func TestSummarize_EmptyTurns_ReturnsZeroValuesNoError(t *testing.T) {
 	stub := &stubProvider{}
 	a := newCompactorAgent(t, stub)
 
-	result, err := Summarize(context.Background(), a, []state.Turn{})
+	turn, info, err := Summarize(context.Background(), a, []state.Turn{})
 	require.NoError(t, err)
-	assert.Equal(t, state.Turn{}, result, "empty turns return the zero turn with no error")
+	assert.Equal(t, state.Turn{}, turn, "empty turns return the zero turn")
+	assert.Equal(t, BoundaryInfo{}, info, "empty turns return zero BoundaryInfo")
 	assert.Equal(t, int32(0), atomic.LoadInt32(&stub.called), "provider should not be called for empty turns")
 }
 
-func TestSummarize_ProducesCompactionTurn(t *testing.T) {
+func TestSummarize_ProducesTextOnlyTurn(t *testing.T) {
 	stub := &stubProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "Summary of earlier discussion."},
@@ -110,19 +101,22 @@ func TestSummarize_ProducesCompactionTurn(t *testing.T) {
 		textTurn(state.RoleAssistant, "aaaa"),
 	}
 
-	result, err := Summarize(context.Background(), a, turns)
+	turn, info, err := Summarize(context.Background(), a, turns)
 	require.NoError(t, err)
-	assert.Equal(t, state.RoleSystem, result.Role)
+	assert.Equal(t, state.RoleSystem, turn.Role)
 
-	summary := findText(t, result)
+	// The turn carries exactly one Text artifact — no Compaction sibling.
+	require.Len(t, turn.Artifacts, 1, "compaction turn must carry only the LLM-facing Text artifact")
+	summary := findText(t, turn)
 	assert.Equal(t, "Summary of earlier discussion.", summary.Content)
 
-	comp := findCompaction(t, result)
-	assert.Equal(t, len(turns), comp.CompactedThrough)
-	assert.Equal(t, len(turns), comp.DroppedTurnCount)
-	assert.Equal(t, StrategyNameSummarize, comp.Strategy)
-	assert.False(t, comp.CreatedAt.IsZero(), "CreatedAt should be set")
-	assert.Greater(t, comp.DroppedTokenEstimate, int64(0), "DroppedTokenEstimate should reflect bytes of dropped artifacts")
+	// The companion BoundaryInfo carries the metadata that used to live in
+	// artifact.Compaction. Callers write this to state.Meta themselves.
+	assert.Equal(t, len(turns), info.CompactedThrough)
+	assert.Equal(t, len(turns), info.DroppedTurnCount)
+	assert.Equal(t, StrategyNameSummarize, info.Strategy)
+	assert.False(t, info.CreatedAt.IsZero(), "CreatedAt should be set")
+	assert.Greater(t, info.DroppedTokenEstimate, int64(0), "DroppedTokenEstimate should reflect bytes of dropped artifacts")
 }
 
 func TestSummarize_PropagatesAgentError(t *testing.T) {
@@ -135,7 +129,7 @@ func TestSummarize_PropagatesAgentError(t *testing.T) {
 		textTurn(state.RoleAssistant, "aaaa"),
 	}
 
-	_, err := Summarize(context.Background(), a, turns)
+	_, _, err := Summarize(context.Background(), a, turns)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, wantErr)
 	assert.Contains(t, err.Error(), "summarization agent run failed")
@@ -165,9 +159,9 @@ func TestSummarize_IgnoresNonTextArtifacts(t *testing.T) {
 		textTurn(state.RoleAssistant, "aaaa"),
 	}
 
-	result, err := Summarize(context.Background(), a, turns)
+	turn, _, err := Summarize(context.Background(), a, turns)
 	require.NoError(t, err)
-	summary := findText(t, result)
+	summary := findText(t, turn)
 	assert.Equal(t, "Actual summary.", summary.Content)
 }
 
@@ -186,9 +180,9 @@ func TestSummarize_MultipleTextArtifactsConcatenated(t *testing.T) {
 		textTurn(state.RoleUser, "aaaa"),
 	}
 
-	result, err := Summarize(context.Background(), a, turns)
+	turn, _, err := Summarize(context.Background(), a, turns)
 	require.NoError(t, err)
-	summary := findText(t, result)
+	summary := findText(t, turn)
 	assert.Equal(t, "Part one. Part two.", summary.Content)
 }
 
@@ -206,9 +200,9 @@ func TestSummarize_TextDeltaArtifacts(t *testing.T) {
 		textTurn(state.RoleAssistant, "aaaa"),
 	}
 
-	result, err := Summarize(context.Background(), a, turns)
+	turn, _, err := Summarize(context.Background(), a, turns)
 	require.NoError(t, err)
-	summary := findText(t, result)
+	summary := findText(t, turn)
 	assert.Equal(t, "Summary part one. Summary part two.", summary.Content)
 }
 
@@ -226,9 +220,9 @@ func TestSummarize_MixedTextAndTextDelta(t *testing.T) {
 		textTurn(state.RoleAssistant, "aaaa"),
 	}
 
-	result, err := Summarize(context.Background(), a, turns)
+	turn, _, err := Summarize(context.Background(), a, turns)
 	require.NoError(t, err)
-	summary := findText(t, result)
+	summary := findText(t, turn)
 	assert.Equal(t, "Part A. Part B.", summary.Content)
 }
 
@@ -247,10 +241,11 @@ func TestSummarize_NoTextArtifacts(t *testing.T) {
 		textTurn(state.RoleAssistant, "bbbb"),
 	}
 
-	result, err := Summarize(context.Background(), a, turns)
+	turn, _, err := Summarize(context.Background(), a, turns)
 	require.NoError(t, err)
-	assert.Equal(t, state.RoleSystem, result.Role)
-	summary := findText(t, result)
+	assert.Equal(t, state.RoleSystem, turn.Role)
+	require.Len(t, turn.Artifacts, 1, "compaction turn carries exactly one Text artifact, even when empty")
+	summary := findText(t, turn)
 	assert.Empty(t, summary.Content)
 }
 
@@ -267,9 +262,10 @@ func TestSummarize_TimestampNonZero(t *testing.T) {
 		textTurn(state.RoleAssistant, "aaaa"),
 	}
 
-	result, err := Summarize(context.Background(), a, turns)
+	turn, info, err := Summarize(context.Background(), a, turns)
 	require.NoError(t, err)
-	assert.False(t, result.Timestamp.IsZero())
+	assert.False(t, turn.Timestamp.IsZero())
+	assert.False(t, info.CreatedAt.IsZero(), "BoundaryInfo.CreatedAt must be set")
 }
 
 func TestSummarize_UsesDefaultPrompt(t *testing.T) {
@@ -286,7 +282,7 @@ func TestSummarize_UsesDefaultPrompt(t *testing.T) {
 		textTurn(state.RoleUser, "aaaa"),
 	}
 
-	_, err := Summarize(context.Background(), a, turns)
+	_, _, err := Summarize(context.Background(), a, turns)
 	require.NoError(t, err)
 	require.NotNil(t, stub.receivedSt)
 	receivedTurns := stub.receivedSt.Turns()
@@ -313,7 +309,7 @@ func TestSummarize_PassesAllTurnsPlusPrompt(t *testing.T) {
 		textTurn(state.RoleAssistant, "a2"),
 	}
 
-	_, err := Summarize(context.Background(), a, turns)
+	_, _, err := Summarize(context.Background(), a, turns)
 	require.NoError(t, err)
 	require.NotNil(t, stub.receivedSt)
 	receivedTurns := stub.receivedSt.Turns()
@@ -341,10 +337,11 @@ func TestSummarize_TruncatedResultReturnsError(t *testing.T) {
 		textTurn(state.RoleAssistant, "more response"),
 	}
 
-	result, err := Summarize(context.Background(), a, turns)
+	turn, info, err := Summarize(context.Background(), a, turns)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrTruncatedSummary)
-	assert.Equal(t, state.Turn{}, result, "zero turn returned so the caller doesn't accidentally append")
+	assert.Equal(t, state.Turn{}, turn, "zero turn returned so the caller doesn't accidentally append")
+	assert.Equal(t, BoundaryInfo{}, info, "zero BoundaryInfo returned on truncation")
 }
 
 func TestSummarize_StopReasonStopDoesNotError(t *testing.T) {
@@ -362,9 +359,9 @@ func TestSummarize_StopReasonStopDoesNotError(t *testing.T) {
 		textTurn(state.RoleUser, "aaaa"),
 	}
 
-	result, err := Summarize(context.Background(), a, turns)
+	turn, _, err := Summarize(context.Background(), a, turns)
 	require.NoError(t, err)
-	summary := findText(t, result)
+	summary := findText(t, turn)
 	assert.Equal(t, "Summary content.", summary.Content)
 }
 
@@ -383,9 +380,9 @@ func TestSummarize_StopReasonToolUseDoesNotError(t *testing.T) {
 		textTurn(state.RoleAssistant, "aaaa"),
 	}
 
-	result, err := Summarize(context.Background(), a, turns)
+	turn, _, err := Summarize(context.Background(), a, turns)
 	require.NoError(t, err)
-	summary := findText(t, result)
+	summary := findText(t, turn)
 	assert.Equal(t, "Partial summary before tool call.", summary.Content)
 }
 
@@ -403,9 +400,9 @@ func TestSummarize_NoStopReasonDoesNotError(t *testing.T) {
 		textTurn(state.RoleUser, "aaaa"),
 	}
 
-	result, err := Summarize(context.Background(), a, turns)
+	turn, _, err := Summarize(context.Background(), a, turns)
 	require.NoError(t, err)
-	summary := findText(t, result)
+	summary := findText(t, turn)
 	assert.Equal(t, "Summary.", summary.Content)
 }
 
@@ -425,7 +422,7 @@ func TestSummarize_StopReason_InterleavedTextAndReason(t *testing.T) {
 		textTurn(state.RoleUser, "aaaa"),
 	}
 
-	_, err := Summarize(context.Background(), a, turns)
+	_, _, err := Summarize(context.Background(), a, turns)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrTruncatedSummary)
 }
@@ -454,20 +451,19 @@ func TestSummarize_DroppedTokenEstimateFromDroppedArtifacts(t *testing.T) {
 		},
 	}
 
-	result, err := Summarize(context.Background(), a, turns)
+	_, info, err := Summarize(context.Background(), a, turns)
 	require.NoError(t, err)
-	comp := findCompaction(t, result)
-	assert.Equal(t, int64(20), comp.DroppedTokenEstimate, "should sum bytes of all dropped artifacts")
+	assert.Equal(t, int64(20), info.DroppedTokenEstimate, "should sum bytes of all dropped artifacts")
 }
 
-func TestSummarize_SpecNameForwardedToCompaction(t *testing.T) {
+func TestSummarize_SpecNameForwardedToBoundaryInfo(t *testing.T) {
 	stub := &stubProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "Summary."},
 		},
 	}
 	// Build agent with a non-empty spec.Name; the compactor's wrap
-	// function forwards it to artifact.Compaction.Model.
+	// function forwards it to BoundaryInfo.Model.
 	a := agent.New("test-compactor",
 		agent.WithProvider(stub),
 		agent.WithSpec(models.Spec{Name: "specific-model"}),
@@ -477,8 +473,35 @@ func TestSummarize_SpecNameForwardedToCompaction(t *testing.T) {
 
 	turns := []state.Turn{textTurn(state.RoleUser, "aaaa")}
 
-	result, err := Summarize(context.Background(), a, turns)
+	_, info, err := Summarize(context.Background(), a, turns)
 	require.NoError(t, err)
-	comp := findCompaction(t, result)
-	assert.Equal(t, "specific-model", comp.Model)
+	assert.Equal(t, "specific-model", info.Model)
+}
+
+func TestBoundaryInfo_RoundTrip(t *testing.T) {
+	// encodeBoundaryInfo followed by decodeBoundaryInfo must produce
+	// a value that compares equal to the original.
+	original := BoundaryInfo{
+		CompactedThrough:     12,
+		DroppedTurnCount:     12,
+		DroppedTokenEstimate: 4096,
+		Strategy:             "summarize",
+		Model:                "claude-opus-4-5",
+		CreatedAt:            time.Date(2026, 1, 15, 10, 30, 0, 0, time.UTC),
+	}
+
+	encoded, err := encodeBoundaryInfo(original)
+	require.NoError(t, err)
+
+	got, err := decodeBoundaryInfo(encoded)
+	require.NoError(t, err)
+	assert.Equal(t, original, got)
+}
+
+func TestBoundaryInfo_DecodeEmpty(t *testing.T) {
+	// Decoding an empty string returns the zero BoundaryInfo without
+	// error — this is the "no boundary set" signal.
+	got, err := decodeBoundaryInfo("")
+	require.NoError(t, err)
+	assert.Equal(t, BoundaryInfo{}, got)
 }

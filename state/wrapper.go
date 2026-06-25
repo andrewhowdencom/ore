@@ -33,6 +33,13 @@ func (v *View) Append(role Role, artifacts ...artifact.Artifact) {
 	v.base.Append(role, artifacts...)
 }
 
+// Meta delegates to the base state. Views do not own metadata; they
+// are projections of turns. Writes through a View's Meta are visible
+// on the base state.
+func (v *View) Meta() Meta {
+	return v.base.Meta()
+}
+
 // Prepend returns a State view that projects virtual turns before the base
 // state's current turns on every call to Turns(). Append() delegates to the
 // base state. If virtual is empty, it returns the base state directly as an
@@ -59,4 +66,10 @@ func (p *prependView) Turns() []Turn {
 
 func (p *prependView) Append(role Role, artifacts ...artifact.Artifact) {
 	p.base.Append(role, artifacts...)
+}
+
+// Meta delegates to the base state. As with View, writes through a
+// prependView's Meta are visible on the base state.
+func (p *prependView) Meta() Meta {
+	return p.base.Meta()
 }

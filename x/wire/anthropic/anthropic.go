@@ -1116,9 +1116,10 @@ func concatText(artifacts []artifact.Artifact) string {
 // This is the test that distinguishes a "pure system message" (which
 // becomes a TextBlockParam on the request-level system field) from a
 // "mixed-content" system turn (which is dropped to avoid losing
-// non-text content silently). Mixed content in a system turn is
-// unexpected; the framework does not currently emit such turns, so the
-// conservative policy is to drop them.
+// non-text content silently). Mixed content in a system turn is a
+// signal that the caller is constructing a malformed message; the
+// conservative policy is to drop the turn rather than serialize an
+// ambiguous shape to the upstream API.
 func onlyText(artifacts []artifact.Artifact) (string, bool) {
 	if len(artifacts) != 1 {
 		return "", false

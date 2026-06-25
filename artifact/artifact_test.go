@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +18,6 @@ var _ Artifact = Image{}
 var _ Artifact = Reasoning{}
 var _ Artifact = ReasoningSignature{}
 var _ Artifact = StopReason{}
-var _ Artifact = Compaction{}
 
 var _ LLMRenderer = (*mockLLMRenderer)(nil)
 var _ MarkdownRenderer = (*mockMarkdownRenderer)(nil)
@@ -54,7 +52,6 @@ func TestDeltaArtifacts(t *testing.T) {
 	assert.False(t, isDelta(Image{}))
 	assert.False(t, isDelta(Reasoning{}))
 	assert.False(t, isDelta(ReasoningSignature{}))
-	assert.False(t, isDelta(Compaction{}))
 }
 
 func isDelta(a Artifact) bool {
@@ -78,7 +75,6 @@ func TestArtifactKinds(t *testing.T) {
 		{"reasoning", Reasoning{Content: "Let me think..."}, "reasoning"},
 		{"reasoning_signature", ReasoningSignature{Provider: "anthropic", SubKind: "signature", Data: "x"}, "reasoning_signature"},
 		{"stop_reason", StopReason{Reason: StopReasonLength}, "stop_reason"},
-		{"compaction", Compaction{Strategy: "summarize"}, "compaction"},
 	}
 
 	for _, tt := range tests {
@@ -681,56 +677,3 @@ func TestUsage_ThinkingTokens_Omitempty(t *testing.T) {
 // literal values for fields like Usage.ThinkingTokens whose semantic
 // distinguishes nil from a pointer to zero.
 func ptr[T any](v T) *T { return &v }
-
-func TestCompaction_MarshalJSON(t *testing.T) {
-	t.Run("full fields", func(t *testing.T) {
-		created := time.Date(2026, 6, 17, 12, 0, 0, 0, time.UTC)
-		data, err := json.Marshal(Compaction{
-			CompactedThrough:     42,
-			DroppedTurnCount:     42,
-			DroppedTokenEstimate: 12345,
-			Strategy:             "summarize",
-			Model:                "gpt-4o-mini",
-			CreatedAt:            created,
-		})
-		require.NoError(t, err)
-		assert.JSONEq(t, `{"kind":"compaction","compacted_through":42,"dropped_turn_count":42,"dropped_token_estimate":12345,"strategy":"summarize","model":"gpt-4o-mini","created_at":"2026-06-17T12:00:00Z"}`, string(data))
-	})
-
-	t.Run("empty model is omitted", func(t *testing.T) {
-		data, err := json.Marshal(Compaction{
-			CompactedThrough:     7,
-			DroppedTurnCount:     7,
-			DroppedTokenEstimate: 100,
-			Strategy:             "summarize",
-		})
-		require.NoError(t, err)
-		assert.JSONEq(t, `{"kind":"compaction","compacted_through":7,"dropped_turn_count":7,"dropped_token_estimate":100,"strategy":"summarize","created_at":"0001-01-01T00:00:00Z"}`, string(data))
-	})
-
-	t.Run("round trips through marshal and unmarshal", func(t *testing.T) {
-		created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-		original := Compaction{
-			CompactedThrough:     10,
-			DroppedTurnCount:     10,
-			DroppedTokenEstimate: 9999,
-			Strategy:             "summarize",
-			Model:                "claude-3-5-sonnet",
-			CreatedAt:            created,
-		}
-		data, err := json.Marshal(original)
-		require.NoError(t, err)
-
-		var roundTripped Compaction
-		require.NoError(t, json.Unmarshal(data, &roundTripped))
-		assert.Equal(t, original, roundTripped)
-	})
-
-	t.Run("zero value is valid", func(t *testing.T) {
-		var c Compaction
-		assert.Equal(t, "compaction", c.Kind())
-		data, err := json.Marshal(c)
-		require.NoError(t, err)
-		assert.JSONEq(t, `{"kind":"compaction","compacted_through":0,"dropped_turn_count":0,"dropped_token_estimate":0,"strategy":"","created_at":"0001-01-01T00:00:00Z"}`, string(data))
-	})
-}
