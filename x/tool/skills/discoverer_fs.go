@@ -90,22 +90,18 @@ func (d *FSDiscoverer) Read(ctx context.Context, name string) (string, error) {
 // readFileFunc abstracts over os.ReadFile and embed.FS.ReadFile.
 type readFileFunc func(path string) ([]byte, error)
 
-// parseSkillFile reads a SKILL.md file, validates YAML frontmatter, and
-// returns the extracted metadata. The file must start with --- and contain
-// a closing --- delimiter.
-func parseSkillFile(path string, readFn readFileFunc) (SkillMeta, error) {
-	data, err := readFn(path)
-	if err != nil {
-		return SkillMeta{}, fmt.Errorf("failed to read file: %w", err)
-	}
-
+// parseSkill parses the bytes of a SKILL.md file. It validates YAML
+// frontmatter and returns a Skill with Content set to the full file
+// bytes (frontmatter + body), matching what FSDiscoverer.Read and
+// EmbeddedDiscoverer.Read already return to the LLM.
+func parseSkill(data []byte) (Skill, error) {
 	content := strings.ReplaceAll(string(data), "\r\n", "\n")
 	if !strings.HasSuffix(content, "\n") {
 		content += "\n"
 	}
 	parts := strings.SplitN(content, "\n---\n", 3)
 	if len(parts) < 2 || !strings.HasPrefix(parts[0], "---") {
-		return SkillMeta{}, fmt.Errorf("missing or invalid YAML frontmatter")
+		return Skill{}, fmt.Errorf("missing or invalid YAML frontmatter")
 	}
 
 	var frontmatter struct {
@@ -115,18 +111,35 @@ func parseSkillFile(path string, readFn readFileFunc) (SkillMeta, error) {
 	yamlPart := strings.TrimPrefix(parts[0], "---")
 	yamlPart = strings.TrimSpace(yamlPart)
 	if err := yaml.Unmarshal([]byte(yamlPart), &frontmatter); err != nil {
-		return SkillMeta{}, fmt.Errorf("invalid YAML frontmatter: %w", err)
+		return Skill{}, fmt.Errorf("invalid YAML frontmatter: %w", err)
 	}
 
 	if strings.TrimSpace(frontmatter.Name) == "" {
-		return SkillMeta{}, fmt.Errorf("missing required field: name")
+		return Skill{}, fmt.Errorf("missing required field: name")
 	}
 	if strings.TrimSpace(frontmatter.Description) == "" {
-		return SkillMeta{}, fmt.Errorf("missing required field: description")
+		return Skill{}, fmt.Errorf("missing required field: description")
 	}
 
-	return SkillMeta{
+	return Skill{
 		Name:        frontmatter.Name,
 		Description: frontmatter.Description,
+		Content:     string(data),
 	}, nil
+}
+
+// parseSkillFile reads a SKILL.md file via the supplied read function,
+// validates YAML frontmatter, and returns the extracted metadata as a
+// SkillMeta. It is a thin wrapper around parseSkill that preserves the
+// readFileFunc indirection used by FSDiscoverer and EmbeddedDiscoverer.
+func parseSkillFile(path string, readFn readFileFunc) (SkillMeta, error) {
+	data, err := readFn(path)
+	if err != nil {
+		return SkillMeta{}, fmt.Errorf("failed to read file: %w", err)
+	}
+	skill, err := parseSkill(data)
+	if err != nil {
+		return SkillMeta{}, err
+	}
+	return skill.Meta(), nil
 }
