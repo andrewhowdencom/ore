@@ -246,7 +246,7 @@ func run() error {
 		)
 		defer compactAgent.Close()
 
-		turn, err := compaction.Summarize(ctx, compactAgent, stream.Turns())
+		turn, info, err := compaction.Summarize(ctx, compactAgent, stream.Turns())
 		if err != nil {
 			if errors.Is(err, compaction.ErrTruncatedSummary) {
 				// Caller (us) is expected NOT to append anything on
@@ -266,6 +266,27 @@ func run() error {
 		if err := stream.AppendTurn(ctx, turn.Role, turn.Artifacts...); err != nil {
 			return slash.Result{Notice: loop.Notice{
 				Content:  fmt.Sprintf("appending compaction turn: %v", err),
+				Severity: loop.SeverityError,
+			}}, nil
+		}
+
+		// Record the boundary on state.Meta so the next Transform
+		// call projects the buffer from the compaction turn onward.
+		// The boundary index is the position of the just-appended
+		// summary turn (the last element). MarkBoundary takes a
+		// pre-encoded JSON string for the boundary info to keep the
+		// session package free of any x/compaction dependency.
+		boundaryIdx := len(stream.Turns()) - 1
+		encoded, err := compaction.EncodeBoundaryInfo(info)
+		if err != nil {
+			return slash.Result{Notice: loop.Notice{
+				Content:  fmt.Sprintf("encoding boundary info: %v", err),
+				Severity: loop.SeverityError,
+			}}, nil
+		}
+		if err := stream.MarkBoundary(boundaryIdx, encoded); err != nil {
+			return slash.Result{Notice: loop.Notice{
+				Content:  fmt.Sprintf("marking boundary: %v", err),
 				Severity: loop.SeverityError,
 			}}, nil
 		}
