@@ -13,26 +13,26 @@ func TestBuiltInSkills_LoadsPlaceholder(t *testing.T) {
 	t.Parallel()
 	// BuiltInSkills is populated by init(). We do not assert an exact
 	// count because future real skills may be added. We assert that
-	// the placeholder survives and is reachable.
+	// the writing-skills skill (the first real built-in) is present.
 	require.NotEmpty(t, BuiltInSkills, "BuiltInSkills must contain at least one entry")
 
 	found := false
 	for _, sk := range BuiltInSkills {
-		if sk.Name == "_example" {
+		if sk.Name == "writing-skills" {
 			found = true
-			assert.NotEmpty(t, sk.Description, "placeholder description must be non-empty")
-			assert.NotEmpty(t, sk.Content, "placeholder content must be non-empty")
+			assert.NotEmpty(t, sk.Description, "writing-skills description must be non-empty")
+			assert.NotEmpty(t, sk.Content, "writing-skills content must be non-empty")
 			break
 		}
 	}
-	assert.True(t, found, "placeholder _example must be present in BuiltInSkills")
+	assert.True(t, found, "writing-skills must be present in BuiltInSkills")
 }
 
 func TestBuiltIn_KnownName(t *testing.T) {
 	t.Parallel()
-	sk, ok := BuiltIn("_example")
-	require.True(t, ok, "BuiltIn must find the placeholder")
-	assert.Equal(t, "_example", sk.Name)
+	sk, ok := BuiltIn("writing-skills")
+	require.True(t, ok, "BuiltIn must find writing-skills")
+	assert.Equal(t, "writing-skills", sk.Name)
 	assert.NotEmpty(t, sk.Content)
 }
 
