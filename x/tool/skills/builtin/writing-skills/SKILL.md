@@ -5,7 +5,31 @@ description: Guidelines for creating, reviewing, and improving agent skills.
 
 # Writing Skills
 
-This skill governs how agent skills are authored and audited. It contains two paths: a **Creation** path for new skills, and a **Review** path for existing skills. The Inlined Expertise doctrine from `DEVELOPMENT.md` applies — critical SOPs live in `SKILL.md`, not in `references/`.
+This skill governs how agent skills are authored and audited. It contains two paths: a **Creation** path for new skills, and a **Review** path for existing skills.
+
+## Inlined Expertise Doctrine
+
+When creating or editing skills, follow the **Inlined Expertise** philosophy:
+
+- **SKILL.md** is NOT just an index. It MUST contain the most frequent "Standard Operating Procedures" (SOPs).
+- **Do not** bury critical instructions in `references/`.
+- **Do** use `references/` for explanations, history, or large templates.
+
+A skill's directory layout follows the agentskills.io standard:
+
+```
+<skill-name>/
+├── SKILL.md       # Entry point + Inlined Expertise (SOPs)
+├── references/    # Detailed docs, templates, deep-dives
+├── scripts/       # Optional automation tools
+└── assets/        # Static files
+```
+
+**Example of Inlined Expertise (in SKILL.md):**
+> "Run `go test -race ./...` to verify changes." (Direct instruction)
+
+**Example of Reference:**
+> "See `references/testing_philosophy.md` for why we use Table-Driven tests." (Deep dive)
 
 ## Creation Path
 
