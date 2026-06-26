@@ -20,7 +20,7 @@ func (m *mockDiscoverer) Discover(ctx context.Context) ([]SkillMeta, error) {
 	return m.meta, nil
 }
 
-func (m *mockDiscoverer) Read(ctx context.Context, name string) (string, error) {
+func (m *mockDiscoverer) Read(ctx context.Context, name string, path string) (string, error) {
 	content, ok := m.reads[name]
 	if !ok {
 		return "", fmt.Errorf("skill %q not found in mock", name)
@@ -35,7 +35,7 @@ func (f *failingDiscoverer) Discover(ctx context.Context) ([]SkillMeta, error) {
 	return nil, fmt.Errorf("discovery failed")
 }
 
-func (f *failingDiscoverer) Read(ctx context.Context, name string) (string, error) {
+func (f *failingDiscoverer) Read(ctx context.Context, name string, path string) (string, error) {
 	return "", fmt.Errorf("read failed")
 }
 
@@ -96,7 +96,7 @@ func TestCatalog_DuplicateNamesFirstWins(t *testing.T) {
 	assert.Equal(t, "first wins", meta[0].Description)
 
 	// Read should delegate to the first discoverer.
-	content, err := c.Read(context.Background(), "overlap")
+	content, err := c.Read(context.Background(), "overlap", "")
 	require.NoError(t, err)
 	assert.Equal(t, "first content", content)
 }
@@ -110,7 +110,7 @@ func TestCatalog_ReadAfterRefresh(t *testing.T) {
 		reads: map[string]string{"test-skill": "full skill content here"},
 	}
 	c := NewCatalog(d)
-	content, err := c.Read(context.Background(), "test-skill")
+	content, err := c.Read(context.Background(), "test-skill", "")
 	require.NoError(t, err)
 	assert.Equal(t, "full skill content here", content)
 }
@@ -123,7 +123,7 @@ func TestCatalog_ReadNonexistent(t *testing.T) {
 		},
 	}
 	c := NewCatalog(d)
-	_, err := c.Read(context.Background(), "missing")
+	_, err := c.Read(context.Background(), "missing", "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }

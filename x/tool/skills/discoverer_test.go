@@ -36,7 +36,7 @@ Test content.
 	assert.Equal(t, "conduit", meta[0].Name)
 	assert.Equal(t, "Implements a new ore I/O conduit package.", meta[0].Description)
 
-	content, err := d.Read(context.Background(), "conduit")
+	content, err := d.Read(context.Background(), "conduit", "")
 	require.NoError(t, err)
 	assert.Contains(t, content, "# Ore Conduit")
 }
@@ -110,7 +110,7 @@ func TestFSDiscoverer_ReadNonexistent(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	d := NewFSDiscoverer(dir)
-	_, err := d.Read(context.Background(), "missing")
+	_, err := d.Read(context.Background(), "missing", "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
@@ -149,7 +149,7 @@ func TestEmbeddedDiscoverer_HappyPath(t *testing.T) {
 	assert.Equal(t, "go", meta[0].Name)
 	assert.Equal(t, "Guidelines for Go development, testing, and tooling.", meta[0].Description)
 
-	content, err := d.Read(context.Background(), "go")
+	content, err := d.Read(context.Background(), "go", "")
 	require.NoError(t, err)
 	assert.Contains(t, content, "# Go")
 }
@@ -157,7 +157,7 @@ func TestEmbeddedDiscoverer_HappyPath(t *testing.T) {
 func TestEmbeddedDiscoverer_ReadNonexistent(t *testing.T) {
 	t.Parallel()
 	d := NewEmbeddedDiscoverer(testEmbedFS, "testdata/embed/skills")
-	_, err := d.Read(context.Background(), "missing")
+	_, err := d.Read(context.Background(), "missing", "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }

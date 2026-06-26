@@ -54,7 +54,7 @@ func TestStaticSource_Read(t *testing.T) {
 		{Name: "alpha", Description: "first skill", Content: "# Alpha body"},
 		{Name: "beta", Description: "second skill", Content: "# Beta body"},
 	}
-	content, err := src.Read(context.Background(), "beta")
+	content, err := src.Read(context.Background(), "beta", "")
 	require.NoError(t, err)
 	assert.Equal(t, "# Beta body", content)
 }
@@ -62,7 +62,7 @@ func TestStaticSource_Read(t *testing.T) {
 func TestStaticSource_Read_NotFound(t *testing.T) {
 	t.Parallel()
 	src := StaticSource{{Name: "alpha", Description: "first", Content: "x"}}
-	_, err := src.Read(context.Background(), "missing")
+	_, err := src.Read(context.Background(), "missing", "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `"missing"`)
 	assert.Contains(t, err.Error(), "not found")
@@ -79,7 +79,7 @@ func TestStaticSource_SatisfiesDiscoverer(t *testing.T) {
 	require.Len(t, metas, 1)
 	assert.Equal(t, "x", metas[0].Name)
 
-	content, err := d.Read(context.Background(), "x")
+	content, err := d.Read(context.Background(), "x", "")
 	require.NoError(t, err)
 	assert.Equal(t, "z", content)
 }

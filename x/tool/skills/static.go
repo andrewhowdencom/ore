@@ -5,12 +5,15 @@ import (
 	"fmt"
 )
 
-// Skill is the full record of a skill: name, description, and content.
+// Skill is the full record of a skill: name, description, content, and
+// optional reference files served through the same read path.
+//
 // SkillMeta is the catalog-facing projection of a Skill — see Meta.
 type Skill struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Content     string `json:"-"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Content     string            `json:"-"`
+	References  map[string]string `json:"-"` // skill-relative path → content
 }
 
 // Meta returns the metadata projection of this skill, suitable for inclusion
@@ -40,13 +43,24 @@ func (s StaticSource) Discover(_ context.Context) ([]SkillMeta, error) {
 	return metas, nil
 }
 
-// Read returns the full content of the named skill, or an error if no entry
-// has a matching Name. Matching is a linear scan.
-func (s StaticSource) Read(_ context.Context, name string) (string, error) {
+// Read returns the content at skill-relative path for the named skill.
+// path == "" returns the canonical SKILL.md (stored in Content); a non-empty
+// path looks up the matching entry in the skill's References map. Returns
+// an error if no entry has a matching Name, or if path is non-empty and the
+// reference is not present in References. Matching is a linear scan.
+func (s StaticSource) Read(_ context.Context, name string, path string) (string, error) {
 	for _, sk := range s {
-		if sk.Name == name {
+		if sk.Name != name {
+			continue
+		}
+		if path == "" {
 			return sk.Content, nil
 		}
+		content, ok := sk.References[path]
+		if !ok {
+			return "", fmt.Errorf("reference %q not found in skill %q", path, name)
+		}
+		return content, nil
 	}
 	return "", fmt.Errorf("skill %q not found", name)
 }

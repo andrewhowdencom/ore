@@ -12,11 +12,21 @@ import (
 // Discoverer abstracts where skills live. Implementations scan a source
 // (filesystem, embedded FS, etc.) for SKILL.md files and expose metadata
 // and full content on demand.
+//
+// The Read method serves both the canonical SKILL.md and any reference
+// files (e.g., those under a skill's `references/` directory) through
+// a single skill-relative path parameter, keeping the abstraction
+// source-agnostic — filesystem, embedded, and future remote discoverers
+// all resolve the same path the same way.
 type Discoverer interface {
 	// Discover returns metadata for all skills found in this source.
 	Discover(ctx context.Context) ([]SkillMeta, error)
-	// Read returns the full SKILL.md content for the skill with the given name.
-	Read(ctx context.Context, name string) (string, error)
+	// Read returns the content at skill-relative path for the named skill.
+	// path == "" returns the canonical SKILL.md; a non-empty path returns
+	// the file at that skill-relative location (e.g., "references/foo.md").
+	// Paths are forward-slash separated regardless of host OS. Implementations
+	// are responsible for their own path-traversal safety.
+	Read(ctx context.Context, name string, path string) (string, error)
 }
 
 // SkillMeta holds the publicly disclosed metadata for a skill.
@@ -78,9 +88,11 @@ func (c *Catalog) List(ctx context.Context) ([]SkillMeta, error) {
 	return result, nil
 }
 
-// Read returns the full SKILL.md content for the skill with the given name.
-// The cache is refreshed if the name is not found.
-func (c *Catalog) Read(ctx context.Context, name string) (string, error) {
+// Read returns the content at skill-relative path for the named skill.
+// path == "" returns the canonical SKILL.md; a non-empty path returns
+// the file at that skill-relative location. The cache is refreshed if
+// the name is not found.
+func (c *Catalog) Read(ctx context.Context, name string, path string) (string, error) {
 	c.mu.RLock()
 	_, ok := c.cache[name]
 	c.mu.RUnlock()
@@ -99,9 +111,9 @@ func (c *Catalog) Read(ctx context.Context, name string) (string, error) {
 		return "", fmt.Errorf("skill %q not found", name)
 	}
 
-	content, err := entry.discoverer.Read(ctx, name)
+	content, err := entry.discoverer.Read(ctx, name, path)
 	if err != nil {
-		return "", fmt.Errorf("failed to read skill %q: %w", name, err)
+		return "", fmt.Errorf("failed to read skill %q (path %q): %w", name, path, err)
 	}
 
 	return content, nil

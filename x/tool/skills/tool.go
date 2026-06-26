@@ -66,19 +66,26 @@ func (r *ReadSkillResult) MarshalLLM() string {
 
 var _ artifact.LLMRenderer = (*ReadSkillResult)(nil)
 
-// ReadSkill returns the bounded content of the named skill.
-// When the skill content exceeds the cap, the full content is
-// written to a temp file and the result's TempFilePath points to
-// it; the LLM can read the temp file to retrieve the rest.
+// ReadSkill returns the content of a file in the named skill at the
+// given skill-relative path. When path is empty, the canonical SKILL.md
+// is returned; otherwise the file at skill-relative path is returned
+// (e.g., path="references/foo.md").
+//
+// When the content exceeds the cap, the full content is written to a
+// temp file and the result's TempFilePath points to it; the LLM can
+// read the temp file to retrieve the rest.
 //
 // Parameters:
 //   - name (string, required): the skill name.
+//   - path (string, optional): skill-relative path. Empty (or omitted)
+//     returns SKILL.md; non-empty returns the matching reference file.
 func (t *Toolkit) ReadSkill(ctx context.Context, _ tool.Sandbox, args map[string]any) (any, error) {
 	name := toString(args["name"])
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
 	}
-	full, err := t.catalog.Read(ctx, name)
+	path := toString(args["path"])
+	full, err := t.catalog.Read(ctx, name, path)
 	if err != nil {
 		return nil, err
 	}
@@ -153,10 +160,11 @@ func ReadSkillDisplayHint(args map[string]any) any {
 // ReadSkillTool is the tool.Tool descriptor for read_skill.
 var ReadSkillTool = tool.Tool{
 	Name: "read_skill",
-	Description: "Read the full SKILL.md content for a named skill. " +
-		"Use this to load the detailed instructions for a skill.\n\n" +
+	Description: "Read a file from a named skill. Use this to load the canonical " +
+		"SKILL.md or any reference file (e.g., references/foo.md). " +
+		"Omit path to read SKILL.md.\n\n" +
 		"Output limits: capped at 50 KB / 2000 lines, head style. " +
-		"When the skill content exceeds the cap, the full content is " +
+		"When the file exceeds the cap, the full content is " +
 		"written to a temp file and only the head is returned.\n\n" +
 		"Recovery: the result includes the temp file path when " +
 		"truncation occurs. Use read_file on the path, or invoke a " +
@@ -167,6 +175,10 @@ var ReadSkillTool = tool.Tool{
 			"name": map[string]any{
 				"type":        "string",
 				"description": "The name of the skill to read.",
+			},
+			"path": map[string]any{
+				"type":        "string",
+				"description": "Skill-relative path to a reference file (e.g., references/foo.md). Omit to read SKILL.md.",
 			},
 		},
 		"required": []string{"name"},

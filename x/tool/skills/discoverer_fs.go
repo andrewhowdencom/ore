@@ -29,6 +29,10 @@ func NewFSDiscoverer(root string) *FSDiscoverer {
 
 // Discover walks Root recursively and returns metadata for every valid
 // SKILL.md found. Malformed files are skipped with a logged warning.
+//
+// The internal mapping stores each skill's root directory (the directory
+// containing SKILL.md), not the SKILL.md path itself, so that Read can
+// resolve skill-relative reference paths against the same root.
 func (d *FSDiscoverer) Discover(ctx context.Context) ([]SkillMeta, error) {
 	paths := make(map[string]string)
 	var result []SkillMeta
@@ -56,7 +60,9 @@ func (d *FSDiscoverer) Discover(ctx context.Context) ([]SkillMeta, error) {
 			return nil
 		}
 
-		paths[meta.Name] = path
+		// Store the skill root (directory containing SKILL.md) so Read
+		// can resolve skill-relative reference paths against it.
+		paths[meta.Name] = filepath.Dir(path)
 		result = append(result, meta)
 		return nil
 	})
@@ -71,18 +77,25 @@ func (d *FSDiscoverer) Discover(ctx context.Context) ([]SkillMeta, error) {
 	return result, nil
 }
 
-// Read returns the full SKILL.md content for the named skill.
-func (d *FSDiscoverer) Read(ctx context.Context, name string) (string, error) {
+// Read returns the content at skill-relative path for the named skill.
+// path == "" returns the canonical SKILL.md; non-empty path is joined
+// against the skill's root directory.
+func (d *FSDiscoverer) Read(ctx context.Context, name string, path string) (string, error) {
 	d.mu.RLock()
-	path, ok := d.paths[name]
+	root, ok := d.paths[name]
 	d.mu.RUnlock()
 	if !ok {
 		return "", fmt.Errorf("skill %q not found in filesystem discoverer", name)
 	}
 
-	data, err := os.ReadFile(path)
+	fullPath := filepath.Join(root, path)
+	if path == "" {
+		// filepath.Join(root, "") returns root, but we need SKILL.md explicitly.
+		fullPath = filepath.Join(root, "SKILL.md")
+	}
+	data, err := os.ReadFile(fullPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to read skill file %q: %w", path, err)
+		return "", fmt.Errorf("failed to read skill file %q: %w", fullPath, err)
 	}
 	return string(data), nil
 }
