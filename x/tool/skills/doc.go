@@ -23,7 +23,8 @@
 // Applications compose the skills toolkit into a tool.Registry:
 //
 //	tk := skills.NewToolkit(
-//	    skills.NewFSDiscoverer(".agents/skills"),
+//	    skills.BuiltInSkills,                       // framework-shipped skills
+//	    skills.NewFSDiscoverer(".agents/skills"),   // repo-local skills
 //	)
 //	if err := tk.Register(registry); err != nil {
 //	    ...
@@ -70,4 +71,36 @@
 // SKILL.md files missing required frontmatter fields (name, description) are
 // skipped during discovery with a warning log rather than failing the entire
 // catalog.
+//
+// Built-in Skills
+//
+// The framework ships a small set of skills as part of the package itself.
+// They are exposed as a StaticSource named BuiltInSkills and a lookup
+// helper BuiltIn:
+//
+//	if sk, ok := skills.BuiltIn("write-skill"); ok {
+//	    fmt.Println(sk.Content)
+//	}
+//
+// BuiltInSkills satisfies the Discoverer interface, so it composes with
+// other sources:
+//
+//	tk := skills.NewToolkit(skills.BuiltInSkills, skills.NewFSDiscoverer(".agents/skills"))
+//
+// BuiltInSkills is populated at package init from .md files under
+// x/tool/skills/builtin/. Each subdirectory contains a SKILL.md file in
+// the same agentskills.io format used by .agents/skills/:
+//
+//	x/tool/skills/builtin/<name>/SKILL.md
+//
+// Add a new built-in skill by creating such a directory; remove one by
+// deleting it. The init() loader walks the embedded directory at startup
+// and skips malformed files with a logged warning — the loader never
+// panics and the registry is empty (rather than missing) if every file
+// is malformed.
+//
+// When a built-in skill has the same name as a user-discovered skill,
+// the first discoverer passed to NewToolkit wins (Catalog's existing
+// first-wins deduplication). To keep built-ins authoritative, pass
+// BuiltInSkills first.
 package skills
