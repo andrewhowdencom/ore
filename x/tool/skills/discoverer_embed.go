@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
-	"path"
+	pathpkg "path"
 	"sync"
 )
 
@@ -29,6 +29,10 @@ func NewEmbeddedDiscoverer(fs embed.FS, root string) *EmbeddedDiscoverer {
 
 // Discover walks the embedded directory tree and returns metadata for every
 // valid SKILL.md found. Malformed files are skipped with a logged warning.
+//
+// The internal mapping stores each skill's root directory (the directory
+// containing SKILL.md) within the embed.FS, so Read can resolve
+// skill-relative reference paths against the same root.
 func (d *EmbeddedDiscoverer) Discover(ctx context.Context) ([]SkillMeta, error) {
 	paths := make(map[string]string)
 	var result []SkillMeta
@@ -46,7 +50,7 @@ func (d *EmbeddedDiscoverer) Discover(ctx context.Context) ([]SkillMeta, error) 
 		if entry.IsDir() {
 			return nil
 		}
-		if path.Base(filePath) != "SKILL.md" {
+		if pathpkg.Base(filePath) != "SKILL.md" {
 			return nil
 		}
 
@@ -63,7 +67,9 @@ func (d *EmbeddedDiscoverer) Discover(ctx context.Context) ([]SkillMeta, error) 
 			return nil
 		}
 
-		paths[meta.Name] = filePath
+		// Store the skill root (directory containing SKILL.md) so Read
+		// can resolve skill-relative reference paths against it.
+		paths[meta.Name] = pathpkg.Dir(filePath)
 		result = append(result, meta)
 		return nil
 	})
@@ -78,18 +84,25 @@ func (d *EmbeddedDiscoverer) Discover(ctx context.Context) ([]SkillMeta, error) 
 	return result, nil
 }
 
-// Read returns the full SKILL.md content for the named skill.
-func (d *EmbeddedDiscoverer) Read(ctx context.Context, name string) (string, error) {
+// Read returns the content at skill-relative path for the named skill.
+// path == "" returns the canonical SKILL.md; non-empty path is joined
+// against the skill's root directory within the embed.FS.
+func (d *EmbeddedDiscoverer) Read(ctx context.Context, name string, path string) (string, error) {
 	d.mu.RLock()
-	filePath, ok := d.paths[name]
+	root, ok := d.paths[name]
 	d.mu.RUnlock()
 	if !ok {
 		return "", fmt.Errorf("skill %q not found in embedded discoverer", name)
 	}
 
-	data, err := d.FS.ReadFile(filePath)
+	fullPath := pathpkg.Join(root, path)
+	if path == "" {
+		// pathpkg.Join(root, "") returns root, but we need SKILL.md explicitly.
+		fullPath = pathpkg.Join(root, "SKILL.md")
+	}
+	data, err := d.FS.ReadFile(fullPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to read embedded skill file %q: %w", filePath, err)
+		return "", fmt.Errorf("failed to read embedded skill file %q: %w", fullPath, err)
 	}
 	return string(data), nil
 }

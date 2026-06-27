@@ -25,11 +25,22 @@ A skill's directory layout follows the agentskills.io standard:
 └── assets/        # Static files
 ```
 
+The `x/tool/skills/` loader serves both the canonical SKILL.md and any
+file under `references/` through the `read_skill` tool. The LLM reads
+SKILL.md, follows a markdown link like `[Example](./references/example.md)`,
+and resolves it to `read_skill(name="<skill>", path="references/example.md")`.
+The same abstraction works for filesystem, embedded, and any future
+remote discoverer — references are never loaded through a generic
+`read_file` tool.
+
 **Example of Inlined Expertise (in SKILL.md):**
 > "Run `go test -race ./...` to verify changes." (Direct instruction)
 
-**Example of Reference:**
-> "See `references/testing_philosophy.md` for why we use Table-Driven tests." (Deep dive)
+**Example of Reference link (in SKILL.md):**
+> "See [Example Reference](./references/example.md) for an example." (Deep dive)
+
+**Example of a tool call the LLM makes to follow that link:**
+> `read_skill(name="<skill>", path="references/example.md")`
 
 ## Creation Path
 

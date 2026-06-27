@@ -8,8 +8,11 @@
 //   1. Discovery: The LLM sees the full skill catalog eagerly injected into
 //      the system prompt via SystemPromptFragment. This includes the name and
 //      description of every discovered skill, plus a behavioral directive.
-//   2. Activation: The LLM reads the full SKILL.md content via read_skill
-//      when it decides a skill is relevant.
+//   2. Activation: The LLM reads the canonical SKILL.md or any reference
+//      file via read_skill when it decides a skill is relevant. Reference
+//      files live under a skill's `references/` directory per the
+//      agentskills.io convention and are served through the same tool with
+//      an optional `path` parameter.
 //
 // Execution (running scripts from a skill's scripts/ directory using other tools
 // or the LLM's own reasoning) is outside the scope of this package.
@@ -34,6 +37,24 @@
 // through the system prompt when the application wires SystemPromptFragment()
 // into systemprompt.New(). Individual skills are not registered as separate
 // tools.
+//
+// Reading Skill Files
+//
+// read_skill has two parameters: a required `name` (the skill) and an
+// optional `path` (skill-relative, forward-slash). With path omitted, the
+// canonical SKILL.md is returned. With path set, the file at that location
+// is returned (e.g., path="references/foo.md"). Both forms are served by
+// the same discoverer abstraction, so filesystem, embedded, and any
+// future remote discoverer all handle references uniformly:
+//
+//	// SKILL.md
+//	result, _ := tk.ReadSkill(ctx, nil, map[string]any{"name": "go"})
+//
+//	// Reference file
+//	result, _ := tk.ReadSkill(ctx, nil, map[string]any{
+//	    "name": "go",
+//	    "path": "references/testing_philosophy.md",
+//	})
 //
 // System Prompt Integration
 //
@@ -98,6 +119,16 @@
 // and skips malformed files with a logged warning — the loader never
 // panics and the registry is empty (rather than missing) if every file
 // is malformed.
+//
+// In addition to SKILL.md, the loader picks up files under each skill's
+// `references/` directory and populates the skill's References map:
+//
+//	x/tool/skills/builtin/<name>/references/foo.md
+//
+// A file at that path is stored at the skill-relative key
+// `references/foo.md` and served through read_skill(name, path). Reference
+// files are not advertised in the system prompt — the LLM discovers them
+// by reading SKILL.md and following its markdown links.
 //
 // When a built-in skill has the same name as a user-discovered skill,
 // the first discoverer passed to NewToolkit wins (Catalog's existing

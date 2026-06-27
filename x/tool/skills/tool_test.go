@@ -2,6 +2,7 @@ package skills
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -10,6 +11,22 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// recordingDiscoverer records the (name, path) arguments passed to Read
+// and returns a configurable result. Used by reference-path tests that
+// need to inspect the forwarding behavior.
+type recordingDiscoverer struct {
+	meta  []SkillMeta
+	onRead func(name, path string) (string, error)
+}
+
+func (r *recordingDiscoverer) Discover(_ context.Context) ([]SkillMeta, error) {
+	return r.meta, nil
+}
+
+func (r *recordingDiscoverer) Read(_ context.Context, name string, path string) (string, error) {
+	return r.onRead(name, path)
+}
 
 func TestToolkit_ReadSkill(t *testing.T) {
 	t.Parallel()
@@ -100,6 +117,73 @@ func TestToolkit_ReadSkill_Nonexistent(t *testing.T) {
 	_, err := tk.ReadSkill(context.Background(), nil, map[string]any{"name": "missing"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestToolkit_ReadSkill_Reference(t *testing.T) {
+	t.Parallel()
+	// Verify path is forwarded to the discoverer.
+	var receivedName, receivedPath string
+	d := &recordingDiscoverer{
+		meta: []SkillMeta{{Name: "go", Description: "test"}},
+		onRead: func(name, path string) (string, error) {
+			receivedName = name
+			receivedPath = path
+			return "# Reference Body", nil
+		},
+	}
+	tk := NewToolkit(d)
+	result, err := tk.ReadSkill(context.Background(), nil, map[string]any{
+		"name": "go",
+		"path": "references/foo.md",
+	})
+	require.NoError(t, err)
+	r := result.(*ReadSkillResult)
+	assert.Equal(t, "go", receivedName)
+	assert.Equal(t, "references/foo.md", receivedPath)
+	assert.Equal(t, "# Reference Body", r.Content)
+	assert.Nil(t, r.Truncation)
+}
+
+func TestToolkit_ReadSkill_ReferenceTruncated(t *testing.T) {
+	t.Parallel()
+	// Same truncation behavior applies to reference reads.
+	big := strings.Repeat("b", 100_000)
+	tk := NewToolkit(&mockDiscoverer{
+		meta:  []SkillMeta{{Name: "big", Description: "big"}},
+		reads: map[string]string{"big": big},
+	})
+	result, err := tk.ReadSkill(context.Background(), nil, map[string]any{
+		"name": "big",
+		"path": "references/big.md",
+	})
+	require.NoError(t, err)
+	r := result.(*ReadSkillResult)
+	require.NotNil(t, r.Truncation, "Truncation should be non-nil for 100 KB reference")
+	assert.LessOrEqual(t, len(r.Content), 50_000)
+	assert.NotEmpty(t, r.TempFilePath)
+	t.Cleanup(func() { os.Remove(r.TempFilePath) })
+	contents, err := os.ReadFile(r.TempFilePath)
+	require.NoError(t, err)
+	assert.Equal(t, big, string(contents))
+}
+
+func TestToolkit_ReadSkill_ReferenceNotFound(t *testing.T) {
+	t.Parallel()
+	// Use a discoverer that errors on a specific path so the toolkit
+	// propagates the not-found error.
+	tk := NewToolkit(&recordingDiscoverer{
+		meta: []SkillMeta{{Name: "x", Description: "y"}},
+		onRead: func(name, path string) (string, error) {
+			return "", fmt.Errorf("reference %q not found", path)
+		},
+	})
+	_, err := tk.ReadSkill(context.Background(), nil, map[string]any{
+		"name": "x",
+		"path": "references/missing.md",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reference")
+	assert.Contains(t, err.Error(), "references/missing.md")
 }
 
 func TestToolkit_SystemPromptFragment(t *testing.T) {
