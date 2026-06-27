@@ -169,24 +169,15 @@ func TestToolkit_ReadSkill_ReferenceTruncated(t *testing.T) {
 
 func TestToolkit_ReadSkill_ReferenceNotFound(t *testing.T) {
 	t.Parallel()
-	tk := NewToolkit(&mockDiscoverer{
-		meta: []SkillMeta{{Name: "x", Description: "y"}},
-		reads: map[string]string{"x": "content"},
-	})
-	_, err := tk.ReadSkill(context.Background(), nil, map[string]any{
-		"name": "x",
-		"path": "references/missing.md",
-	})
-	// The mock doesn't differentiate; it always returns the same content
-	// regardless of path. To exercise not-found, use a discoverer that
-	// errors on a specific path.
-	tk2 := NewToolkit(&recordingDiscoverer{
+	// Use a discoverer that errors on a specific path so the toolkit
+	// propagates the not-found error.
+	tk := NewToolkit(&recordingDiscoverer{
 		meta: []SkillMeta{{Name: "x", Description: "y"}},
 		onRead: func(name, path string) (string, error) {
 			return "", fmt.Errorf("reference %q not found", path)
 		},
 	})
-	_, err = tk2.ReadSkill(context.Background(), nil, map[string]any{
+	_, err := tk.ReadSkill(context.Background(), nil, map[string]any{
 		"name": "x",
 		"path": "references/missing.md",
 	})
