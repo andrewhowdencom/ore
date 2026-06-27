@@ -73,3 +73,14 @@ func (p *prependView) Append(role Role, artifacts ...artifact.Artifact) {
 func (p *prependView) Meta() Meta {
 	return p.base.Meta()
 }
+
+// BaseState returns the underlying base state this prependView wraps.
+// Exposed so consumers that need to project the base while preserving
+// the prepend chain (e.g. compaction.Transform) can reach the base
+// without re-implementing prepend-aware indexing. The method is on an
+// unexported type, so the capability is opt-in via type assertion.
+func (p *prependView) BaseState() State { return p.base }
+
+// VirtualTurns returns the virtual turns prepended in front of the
+// base state's turns. See [prependView.BaseState] for the rationale.
+func (p *prependView) VirtualTurns() []Turn { return p.virtual }
