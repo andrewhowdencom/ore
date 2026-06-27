@@ -1,5 +1,5 @@
 // Package http implements an HTTP conduit for the ore framework,
-// exposing *session.Stream conversation primitives over HTTP with NDJSON
+// exposing *junk.Stream conversation primitives over HTTP with NDJSON
 // streaming and SSE ambient channels.
 //
 // API:
@@ -33,7 +33,7 @@
 //	text, reasoning, tool_call, tool_result, turn_complete, error,
 //	properties, lifecycle
 //
-// Per-request handlers obtain a *session.Stream handle from the Manager
+// Per-request handlers obtain a *junk.Stream handle from the Manager
 // and use it directly for Process and Subscribe, while Manager methods
 // remain for metadata and registry lifecycle (Store, List, Check, Close).
 //

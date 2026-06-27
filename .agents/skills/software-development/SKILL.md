@@ -92,7 +92,7 @@ more internal complexity provided it is self-contained.
   complex bridging between ore state and OpenAI message params.
 - `x/conduit/http/handler.go`: `sendMessage()` spans ~113 lines of NDJSON
   streaming, session lookup, and error handling.
-- `session/stream.go`: `Process()` entangles event dispatch, mutexes,
+- `junk/stream.go`: `Process()` entangles event dispatch, mutexes,
   context lifecycle, and saving in a single method.
 
 ## Assessing Centrality
@@ -109,7 +109,7 @@ after the table.
 | `state/` | Central | Core chain; depended on by `provider/` and everything above |
 | `provider/` | Central | Core chain; depended on by `loop/` and everything above |
 | `loop/` | Central | Core chain; orchestrates all provider invocations |
-| `session/` | Central | Transitive via `loop/` and `state/`; changes here affect everything downstream |
+| `junk/` | Central | Transitive via `loop/` and `state/`; changes here affect everything downstream |
 | `cognitive/` | Peripheral | Imported only by `examples/` and `cmd/` applications |
 | `tool/` | Peripheral | Imported only by `x/tool/handler/` and applications |
 | `x/provider/openai/` | Peripheral | Concrete adapter; one internal consumer (applications) |
@@ -220,13 +220,13 @@ If any of the following are true, **STOP** and reassess:
    radically simplify an adapter at the cost of pushing provider-specific
    details into core packages.
 2. **"Central" is transitive.** A package with only one direct internal
-   importer may still be central if that importer is `loop/` or `session/`.
-   Always trace the full dependency chain upward. For example, `session/`
-   imports `loop/` and `state/`; changes in `session/` affect everything
+   importer may still be central if that importer is `loop/` or `junk/`.
+   Always trace the full dependency chain upward. For example, `junk/`
+   imports `loop/` and `state/`; changes in `junk/` affect everything
    downstream of `loop/`.
 3. **Self-encapsulation allows dependencies, but they must be narrow stable
    contracts.** A peripheral package like `x/conduit/http/` may import
-   `session/`, `loop/`, `state/`, and `artifact/` — that is fine because
+   `junk/`, `loop/`, `state/`, and `artifact/` — that is fine because
    those are narrow, stable core interfaces. What is not fine is a
    peripheral package importing another peripheral package of similar
    abstraction level (e.g. `x/conduit/http/` importing `x/provider/openai/`).
@@ -264,7 +264,7 @@ If any of the following are true, **STOP** and reassess:
   bridging (~77 lines).
 - `x/conduit/http/handler.go` — signal: `sendMessage()` mixes streaming,
   session lookup, and error handling (~113 lines).
-- `session/stream.go` — signal: `Process()` entangles event dispatch,
+- `junk/stream.go` — signal: `Process()` entangles event dispatch,
   mutexes, context lifecycle, and saving (~55 lines).
 
 > **Note:** This skill is a living document. After major refactors that

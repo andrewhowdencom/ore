@@ -14,7 +14,7 @@
 // never wrong about the *minimum* the LLM sees.
 //
 // The framework guarantees that artifacts reaching this function are
-// value-typed: session/serialize.go's unmarshalArtifacts dereferences
+// value-typed: junk/serialize.go's unmarshalArtifacts dereferences
 // the factory pointer before storing into the returned slice, so the
 // round-trip path and the in-memory path produce the same concrete
 // type at the slice boundary. Pointer-typed artifacts are therefore

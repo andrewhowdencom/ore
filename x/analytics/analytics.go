@@ -4,7 +4,7 @@ import (
 	"sort"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/llmbytes"
 )
@@ -121,7 +121,7 @@ func AnalyzeTurns(turns []state.Turn) []Stats {
 
 // AnalyzeThread is a convenience wrapper that aggregates statistics
 // for all turns in the given thread.
-func AnalyzeThread(t *session.Thread) []Stats {
+func AnalyzeThread(t *junk.Thread) []Stats {
 	if t == nil || t.State == nil {
 		return nil
 	}
@@ -135,7 +135,7 @@ func AnalyzeThread(t *session.Thread) []Stats {
 // within the same thread. Cross-thread resolution is out of scope:
 // a result in thread A whose ToolCallID matches a call in thread B
 // is treated as an orphan and buckets under orphanToolSource.
-func AnalyzeStore(store session.Store) ([]Stats, error) {
+func AnalyzeStore(store junk.Store) ([]Stats, error) {
 	threads, err := store.List()
 	if err != nil {
 		return nil, err
@@ -181,7 +181,7 @@ func AnalyzeStore(store session.Store) ([]Stats, error) {
 // the two packages in lockstep by hand was the proximate cause of
 // issue #416 (the pointer-case regression that miscounted bytes for
 // every artifact that had been JSON round-tripped through a
-// session.Store).
+// junk.Store).
 //
 // The function previously lived here and in x/telemetry/telemetry.go;
 // both copies have been replaced with a call to llmbytes.Of.

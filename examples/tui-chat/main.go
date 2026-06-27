@@ -29,7 +29,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/x/analytics"
 	"github.com/andrewhowdencom/ore/x/conduit/tui"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
@@ -70,15 +70,15 @@ func run() error {
 
 	if listThreads {
 		// Create thread store (respecting STORE_DIR env var).
-		var store session.Store
+		var store junk.Store
 		if storeDir := os.Getenv("STORE_DIR"); storeDir != "" {
 			var err error
-			store, err = session.NewJSONStore(storeDir)
+			store, err = junk.NewJSONStore(storeDir)
 			if err != nil {
 				return fmt.Errorf("create JSON store: %w", err)
 			}
 		} else {
-			store = session.NewMemoryStore()
+			store = junk.NewMemoryStore()
 		}
 
 		threads, err := store.List()
@@ -119,15 +119,15 @@ func run() error {
 	baseURL := os.Getenv("ORE_BASE_URL")
 
 	// Create thread store.
-	var store session.Store
+	var store junk.Store
 	if storeDir := os.Getenv("STORE_DIR"); storeDir != "" {
 		var err error
-		store, err = session.NewJSONStore(storeDir)
+		store, err = junk.NewJSONStore(storeDir)
 		if err != nil {
 			return fmt.Errorf("create JSON store: %w", err)
 		}
 	} else {
-		store = session.NewMemoryStore()
+		store = junk.NewMemoryStore()
 	}
 
 	// Create a noop tracer for the example (replace with a real OTel setup in
@@ -185,7 +185,7 @@ func run() error {
 			// /analytics is slash-only by design — the model must not be
 			// able to spend context budget calling it.
 			//
-			// The session.Stream is nil when the slash registry is invoked
+			// The junk.Stream is nil when the slash registry is invoked
 			// outside the session pipeline (e.g. direct unit tests). Treat
 			// that the same as an empty thread so the handler never panics
 			// regardless of how it is wired.
@@ -212,19 +212,19 @@ func run() error {
 	// Manager now auto-persists state via a default OnEmit callback;
 	// no custom stepFactory needed for basic TUI usage, but we wire the
 	// usage handler so token counts are broadcast via PropertiesEvent.
-	mgr := session.NewManager(store, prov, func(_ *session.Stream) ([]loop.Option, error) {
+	mgr := junk.NewManager(store, prov, func(_ *junk.Stream) ([]loop.Option, error) {
 		return []loop.Option{
 			loop.WithHandlers(usage.New()),
 			loop.WithOnEmit(tel.OnEmit()),
 			loop.WithTracer(tracer),
 		}, nil
 	}, cognitive.NewTurnProcessor(cognitive.ReActFactory, tracer),
-		session.WithInterceptor(slashReg),
+		junk.WithInterceptor(slashReg),
 		// Seed the initial model name on new threads so the first
 		// turn uses ORE_MODEL before any /model slash command runs.
-		session.WithDefaultMetadata(func(*session.Stream) map[string]string {
+		junk.WithDefaultMetadata(func(*junk.Stream) map[string]string {
 			return map[string]string{
-				session.MetadataKeyModelName: modelName,
+				junk.MetadataKeyModelName: modelName,
 			}
 		}),
 	)

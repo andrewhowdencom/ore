@@ -1,10 +1,10 @@
 // Package set_model provides a slash command that sets the model used for
-// inference on the current session. The command is slash-only — there is
+// inference on the current junk. The command is slash-only — there is
 // no Tool() function or ToolDescriptor — because the LLM must not be able
 // to change its own model.
 //
 // The model name is written to Thread.Metadata via
-// session.Stream.SetMetadata, using the framework contract key
+// junk.Stream.SetMetadata, using the framework contract key
 // "ore.model.name" defined in the session package. The session's Spec()
 // method reads that key (and other "ore.model.*" keys) to construct a
 // models.Spec that the loop uses for the next turn. SetMetadata also
@@ -15,7 +15,7 @@
 //	/model gpt-4o-mini   → set the model for the rest of the session
 //	/model               → reply with usage feedback, no state change
 //
-// To clear the override, the user closes and reopens the session.
+// To clear the override, the user closes and reopens the junk.
 package set_model
 
 import (
@@ -49,9 +49,9 @@ var usageNotice = loop.Notice{Content: "Usage: /model <name>", Severity: loop.Se
 // for UI subscribers).
 //
 // The handler is nil-safe: a slash command parsed in a context where no
-// *session.Stream is available (e.g. unit tests that exercise the registry
+// *junk.Stream is available (e.g. unit tests that exercise the registry
 // directly) returns the usage notice instead of panicking. The framework
-// guarantees a non-nil stream for handlers running inside session.processOne.
+// guarantees a non-nil stream for handlers running inside junk.processOne.
 func Slash() slash.Handler {
 	return func(ctx context.Context, emitter loop.Emitter, cmd slash.Command) (slash.Result, error) {
 		name := strings.TrimSpace(cmd.Input)
@@ -62,13 +62,13 @@ func Slash() slash.Handler {
 		stream := cmd.Stream()
 		if stream == nil {
 			// Defensive: this should not happen when the slash registry
-			// is wired via session.WithInterceptor, but a custom host
+			// is wired via junk.WithInterceptor, but a custom host
 			// could invoke the handler outside the session pipeline. Return
 			// the usage notice rather than panicking so the user gets a
 			// sensible error. The "no active session" suffix is a warning
 			// because the slash interceptor was unable to resolve the
 			// stream — the user's instruction may still be valid for
-			// their next session.
+			// their next junk.
 			return slash.Result{
 				Notice: loop.Notice{
 					Content:  fmt.Sprintf("%s (no active session)", usageNotice.Content),

@@ -6,7 +6,7 @@
 // artifact.Text artifact whose content is evaluated lazily on each
 // Transform call. This enables dynamic system prompts that can change
 // between turns — for example, by reading from stream metadata that a
-// tool call has updated mid-session.
+// tool call has updated mid-junk.
 //
 // Multiple content functions can be composed via WithContentFunc or
 // WithContentFuncs. Fragments are evaluated in registration order,
@@ -44,7 +44,7 @@
 //
 // Dynamic system prompt that reads from stream metadata:
 //
-//	// Assuming `stream` is a *session.Stream captured in the stepFactory closure.
+//	// Assuming `stream` is a *junk.Stream captured in the stepFactory closure.
 //	sp, err := systemprompt.New(systemprompt.WithContentFunc(func() string {
 //		if p, ok := stream.GetMetadata("persona"); ok {
 //			return "You are a " + p + "."

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/state"
 )
 
@@ -181,13 +181,13 @@ type htmlTurn struct {
 
 // htmlData is the top-level template data.
 type htmlData struct {
-	Thread *session.Thread
+	Thread *junk.Thread
 	Turns  []htmlTurn
 }
 
 // HTML writes a self-contained HTML document representing the conversation
 // thread to w. The output uses inline CSS and has no external dependencies.
-func HTML(w io.Writer, thread *session.Thread) error {
+func HTML(w io.Writer, thread *junk.Thread) error {
 	data := htmlData{
 		Thread: thread,
 		Turns:  make([]htmlTurn, 0, len(thread.State.Turns())),

@@ -13,7 +13,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
 
@@ -85,7 +85,7 @@ var Descriptor = conduit.Descriptor{
 // Handler provides HTTP endpoints for the ore framework's thread
 // primitives. It is mounted on an http.ServeMux via ServeMux().
 type Handler struct {
-	mgr        *session.Manager
+	mgr        *junk.Manager
 	withUI     bool
 	addr       string
 	name       string
@@ -97,7 +97,7 @@ type Handler struct {
 // The returned value must be started with Start(ctx) to begin serving.
 // For advanced use cases (e.g., embedding in an existing http.Server),
 // type-assert the returned conduit.Conduit to *Handler and call ServeMux().
-func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
+func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error) {
 	if mgr == nil {
 		return nil, fmt.Errorf("session manager is required")
 	}
@@ -168,7 +168,7 @@ func (h *Handler) serveLanding(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 
 // previewSnippet extracts a preview from the first user Text artifact in the
 // thread's state, truncated to the given length with "...".
-func previewSnippet(thr *session.Thread, maxLen int) string {
+func previewSnippet(thr *junk.Thread, maxLen int) string {
 	for _, turn := range thr.State.Turns() {
 		if turn.Role != state.RoleUser {
 			continue
@@ -242,7 +242,7 @@ func (h *Handler) Start(ctx context.Context) error {
 	}
 }
 
-// createSession handles POST /sessions by creating a new ephemeral session.
+// createSession handles POST /sessions by creating a new ephemeral junk.
 // If a "thread_id" is provided in the JSON body, the session attaches
 // to an existing thread. On success it responds with 201 Created and a
 // JSON body:
@@ -261,7 +261,7 @@ func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		}
 	}
 
-	var stream *session.Stream
+	var stream *junk.Stream
 	var err error
 
 	if req.ThreadID != "" {
@@ -342,7 +342,7 @@ func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	// Run the inference pipeline in a goroutine.
 	done := make(chan error)
 	go func() {
-		err := stream.Process(ctx, session.UserMessageEvent{
+		err := stream.Process(ctx, junk.UserMessageEvent{
 			Content: req.Content,
 			Ctx:     loop.WithProvenance(ctx, "http"),
 		})

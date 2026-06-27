@@ -16,7 +16,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/compaction"
 	"github.com/andrewhowdencom/ore/x/conduit"
@@ -178,7 +178,7 @@ func isRerenderableKind(kind string) bool {
 // model implements tea.Model. All state mutation happens in Update,
 // which runs on Bubble Tea's single goroutine, so no locks are needed.
 type model struct {
-	eventsCh chan session.Event
+	eventsCh chan junk.Event
 
 	// Conversation history.
 	turns []renderedTurn
@@ -861,7 +861,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.textarea.Reset()
 					m.recalcLayout()
 					select {
-					case m.eventsCh <- session.UserMessageEvent{Content: content}:
+					case m.eventsCh <- junk.UserMessageEvent{Content: content}:
 					default:
 						slog.Warn("event channel full, dropping user message")
 					}
@@ -880,7 +880,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		case tea.KeyEscape:
 			select {
-			case m.eventsCh <- session.InterruptEvent{}:
+			case m.eventsCh <- junk.InterruptEvent{}:
 			default:
 			}
 			return m, nil
@@ -889,7 +889,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Ctrl+C
 		if msg.Key().Code == 'c' && msg.Key().Mod.Contains(tea.ModCtrl) {
 			select {
-			case m.eventsCh <- session.InterruptEvent{}:
+			case m.eventsCh <- junk.InterruptEvent{}:
 			default:
 			}
 			return m, tea.Quit

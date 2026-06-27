@@ -10,7 +10,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/stretchr/testify/assert"
@@ -35,7 +35,7 @@ func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec,
 }
 
 // simpleProcessor runs a single Step.Turn with the mock provider.
-func simpleProcessor() session.TurnProcessor {
+func simpleProcessor() junk.TurnProcessor {
 	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 		spec := models.Spec{Name: "test-model"}
 		return step.Turn(ctx, st, spec, prov)
@@ -43,9 +43,9 @@ func simpleProcessor() session.TurnProcessor {
 }
 
 func TestNew(t *testing.T) {
-	store := session.NewMemoryStore()
+	store := junk.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -53,9 +53,9 @@ func TestNew(t *testing.T) {
 }
 
 func TestNew_WithThreadID(t *testing.T) {
-	store := session.NewMemoryStore()
+	store := junk.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	c, err := New(mgr, WithThreadID("test-thread-id"))
 	require.NoError(t, err)
@@ -63,9 +63,9 @@ func TestNew_WithThreadID(t *testing.T) {
 }
 
 func TestStart_AttachNotFound(t *testing.T) {
-	store := session.NewMemoryStore()
+	store := junk.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	c, err := New(mgr, WithThreadID("nonexistent"))
 	require.NoError(t, err)
@@ -102,10 +102,10 @@ func TestStart_AttachNotFound(t *testing.T) {
 // the model's status. The seed-wiring correctness is covered by
 // TestInitModel_SeedsStatusFromStream and TestInit_DispatchesSeedCmd.
 func TestStart_ReachesEventLoop(t *testing.T) {
-	store := session.NewMemoryStore()
+	store := junk.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(),
-		session.WithDefaultMetadata(func(*session.Stream) map[string]string {
+	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(),
+		junk.WithDefaultMetadata(func(*junk.Stream) map[string]string {
 			return map[string]string{
 				"thread_id":  "test-thread",
 				"cwd":        "/tmp",
@@ -135,9 +135,9 @@ func TestStart_ReachesEventLoop(t *testing.T) {
 }
 
 func TestNew_WithName(t *testing.T) {
-	store := session.NewMemoryStore()
+	store := junk.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	c, err := New(mgr, WithName("my-app"))
 	require.NoError(t, err)
@@ -153,18 +153,18 @@ func TestTUI_ImplementsAudioNotifier(t *testing.T) {
 }
 
 func TestTUI_InitModel_ResumesThreadWithHistory(t *testing.T) {
-	store := session.NewMemoryStore()
+	store := junk.NewMemoryStore()
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "assistant response"},
 		},
 	}
-	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	// Create a stream and have a conversation.
 	stream, err := mgr.Create()
 	require.NoError(t, err)
-	err = stream.Process(context.Background(), session.UserMessageEvent{Content: "hello"})
+	err = stream.Process(context.Background(), junk.UserMessageEvent{Content: "hello"})
 	require.NoError(t, err)
 
 	// Close the stream so we can re-attach.
@@ -187,7 +187,7 @@ func TestTUI_InitModel_ResumesThreadWithHistory(t *testing.T) {
 	require.Len(t, turns, 2)
 
 	// Call initModel directly to verify history pre-population.
-	eventsCh := make(chan session.Event, 10)
+	eventsCh := make(chan junk.Event, 10)
 	m := tui.initModel(eventsCh, stream2)
 
 	// The model should have both turns pre-populated.
@@ -204,9 +204,9 @@ func TestTUI_InitModel_ResumesThreadWithHistory(t *testing.T) {
 
 func TestStatusFromStream(t *testing.T) {
 	t.Run("returns a statusMsg carrying the stream's current metadata", func(t *testing.T) {
-		store := session.NewMemoryStore()
+		store := junk.NewMemoryStore()
 		prov := &mockProvider{}
-		mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+		mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 		stream, err := mgr.Create()
 		require.NoError(t, err)
@@ -234,9 +234,9 @@ func TestStatusFromStream(t *testing.T) {
 	})
 
 	t.Run("returns nil when the stream has no metadata", func(t *testing.T) {
-		store := session.NewMemoryStore()
+		store := junk.NewMemoryStore()
 		prov := &mockProvider{}
-		mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+		mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 		stream, err := mgr.Create()
 		require.NoError(t, err)
@@ -247,9 +247,9 @@ func TestStatusFromStream(t *testing.T) {
 	})
 
 	t.Run("returns a defensive copy that the caller can mutate freely", func(t *testing.T) {
-		store := session.NewMemoryStore()
+		store := junk.NewMemoryStore()
 		prov := &mockProvider{}
-		mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+		mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 		stream, err := mgr.Create()
 		require.NoError(t, err)
@@ -278,10 +278,10 @@ func TestStatusFromStream(t *testing.T) {
 // statusFromStream.
 func TestInitModel_SeedsStatusFromStream(t *testing.T) {
 	t.Run("populates initStatusMsg with a statusMsg carrying the stream's metadata", func(t *testing.T) {
-		store := session.NewMemoryStore()
+		store := junk.NewMemoryStore()
 		prov := &mockProvider{}
-		mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(),
-			session.WithDefaultMetadata(func(*session.Stream) map[string]string {
+		mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(),
+			junk.WithDefaultMetadata(func(*junk.Stream) map[string]string {
 				return map[string]string{
 					"thread_id": "abc-123",
 					"cwd":       "/tmp/ore",
@@ -294,7 +294,7 @@ func TestInitModel_SeedsStatusFromStream(t *testing.T) {
 		t.Cleanup(func() { _ = stream.Close() })
 
 		tui := &TUI{mgr: mgr, name: "test"}
-		eventsCh := make(chan session.Event, 10)
+		eventsCh := make(chan junk.Event, 10)
 		m := tui.initModel(eventsCh, stream)
 
 		require.NotNil(t, m.initStatusMsg, "initModel must seed initStatusMsg when metadata is present")
@@ -305,16 +305,16 @@ func TestInitModel_SeedsStatusFromStream(t *testing.T) {
 	})
 
 	t.Run("leaves initStatusMsg nil when the stream has no metadata", func(t *testing.T) {
-		store := session.NewMemoryStore()
+		store := junk.NewMemoryStore()
 		prov := &mockProvider{}
-		mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+		mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 		stream, err := mgr.Create()
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = stream.Close() })
 
 		tui := &TUI{mgr: mgr, name: "test"}
-		eventsCh := make(chan session.Event, 10)
+		eventsCh := make(chan junk.Event, 10)
 		m := tui.initModel(eventsCh, stream)
 
 		assert.Nil(t, m.initStatusMsg, "initModel must leave initStatusMsg nil when there is no metadata")
@@ -328,10 +328,10 @@ func TestInitModel_SeedsStatusFromStream(t *testing.T) {
 // (broken) t.program.Send call in Start that ran before p.Run().
 func TestInit_DispatchesSeedCmd(t *testing.T) {
 	t.Run("returns a Cmd that yields the seed statusMsg", func(t *testing.T) {
-		store := session.NewMemoryStore()
+		store := junk.NewMemoryStore()
 		prov := &mockProvider{}
-		mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(),
-			session.WithDefaultMetadata(func(*session.Stream) map[string]string {
+		mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(),
+			junk.WithDefaultMetadata(func(*junk.Stream) map[string]string {
 				return map[string]string{
 					"thread_id": "abc-123",
 					"cwd":       "/tmp/ore",
@@ -344,7 +344,7 @@ func TestInit_DispatchesSeedCmd(t *testing.T) {
 		t.Cleanup(func() { _ = stream.Close() })
 
 		tui := &TUI{mgr: mgr, name: "test"}
-		eventsCh := make(chan session.Event, 10)
+		eventsCh := make(chan junk.Event, 10)
 		m := tui.initModel(eventsCh, stream)
 
 		cmd := m.Init()
@@ -358,16 +358,16 @@ func TestInit_DispatchesSeedCmd(t *testing.T) {
 	})
 
 	t.Run("returns nil when no seed is present", func(t *testing.T) {
-		store := session.NewMemoryStore()
+		store := junk.NewMemoryStore()
 		prov := &mockProvider{}
-		mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+		mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 		stream, err := mgr.Create()
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = stream.Close() })
 
 		tui := &TUI{mgr: mgr, name: "test"}
-		eventsCh := make(chan session.Event, 10)
+		eventsCh := make(chan junk.Event, 10)
 		m := tui.initModel(eventsCh, stream)
 
 		assert.Nil(t, m.Init(), "Init must return nil when no seed is present")

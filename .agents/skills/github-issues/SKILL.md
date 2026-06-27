@@ -52,7 +52,7 @@ Examples:
 
 Do not add labels for:
 
-- Core packages (`artifact/`, `state/`, `provider/`, `loop/`, `session/`)
+- Core packages (`artifact/`, `state/`, `provider/`, `loop/`, `junk/`)
 - General tooling (Taskfile, Go version bumps, linting)
 - Documentation-only updates (unless they are a plan)
 

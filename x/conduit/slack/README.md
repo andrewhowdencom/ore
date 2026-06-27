@@ -11,7 +11,7 @@ via `Thread.Metadata["slack_thread_id"]`, enabling seamless conversation
 resumption across agent restarts.
 
 The conduit is a **dumb pipe**: it translates Slack message events into
-`session.UserMessageEvent`, subscribes to the session manager's broadcast
+`junk.UserMessageEvent`, subscribes to the session manager's broadcast
 `"turn_complete"` events, and delivers assistant text artifacts back into Slack
 via `chat.postMessage`. It does not manage cognitive loops, tool execution, or
 provider invocation — those are application-layer concerns composed in
@@ -25,17 +25,17 @@ This conduit exports the following capabilities (see `Descriptor.Capabilities`):
   and pushes them into the ore session stream.
 - **`render-turn`** — subscribes to `"turn_complete"` events and delivers the
   full assistant text turn back to the originating Slack thread or DM.
-- **`accept-text`** — maps Slack message text to `session.UserMessageEvent{Content: ...}`.
+- **`accept-text`** — maps Slack message text to `junk.UserMessageEvent{Content: ...}`.
 
 ## Composition
 
 The constructor signature follows the standard ore conduit contract:
 
 ```go
-func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error)
+func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error)
 ```
 
-Instantiate the conduit with a `*session.Manager` and functional options:
+Instantiate the conduit with a `*junk.Manager` and functional options:
 
 ```go
 package main
@@ -45,11 +45,11 @@ import (
     "log/slog"
 
     "github.com/andrewhowdencom/ore/x/conduit/slack"
-    "github.com/andrewhowdencom/ore/session"
+    "github.com/andrewhowdencom/ore/junk"
 )
 
 func main() {
-    mgr := session.NewManager(...)
+    mgr := junk.NewManager(...)
 
     c, err := slack.New(mgr)
     if err != nil {
@@ -106,7 +106,7 @@ Environment variables read at runtime (by `Start()`, not at construction time):
 
 ### Event Subscription
 
-The conduit registers a `session.Manager` sink for `"turn_complete"` events.
+The conduit registers a `junk.Manager` sink for `"turn_complete"` events.
 The sink callback filters by `Provenance == "slack"` and `RoleAssistant`, then
 looks up `slack_channel_id` and `slack_thread_id` from the thread metadata to
 construct the `chat.postMessage` delivery.
@@ -114,7 +114,7 @@ construct the `chat.postMessage` delivery.
 ### Echo Suppression
 
 - **Inbound**: Any Slack message where `event.User == bot_user_id` is skipped.
-- **Outbound**: `session.UserMessageEvent` carries `Ctx.Provenance = "slack"`.
+- **Outbound**: `junk.UserMessageEvent` carries `Ctx.Provenance = "slack"`.
   The sink callback checks this to avoid delivering turns from other conduits
   (e.g. HTTP or TUI) into Slack.
 

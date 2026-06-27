@@ -7,19 +7,19 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/state"
 )
 
 func TestHTML(t *testing.T) {
 	tests := []struct {
 		name       string
-		thread     *session.Thread
+		thread     *junk.Thread
 		wantSubstr []string
 	}{
 		{
 			name: "empty thread",
-			thread: &session.Thread{
+			thread: &junk.Thread{
 				ID:        "thread-a",
 				State:     &state.Buffer{},
 				CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -32,10 +32,10 @@ func TestHTML(t *testing.T) {
 		},
 		{
 			name: "text turn",
-			thread: func() *session.Thread {
+			thread: func() *junk.Thread {
 				buf := &state.Buffer{}
 				buf.Append(state.RoleUser, artifact.Text{Content: "Hello!"})
-				return &session.Thread{
+				return &junk.Thread{
 					ID:    "thread-b",
 					State: buf,
 				}
@@ -48,13 +48,13 @@ func TestHTML(t *testing.T) {
 		},
 		{
 			name: "assistant with reasoning and text",
-			thread: func() *session.Thread {
+			thread: func() *junk.Thread {
 				buf := &state.Buffer{}
 				buf.Append(state.RoleAssistant,
 					artifact.Reasoning{Content: "Let me think..."},
 					artifact.Text{Content: "The answer is 42."},
 				)
-				return &session.Thread{
+				return &junk.Thread{
 					ID:    "thread-c",
 					State: buf,
 				}
@@ -67,7 +67,7 @@ func TestHTML(t *testing.T) {
 		},
 		{
 			name: "tool call and result",
-			thread: func() *session.Thread {
+			thread: func() *junk.Thread {
 				buf := &state.Buffer{}
 				buf.Append(state.RoleAssistant, artifact.ToolCall{
 					ID:        "call-1",
@@ -78,7 +78,7 @@ func TestHTML(t *testing.T) {
 					ToolCallID: "call-1",
 					Content:    "2",
 				})
-				return &session.Thread{
+				return &junk.Thread{
 					ID:    "thread-d",
 					State: buf,
 				}
@@ -92,14 +92,14 @@ func TestHTML(t *testing.T) {
 		},
 		{
 			name: "usage and image",
-			thread: func() *session.Thread {
+			thread: func() *junk.Thread {
 				buf := &state.Buffer{}
 				buf.Append(state.RoleAssistant,
 					artifact.Text{Content: "Here is an image."},
 					artifact.Image{URL: "https://example.com/img.png"},
 					artifact.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15},
 				)
-				return &session.Thread{
+				return &junk.Thread{
 					ID:    "thread-e",
 					State: buf,
 				}
@@ -111,7 +111,7 @@ func TestHTML(t *testing.T) {
 		},
 		{
 			name: "metadata",
-			thread: &session.Thread{
+			thread: &junk.Thread{
 				ID:        "thread-f",
 				State:     &state.Buffer{},
 				Metadata:  map[string]string{"key1": "val1"},
@@ -123,14 +123,14 @@ func TestHTML(t *testing.T) {
 		},
 		{
 			name: "error tool result",
-			thread: func() *session.Thread {
+			thread: func() *junk.Thread {
 				buf := &state.Buffer{}
 				buf.Append(state.RoleTool, artifact.ToolResult{
 					ToolCallID: "call-err",
 					Content:    "something broke",
 					IsError:    true,
 				})
-				return &session.Thread{
+				return &junk.Thread{
 					ID:    "thread-g",
 					State: buf,
 				}

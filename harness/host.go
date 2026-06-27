@@ -5,18 +5,18 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/x/conduit"
 )
 
 // Host orchestrates multiple conduits with a shared session manager.
 type Host struct {
-	mgr      *session.Manager
+	mgr      *junk.Manager
 	conduits []conduit.Conduit
 }
 
 // New creates a Host with the given session manager.
-func New(mgr *session.Manager) *Host {
+func New(mgr *junk.Manager) *Host {
 	return &Host{mgr: mgr}
 }
 

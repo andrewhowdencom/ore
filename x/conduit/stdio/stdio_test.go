@@ -12,7 +12,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/stretchr/testify/require"
 )
@@ -57,16 +57,16 @@ func (m *multiTurnProvider) Invoke(ctx context.Context, s state.State, _ models.
 	return nil
 }
 
-func simpleProcessor() session.TurnProcessor {
+func simpleProcessor() junk.TurnProcessor {
 	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 		spec := models.Spec{Name: "test-model"}; _ = spec
 		return step.Turn(ctx, st, spec, prov)
 	}
 }
 
-func newManager(prov provider.Provider) *session.Manager {
-	store := session.NewMemoryStore()
-	return session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+func newManager(prov provider.Provider) *junk.Manager {
+	store := junk.NewMemoryStore()
+	return junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 }
 
 func TestNew_NilManager(t *testing.T) {
@@ -202,10 +202,10 @@ func TestStart_ErrorEvent(t *testing.T) {
 func TestStart_NoticeEvent(t *testing.T) {
 	// Build a custom processor that emits a NoticeEvent in addition to
 	// the normal provider-driven turn. NoticeEvents flow through the
-	// session.Stream's FanOut alongside the other output events.
-	store := session.NewMemoryStore()
+	// junk.Stream's FanOut alongside the other output events.
+	store := junk.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 		spec := models.Spec{Name: "test-model"}
 		st, err := step.Turn(ctx, st, spec, prov)
 		if err != nil {
@@ -237,13 +237,13 @@ func TestStart_NoticeEvent(t *testing.T) {
 }
 
 func TestStart_WithThreadID(t *testing.T) {
-	store := session.NewMemoryStore()
+	store := junk.NewMemoryStore()
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.TextDelta{Content: "attached"},
 		},
 	}
-	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	thr, err := store.Create()
 	require.NoError(t, err)
@@ -262,7 +262,7 @@ func TestStart_WithThreadID(t *testing.T) {
 }
 
 func TestStart_ProvenanceFiltering(t *testing.T) {
-	store := session.NewMemoryStore()
+	store := junk.NewMemoryStore()
 	foreignProcessor := func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 		step.SetEventContext(loop.WithProvenance(context.Background(), "other"))
 		spec := models.Spec{Name: "test-model"}; _ = spec
@@ -273,7 +273,7 @@ func TestStart_ProvenanceFiltering(t *testing.T) {
 			artifact.TextDelta{Content: "should be ignored"},
 		},
 	}
-	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, foreignProcessor)
+	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, foreignProcessor)
 
 	out := &bytes.Buffer{}
 	in := bytes.NewBufferString("test")
@@ -289,9 +289,9 @@ func TestStart_ProvenanceFiltering(t *testing.T) {
 }
 
 func TestStart_ContextCancellation(t *testing.T) {
-	store := session.NewMemoryStore()
+	store := junk.NewMemoryStore()
 	prov := &blockingProvider{}
-	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	out := &bytes.Buffer{}
 	in := bytes.NewBufferString("test")
@@ -311,8 +311,8 @@ func TestStart_ContextCancellation(t *testing.T) {
 
 func TestStart_MultiTurnCapture(t *testing.T) {
 	prov := &multiTurnProvider{}
-	store := session.NewMemoryStore()
-	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+	store := junk.NewMemoryStore()
+	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 		spec := models.Spec{Name: "test-model"}
 		st, err := step.Turn(ctx, st, spec, prov)
 		if err != nil {

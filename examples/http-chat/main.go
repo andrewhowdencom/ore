@@ -60,7 +60,7 @@ import (
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/andrewhowdencom/ore/x/compaction"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
@@ -162,7 +162,7 @@ func run() error {
 	// Step factory: each session gets its own Step with tool handler,
 	// usage handler, and provider tool options bound. State persistence
 	// is handled automatically by Manager; no custom OnEmit needed.
-	stepFactory := func(stream *session.Stream) ([]loop.Option, error) {
+	stepFactory := func(stream *junk.Stream) ([]loop.Option, error) {
 		return []loop.Option{
 			loop.WithHandlers(xtool.NewHandler(registry, xtool.WithTracer(tracer)), usage.New()),
 			loop.WithOnEmit(tel.OnEmit()),
@@ -172,15 +172,15 @@ func run() error {
 	}
 
 	// Create the thread store.
-	var threadStore session.Store
+	var threadStore junk.Store
 	if storeDir := os.Getenv("STORE_DIR"); storeDir != "" {
 		var err error
-		threadStore, err = session.NewJSONStore(storeDir)
+		threadStore, err = junk.NewJSONStore(storeDir)
 		if err != nil {
 			return fmt.Errorf("create JSON store: %w", err)
 		}
 	} else {
-		threadStore = session.NewMemoryStore()
+		threadStore = junk.NewMemoryStore()
 	}
 
 	// Create a slash command registry. Commands are intercepted before they
@@ -191,12 +191,12 @@ func run() error {
 	// Create the session manager with the ReAct cognitive pattern.
 	// Wire the slash command registry as an interceptor so user messages
 	// starting with "/" are handled by slash commands before inference.
-	mgr := session.NewManager(
+	mgr := junk.NewManager(
 		threadStore,
 		prov,
 		stepFactory,
 		cognitive.NewTurnProcessor(cognitive.ReActFactory, tracer),
-		session.WithInterceptor(slashReg),
+		junk.WithInterceptor(slashReg),
 	)
 
 	// Bind slash commands after the manager is created so handlers can
@@ -204,13 +204,13 @@ func run() error {
 	slashReg.Bind("new", "Create a new session", func(ctx context.Context, emitter loop.Emitter, cmd slash.Command) (slash.Result, error) {
 		// Create a new session and emit a SessionSwitchEvent to notify
 		// all conduits subscribed to the current stream that the user
-		// wants to navigate to a new session.
+		// wants to navigate to a new junk.
 		stream, err := mgr.Create()
 		if err != nil {
 			return slash.Result{}, fmt.Errorf("create session: %w", err)
 		}
 		slog.Info("slash command: /new", "new_session", stream.ID())
-		return slash.Result{Replace: session.SessionSwitchEvent{
+		return slash.Result{Replace: junk.SessionSwitchEvent{
 			SessionID: stream.ID(),
 			Ctx:       loop.WithProvenance(ctx, "slash"),
 		}}, nil

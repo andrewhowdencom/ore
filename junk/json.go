@@ -1,4 +1,4 @@
-package session
+package junk
 
 import (
 	"encoding/json"

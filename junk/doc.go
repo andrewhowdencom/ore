@@ -1,3 +1,7 @@
+// Package junk holds session-orchestration primitives that are pending
+// extraction into better-defined packages. The intent is to drive the
+// surface area of this package to zero over time.
+//
 // Package session provides the Stream and Manager primitives that
 // orchestrate per-session inference and session lifecycle in the ore
 // framework.
@@ -31,8 +35,8 @@
 // that handle, never touching loop.Step directly.
 //
 // Migration note: the Session interface has been removed. Use
-// *session.Stream directly. Event types (Event, UserMessageEvent,
-// InterruptEvent) have moved from the conduit package to session.
+// *junk.Stream directly. Event types (Event, UserMessageEvent,
+// InterruptEvent) have moved from the conduit package to junk.
 // All event types carry an optional context.Context for routing
 // metadata (e.g., provenance). Set it when constructing the event:
 //
@@ -57,7 +61,7 @@
 //		// Build transforms that use stream.Metadata, stream.ID, etc.
 //		return nil, nil  // use default step with auto-persistence
 //	}
-//	mgr := session.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor(cognitive.ReActFactory, tracer))
+//	mgr := junk.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor(cognitive.ReActFactory, tracer))
 //
 // The factory receives *Stream so it can bind per-session runtime state.
 // For example, a factory can close over the stream to inject a dynamic
@@ -95,4 +99,4 @@
 //
 //	// Emit custom output events (e.g. status updates) into the stream's FanOut.
 //	_ = stream.Emit(ctx, loop.PropertiesEvent{Properties: map[string]string{"thread_id": stream.ID()}})
-package session
+package junk

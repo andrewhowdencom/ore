@@ -8,7 +8,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"go.opentelemetry.io/otel/trace"
@@ -26,7 +26,7 @@ var Descriptor = conduit.Descriptor{
 }
 
 type stdio struct {
-	mgr      *session.Manager
+	mgr      *junk.Manager
 	in       io.Reader
 	out      io.Writer
 	err      io.Writer
@@ -75,7 +75,7 @@ func WithTracer(tracer trace.Tracer) Option {
 }
 
 // New creates a new stdio conduit that implements conduit.Conduit.
-func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
+func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error) {
 	if mgr == nil {
 		return nil, fmt.Errorf("session manager is required")
 	}
@@ -96,7 +96,7 @@ func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
 // exception to the standard conduit blocking-contract; the conduit is designed
 // for single-shot Unix-filter usage rather than long-running ambient I/O.
 func (s *stdio) Start(ctx context.Context) error {
-	var stream *session.Stream
+	var stream *junk.Stream
 	var err error
 	if s.threadID != "" {
 		stream, err = s.mgr.Attach(s.threadID)
@@ -222,7 +222,7 @@ func (s *stdio) Start(ctx context.Context) error {
 		defer span.End()
 	}
 
-	event := session.UserMessageEvent{
+	event := junk.UserMessageEvent{
 		Content: string(data),
 		Ctx:     loop.WithProvenance(turnCtx, "stdio"),
 	}

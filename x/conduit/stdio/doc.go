@@ -1,7 +1,7 @@
 // Package stdio implements a single-shot, unix-filter-style ore conduit.
 //
 // It reads from an io.Reader, submits a single user message through a
-// session.Manager, streams assistant artifacts as Markdown blocks to an
+// junk.Manager, streams assistant artifacts as Markdown blocks to an
 // io.Writer, and returns after the turn completes.
 //
 // This is a deliberate exception to the standard conduit blocking-contract

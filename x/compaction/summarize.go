@@ -23,7 +23,7 @@ import (
 // The chosen namespace `ore.compaction.boundary.*` reserves the
 // `ore.compaction.*` prefix for future compaction-related facts (e.g.
 // strategy-specific metadata) without colliding with other session-level
-// metadata that lives in session.Thread.Metadata.
+// metadata that lives in junk.Thread.Metadata.
 const MetaKeyBoundaryIndex = "ore.compaction.boundary.index"
 
 // MetaKeyBoundaryInfo is the state.Meta key under which the BoundaryInfo
@@ -66,7 +66,7 @@ func encodeBoundaryInfo(info BoundaryInfo) (string, error) {
 
 // EncodeBoundaryInfo is the public form of [encodeBoundaryInfo],
 // exposed for callers outside the package (notably
-// session.Stream.MarkBoundary) that need to write a BoundaryInfo
+// junk.Stream.MarkBoundary) that need to write a BoundaryInfo
 // into state.Meta.
 func EncodeBoundaryInfo(info BoundaryInfo) (string, error) {
 	return encodeBoundaryInfo(info)

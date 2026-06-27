@@ -13,7 +13,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,12 +25,12 @@ func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec,
 	return nil
 }
 
-func testManager(t *testing.T) *session.Manager {
+func testManager(t *testing.T) *junk.Manager {
 	t.Helper()
-	return session.NewManager(
-		session.NewMemoryStore(),
+	return junk.NewManager(
+		junk.NewMemoryStore(),
 		&mockProvider{},
-		func(*session.Stream) ([]loop.Option, error) { return nil, nil },
+		func(*junk.Stream) ([]loop.Option, error) { return nil, nil },
 		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "Test reply"})
 		},
@@ -40,7 +40,7 @@ func testManager(t *testing.T) *session.Manager {
 func TestNew(t *testing.T) {
 	tests := []struct {
 		name    string
-		mgr     *session.Manager
+		mgr     *junk.Manager
 		wantErr bool
 	}{
 		{"nil manager", nil, true},
@@ -332,10 +332,10 @@ func TestProvenanceFiltering(t *testing.T) {
 		return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "Test reply"})
 	}
 
-	mgr := session.NewManager(
-		session.NewMemoryStore(),
+	mgr := junk.NewManager(
+		junk.NewMemoryStore(),
 		&mockProvider{},
-		func(*session.Stream) ([]loop.Option, error) { return nil, nil },
+		func(*junk.Stream) ([]loop.Option, error) { return nil, nil },
 		preservingProcessor,
 	)
 
@@ -358,7 +358,7 @@ func TestProvenanceFiltering(t *testing.T) {
 	stream, err := mgr.Create()
 	require.NoError(t, err)
 
-	err = stream.Process(ctx, session.UserMessageEvent{
+	err = stream.Process(ctx, junk.UserMessageEvent{
 		Content: "Hello from HTTP",
 		Ctx:     loop.WithProvenance(context.Background(), "http"),
 	})
@@ -428,10 +428,10 @@ func TestMultipleTextArtifacts(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	m := session.NewManager(
-		session.NewMemoryStore(),
+	m := junk.NewManager(
+		junk.NewMemoryStore(),
 		&mockProvider{},
-		func(*session.Stream) ([]loop.Option, error) { return nil, nil },
+		func(*junk.Stream) ([]loop.Option, error) { return nil, nil },
 		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 			return step.Submit(ctx, st, state.RoleAssistant,
 				artifact.Text{Content: "Hello"},
@@ -511,10 +511,10 @@ func TestEmptyAssistantTurn(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	m := session.NewManager(
-		session.NewMemoryStore(),
+	m := junk.NewManager(
+		junk.NewMemoryStore(),
 		&mockProvider{},
-		func(*session.Stream) ([]loop.Option, error) { return nil, nil },
+		func(*junk.Stream) ([]loop.Option, error) { return nil, nil },
 		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 			return step.Submit(ctx, st, state.RoleAssistant)
 		},
@@ -596,10 +596,10 @@ func TestNonTextArtifact(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	m := session.NewManager(
-		session.NewMemoryStore(),
+	m := junk.NewManager(
+		junk.NewMemoryStore(),
 		&mockProvider{},
-		func(*session.Stream) ([]loop.Option, error) { return nil, nil },
+		func(*junk.Stream) ([]loop.Option, error) { return nil, nil },
 		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 			return step.Submit(ctx, st, state.RoleAssistant, mockArtifact{})
 		},
@@ -676,10 +676,10 @@ func TestOffsetAdvancement(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	m := session.NewManager(
-		session.NewMemoryStore(),
+	m := junk.NewManager(
+		junk.NewMemoryStore(),
 		&mockProvider{},
-		func(*session.Stream) ([]loop.Option, error) { return nil, nil },
+		func(*junk.Stream) ([]loop.Option, error) { return nil, nil },
 		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "Test reply"})
 		},
@@ -727,10 +727,10 @@ func TestGetUpdatesHTTPError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	m := session.NewManager(
-		session.NewMemoryStore(),
+	m := junk.NewManager(
+		junk.NewMemoryStore(),
 		&mockProvider{},
-		func(*session.Stream) ([]loop.Option, error) { return nil, nil },
+		func(*junk.Stream) ([]loop.Option, error) { return nil, nil },
 		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "Test reply"})
 		},
@@ -795,10 +795,10 @@ func TestNilChatField(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	m := session.NewManager(
-		session.NewMemoryStore(),
+	m := junk.NewManager(
+		junk.NewMemoryStore(),
 		&mockProvider{},
-		func(*session.Stream) ([]loop.Option, error) { return nil, nil },
+		func(*junk.Stream) ([]loop.Option, error) { return nil, nil },
 		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
 			processCalled.Store(true)
 			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "reply"})

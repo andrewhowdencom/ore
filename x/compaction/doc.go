@@ -79,7 +79,7 @@
 // not by an automatic trigger (no token-count watcher, no turn-count
 // watcher). The slash handler in the calling application is
 // responsible for building the compactor agent, invoking Summarize,
-// appending the summary turn via session.Stream.AppendTurn, and
+// appending the summary turn via junk.Stream.AppendTurn, and
 // recording the boundary via stream.MarkBoundary. Future work may
 // introduce a Trigger interface as a separate package if applications
 // want automatic compaction; today, the responsibility lives with

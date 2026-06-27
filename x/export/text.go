@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 )
 
 // Text writes a plain-text transcript of the conversation thread to w.
 // Each turn is emitted with its role and timestamp, followed by every
 // artifact rendered in a human-readable form.
-func Text(w io.Writer, thread *session.Thread) error {
+func Text(w io.Writer, thread *junk.Thread) error {
 	_, err := fmt.Fprintf(w, "Thread: %s\n", thread.ID)
 	if err != nil {
 		return fmt.Errorf("write thread header: %w", err)

@@ -1,7 +1,7 @@
 # Telegram Conduit
 
 Telegram is a polling-driven ore conduit that connects to the Telegram Bot API
-via long-polling, maps incoming text messages into `session.UserMessageEvent`s,
+via long-polling, maps incoming text messages into `junk.UserMessageEvent`s,
 and replies to the originating chat with assistant text artifacts.
 
 ## Capabilities
@@ -11,9 +11,9 @@ This conduit exports the following capabilities (see `Descriptor.Capabilities`):
 - **`event-source`** — long-polls the Telegram `getUpdates` endpoint and pushes
   inbound text messages into the ore session stream.
 - **`accept-text`** — maps each `message.text` to
-  `session.UserMessageEvent{Content: ...}`.
+  `junk.UserMessageEvent{Content: ...}`.
 - **`render-turn`** — subscribes to `"turn_complete"` events via
-  `session.Manager.RegisterSink` and replies to the originating `chat_id` with
+  `junk.Manager.RegisterSink` and replies to the originating `chat_id` with
   the assistant's text content.
 
 ## Composition
@@ -21,10 +21,10 @@ This conduit exports the following capabilities (see `Descriptor.Capabilities`):
 The constructor signature follows the standard ore conduit contract:
 
 ```go
-func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error)
+func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error)
 ```
 
-Instantiate the conduit with a `*session.Manager` and functional options:
+Instantiate the conduit with a `*junk.Manager` and functional options:
 
 ```go
 package main
@@ -33,12 +33,12 @@ import (
     "context"
     "log/slog"
 
-    "github.com/andrewhowdencom/ore/session"
+    "github.com/andrewhowdencom/ore/junk"
     "github.com/andrewhowdencom/ore/x/conduit/telegram"
 )
 
 func main() {
-    mgr := session.NewManager(...)
+    mgr := junk.NewManager(...)
 
     c, err := telegram.New(mgr,
         telegram.WithBotToken(os.Getenv("TELEGRAM_BOT_TOKEN")),
@@ -72,9 +72,9 @@ Environment variables read at runtime (not at construction time):
 
 ### Session Model
 
-Each unique Telegram `chat_id` gets its own isolated ore `session.Thread`. The
+Each unique Telegram `chat_id` gets its own isolated ore `junk.Thread`. The
 first time a message arrives from a given chat, the conduit creates a
-`session.Thread` with the `chat_id` as its deterministic thread ID via
+`junk.Thread` with the `chat_id` as its deterministic thread ID via
 `mgr.CreateWithID(chat_id)` and then attaches to it. Subsequent messages from the same
 chat resume the existing thread via `mgr.Attach(chat_id)`.
 
@@ -84,7 +84,7 @@ conduit restarts.
 
 ### Event Subscription
 
-The conduit registers a `"turn_complete"` sink on the `session.Manager` inside
+The conduit registers a `"turn_complete"` sink on the `junk.Manager` inside
 `Start()`:
 
 ```go

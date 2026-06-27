@@ -14,7 +14,7 @@ import (
 
     "github.com/andrewhowdencom/ore/x/conduit"
     "github.com/andrewhowdencom/ore/loop"
-    "github.com/andrewhowdencom/ore/session"
+    "github.com/andrewhowdencom/ore/junk"
 )
 
 // See Standard Conduit Contract §2 — Exported Descriptor
@@ -29,7 +29,7 @@ var Descriptor = conduit.Descriptor{
 
 // MyConduit is the conduit implementation. Keep it minimal.
 type MyConduit struct {
-    mgr      *session.Manager
+    mgr      *junk.Manager
     threadID string // optional; for resuming an existing thread
 }
 
@@ -44,7 +44,7 @@ func WithThreadID(id string) Option {
 }
 
 // See Standard Conduit Contract §1 — Constructor
-func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
+func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error) {
     if mgr == nil {
         return nil, fmt.Errorf("session manager is required")
     }
@@ -57,7 +57,7 @@ func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
 
 // See Standard Conduit Contract §3, §4 — Sink registration, Blocking Start
 func (c *MyConduit) Start(ctx context.Context) error {
-    var stream *session.Stream
+    var stream *junk.Stream
     var err error
     if c.threadID != "" {
         stream, err = c.mgr.Attach(c.threadID)
@@ -92,10 +92,10 @@ func (c *MyConduit) Start(ctx context.Context) error {
     // TODO: Set up external input → stream.Process() loop.
     //
     // Interactive: read input, then:
-    //   stream.Process(ctx, session.UserMessageEvent{Content: text})
+    //   stream.Process(ctx, junk.UserMessageEvent{Content: text})
     //
     // Webhook/polling: in your receiver goroutine:
-    //   stream.Process(ctx, session.UserMessageEvent{Content: payload})
+    //   stream.Process(ctx, junk.UserMessageEvent{Content: payload})
 
     // See Standard Conduit Contract §4 — Block until shutdown
     <-ctx.Done()

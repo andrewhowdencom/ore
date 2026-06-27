@@ -37,7 +37,7 @@ var (
 // a fresh pointer to a concrete Artifact type (e.g. `&Text{}`).
 //
 // The factory must return a pointer because the unmarshaler in
-// ore/session calls json.Unmarshal on its result, which requires a
+// ore/junk calls json.Unmarshal on its result, which requires a
 // non-nil pointer target. Callers that want the round-tripped slice
 // to contain value types (matching the in-memory shape) should
 // return pointers here; the unmarshaler dereferences after Unmarshal

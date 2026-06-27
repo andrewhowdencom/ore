@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/slack-go/slack/slackevents"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -37,7 +37,7 @@ func (c *SlackConduit) handleMessageEvent(ctx context.Context, event *slackevent
 		defer span.End()
 	}
 
-	userEvent := session.UserMessageEvent{
+	userEvent := junk.UserMessageEvent{
 		Content: event.Text,
 		Ctx:     loop.WithProvenance(turnCtx, "slack"),
 	}

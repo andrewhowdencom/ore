@@ -35,7 +35,7 @@
 // All conduit packages MUST satisfy the following contract so that framework
 // consumers and generators have a single, predictable pattern to follow:
 //
-//  1. Constructor — New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error)
+//  1. Constructor — New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error)
 //
 //     The constructor uses the functional-options pattern. It MUST validate that
 //     mgr is non-nil. It returns a value that satisfies conduit.Conduit and may

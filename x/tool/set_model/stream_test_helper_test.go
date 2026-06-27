@@ -8,7 +8,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/stretchr/testify/require"
 )
@@ -30,19 +30,19 @@ func noopTurnProcessor(_ context.Context, _ *loop.Step, st state.State, _ provid
 	return st, nil
 }
 
-// newMockStream constructs a real *session.Stream backed by a memory store.
+// newMockStream constructs a real *junk.Stream backed by a memory store.
 // The slash handler only needs the stream's GetMetadata / SetMetadata
 // methods; the manager wiring exists solely to satisfy the constructor's
 // type signature.
-func newMockStream(t *testing.T) *session.Stream {
+func newMockStream(t *testing.T) *junk.Stream {
 	t.Helper()
 
-	store := session.NewMemoryStore()
+	store := junk.NewMemoryStore()
 	prov := noopProvider{}
-	mgr := session.NewManager(
+	mgr := junk.NewManager(
 		store,
 		prov,
-		func(*session.Stream) ([]loop.Option, error) { return nil, nil },
+		func(*junk.Stream) ([]loop.Option, error) { return nil, nil },
 		noopTurnProcessor,
 	)
 	stream, err := mgr.Create()

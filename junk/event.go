@@ -1,4 +1,4 @@
-package session
+package junk
 
 import (
 	"context"
@@ -60,7 +60,7 @@ type InterceptResult struct {
 }
 
 // Interceptor processes events before they enter the LLM pipeline.
-// It receives a session.Event, the active *session.Stream, and a
+// It receives a junk.Event, the active *junk.Stream, and a
 // loop.Emitter for signaling activity, and can either:
 //   - Return a non-nil Event in the result to rewrite the event
 //   - Return a nil Event in the result to consume the event (no further processing)
@@ -70,7 +70,7 @@ type InterceptResult struct {
 // state. Each Notice carries a Severity so conduits can pick a rendering
 // style.
 //
-// The *session.Stream parameter is the stream that owns the in-flight event,
+// The *junk.Stream parameter is the stream that owns the in-flight event,
 // so interceptors can call stream-scoped methods like SetMetadata. It is
 // never nil for a configured interceptor — stream.processOne passes the
 // active stream unconditionally.

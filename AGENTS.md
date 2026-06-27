@@ -257,7 +257,7 @@ Context propagation:
 
 - **Examples** (`examples/`) are reference implementations demonstrating how to compose the framework. They may be minimal, hardcoded, or environment-variable-driven.
 - **Commands** (`cmd/`) are maintained, first-class applications with longer lifespans and stronger operational requirements.
-- **Agent** (`agent/`) is a reusable multi-conduit orchestration container that wires multiple conduits to a shared `session.Manager`. It sits between core framework and application as a composable runtime scaffold.
+- **Agent** (`agent/`) is a reusable multi-conduit orchestration container that wires multiple conduits to a shared `junk.Manager`. It sits between core framework and application as a composable runtime scaffold.
 
 Do not conflate the two. If a binary is a validation tool or tutorial, it belongs in `examples/`. If it is a product or service, it belongs in `cmd/`.
 

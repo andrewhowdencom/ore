@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 )
 
 // JSON writes a pretty-printed JSON representation of the thread to w.
 // It delegates to the thread's existing MarshalJSON implementation with
 // indentation for readability.
-func JSON(w io.Writer, thread *session.Thread) error {
+func JSON(w io.Writer, thread *junk.Thread) error {
 	data, err := json.MarshalIndent(thread, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal thread: %w", err)
