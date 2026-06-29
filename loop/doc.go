@@ -85,14 +85,14 @@
 //     and non-streaming delivery (e.g. Slack, Telegram).
 //   - LifecycleEvent signals phase transitions: "submitted" (message
 //     accepted, waiting for provider) and "streaming" (first artifact
-//     arrived). Callers (e.g. session.Stream.Process) may emit "done" to
+//     arrived). Callers (e.g. junk.Stream.Process) may emit "done" to
 //     signal pipeline completion. Conduits observe this to drive UI
 //     state without inferring lifecycle from data events.
 //   - ErrorEvent fires when an individual turn fails inside the provider
 //     or a registered handler.
 //   - PropertiesEvent carries ambient, persistent metadata as a map of
 //     key-value pairs (e.g. thread_id, token counts, model name). It is
-//     emitted by any component holding a *session.Stream and delivered to
+//     emitted by any component holding a *junk.Stream and delivered to
 //     all subscribers through the per-session FanOut.
 //
 // See also: cognitive package — composable middleware patterns (ReAct,

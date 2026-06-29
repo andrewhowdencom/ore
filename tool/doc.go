@@ -26,7 +26,7 @@
 //
 // Concrete tool implementations, discovery mechanisms, and the loop.Handler
 // bridge live in the x/tool/ extension packages. This package defines only
-// the contracts that core packages (cognitive/, session/, loop/) can import
+// the contracts that core packages (cognitive/, junk/, loop/) can import
 // without creating dependency cycles.
 //
 // This separation is intentional: placing the handler bridge in x/tool/

@@ -7,7 +7,7 @@
 ## Overview
 
 AcmeWebhook is an event-driven ore conduit that exposes an HTTP POST endpoint
-for receiving external webhooks, maps each payload to a `session.UserMessageEvent`,
+for receiving external webhooks, maps each payload to a `junk.UserMessageEvent`,
 and streams assistant responses back to a configured callback URL.
 
 ## Capabilities
@@ -19,17 +19,17 @@ This conduit exports the following capabilities (see `Descriptor.Capabilities`):
 - **`render-turn`** — subscribes to `"turn_complete"` events and delivers the
   full assistant turn to the callback URL.
 - **`accept-text`** — maps webhook JSON payloads containing a `message` field
-  to `session.UserMessageEvent{Content: ...}`.
+  to `junk.UserMessageEvent{Content: ...}`.
 
 ## Composition
 
 The constructor signature follows the standard ore conduit contract:
 
 ```go
-func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error)
+func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error)
 ```
 
-Instantiate the conduit with a `*session.Manager` and functional options:
+Instantiate the conduit with a `*junk.Manager` and functional options:
 
 ```go
 package main
@@ -39,11 +39,11 @@ import (
     "log/slog"
 
     "github.com/andrewhowdencom/ore/x/conduit/acmewebhook"
-    "github.com/andrewhowdencom/ore/session"
+    "github.com/andrewhowdencom/ore/junk"
 )
 
 func main() {
-    mgr := session.NewManager(...)
+    mgr := junk.NewManager(...)
 
     c, err := acmewebhook.New(mgr,
         acmewebhook.WithAddr(":8080"),
@@ -70,7 +70,7 @@ and call `ServeMux()`.
 |---|---|---|---|
 | `WithAddr(addr string)` | `string` | `":8080"` | TCP address for the HTTP listener. |
 | `WithCallbackURL(url string)` | `string` | *(required)* | URL to which assistant turns are POSTed as JSON. |
-| `WithThreadID(id string)` | `string` | `""` | Resume an existing thread on start. Empty string creates a new session. |
+| `WithThreadID(id string)` | `string` | `""` | Resume an existing thread on start. Empty string creates a new junk. |
 | `WithTimeout(d time.Duration)` | `duration` | `30s` | HTTP client timeout for callback delivery. |
 
 Environment variables read at runtime (not at construction time):
@@ -84,7 +84,7 @@ Environment variables read at runtime (not at construction time):
 ### Session Model
 
 - On the first inbound webhook delivery, the conduit calls `mgr.Create()` to
-  obtain a new ephemeral session.
+  obtain a new ephemeral junk.
 - If the webhook payload contains a `thread_id` field, the conduit calls
   `mgr.Attach(threadID)` instead, resuming the existing thread.
 - Sessions are closed when the conduit shuts down (`ctx.Done()`). Threads are

@@ -1,4 +1,4 @@
-package session
+package junk
 
 // Store abstracts persistence for Thread instances.
 // Implementations must be safe for concurrent use.

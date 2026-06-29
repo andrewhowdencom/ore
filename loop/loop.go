@@ -213,7 +213,7 @@ func (e ArtifactEvent) MarshalJSON() ([]byte, error) {
 
 // PropertiesEvent carries ambient, persistent metadata as a map of
 // key-value pairs. It is emitted by any producer holding a
-// *session.Stream and flows through the per-session FanOut so all
+// *junk.Stream and flows through the per-session FanOut so all
 // conduits receive it simultaneously.
 type PropertiesEvent struct {
 	Properties map[string]string

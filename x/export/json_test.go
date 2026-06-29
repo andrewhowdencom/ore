@@ -8,14 +8,14 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/state"
 )
 
 func TestJSON(t *testing.T) {
 	buf := &state.Buffer{}
 	buf.Append(state.RoleUser, artifact.Text{Content: "Hello!"})
-	thread := &session.Thread{
+	thread := &junk.Thread{
 		ID:        "thread-json-1",
 		State:     buf,
 		CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),

@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 )
 
 // Command represents a parsed slash command invocation.
@@ -17,20 +17,20 @@ type Command struct {
 	Name  string // e.g. "help" (no leading slash)
 	Input string // everything after the command, raw and unmodified
 
-	// stream is the active session.Stream that the slash command is
+	// stream is the active junk.Stream that the slash command is
 	// running in. Handlers that need to mutate thread-scoped state
 	// (e.g. metadata) access it via the Stream() method. It is nil for
 	// Command values constructed directly in tests; only the registry's
 	// Intercept sets it.
-	stream *session.Stream
+	stream *junk.Stream
 }
 
-// Stream returns the session.Stream that owns the in-flight event the
+// Stream returns the junk.Stream that owns the in-flight event the
 // slash command was parsed from. It is nil for Command values that were
-// not produced by a session.Interceptor (e.g. hand-constructed in tests).
+// not produced by a junk.Interceptor (e.g. hand-constructed in tests).
 // Handlers that mutate thread state via SetMetadata must check for nil
 // before dereferencing.
-func (c Command) Stream() *session.Stream { return c.stream }
+func (c Command) Stream() *junk.Stream { return c.stream }
 
 // Result is the return value from a slash command handler.
 //
@@ -39,7 +39,7 @@ func (c Command) Stream() *session.Stream { return c.stream }
 // pick a rendering style (Success, Info, Warn, Error). A zero-value
 // Notice means "no notice to emit"; an empty Content is also skipped.
 type Result struct {
-	Replace session.Event  // nil = consume, non-nil = continue with this event
+	Replace junk.Event  // nil = consume, non-nil = continue with this event
 	Notice  loop.Notice    // single ephemeral UI message, not persisted
 }
 
@@ -68,11 +68,11 @@ func Fields(input string) []string {
 // Registry is the slash command registry interface.
 type Registry interface {
 	Bind(name string, description string, handler Handler)
-	Intercept(ctx context.Context, event session.Event, stream *session.Stream, emitter loop.Emitter) (session.InterceptResult, error)
+	Intercept(ctx context.Context, event junk.Event, stream *junk.Stream, emitter loop.Emitter) (junk.InterceptResult, error)
 }
 
-// Compile-time assertion that registry implements session.Interceptor.
-var _ session.Interceptor = (*registry)(nil)
+// Compile-time assertion that registry implements junk.Interceptor.
+var _ junk.Interceptor = (*registry)(nil)
 
 type registry struct {
 	mu           sync.RWMutex
@@ -120,13 +120,13 @@ func (r *registry) Bind(name string, description string, handler Handler) {
 	r.descriptions[name] = description
 }
 
-// Intercept implements session.Interceptor. It inspects UserMessageEvent content
+// Intercept implements junk.Interceptor. It inspects UserMessageEvent content
 // for leading slash commands. If a matching command is found, the handler is
 // invoked and the event is consumed or replaced. If no command matches, the
 // event passes through unchanged. Non-UserMessageEvent types are always passed
 // through unchanged.
 //
-// The active *session.Stream is threaded through to the parsed Command so
+// The active *junk.Stream is threaded through to the parsed Command so
 // handlers that need to mutate thread state (e.g. via SetMetadata) can
 // recover it via Command.Stream().
 //
@@ -135,16 +135,16 @@ func (r *registry) Bind(name string, description string, handler Handler) {
 // the previous behaviour of propagating the error downstream where it was
 // silently dropped. The error is also logged via slog.Debug so existing
 // telemetry consumers that grep slog output continue to see it.
-func (r *registry) Intercept(ctx context.Context, event session.Event, stream *session.Stream, emitter loop.Emitter) (session.InterceptResult, error) {
-	ume, ok := event.(session.UserMessageEvent)
+func (r *registry) Intercept(ctx context.Context, event junk.Event, stream *junk.Stream, emitter loop.Emitter) (junk.InterceptResult, error) {
+	ume, ok := event.(junk.UserMessageEvent)
 	if !ok {
-		return session.InterceptResult{Event: event}, nil
+		return junk.InterceptResult{Event: event}, nil
 	}
 
 	content := ume.Content
 	trimmed := strings.TrimLeftFunc(content, func(r rune) bool { return r == ' ' || r == '\t' || r == '\n' || r == '\r' })
 	if !strings.HasPrefix(trimmed, "/") {
-		return session.InterceptResult{Event: event}, nil
+		return junk.InterceptResult{Event: event}, nil
 	}
 
 	rest := trimmed[1:]
@@ -170,7 +170,7 @@ func (r *registry) Intercept(ctx context.Context, event session.Event, stream *s
 
 	if !ok {
 		// Unknown command — emit an info-severity notice without triggering inference.
-		return session.InterceptResult{
+		return junk.InterceptResult{
 			Notice: []loop.Notice{{
 				Content:  fmt.Sprintf("Unknown command: /%s. Type /help for available commands.", command),
 				Severity: loop.SeverityInfo,
@@ -195,10 +195,10 @@ func (r *registry) Intercept(ctx context.Context, event session.Event, stream *s
 				Severity: loop.SeverityError,
 			})
 		}
-		return session.InterceptResult{Notice: notices}, nil
+		return junk.InterceptResult{Notice: notices}, nil
 	}
 
-	var interceptResult session.InterceptResult
+	var interceptResult junk.InterceptResult
 	interceptResult.Event = result.Replace
 	if result.Notice.Content != "" {
 		interceptResult.Notice = []loop.Notice{result.Notice}

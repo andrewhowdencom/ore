@@ -4,7 +4,7 @@ description: |
   Implements a new ore I/O conduit package under x/conduit/<name>/ using the
   functional-options constructor pattern, exported Descriptor for discovery, and
   blocking Start(ctx) lifecycle. Dumb pipe that translates external system events
-  (HTTP, TUI, chat bot, webhook) into ore session events via session.Manager,
+  (HTTP, TUI, chat bot, webhook) into ore session events via junk.Manager,
   subscribes to broadcast FanOut output streams, and routes text/reasoning/image
   artifacts back to external systems. Compatible with the broadcast
   multi-conduit model. Does NOT handle cognitive orchestration,
@@ -19,7 +19,7 @@ This skill is triggered **ONLY** when implementing a **NEW** I/O conduit package
 under `x/conduit/<name>/` or modifying an existing conduit implementation.
 
 Do NOT use this skill for:
-- Core package work (`artifact/`, `loop/`, `session/`, `provider/`, `state/`, `thread/`, `cognitive/`)
+- Core package work (`artifact/`, `loop/`, `junk/`, `provider/`, `state/`, `thread/`, `cognitive/`)
 - Modifying ore `AGENTS.md` or repository-level documentation
 - Go language or tooling questions (see `go/` skill instead)
 - Ore architectural philosophy or package boundary decisions (see `AGENTS.md`)
@@ -29,7 +29,7 @@ Do NOT use this skill for:
 An ore conduit is a dumb pipe that translates events between an external system
 and the ore framework. It is not a "UI" in the narrow sense, nor is it a
 cognitive agent. A conduit's only job is ingress (mapping external events into
-`session.UserMessageEvent` and pushing them into a stream) and egress
+`junk.UserMessageEvent` and pushing them into a stream) and egress
 (subscribing to the stream's broadcast output and routing assistant artifacts
 back to the external system).
 
@@ -50,17 +50,17 @@ Follow these steps in order. Do not skip or reorder.
    `task validate` covers it (follow the pattern of existing entries).
 2. **Implement `conduit.Conduit`** — a type with exactly one method:
    `Start(ctx context.Context) error`.
-3. **Accept `*session.Manager`** via the constructor using the functional options
+3. **Accept `*junk.Manager`** via the constructor using the functional options
    pattern:
    ```go
-   func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error)
+   func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error)
    ```
    Validate `mgr != nil`; return an error if nil. Functional options can
    override defaults but must not be required.
 4. **In `Start()`**: create or attach a session:
    - `stream, err := mgr.Create()` for a new session
    - `stream, err := mgr.Attach(threadID)` to resume an existing thread
-   In multi-conduit agents, multiple conduits share the same `*session.Manager`.
+   In multi-conduit agents, multiple conduits share the same `*junk.Manager`.
    Each conduit calls `mgr.Create()` or `mgr.Attach()` independently.
 5. **Subscribe to output events** from the stream:
    ```go
@@ -77,9 +77,9 @@ Follow these steps in order. Do not skip or reorder.
    If delivery to the external system fails, log the error (non-fatal) and
    continue. Optionally render a failure message if the transport supports it.
 7. **Set up the external input → `stream.Process()` loop.** Map all external
-   events to `session.UserMessageEvent{Content: ...}` and call
+   events to `junk.UserMessageEvent{Content: ...}` and call
    `stream.Process(ctx, event)`. For cancellation, use
-   `session.InterruptEvent{}`.
+   `junk.InterruptEvent{}`.
    Before calling `stream.Process()`, set `EventContext.Provenance` to the
    conduit's identifier on outbound `UserMessageEvent`. When receiving events,
    check if `Provenance` matches your own identifier and skip processing to
@@ -102,7 +102,7 @@ Follow these steps in order. Do not skip or reorder.
    system) MUST return non-nil from `Start()`, which triggers agent-level
    shutdown. Non-fatal errors (delivery failure to one recipient, transient
    timeout) MUST be logged and the conduit MUST continue.
-10. **Add table-driven tests** with a mock `session.Manager` or
+10. **Add table-driven tests** with a mock `junk.Manager` or
     `httptest.Server`. Verify `Start()` blocks, `Descriptor` is exported, and
     the constructor rejects nil manager.
 11. **Run `go test -race ./...`** from the package directory. All tests must
@@ -121,7 +121,7 @@ Follow these steps in order. Do not skip or reorder.
 After implementing a conduit, verify:
 
 - [ ] Package exports `Descriptor` with valid capabilities
-- [ ] Constructor accepts `*session.Manager` and validates non-nil
+- [ ] Constructor accepts `*junk.Manager` and validates non-nil
 - [ ] `Start(ctx)` blocks until `ctx.Done()`
 - [ ] Subscribes to output events before blocking
 - [ ] Maps all external inputs to `UserMessageEvent` or `InterruptEvent`
@@ -157,7 +157,7 @@ If any of the following are true, **STOP** and reassess:
    of 100 events. Slow subscribers silently drop events. Design for idempotency
    or tolerate missing deltas. Do not assume reliable delivery.
 2. **Hardcoded event types.** `Stream.Process()` only accepts
-   `session.UserMessageEvent` and `session.InterruptEvent`. All external inputs
+   `junk.UserMessageEvent` and `junk.InterruptEvent`. All external inputs
    must map to one of these. Custom event types require changes to the
    `session` package.
 3. **Provenance is source-only.** `EventContext.Provenance` is a `string` for
@@ -168,7 +168,7 @@ If any of the following are true, **STOP** and reassess:
    for core artifact kinds. If your conduit defines custom artifact types and
    uses HTTP transport, you must extend the marshal/unmarshal functions or
    handle serialization yourself.
-5. **Closed subscription on dead session.** If a session is closed before a
+5. **Closed subscription on dead junk.** If a session is closed before a
    subscriber is created, `stream.Subscribe()` returns an already-closed
    channel. Range over it safely; it will exit immediately.
 6. **NDJSON vs SSE vs turn_complete.** The HTTP conduit demonstrates two valid

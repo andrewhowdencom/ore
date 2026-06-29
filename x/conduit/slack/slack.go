@@ -13,7 +13,7 @@ import (
 	"sync"
 
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/slack-go/slack"
@@ -55,13 +55,13 @@ func (a *socketModeClientAdapter) Ack(req socketmode.Request, payload ...interfa
 
 // SlackConduit is a Slack Socket Mode ore I/O conduit.
 type SlackConduit struct {
-	mgr              *session.Manager
+	mgr              *junk.Manager
 	botToken         string
 	appToken         string
 	mode             transportMode
 	client           slackClient
 	socketModeClient socketModeClient
-	activeStreams    map[string]*session.Stream
+	activeStreams    map[string]*junk.Stream
 	streamsMu        sync.Mutex
 	tracer           trace.Tracer
 }
@@ -124,14 +124,14 @@ var Descriptor = conduit.Descriptor{
 }
 
 // New creates a new Slack conduit that implements conduit.Conduit.
-func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
+func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error) {
 	if mgr == nil {
 		return nil, fmt.Errorf("session manager is required")
 	}
 	c := &SlackConduit{
 		mgr:           mgr,
 		mode:          modeSocket,
-		activeStreams: make(map[string]*session.Stream),
+		activeStreams: make(map[string]*junk.Stream),
 	}
 	for _, opt := range opts {
 		opt(c)

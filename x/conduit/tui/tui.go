@@ -1,7 +1,7 @@
 // Package tui implements an opinionated terminal user interface conduit for
 // the ore framework using Bubble Tea.
 //
-// Use New(mgr, opts...) to create a TUI that composes with a session.Manager.
+// Use New(mgr, opts...) to create a TUI that composes with a junk.Manager.
 // The TUI creates or attaches to a session on Start, subscribes to the
 // session's output stream, and sends user events back through it.
 // Available options include WithThreadID to resume an existing thread.
@@ -36,7 +36,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/compaction"
 	"github.com/andrewhowdencom/ore/x/conduit"
@@ -49,7 +49,7 @@ import (
 // boundary has been recorded. The TUI uses this to render the
 // collapse marker at startup; the value is purely advisory
 // (the rendered marker has no semantic effect on the conversation).
-func readBoundaryFromStream(s *session.Stream) compaction.BoundaryInfo {
+func readBoundaryFromStream(s *junk.Stream) compaction.BoundaryInfo {
 	if s == nil {
 		return compaction.BoundaryInfo{}
 	}
@@ -69,9 +69,9 @@ func readBoundaryFromStream(s *session.Stream) compaction.BoundaryInfo {
 // TUI is a terminal user interface conduit. It hides all Bubble Tea internals
 // from callers.
 type TUI struct {
-	mgr            *session.Manager
+	mgr            *junk.Manager
 	threadID       string
-	eventsCh       chan session.Event
+	eventsCh       chan junk.Event
 	program        *tea.Program
 	programOpts    []tea.ProgramOption
 	name           string
@@ -86,7 +86,7 @@ type TUI struct {
 type Option func(*TUI)
 
 // WithThreadID sets the thread ID to resume when starting the TUI.
-// An empty string means create a new session.
+// An empty string means create a new junk.
 func WithThreadID(id string) Option {
 	return func(t *TUI) {
 		t.threadID = id
@@ -204,7 +204,7 @@ var _ conduit.AudioNotifier = (*TUI)(nil)
 // New creates a new TUI conduit that implements conduit.Conduit.
 // The returned value must be started with Start(ctx) to run the interface.
 // Available options: WithThreadID(id) to resume an existing thread.
-func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
+func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error) {
 	if mgr == nil {
 		return nil, fmt.Errorf("session manager is required")
 	}
@@ -218,7 +218,7 @@ func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
 // initModel creates and initializes the Bubble Tea model for the TUI,
 // including pre-populating historical turns from the stream when resuming
 // an existing thread.
-func (t *TUI) initModel(eventsCh chan session.Event, stream *session.Stream) model {
+func (t *TUI) initModel(eventsCh chan junk.Event, stream *junk.Stream) model {
 	ta := textarea.New()
 	ta.ShowLineNumbers = false
 	ta.Prompt = "> "
@@ -265,7 +265,7 @@ func (t *TUI) initModel(eventsCh chan session.Event, stream *session.Stream) mod
 // goroutine starts keeps status updates funneled through the existing
 // statusMsg handler (a merge, not a replace) so a concurrent live
 // PropertiesEvent for the same key is a no-op.
-func statusFromStream(stream *session.Stream) tea.Msg {
+func statusFromStream(stream *junk.Stream) tea.Msg {
 	if meta := stream.AllMetadata(); len(meta) > 0 {
 		return statusMsg{status: meta}
 	}
@@ -277,7 +277,7 @@ func statusFromStream(stream *session.Stream) tea.Msg {
 // (Ctrl+C) or ctx is cancelled. On context cancellation the program exits
 // gracefully.
 func (t *TUI) Start(ctx context.Context) error {
-	var stream *session.Stream
+	var stream *junk.Stream
 	var err error
 	if t.threadID != "" {
 		stream, err = t.mgr.Attach(t.threadID)
@@ -292,7 +292,7 @@ func (t *TUI) Start(ctx context.Context) error {
 		slog.Info("thread started", "id", stream.ID())
 	}
 
-	surfEventsCh := make(chan session.Event, 10)
+	surfEventsCh := make(chan junk.Event, 10)
 	m := t.initModel(surfEventsCh, stream)
 	p := tea.NewProgram(&m, t.programOpts...)
 	t.eventsCh = surfEventsCh
@@ -329,17 +329,17 @@ func (t *TUI) Start(ctx context.Context) error {
 		}
 	}()
 
-	// Goroutine to process user events through the session.
+	// Goroutine to process user events through the junk.
 	go func() {
 		for event := range t.eventsCh {
 			switch e := event.(type) {
-			case session.UserMessageEvent:
+			case junk.UserMessageEvent:
 				ctx := context.Background()
 				var span trace.Span
 				if t.tracer != nil {
 					ctx, span = t.tracer.Start(ctx, "tui.turn", trace.WithSpanKind(trace.SpanKindServer))
 				}
-				msg := session.UserMessageEvent{
+				msg := junk.UserMessageEvent{
 					Content: e.Content,
 					Ctx:     loop.WithProvenance(ctx, "tui"),
 				}
@@ -349,7 +349,7 @@ func (t *TUI) Start(ctx context.Context) error {
 				if span != nil {
 					span.End()
 				}
-			case session.InterruptEvent:
+			case junk.InterruptEvent:
 				if err := stream.Cancel(); err != nil {
 					slog.Error("cancel failed", "err", err)
 				}

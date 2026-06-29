@@ -7,7 +7,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/state"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -90,10 +90,10 @@ func (r *ReAct) Run(ctx context.Context, st state.State) (state.State, error) {
 	}
 }
 
-// NewTurnProcessor returns a session.TurnProcessor that runs the given
+// NewTurnProcessor returns a junk.TurnProcessor that runs the given
 // Pattern factory for each turn. The factory receives the session's
 // loop.Step and provider so it can construct stateful Patterns like ReAct.
-func NewTurnProcessor(factory func(loop.TurnExecutor, provider.Provider, trace.Tracer) Pattern, tracer trace.Tracer) session.TurnProcessor {
+func NewTurnProcessor(factory func(loop.TurnExecutor, provider.Provider, trace.Tracer) Pattern, tracer trace.Tracer) junk.TurnProcessor {
 	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, spec models.Spec) (state.State, error) {
 		pattern := factory(step, prov, tracer)
 		_ = pattern

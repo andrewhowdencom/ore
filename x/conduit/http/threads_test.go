@@ -9,15 +9,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/state"
 )
 
-// makeThread builds a *session.Thread with the given ID and UpdatedAt
+// makeThread builds a *junk.Thread with the given ID and UpdatedAt
 // for use in pagination tests. The State and Metadata are initialised
 // to non-nil empty values so the helper works in isolation.
-func makeThread(id string, updatedAt time.Time) *session.Thread {
-	return &session.Thread{
+func makeThread(id string, updatedAt time.Time) *junk.Thread {
+	return &junk.Thread{
 		ID:        id,
 		State:     &state.Buffer{},
 		CreatedAt: updatedAt.Add(-time.Hour),
@@ -27,7 +27,7 @@ func makeThread(id string, updatedAt time.Time) *session.Thread {
 }
 
 // idsOf extracts the IDs from a slice of threads in order, for assertions.
-func idsOf(threads []*session.Thread) []string {
+func idsOf(threads []*junk.Thread) []string {
 	out := make([]string, len(threads))
 	for i, t := range threads {
 		out[i] = t.ID
@@ -50,7 +50,7 @@ func TestPaginateAndSortThreads_EmptyInput(t *testing.T) {
 
 func TestPaginateAndSortThreads_SinglePageReturnsAll(t *testing.T) {
 	now := time.Now()
-	threads := []*session.Thread{
+	threads := []*junk.Thread{
 		makeThread("a", now.Add(-3*time.Hour)),
 		makeThread("b", now.Add(-2*time.Hour)),
 		makeThread("c", now.Add(-1*time.Hour)),
@@ -76,7 +76,7 @@ func TestPaginateAndSortThreads_SinglePageReturnsAll(t *testing.T) {
 
 func TestPaginateAndSortThreads_LimitRespected(t *testing.T) {
 	now := time.Now()
-	threads := []*session.Thread{
+	threads := []*junk.Thread{
 		makeThread("a", now.Add(-3*time.Hour)),
 		makeThread("b", now.Add(-2*time.Hour)),
 		makeThread("c", now.Add(-1*time.Hour)),
@@ -101,7 +101,7 @@ func TestPaginateAndSortThreads_LimitRespected(t *testing.T) {
 
 func TestPaginateAndSortThreads_CursorProgression(t *testing.T) {
 	now := time.Now()
-	threads := []*session.Thread{
+	threads := []*junk.Thread{
 		makeThread("a", now.Add(-3*time.Hour)),
 		makeThread("b", now.Add(-2*time.Hour)),
 		makeThread("c", now.Add(-1*time.Hour)),
@@ -135,7 +135,7 @@ func TestPaginateAndSortThreads_CursorProgression(t *testing.T) {
 
 func TestPaginateAndSortThreads_CursorProgressionThreePages(t *testing.T) {
 	now := time.Now()
-	threads := []*session.Thread{
+	threads := []*junk.Thread{
 		makeThread("a", now.Add(-5*time.Hour)),
 		makeThread("b", now.Add(-4*time.Hour)),
 		makeThread("c", now.Add(-3*time.Hour)),
@@ -173,7 +173,7 @@ func TestPaginateAndSortThreads_TiebreakByID(t *testing.T) {
 	// They must paginate in id-ascending order, and a cursor pointing
 	// at "b" must skip "b" on the next page.
 	same := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
-	threads := []*session.Thread{
+	threads := []*junk.Thread{
 		makeThread("c", same),
 		makeThread("a", same),
 		makeThread("b", same),
@@ -204,7 +204,7 @@ func TestPaginateAndSortThreads_TiebreakByID(t *testing.T) {
 
 func TestPaginateAndSortThreads_InvalidCursor(t *testing.T) {
 	now := time.Now()
-	threads := []*session.Thread{makeThread("a", now)}
+	threads := []*junk.Thread{makeThread("a", now)}
 
 	_, _, err := paginateAndSortThreads(threads, 20, "!!!not-base64!!!")
 	if err == nil {
@@ -217,7 +217,7 @@ func TestPaginateAndSortThreads_InvalidCursor(t *testing.T) {
 
 func TestPaginateAndSortThreads_CursorPastEndReturnsEmpty(t *testing.T) {
 	now := time.Now()
-	threads := []*session.Thread{
+	threads := []*junk.Thread{
 		makeThread("a", now.Add(-2*time.Hour)),
 		makeThread("b", now.Add(-1*time.Hour)),
 	}
@@ -247,7 +247,7 @@ func TestPaginateAndSortThreads_CursorPastEndReturnsEmpty(t *testing.T) {
 
 func TestPaginateAndSortThreads_LimitOne(t *testing.T) {
 	now := time.Now()
-	threads := []*session.Thread{
+	threads := []*junk.Thread{
 		makeThread("a", now.Add(-2*time.Hour)),
 		makeThread("b", now.Add(-1*time.Hour)),
 	}
@@ -269,7 +269,7 @@ func TestPaginateAndSortThreads_LimitOne(t *testing.T) {
 
 func TestPaginateAndSortThreads_LimitLargerThanTotal(t *testing.T) {
 	now := time.Now()
-	threads := []*session.Thread{
+	threads := []*junk.Thread{
 		makeThread("a", now.Add(-2*time.Hour)),
 		makeThread("b", now.Add(-1*time.Hour)),
 	}
@@ -288,7 +288,7 @@ func TestPaginateAndSortThreads_LimitLargerThanTotal(t *testing.T) {
 
 func TestPaginateAndSortThreads_LimitZeroTreatedAsOne(t *testing.T) {
 	now := time.Now()
-	threads := []*session.Thread{
+	threads := []*junk.Thread{
 		makeThread("a", now.Add(-1*time.Hour)),
 		makeThread("b", now),
 	}
@@ -304,7 +304,7 @@ func TestPaginateAndSortThreads_LimitZeroTreatedAsOne(t *testing.T) {
 
 func TestPaginateAndSortThreads_LimitNegativeTreatedAsOne(t *testing.T) {
 	now := time.Now()
-	threads := []*session.Thread{
+	threads := []*junk.Thread{
 		makeThread("a", now.Add(-1*time.Hour)),
 	}
 
@@ -324,7 +324,7 @@ func TestPaginateAndSortThreads_DoesNotMutateInputIDs(t *testing.T) {
 	now := time.Now()
 	a := makeThread("a", now.Add(-2*time.Hour))
 	b := makeThread("b", now.Add(-1*time.Hour))
-	threads := []*session.Thread{a, b}
+	threads := []*junk.Thread{a, b}
 
 	page, _, err := paginateAndSortThreads(threads, 20, "")
 	if err != nil {
@@ -515,9 +515,9 @@ func TestEncodeProducesBase64URL(t *testing.T) {
 // across edge cases (equal timestamps, equal IDs, etc.).
 func TestCompareThreads(t *testing.T) {
 	now := time.Now()
-	a := &session.Thread{ID: "a", UpdatedAt: now}
-	b := &session.Thread{ID: "b", UpdatedAt: now}
-	c := &session.Thread{ID: "c", UpdatedAt: now.Add(time.Hour)}
+	a := &junk.Thread{ID: "a", UpdatedAt: now}
+	b := &junk.Thread{ID: "b", UpdatedAt: now}
+	c := &junk.Thread{ID: "c", UpdatedAt: now.Add(time.Hour)}
 
 	if compareThreads(a, b) >= 0 {
 		t.Error("a should sort before b (same ts, lower id)")
@@ -546,14 +546,14 @@ func TestThreadIsAfterCursor(t *testing.T) {
 
 	tests := []struct {
 		name string
-		thr  *session.Thread
+		thr  *junk.Thread
 		want bool
 	}{
-		{"strictly earlier ts", &session.Thread{ID: "z", UpdatedAt: earlier}, true},
-		{"strictly later ts", &session.Thread{ID: "a", UpdatedAt: later}, false},
-		{"same ts, lower id", &session.Thread{ID: "a", UpdatedAt: now}, false},
-		{"same ts, higher id", &session.Thread{ID: "z", UpdatedAt: now}, true},
-		{"same ts, same id", &session.Thread{ID: "m", UpdatedAt: now}, false},
+		{"strictly earlier ts", &junk.Thread{ID: "z", UpdatedAt: earlier}, true},
+		{"strictly later ts", &junk.Thread{ID: "a", UpdatedAt: later}, false},
+		{"same ts, lower id", &junk.Thread{ID: "a", UpdatedAt: now}, false},
+		{"same ts, higher id", &junk.Thread{ID: "z", UpdatedAt: now}, true},
+		{"same ts, same id", &junk.Thread{ID: "m", UpdatedAt: now}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

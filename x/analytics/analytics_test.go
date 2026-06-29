@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/state"
 	"github.com/andrewhowdencom/ore/x/analytics"
 )
@@ -19,18 +19,18 @@ type sentinelError struct{}
 
 func (e *sentinelError) Error() string { return "test error" }
 
-// mockStore is a test double for session.Store.
+// mockStore is a test double for junk.Store.
 type mockStore struct {
-	threads []*session.Thread
+	threads []*junk.Thread
 	err     error
 }
 
-func (m *mockStore) Create() (*session.Thread, error) { return nil, nil }
-func (m *mockStore) Get(id string) (*session.Thread, bool) { return nil, false }
-func (m *mockStore) GetBy(key, value string) (*session.Thread, bool) { return nil, false }
-func (m *mockStore) Save(thread *session.Thread) error { return nil }
+func (m *mockStore) Create() (*junk.Thread, error) { return nil, nil }
+func (m *mockStore) Get(id string) (*junk.Thread, bool) { return nil, false }
+func (m *mockStore) GetBy(key, value string) (*junk.Thread, bool) { return nil, false }
+func (m *mockStore) Save(thread *junk.Thread) error { return nil }
 func (m *mockStore) Delete(id string) bool { return false }
-func (m *mockStore) List() ([]*session.Thread, error) {
+func (m *mockStore) List() ([]*junk.Thread, error) {
 	return m.threads, m.err
 }
 
@@ -328,7 +328,7 @@ func TestAnalyzeThread_Nil(t *testing.T) {
 }
 
 func TestAnalyzeThread_Empty(t *testing.T) {
-	th := &session.Thread{State: &state.Buffer{}}
+	th := &junk.Thread{State: &state.Buffer{}}
 	got := analytics.AnalyzeThread(th)
 	if len(got) != 0 {
 		t.Fatalf("expected empty slice, got %d entries", len(got))
@@ -338,7 +338,7 @@ func TestAnalyzeThread_Empty(t *testing.T) {
 func TestAnalyzeThread_WithTurns(t *testing.T) {
 	buf := &state.Buffer{}
 	buf.Append(state.RoleUser, artifact.Text{Content: "hi"})
-	th := &session.Thread{State: buf}
+	th := &junk.Thread{State: buf}
 
 	got := analytics.AnalyzeThread(th)
 	if len(got) != 1 {
@@ -362,7 +362,7 @@ func TestAnalyzeStore(t *testing.T) {
 	buf2.Append(state.RoleAssistant, artifact.Reasoning{Content: "think"})
 
 	store := &mockStore{
-		threads: []*session.Thread{
+		threads: []*junk.Thread{
 			{State: buf1},
 			{State: buf2},
 		},
@@ -398,9 +398,9 @@ func TestAnalyzeStore_Error(t *testing.T) {
 
 // TestAnalyzeThread_AfterJSONRoundTrip guards against the regression
 // described in https://github.com/andrewhowdencom/ore/issues/416: the
-// production read path for any session.Store implementation is "load
+// production read path for any junk.Store implementation is "load
 // from disk", and the byte counts observed after a round-trip must
-// match the in-memory baseline. Before the fix, session/serialize.go
+// match the in-memory baseline. Before the fix, junk/serialize.go
 // handed back *pointer* artifacts (e.g. *artifact.Text), which fell
 // through the value-only type switch in x/llmbytes.Of and reported
 // the JSON envelope length instead of the LLM payload.
@@ -444,7 +444,7 @@ func TestAnalyzeThread_AfterJSONRoundTrip(t *testing.T) {
 
 	// Round-trip: persist a thread, re-open the store, re-read.
 	dir := t.TempDir()
-	store, err := session.NewJSONStore(dir)
+	store, err := junk.NewJSONStore(dir)
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
@@ -467,7 +467,7 @@ func TestAnalyzeThread_AfterJSONRoundTrip(t *testing.T) {
 	}
 
 	// Re-open the store (this is what re-reads from disk).
-	reopened, err := session.NewJSONStore(dir)
+	reopened, err := junk.NewJSONStore(dir)
 	if err != nil {
 		t.Fatalf("reopen store: %v", err)
 	}
@@ -481,7 +481,7 @@ func TestAnalyzeThread_AfterJSONRoundTrip(t *testing.T) {
 	// unmarshalArtifacts. If this assertion ever fires the test is
 	// no longer exercising the post-fix invariant, and the bug from
 	// issue #416 could silently return via a regression in
-	// session/serialize.go.
+	// junk/serialize.go.
 	allValues := true
 	for _, turn := range loaded.State.Turns() {
 		for _, a := range turn.Artifacts {
@@ -539,7 +539,7 @@ func TestAnalyzeThread_AfterJSONRoundTrip(t *testing.T) {
 // the bug.
 func TestAnalyzeStore_AfterJSONRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	store, err := session.NewJSONStore(dir)
+	store, err := junk.NewJSONStore(dir)
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
@@ -562,7 +562,7 @@ func TestAnalyzeStore_AfterJSONRoundTrip(t *testing.T) {
 		t.Fatalf("save: %v", err)
 	}
 
-	reopened, err := session.NewJSONStore(dir)
+	reopened, err := junk.NewJSONStore(dir)
 	if err != nil {
 		t.Fatalf("reopen store: %v", err)
 	}
@@ -621,11 +621,11 @@ func TestAnalyzeThread_NoJSONEnvelopeLeak(t *testing.T) {
 
 	// A round-tripped pointer to the same value.
 	dir := t.TempDir()
-	store, _ := session.NewJSONStore(dir)
+	store, _ := junk.NewJSONStore(dir)
 	thr, _ := store.Create()
 	thr.State.Append(state.RoleUser, art)
 	_ = store.Save(thr)
-	reopened, _ := session.NewJSONStore(dir)
+	reopened, _ := junk.NewJSONStore(dir)
 	loaded, ok := reopened.Get(thr.ID)
 	if !ok {
 		t.Fatal("expected to find the persisted thread")
@@ -680,7 +680,7 @@ func TestAnalyzeStore_ToolResultOrphanPerThread(t *testing.T) {
 	)
 
 	store := &mockStore{
-		threads: []*session.Thread{
+		threads: []*junk.Thread{
 			{State: bufA},
 			{State: bufB},
 		},
@@ -868,7 +868,7 @@ func TestAnalyzeStore_PerThreadIsolation_ToolCallInThreadAResolvesOnlyInThreadA(
 	)
 
 	store := &mockStore{
-		threads: []*session.Thread{
+		threads: []*junk.Thread{
 			{State: bufA},
 			{State: bufB},
 		},

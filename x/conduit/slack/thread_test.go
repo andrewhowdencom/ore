@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -53,9 +53,9 @@ func TestIsDM(t *testing.T) {
 }
 
 func TestResolveThread_Create(t *testing.T) {
-	store := session.NewMemoryStore()
+	store := junk.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)
@@ -78,9 +78,9 @@ func TestResolveThread_Create(t *testing.T) {
 }
 
 func TestResolveThread_Resume(t *testing.T) {
-	store := session.NewMemoryStore()
+	store := junk.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := session.NewManager(store, prov, func(*session.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 
 	c, err := New(mgr)
 	require.NoError(t, err)

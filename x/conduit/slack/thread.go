@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/slack-go/slack/slackevents"
 )
 
 // resolveThread looks up or creates an ore Thread mapped to the given
 // Slack thread identifier and channel ID, then returns the active session
 // Stream.
-func (c *SlackConduit) resolveThread(slackThreadID string, channelID string) (*session.Stream, error) {
+func (c *SlackConduit) resolveThread(slackThreadID string, channelID string) (*junk.Stream, error) {
 	// Try to resume an existing thread by slack_thread_id metadata.
 	thr, err := c.mgr.GetBy("slack_thread_id", slackThreadID)
 	if err == nil {
@@ -25,7 +25,7 @@ func (c *SlackConduit) resolveThread(slackThreadID string, channelID string) (*s
 		c.streamsMu.Unlock()
 		return stream, nil
 	}
-	if !errors.Is(err, session.ErrThreadNotFound) {
+	if !errors.Is(err, junk.ErrThreadNotFound) {
 		// Corruption or other store failure: surface the error
 		// rather than silently falling through to create a new
 		// thread, which would orphan the existing one.

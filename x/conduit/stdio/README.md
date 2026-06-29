@@ -11,7 +11,7 @@ go get github.com/andrewhowdencom/ore/x/conduit/stdio@latest
 ## Overview
 
 The stdio conduit reads a single user message from an `io.Reader`, submits it
-through a `session.Manager`, streams assistant artifacts as Markdown blocks to
+through a `junk.Manager`, streams assistant artifacts as Markdown blocks to
 an `io.Writer`, and returns after the turn completes. This is a deliberate
 exception to the standard conduit blocking-contract (which normally blocks until
 `ctx.Done()`) so the conduit can be used in CLI pipelines and Unix filters.
@@ -21,21 +21,21 @@ exception to the standard conduit blocking-contract (which normally blocks until
 This conduit exports the following capabilities (see `Descriptor.Capabilities`):
 
 - `event-source` — receives inbound text from an `io.Reader` and pushes it
-  into the ore session stream as a `session.UserMessageEvent`.
+  into the ore session stream as a `junk.UserMessageEvent`.
 - `render-markdown` — streams assistant artifacts as Markdown blocks to the
   configured `io.Writer`.
 - `accept-text` — maps raw text input directly to
-  `session.UserMessageEvent{Content: ...}`.
+  `junk.UserMessageEvent{Content: ...}`.
 
 ## Composition
 
 The constructor signature follows the standard ore conduit contract:
 
 ```go
-func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error)
+func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error)
 ```
 
-Instantiate the conduit with a `*session.Manager` and functional options:
+Instantiate the conduit with a `*junk.Manager` and functional options:
 
 ```go
 package main
@@ -45,11 +45,11 @@ import (
     "log/slog"
 
     "github.com/andrewhowdencom/ore/x/conduit/stdio"
-    "github.com/andrewhowdencom/ore/session"
+    "github.com/andrewhowdencom/ore/junk"
 )
 
 func main() {
-    mgr := session.NewManager(...)
+    mgr := junk.NewManager(...)
 
     c, err := stdio.New(mgr)
     if err != nil {
@@ -78,14 +78,14 @@ c, err := stdio.New(mgr,
 |---|---|---|---|
 | `WithInput(r io.Reader)` | `io.Reader` | `os.Stdin` | Source for the single user message. |
 | `WithOutput(w io.Writer)` | `io.Writer` | `os.Stdout` | Destination for streaming Markdown output. |
-| `WithThreadID(id string)` | `string` | empty string | Resume an existing thread on start. Empty string creates a new session. |
+| `WithThreadID(id string)` | `string` | empty string | Resume an existing thread on start. Empty string creates a new junk. |
 
 ## Runtime Semantics
 
 ### Session Model
 
 - On start with no `WithThreadID`, the conduit calls `mgr.Create()` to obtain a
-  new ephemeral session.
+  new ephemeral junk.
 - If `WithThreadID(id)` is set, the conduit calls `mgr.Attach(threadID)` to
   resume the existing thread.
 - Newly created sessions are closed when the turn completes. Attached sessions
@@ -128,7 +128,7 @@ aborts processing and returns the cancellation error.
 
 These trigger application-level shutdown:
 
-- Failure to create or attach a session.
+- Failure to create or attach a junk.
 - `io.ReadAll` failure on the input reader.
 - Empty input (zero-length read) returns `no input provided`.
 - `stream.Process()` returns an error (provider failure, handler error, etc.).

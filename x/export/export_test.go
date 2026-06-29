@@ -8,13 +8,13 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/state"
 )
 
 // fixtureThread returns a thread containing at least one of each known
 // artifact type (excluding deltas, which are never persisted).
-func fixtureThread() *session.Thread {
+func fixtureThread() *junk.Thread {
 	buf := &state.Buffer{}
 
 	// System turn with reasoning.
@@ -47,7 +47,7 @@ func fixtureThread() *session.Thread {
 		artifact.Image{URL: "https://example.com/map.png"},
 	)
 
-	return &session.Thread{
+	return &junk.Thread{
 		ID:        "fixture-thread",
 		State:     buf,
 		CreatedAt: time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC),

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 )
 
 // Thread listing pagination parameters.
@@ -101,7 +101,7 @@ func decodeThreadCursor(s string) (threadCursor, error) {
 // "start from the beginning". Returns errInvalidCursor if the cursor
 // cannot be decoded. The input slice is sorted in place; the returned
 // page is a sub-slice of the input.
-func paginateAndSortThreads(threads []*session.Thread, limit int, cursor string) (page []*session.Thread, nextCursor string, err error) {
+func paginateAndSortThreads(threads []*junk.Thread, limit int, cursor string) (page []*junk.Thread, nextCursor string, err error) {
 	if limit < 1 {
 		limit = 1
 	}
@@ -149,7 +149,7 @@ func paginateAndSortThreads(threads []*session.Thread, limit int, cursor string)
 // compareThreads orders threads by (updated_at desc, id asc). The
 // tiebreaker on id is required for deterministic pagination across
 // threads that share a timestamp.
-func compareThreads(a, b *session.Thread) int {
+func compareThreads(a, b *junk.Thread) int {
 	if a.UpdatedAt.Equal(b.UpdatedAt) {
 		return strings.Compare(a.ID, b.ID)
 	}
@@ -162,7 +162,7 @@ func compareThreads(a, b *session.Thread) int {
 // threadIsAfterCursor reports whether t sorts strictly after the cursor
 // position in (updated_at desc, id asc) order. Items equal to the cursor
 // are NOT considered "after"; the cursor is exclusive.
-func threadIsAfterCursor(t *session.Thread, c threadCursor) bool {
+func threadIsAfterCursor(t *junk.Thread, c threadCursor) bool {
 	if t.UpdatedAt.Before(c.UpdatedAt) {
 		return true
 	}
@@ -193,10 +193,10 @@ func parseLimit(s string) int {
 	return n
 }
 
-// summariesFrom converts a slice of session.Thread pointers into the
+// summariesFrom converts a slice of junk.Thread pointers into the
 // JSON-ready summary form used by the listing response. Each summary
 // includes a 120-character preview excerpt from the first user turn.
-func summariesFrom(threads []*session.Thread) []threadSummaryJSON {
+func summariesFrom(threads []*junk.Thread) []threadSummaryJSON {
 	out := make([]threadSummaryJSON, 0, len(threads))
 	for _, t := range threads {
 		out = append(out, threadSummaryJSON{

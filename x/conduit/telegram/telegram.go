@@ -13,7 +13,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/state"
 
 	"github.com/andrewhowdencom/ore/x/conduit"
@@ -33,7 +33,7 @@ var Descriptor = conduit.Descriptor{
 
 // telegramConduit implements conduit.Conduit for the Telegram Bot API.
 type telegramConduit struct {
-	mgr      *session.Manager
+	mgr      *junk.Manager
 	botToken string
 	client   *http.Client
 	timeout  int // getUpdates timeout in seconds
@@ -80,7 +80,7 @@ func withBaseURL(url string) Option {
 }
 
 // New creates a new Telegram conduit that implements conduit.Conduit.
-func New(mgr *session.Manager, opts ...Option) (conduit.Conduit, error) {
+func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error) {
 	if mgr == nil {
 		return nil, fmt.Errorf("session manager is required")
 	}
@@ -203,7 +203,7 @@ func (c *telegramConduit) poll(ctx context.Context, botUserID int64) {
 				turnCtx, span = c.tracer.Start(turnCtx, "telegram.turn", trace.WithSpanKind(trace.SpanKindServer))
 			}
 
-			event := session.UserMessageEvent{
+			event := junk.UserMessageEvent{
 				Content: update.Message.Text,
 				Ctx:     loop.WithProvenance(turnCtx, "telegram"),
 			}
@@ -225,7 +225,7 @@ func (c *telegramConduit) poll(ctx context.Context, botUserID int64) {
 // thread ID (Telegram chat_id). If the thread does not exist in the store, it
 // creates one with the chat_id as its deterministic ID so that future sessions
 // for the same chat can be resumed.
-func (c *telegramConduit) getOrCreateStream(chatIDStr string) (*session.Stream, error) {
+func (c *telegramConduit) getOrCreateStream(chatIDStr string) (*junk.Stream, error) {
 	stream, err := c.mgr.Attach(chatIDStr)
 	if err == nil {
 		return stream, nil
