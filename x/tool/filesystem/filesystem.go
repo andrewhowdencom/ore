@@ -497,6 +497,54 @@ func EditFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, e
 	}, nil
 }
 
+// editDisplay renders the proposed edit_file change as a git-style
+// diff in Markdown. It is attached to ToolCall.Display by
+// EditFileTool.DisplayHint and read by display-layer conduits via
+// MarkdownRenderer. It is purely a display artifact — never sent to
+// the provider.
+type editDisplay struct {
+	// Old is the exact text being replaced.
+	Old string
+	// New is the replacement text.
+	New string
+}
+
+// MarshalMarkdown returns the Markdown representation of the proposed
+// edit. Single-line edits render as two bare lines ("- old\n+ new"),
+// matching git diff convention. Multi-line edits render as a fenced
+// ```diff block with one "-" line per old line and one "+" line per
+// new line; glamour's chroma highlighter colours the gutter red/green.
+func (d *editDisplay) MarshalMarkdown() string {
+	oldLines := strings.Split(d.Old, "\n")
+	newLines := strings.Split(d.New, "\n")
+
+	// Single-line special case: two bare lines, no fence.
+	// Matches git diff convention; avoids the visual overhead of a
+	// fenced block for what is effectively a one-line change.
+	if len(oldLines) == 1 && len(newLines) == 1 {
+		return fmt.Sprintf("-%s\n+%s", oldLines[0], newLines[0])
+	}
+
+	var sb strings.Builder
+	sb.WriteString("```diff\n")
+	for _, line := range oldLines {
+		sb.WriteString("-")
+		sb.WriteString(line)
+		sb.WriteString("\n")
+	}
+	for _, line := range newLines {
+		sb.WriteString("+")
+		sb.WriteString(line)
+		sb.WriteString("\n")
+	}
+	sb.WriteString("```")
+	return sb.String()
+}
+
+// Compile-time assertion: *editDisplay implements MarkdownRenderer
+// so the framework's display pipeline picks up the rich rendering.
+var _ artifact.MarkdownRenderer = (*editDisplay)(nil)
+
 // EditFileTool is the tool.Tool descriptor for EditFile.
 var EditFileTool = tool.Tool{
 	Name:        "edit_file",
@@ -520,7 +568,10 @@ var EditFileTool = tool.Tool{
 		"required": []string{"path", "old_string", "new_string"},
 	},
 	DisplayHint: func(args map[string]any) any {
-		return fmt.Sprintf("✏️ edit_file(%s)", toString(args["path"]))
+		return &editDisplay{
+			Old: toString(args["old_string"]),
+			New: toString(args["new_string"]),
+		}
 	},
 }
 
