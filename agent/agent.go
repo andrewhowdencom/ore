@@ -8,7 +8,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -28,7 +28,7 @@ type Agent struct {
 	handlers   []loop.Handler
 	invokeOpts []provider.InvokeOption
 	pattern    cognitive.Pattern
-	state      state.State
+	state      ledger.State
 	tracer     trace.Tracer
 
 	closeOnce sync.Once
@@ -74,7 +74,7 @@ func New(name string, opts ...Option) *Agent {
 	return a
 }
 
-// Run executes the configured pattern against the given state. The
+// Run executes the configured pattern against the given ledger. The
 // caller may invoke Run any number of times; the same internal step
 // is reused.
 //
@@ -85,7 +85,7 @@ func New(name string, opts ...Option) *Agent {
 // When a tracer is configured, Run records an "agent.run" span
 // (Internal) with agent.name and agent.pattern attributes. The span
 // is the parent of any loop.turn span emitted by Step.Turn.
-func (a *Agent) Run(ctx context.Context, st state.State) (state.State, error) {
+func (a *Agent) Run(ctx context.Context, st ledger.State) (ledger.State, error) {
 	if a.tracer != nil {
 		var span trace.Span
 		ctx, span = a.tracer.Start(ctx, "agent.run",

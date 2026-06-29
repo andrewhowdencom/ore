@@ -2,7 +2,7 @@
 // formatting constraints into the inference context without mutating the
 // persistent conversation buffer.
 //
-// Each configured rule is injected as a separate state.RoleUser turn
+// Each configured rule is injected as a separate ledger.RoleUser turn
 // containing a artifact.Text artifact. Using RoleUser (rather than
 // RoleSystem) gives the guardrails the weight of user instructions,
 // distinct from the persona set by x/systemprompt.

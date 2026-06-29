@@ -9,7 +9,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -157,7 +157,7 @@ func (s *stdio) Start(ctx context.Context) error {
 					}
 
 				case loop.TurnCompleteEvent:
-					if e.Turn.Role != state.RoleAssistant {
+					if e.Turn.Role != ledger.RoleAssistant {
 						continue
 					}
 					if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {

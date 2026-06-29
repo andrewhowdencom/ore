@@ -12,7 +12,7 @@ import (
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +27,7 @@ type stubProvider struct {
 
 var _ provider.Provider = (*stubProvider)(nil)
 
-func (s *stubProvider) Invoke(_ context.Context, _ state.State, _ models.Spec, ch chan<- artifact.Artifact, _ ...provider.InvokeOption) error {
+func (s *stubProvider) Invoke(_ context.Context, _ ledger.State, _ models.Spec, ch chan<- artifact.Artifact, _ ...provider.InvokeOption) error {
 	for _, a := range s.artifacts {
 		ch <- a
 	}
@@ -162,7 +162,7 @@ func TestLoadCases(t *testing.T) {
 }
 
 func TestAssistantText(t *testing.T) {
-	turn := state.Turn{
+	turn := ledger.Turn{
 		Artifacts: []artifact.Artifact{
 			artifact.TextDelta{Content: "a"},
 			artifact.TextDelta{Content: "b"},

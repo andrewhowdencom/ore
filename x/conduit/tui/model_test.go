@@ -16,7 +16,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/compaction"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
@@ -62,13 +62,13 @@ func TestModel_Update_Turn(t *testing.T) {
 	// Simulate incremental artifact event arriving before TurnCompleteEvent.
 	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "hello world"}})
 	mm := newM.(*model)
-	turn := state.Turn{
-		Role: state.RoleAssistant,
+	turn := ledger.Turn{
+		Role: ledger.RoleAssistant,
 	}
 	newM2, _ := mm.Update(turnMsg{turn: turn})
 	mm2 := newM2.(*model)
 	require.Len(t, mm2.turns, 1)
-	assert.Equal(t, state.RoleAssistant, mm2.turns[0].role)
+	assert.Equal(t, ledger.RoleAssistant, mm2.turns[0].role)
 	require.Len(t, mm2.turns[0].blocks, 1)
 	assert.Equal(t, "text", mm2.turns[0].blocks[0].kind)
 	assert.Equal(t, "hello world", mm2.turns[0].blocks[0].source)
@@ -84,8 +84,8 @@ func TestModel_Update_Turn_PreservesReasoning(t *testing.T) {
 	mm := newM.(*model)
 	newM2, _ := mm.Update(artifactMsg{artifact: artifact.ReasoningDelta{Content: "let me think..."}})
 	mm2 := newM2.(*model)
-	turn := state.Turn{
-		Role: state.RoleAssistant,
+	turn := ledger.Turn{
+		Role: ledger.RoleAssistant,
 	}
 	newM3, _ := mm2.Update(turnMsg{turn: turn})
 	mm3 := newM3.(*model)
@@ -150,8 +150,8 @@ func TestModel_Update_Turn_Interleaved(t *testing.T) {
 	mm2 := newM2.(*model)
 	newM3, _ := mm2.Update(artifactMsg{artifact: artifact.TextDelta{Content: " world"}})
 	mm3 := newM3.(*model)
-	turn := state.Turn{
-		Role: state.RoleAssistant,
+	turn := ledger.Turn{
+		Role: ledger.RoleAssistant,
 	}
 	newM4, _ := mm3.Update(turnMsg{turn: turn})
 	mm4 := newM4.(*model)
@@ -288,7 +288,7 @@ func TestModel_View_ContainsTurn(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "hello"}}},
+		{role: ledger.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "hello"}}},
 	}
 	m.syncViewport()
 	output := m.View().Content
@@ -310,7 +310,7 @@ func TestModel_View_ContainsAssistantTurn(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "world"}}},
+		{role: ledger.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "world"}}},
 	}
 	m.syncViewport()
 	output := m.View().Content
@@ -328,7 +328,7 @@ func TestModel_View_ContainsToolTurn(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleTool, blocks: []renderedBlock{{title: "Tool", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "result"}}},
+		{role: ledger.RoleTool, blocks: []renderedBlock{{title: "Tool", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "result"}}},
 	}
 	m.syncViewport()
 	output := m.View().Content
@@ -440,7 +440,7 @@ func TestModel_View_ContainsInputAtBottom(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "hello"}}},
+		{role: ledger.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "hello"}}},
 	}
 	output := m.View().Content
 	lines := strings.Split(output, "\n")
@@ -483,7 +483,7 @@ func TestModel_Update_Turn_AutoScrollsViewport(t *testing.T) {
 		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
 		// Pre-populate with tall content so buildContent() exceeds viewport height.
 		m.turns = []renderedTurn{
-			{role: state.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 200)}}},
+			{role: ledger.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 200)}}},
 		}
 		m.viewport.SetContent(m.buildContent())
 		m.viewport.GotoBottom()
@@ -491,8 +491,8 @@ func TestModel_Update_Turn_AutoScrollsViewport(t *testing.T) {
 		require.True(t, m.viewport.AtBottom(), "should start at bottom")
 
 		// Add another tall turn to genuinely increase content height.
-		turn := state.Turn{
-			Role: state.RoleAssistant,
+		turn := ledger.Turn{
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: strings.Repeat("more content ", 200)},
 			},
@@ -508,7 +508,7 @@ func TestModel_Update_Turn_AutoScrollsViewport(t *testing.T) {
 		m := newTestModel()
 		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
 		m.turns = []renderedTurn{
-			{role: state.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 200)}}},
+			{role: ledger.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 200)}}},
 		}
 		m.viewport.SetContent(m.buildContent())
 		m.viewport.GotoBottom()
@@ -516,8 +516,8 @@ func TestModel_Update_Turn_AutoScrollsViewport(t *testing.T) {
 		oldBottom := m.viewport.YOffset()
 		require.False(t, m.viewport.AtBottom(), "should not be at bottom after scrolling up")
 
-		turn := state.Turn{
-			Role: state.RoleAssistant,
+		turn := ledger.Turn{
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: strings.Repeat("more content ", 200)},
 			},
@@ -536,7 +536,7 @@ func TestModel_View_LongHistory_InputAtBottom(t *testing.T) {
 	// Add enough turns to exceed viewport height
 	for i := 0; i < 10; i++ {
 		m.turns = append(m.turns, renderedTurn{
-			role:   state.RoleUser,
+			role:   ledger.RoleUser,
 			blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 20)}},
 		})
 	}
@@ -550,7 +550,7 @@ func TestModel_View_WrapsLongTurn(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(20), viewport.WithHeight(5))
 	m.turns = []renderedTurn{
-		{role: state.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 10)}}},
+		{role: ledger.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 10)}}},
 	}
 	m.syncViewport()
 	output := m.View().Content
@@ -600,8 +600,8 @@ func TestModel_Update_Turn_Assistant_PopulatesRendered(t *testing.T) {
 	// Simulate incremental artifact event with Markdown text.
 	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "# Hello\n\n**bold** text"}})
 	mm := newM.(*model)
-	turn := state.Turn{
-		Role: state.RoleAssistant,
+	turn := ledger.Turn{
+		Role: ledger.RoleAssistant,
 	}
 	newM2, _ := mm.Update(turnMsg{turn: turn})
 	mm2 := newM2.(*model)
@@ -617,8 +617,8 @@ func TestModel_Update_Turn_User_RendersMarkdown(t *testing.T) {
 		theme:    theme.Dark(),
 		md:       mockMarkdownRenderer{output: "rendered hello world"},
 	}
-	turn := state.Turn{
-		Role: state.RoleUser,
+	turn := ledger.Turn{
+		Role: ledger.RoleUser,
 		Artifacts: []artifact.Artifact{
 			artifact.Text{Content: "hello world"},
 		},
@@ -636,8 +636,8 @@ func TestModel_Update_WindowSize_RerendersAssistantTurns(t *testing.T) {
 	// Simulate incremental artifact event with text that wraps differently at different widths.
 	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "# Title\n\nThis is a longer paragraph that should definitely wrap differently at width forty versus width eighty."}})
 	mm := newM.(*model)
-	turn := state.Turn{
-		Role: state.RoleAssistant,
+	turn := ledger.Turn{
+		Role: ledger.RoleAssistant,
 	}
 	newM2, _ := mm.Update(turnMsg{turn: turn})
 	mm2 := newM2.(*model)
@@ -670,8 +670,8 @@ func TestModel_Update_Turn_Assistant_RenderError_Fallback(t *testing.T) {
 	// Simulate incremental artifact event; render error should leave rendered empty.
 	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "# Hello"}})
 	mm := newM.(*model)
-	turn := state.Turn{
-		Role: state.RoleAssistant,
+	turn := ledger.Turn{
+		Role: ledger.RoleAssistant,
 	}
 	newM2, _ := mm.Update(turnMsg{turn: turn})
 	mm2 := newM2.(*model)
@@ -688,8 +688,8 @@ func TestModel_View_AssistantTurn_RenderError_FallbackToPlainText(t *testing.T) 
 	// Simulate incremental artifact event.
 	newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: "plain fallback text"}})
 	mm := newM.(*model)
-	turn := state.Turn{
-		Role: state.RoleAssistant,
+	turn := ledger.Turn{
+		Role: ledger.RoleAssistant,
 	}
 	newM2, _ := mm.Update(turnMsg{turn: turn})
 	mm2 := newM2.(*model)
@@ -708,8 +708,8 @@ func TestModel_Update_WindowSize_RerenderError_KeepsOldCache(t *testing.T) {
 	mm := newM.(*model)
 	newM, _ = mm.Update(renderTickMsg{})
 	mm = newM.(*model)
-	turn := state.Turn{
-		Role: state.RoleAssistant,
+	turn := ledger.Turn{
+		Role: ledger.RoleAssistant,
 	}
 	newM2, _ := mm.Update(turnMsg{turn: turn})
 	mm2 := newM2.(*model)
@@ -773,8 +773,8 @@ func TestModel_Update_Turn_Assistant_EmptyText(t *testing.T) {
 	// Simulate incremental artifact event with empty text.
 	newM, _ := m.Update(artifactMsg{artifact: artifact.Text{Content: ""}})
 	mm := newM.(*model)
-	turn := state.Turn{
-		Role: state.RoleAssistant,
+	turn := ledger.Turn{
+		Role: ledger.RoleAssistant,
 	}
 	newM2, _ := mm.Update(turnMsg{turn: turn})
 	mm2 := newM2.(*model)
@@ -987,8 +987,8 @@ func TestModel_Update_Turn_User_DoesNotClearPending(t *testing.T) {
 	m := model{theme: theme.Dark()}
 	m.pending = true
 
-	turn := state.Turn{
-		Role: state.RoleUser,
+	turn := ledger.Turn{
+		Role: ledger.RoleUser,
 		Artifacts: []artifact.Artifact{
 			artifact.Text{Content: "user message"},
 		},
@@ -1052,8 +1052,8 @@ func TestAutoScroll_MultipleTurns(t *testing.T) {
 		// Simulate incremental artifact event for each assistant turn.
 		newM, _ := m.Update(artifactMsg{artifact: artifact.TextDelta{Content: strings.Repeat("content ", 200)}})
 		m = *newM.(*model)
-		turn := state.Turn{
-			Role: state.RoleAssistant,
+		turn := ledger.Turn{
+			Role: ledger.RoleAssistant,
 		}
 		newM2, _ := m.Update(turnMsg{turn: turn})
 		m = *newM2.(*model)
@@ -1065,7 +1065,7 @@ func TestModel_Update_TurnMsg_DoesNotScrollWhenNotAtBottom(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
 	m.turns = []renderedTurn{
-		{role: state.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 200)}}},
+		{role: ledger.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 200)}}},
 	}
 	m.viewport.SetContent(m.buildContent())
 	m.viewport.GotoBottom()
@@ -1073,8 +1073,8 @@ func TestModel_Update_TurnMsg_DoesNotScrollWhenNotAtBottom(t *testing.T) {
 	oldYOffset := m.viewport.YOffset()
 	require.False(t, m.viewport.AtBottom(), "should not be at bottom after scrolling up")
 
-	turn := state.Turn{
-		Role: state.RoleAssistant,
+	turn := ledger.Turn{
+		Role: ledger.RoleAssistant,
 		Artifacts: []artifact.Artifact{
 			artifact.Text{Content: strings.Repeat("more content ", 200)},
 		},
@@ -1090,7 +1090,7 @@ func TestModel_Update_RenderTickMsg_DoesNotScrollWhenNotAtBottom(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
 	m.turns = []renderedTurn{
-		{role: state.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 200)}}},
+		{role: ledger.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 200)}}},
 	}
 	m.viewport.SetContent(m.buildContent())
 	m.viewport.GotoBottom()
@@ -1115,8 +1115,8 @@ func TestModel_Update_RenderTickMsg_DoesNotScrollWhenNotAtBottom(t *testing.T) {
 
 func TestUnknownArtifact_Ignored(t *testing.T) {
 	m := model{theme: theme.Dark()}
-	turn := state.Turn{
-		Role: state.RoleAssistant,
+	turn := ledger.Turn{
+		Role: ledger.RoleAssistant,
 		Artifacts: []artifact.Artifact{
 			unknownArtifact{},
 		},
@@ -1147,8 +1147,8 @@ func TestModel_Update_Turn_Assistant_DoesNotResetExpandAllDetails(t *testing.T) 
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.expandAllDetails = true
 
-	turn := state.Turn{
-		Role: state.RoleAssistant,
+	turn := ledger.Turn{
+		Role: ledger.RoleAssistant,
 		Artifacts: []artifact.Artifact{
 			artifact.Text{Content: "hello"},
 		},
@@ -1164,19 +1164,19 @@ func TestModel_Update_UserAfterTool_DoesNotResetExpand(t *testing.T) {
 
 	// Simulate an assistant turn with a tool call
 	m.turns = append(m.turns, renderedTurn{
-		role:   state.RoleAssistant,
+		role:   ledger.RoleAssistant,
 		blocks: []renderedBlock{{title: "Tool", style: m.theme.AssistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"}},
 	})
 	// Simulate a tool result turn
 	m.turns = append(m.turns, renderedTurn{
-		role:   state.RoleTool,
+		role:   ledger.RoleTool,
 		blocks: []renderedBlock{{title: "Tool Result", style: m.theme.ToolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"}},
 	})
 	m.expandAllDetails = true
 
 	// User turn should NOT reset expandAllDetails
-	turn := state.Turn{
-		Role: state.RoleUser,
+	turn := ledger.Turn{
+		Role: ledger.RoleUser,
 		Artifacts: []artifact.Artifact{
 			artifact.Text{Content: "hello"},
 		},
@@ -1262,7 +1262,7 @@ func TestModel_Update_ErrorMsg(t *testing.T) {
 
 	assert.False(t, mm.pending, "errorMsg should clear pending")
 	require.Len(t, mm.turns, 1, "errorMsg should append a system error turn")
-	assert.Equal(t, state.RoleSystem, mm.turns[0].role)
+	assert.Equal(t, ledger.RoleSystem, mm.turns[0].role)
 	require.Len(t, mm.turns[0].blocks, 1)
 	assert.Equal(t, "error", mm.turns[0].blocks[0].kind)
 	assert.Equal(t, "boom", mm.turns[0].blocks[0].source)
@@ -1278,7 +1278,7 @@ func TestModel_Update_ErrorMsg_Empty(t *testing.T) {
 
 	assert.False(t, mm.pending, "errorMsg should clear pending")
 	require.Len(t, mm.turns, 1, "errorMsg should append a system error turn")
-	assert.Equal(t, state.RoleSystem, mm.turns[0].role)
+	assert.Equal(t, ledger.RoleSystem, mm.turns[0].role)
 	require.Len(t, mm.turns[0].blocks, 1)
 	assert.Equal(t, "error", mm.turns[0].blocks[0].kind)
 	assert.Equal(t, "", mm.turns[0].blocks[0].source)
@@ -1406,8 +1406,8 @@ func TestModel_Update_ArtifactMsg_FinalizedByTurnMsg(t *testing.T) {
 	mm := newM.(*model)
 	require.Len(t, mm.currentTurn.blocks, 1)
 
-	turn := state.Turn{
-		Role: state.RoleAssistant,
+	turn := ledger.Turn{
+		Role: ledger.RoleAssistant,
 	}
 	newM2, _ := mm.Update(turnMsg{turn: turn})
 	mm2 := newM2.(*model)
@@ -1430,7 +1430,7 @@ func TestModel_Update_ArtifactMsg_ClearedByError(t *testing.T) {
 	assert.Len(t, mm2.currentTurn.blocks, 0, "currentTurn should be cleared on error")
 	assert.False(t, mm2.pending)
 	require.Len(t, mm2.turns, 1, "errorMsg should append a system error turn")
-	assert.Equal(t, state.RoleSystem, mm2.turns[0].role)
+	assert.Equal(t, ledger.RoleSystem, mm2.turns[0].role)
 	assert.Equal(t, "error", mm2.turns[0].blocks[0].kind)
 	assert.Equal(t, "failed", mm2.turns[0].blocks[0].source)
 }
@@ -1498,8 +1498,8 @@ func TestModel_Update_MixedArtifacts_AccumulateInOrder(t *testing.T) {
 	assert.Equal(t, "tool_call", mm3.currentTurn.blocks[2].kind)
 	assert.Equal(t, "call_1", mm3.currentTurn.blocks[2].toolCallID)
 
-	turn := state.Turn{
-		Role: state.RoleAssistant,
+	turn := ledger.Turn{
+		Role: ledger.RoleAssistant,
 		Artifacts: []artifact.Artifact{
 			artifact.Text{Content: "hello"},
 			artifact.Reasoning{Content: "think"},
@@ -1554,8 +1554,8 @@ func TestModel_Update_ErrorMidStream_ClearsAndRecovers(t *testing.T) {
 	assert.False(t, mm3.pending)
 
 	// Finalize the recovery turn.
-	turn := state.Turn{
-		Role: state.RoleAssistant,
+	turn := ledger.Turn{
+		Role: ledger.RoleAssistant,
 		Artifacts: []artifact.Artifact{
 			artifact.Text{Content: "new content"},
 		},
@@ -1563,10 +1563,10 @@ func TestModel_Update_ErrorMidStream_ClearsAndRecovers(t *testing.T) {
 	newM4, _ := mm3.Update(turnMsg{turn: turn})
 	mm4 := newM4.(*model)
 	require.Len(t, mm4.turns, 2)
-	assert.Equal(t, state.RoleSystem, mm4.turns[0].role)
+	assert.Equal(t, ledger.RoleSystem, mm4.turns[0].role)
 	assert.Equal(t, "error", mm4.turns[0].blocks[0].kind)
 	assert.Equal(t, "network error", mm4.turns[0].blocks[0].source)
-	assert.Equal(t, state.RoleAssistant, mm4.turns[1].role)
+	assert.Equal(t, ledger.RoleAssistant, mm4.turns[1].role)
 	assert.Equal(t, "new content", mm4.turns[1].blocks[0].source)
 	assert.False(t, mm4.pending)
 }
@@ -1725,7 +1725,7 @@ func TestModel_Update_AutoScrollLock_PreservesBottom(t *testing.T) {
 		m := newTestModel()
 		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
 		m.turns = []renderedTurn{
-			{role: state.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 200)}}},
+			{role: ledger.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: strings.Repeat("word ", 200)}}},
 		}
 		m.viewport.SetContent(m.buildContent())
 		m.viewport.GotoBottom()
@@ -1799,14 +1799,14 @@ func TestModel_LoadHistory(t *testing.T) {
 		m := newTestModel()
 		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 		m.md = mockMarkdownRenderer{output: "rendered hello world"}
-		m.loadHistory([]state.Turn{
+		m.loadHistory([]ledger.Turn{
 			{
-				Role:      state.RoleUser,
+				Role:      ledger.RoleUser,
 				Artifacts: []artifact.Artifact{artifact.Text{Content: "hello world"}},
 			},
 		}, compaction.BoundaryInfo{})
 		require.Len(t, m.turns, 1)
-		assert.Equal(t, state.RoleUser, m.turns[0].role)
+		assert.Equal(t, ledger.RoleUser, m.turns[0].role)
 		require.Len(t, m.turns[0].blocks, 1)
 		assert.Equal(t, "text", m.turns[0].blocks[0].kind)
 		assert.Equal(t, "hello world", m.turns[0].blocks[0].source)
@@ -1817,14 +1817,14 @@ func TestModel_LoadHistory(t *testing.T) {
 	t.Run("assistant turn with text", func(t *testing.T) {
 		m := newTestModel()
 		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-		m.loadHistory([]state.Turn{
+		m.loadHistory([]ledger.Turn{
 			{
-				Role:      state.RoleAssistant,
+				Role:      ledger.RoleAssistant,
 				Artifacts: []artifact.Artifact{artifact.Text{Content: "response text"}},
 			},
 		}, compaction.BoundaryInfo{})
 		require.Len(t, m.turns, 1)
-		assert.Equal(t, state.RoleAssistant, m.turns[0].role)
+		assert.Equal(t, ledger.RoleAssistant, m.turns[0].role)
 		require.Len(t, m.turns[0].blocks, 1)
 		assert.Equal(t, "text", m.turns[0].blocks[0].kind)
 		assert.Equal(t, "response text", m.turns[0].blocks[0].source)
@@ -1834,35 +1834,35 @@ func TestModel_LoadHistory(t *testing.T) {
 	t.Run("multiple turns in order", func(t *testing.T) {
 		m := newTestModel()
 		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-		m.loadHistory([]state.Turn{
+		m.loadHistory([]ledger.Turn{
 			{
-				Role:      state.RoleUser,
+				Role:      ledger.RoleUser,
 				Artifacts: []artifact.Artifact{artifact.Text{Content: "first"}},
 			},
 			{
-				Role:      state.RoleAssistant,
+				Role:      ledger.RoleAssistant,
 				Artifacts: []artifact.Artifact{artifact.Text{Content: "second"}},
 			},
 			{
-				Role:      state.RoleUser,
+				Role:      ledger.RoleUser,
 				Artifacts: []artifact.Artifact{artifact.Text{Content: "third"}},
 			},
 		}, compaction.BoundaryInfo{})
 		require.Len(t, m.turns, 3)
-		assert.Equal(t, state.RoleUser, m.turns[0].role)
+		assert.Equal(t, ledger.RoleUser, m.turns[0].role)
 		assert.Equal(t, "first", m.turns[0].blocks[0].source)
-		assert.Equal(t, state.RoleAssistant, m.turns[1].role)
+		assert.Equal(t, ledger.RoleAssistant, m.turns[1].role)
 		assert.Equal(t, "second", m.turns[1].blocks[0].source)
-		assert.Equal(t, state.RoleUser, m.turns[2].role)
+		assert.Equal(t, ledger.RoleUser, m.turns[2].role)
 		assert.Equal(t, "third", m.turns[2].blocks[0].source)
 	})
 
 	t.Run("assistant turn with reasoning", func(t *testing.T) {
 		m := newTestModel()
 		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-		m.loadHistory([]state.Turn{
+		m.loadHistory([]ledger.Turn{
 			{
-				Role: state.RoleAssistant,
+				Role: ledger.RoleAssistant,
 				Artifacts: []artifact.Artifact{
 					artifact.Text{Content: "answer"},
 					artifact.Reasoning{Content: "thinking..."},
@@ -1880,16 +1880,16 @@ func TestModel_LoadHistory(t *testing.T) {
 	t.Run("tool turn", func(t *testing.T) {
 		m := newTestModel()
 		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
-		m.loadHistory([]state.Turn{
+		m.loadHistory([]ledger.Turn{
 			{
-				Role: state.RoleTool,
+				Role: ledger.RoleTool,
 				Artifacts: []artifact.Artifact{
 					artifact.ToolResult{ToolCallID: "call_1", Content: "result data"},
 				},
 			},
 		}, compaction.BoundaryInfo{})
 		require.Len(t, m.turns, 1)
-		assert.Equal(t, state.RoleTool, m.turns[0].role)
+		assert.Equal(t, ledger.RoleTool, m.turns[0].role)
 		require.Len(t, m.turns[0].blocks, 1)
 		assert.Equal(t, "tool_result", m.turns[0].blocks[0].kind)
 	})
@@ -1904,9 +1904,9 @@ func TestModel_LoadHistory_WindowSize_Rerenders(t *testing.T) {
 	m.md = rec
 
 	// Load history with assistant text.
-	m.loadHistory([]state.Turn{
+	m.loadHistory([]ledger.Turn{
 		{
-			Role: state.RoleAssistant,
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "text that wraps differently at width forty versus width eighty."},
 			},
@@ -1938,22 +1938,22 @@ func TestModel_Update_ReloadHistory(t *testing.T) {
 
 	// Pre-populate with two turns.
 	m.turns = []renderedTurn{
-		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
-		{role: state.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "hi"}}},
+		{role: ledger.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
+		{role: ledger.RoleAssistant, blocks: []renderedBlock{{kind: "text", source: "hi"}}},
 	}
 
-	replacementTurn := state.Turn{
-		Role: state.RoleSystem,
+	replacementTurn := ledger.Turn{
+		Role: ledger.RoleSystem,
 		Artifacts: []artifact.Artifact{
 			artifact.Text{Content: "compacted summary"},
 		},
 	}
 
-	newM, _ := m.Update(reloadHistoryMsg{turns: []state.Turn{replacementTurn}})
+	newM, _ := m.Update(reloadHistoryMsg{turns: []ledger.Turn{replacementTurn}})
 	mm := newM.(*model)
 
 	require.Len(t, mm.turns, 1)
-	assert.Equal(t, state.RoleSystem, mm.turns[0].role)
+	assert.Equal(t, ledger.RoleSystem, mm.turns[0].role)
 	require.Len(t, mm.turns[0].blocks, 1)
 	assert.Equal(t, "text", mm.turns[0].blocks[0].kind)
 	assert.Equal(t, "compacted summary", mm.turns[0].blocks[0].source)
@@ -1965,10 +1965,10 @@ func TestModel_Update_ReloadHistory_Empty(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
+		{role: ledger.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
 	}
 
-	newM, _ := m.Update(reloadHistoryMsg{turns: []state.Turn{}})
+	newM, _ := m.Update(reloadHistoryMsg{turns: []ledger.Turn{}})
 	mm := newM.(*model)
 
 	assert.Empty(t, mm.turns)
@@ -1983,7 +1983,7 @@ func TestModel_Update_ReloadHistory_PreservesScroll(t *testing.T) {
 	m1.md = mockMarkdownRenderer{output: "rendered\nline"}
 	for i := 0; i < 50; i++ {
 		m1.turns = append(m1.turns, renderedTurn{
-			role:   state.RoleUser,
+			role:   ledger.RoleUser,
 			blocks: []renderedBlock{{kind: "text", source: "any"}},
 		})
 	}
@@ -1992,10 +1992,10 @@ func TestModel_Update_ReloadHistory_PreservesScroll(t *testing.T) {
 	m1.viewport.GotoBottom()
 	assert.True(t, m1.viewport.AtBottom(), "should be at bottom before reload")
 
-	replacementTurns := make([]state.Turn, 50)
+	replacementTurns := make([]ledger.Turn, 50)
 	for i := 0; i < 50; i++ {
-		replacementTurns[i] = state.Turn{
-			Role: state.RoleUser,
+		replacementTurns[i] = ledger.Turn{
+			Role: ledger.RoleUser,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "any"},
 			},
@@ -2013,7 +2013,7 @@ func TestModel_Update_ReloadHistory_PreservesScroll(t *testing.T) {
 	m2.md = mockMarkdownRenderer{output: "rendered\nline"}
 	for i := 0; i < 50; i++ {
 		m2.turns = append(m2.turns, renderedTurn{
-			role:   state.RoleUser,
+			role:   ledger.RoleUser,
 			blocks: []renderedBlock{{kind: "text", source: "any"}},
 		})
 	}
@@ -2033,8 +2033,8 @@ func TestModel_Update_ReloadHistory_ClearsRenderScheduled(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.renderScheduled = true
 
-	newM, _ := m.Update(reloadHistoryMsg{turns: []state.Turn{{
-		Role: state.RoleUser,
+	newM, _ := m.Update(reloadHistoryMsg{turns: []ledger.Turn{{
+		Role: ledger.RoleUser,
 		Artifacts: []artifact.Artifact{
 			artifact.Text{Content: "hello"},
 		},
@@ -2049,8 +2049,8 @@ func TestModel_Update_ReloadHistory_WithPending(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.pending = true
 
-	newM, _ := m.Update(reloadHistoryMsg{turns: []state.Turn{{
-		Role: state.RoleUser,
+	newM, _ := m.Update(reloadHistoryMsg{turns: []ledger.Turn{{
+		Role: ledger.RoleUser,
 		Artifacts: []artifact.Artifact{
 			artifact.Text{Content: "hello"},
 		},
@@ -2064,7 +2064,7 @@ func TestModel_Update_ReloadHistory_NilSlice(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
+		{role: ledger.RoleUser, blocks: []renderedBlock{{kind: "text", source: "hello"}}},
 	}
 
 	newM, _ := m.Update(reloadHistoryMsg{turns: nil})
@@ -2128,7 +2128,7 @@ func TestModel_Update_NoticeMsg(t *testing.T) {
 
 			// Should append a system turn with the notice content.
 			require.Len(t, mm.turns, 1)
-			assert.Equal(t, state.RoleSystem, mm.turns[0].role)
+			assert.Equal(t, ledger.RoleSystem, mm.turns[0].role)
 			require.Len(t, mm.turns[0].blocks, 1)
 			assert.Equal(t, tc.wantKind, mm.turns[0].blocks[0].kind)
 			assert.Equal(t, tc.notice.Content, mm.turns[0].blocks[0].source)
@@ -2208,12 +2208,12 @@ func TestModel_LoadHistory_WithCompactionTurn(t *testing.T) {
 
 	// After the compaction refactor, the turn carries only the
 	// LLM-facing summary text. The boundary marker lives in
-	// state.Meta. The TUI renders both: the collapse marker
+	// ledger.Meta. The TUI renders both: the collapse marker
 	// (sourced from the BoundaryInfo) and the summary body.
-	turns := []state.Turn{
-		{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}},
-		{Role: state.RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "Summary of earlier discussion."}}},
-		{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "ok, continue"}}},
+	turns := []ledger.Turn{
+		{Role: ledger.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}},
+		{Role: ledger.RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "Summary of earlier discussion."}}},
+		{Role: ledger.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "ok, continue"}}},
 	}
 	boundary := compaction.BoundaryInfo{
 		CompactedThrough:     1,
@@ -2256,7 +2256,7 @@ func TestModel_LoadHistory_BoundaryAlone_NoSummary(t *testing.T) {
 	// represented by a BoundaryInfo alone (no summary text). The
 	// TUI renders the collapse marker from the BoundaryInfo.
 	m := newTestModel()
-	turns := []state.Turn{}
+	turns := []ledger.Turn{}
 	boundary := compaction.BoundaryInfo{
 		CompactedThrough:     5,
 		DroppedTurnCount:     5,
@@ -2279,7 +2279,7 @@ func TestModel_LoadHistory_BoundaryAlone_NoSummary_Dropped(t *testing.T) {
 	// that behavior; when the TODO in loadHistory lands (precise
 	// boundary placement), this test will need updating.
 	m := newTestModel()
-	turns := []state.Turn{}
+	turns := []ledger.Turn{}
 	boundary := compaction.BoundaryInfo{
 		CompactedThrough:     5,
 		DroppedTurnCount:     5,

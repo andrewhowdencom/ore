@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,9 +16,9 @@ import (
 // bound to the EventBus, TurnCompleteEvent is automatically appended to that
 // state before OnEmit callbacks run.
 func TestEventBus_Emit_AppendsToStateBeforeOnEmit(t *testing.T) {
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 	eb := newEventBus()
-	eb.state = mem
+	eb.bound = mem
 
 	var onEmitCalled bool
 	var turnsAtOnEmit int
@@ -28,14 +28,14 @@ func TestEventBus_Emit_AppendsToStateBeforeOnEmit(t *testing.T) {
 	}}
 
 	eb.Emit(context.Background(), TurnCompleteEvent{
-		Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}},
+		Turn: ledger.Turn{Role: ledger.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}},
 	})
 
 	require.True(t, onEmitCalled, "OnEmit should have been called")
 	assert.Equal(t, 1, turnsAtOnEmit, "state should have been appended before OnEmit callback")
 	turns := mem.Turns()
 	require.Len(t, turns, 1)
-	assert.Equal(t, state.RoleAssistant, turns[0].Role)
+	assert.Equal(t, ledger.RoleAssistant, turns[0].Role)
 }
 
 // TestEventBus_Emit_OnEmitOrdering verifies that OnEmit callbacks run in
@@ -57,9 +57,9 @@ func TestEventBus_Emit_OnEmitOrdering(t *testing.T) {
 // TestEventBus_Emit_NonTurnCompleteEvent_DoesNotAppendToState verifies that
 // only TurnCompleteEvent triggers state auto-append.
 func TestEventBus_Emit_NonTurnCompleteEvent_DoesNotAppendToState(t *testing.T) {
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 	eb := newEventBus()
-	eb.state = mem
+	eb.bound = mem
 
 	eb.Emit(context.Background(), ArtifactEvent{Artifact: artifact.Text{Content: "hello"}})
 	eb.Emit(context.Background(), LifecycleEvent{Phase: "submitted"})
@@ -69,11 +69,11 @@ func TestEventBus_Emit_NonTurnCompleteEvent_DoesNotAppendToState(t *testing.T) {
 }
 
 // TestEventBus_Emit_WithoutState does not panic when Emit is called with no
-// bound state.
+// bound ledger.
 func TestEventBus_Emit_WithoutState(t *testing.T) {
 	eb := newEventBus()
 	eb.Emit(context.Background(), TurnCompleteEvent{
-		Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}},
+		Turn: ledger.Turn{Role: ledger.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}},
 	})
 	// Should not panic.
 }
@@ -86,7 +86,7 @@ func TestEventBus_Subscribe_ReturnsChannel(t *testing.T) {
 
 	go func() {
 		eb.Emit(context.Background(), ArtifactEvent{Artifact: artifact.TextDelta{Content: "hello"}})
-		eb.Emit(context.Background(), TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant}})
+		eb.Emit(context.Background(), TurnCompleteEvent{Turn: ledger.Turn{Role: ledger.RoleAssistant}})
 	}()
 
 	events := collectEvents(ch, 100*time.Millisecond)

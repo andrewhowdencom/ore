@@ -21,7 +21,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
@@ -130,14 +130,14 @@ func run() error {
 	}
 
 	// Build state with a system prompt and the user message.
-	mem := &state.Buffer{}
-	mem.Append(state.RoleSystem, artifact.Text{Content: fmt.Sprintf(
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleSystem, artifact.Text{Content: fmt.Sprintf(
 		"You are a Go coding agent. Write Go code to files in the current directory (%s). "+
 		"Make sure your code compiles with `go build ./...`, passes tests with `go test ./...`, "+
 		"and is formatted with `gofmt -d .`.",
 		tempDir,
 	)})
-	mem.Append(state.RoleUser, artifact.Text{Content: message})
+	mem.Append(ledger.RoleUser, artifact.Text{Content: message})
 
 	// Create step with tool handler and pre-bound tool options.
 	step := loop.New(

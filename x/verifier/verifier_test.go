@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -16,7 +16,7 @@ type mockVerifier struct {
 	err    error
 }
 
-func (m *mockVerifier) Verify(ctx context.Context, st state.State) (VerificationResult, error) {
+func (m *mockVerifier) Verify(ctx context.Context, st ledger.State) (VerificationResult, error) {
 	return VerificationResult{
 		Name:   m.name,
 		Status: m.status,
@@ -35,7 +35,7 @@ func TestStatus_String(t *testing.T) {
 
 func TestMockVerifier_Verify(t *testing.T) {
 	mv := &mockVerifier{name: "test", status: VerificationPass, report: "ok"}
-	res, err := mv.Verify(context.Background(), &state.Buffer{})
+	res, err := mv.Verify(context.Background(), &ledger.Buffer{})
 	assert.NoError(t, err)
 	assert.Equal(t, "test", res.Name)
 	assert.Equal(t, VerificationPass, res.Status)
@@ -45,7 +45,7 @@ func TestMockVerifier_Verify(t *testing.T) {
 func TestMockVerifier_Verify_WithError(t *testing.T) {
 	wantErr := errors.New("boom")
 	mv := &mockVerifier{name: "fail", status: VerificationError, err: wantErr}
-	res, err := mv.Verify(context.Background(), &state.Buffer{})
+	res, err := mv.Verify(context.Background(), &ledger.Buffer{})
 	assert.ErrorIs(t, err, wantErr)
 	assert.Equal(t, "fail", res.Name)
 	assert.Equal(t, VerificationError, res.Status)

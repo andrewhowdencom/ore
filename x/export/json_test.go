@@ -9,12 +9,12 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 )
 
 func TestJSON(t *testing.T) {
-	buf := &state.Buffer{}
-	buf.Append(state.RoleUser, artifact.Text{Content: "Hello!"})
+	buf := &ledger.Buffer{}
+	buf.Append(ledger.RoleUser, artifact.Text{Content: "Hello!"})
 	thread := &junk.Thread{
 		ID:        "thread-json-1",
 		State:     buf,

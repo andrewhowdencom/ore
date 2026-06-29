@@ -10,7 +10,7 @@ import (
 	"charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
 	"github.com/charmbracelet/x/ansi"
@@ -50,7 +50,7 @@ func TestModel_View_AssistantTurn_WithRendered(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "# Hello", rendered: "pre-rendered glamour output"}}},
+		{role: ledger.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "# Hello", rendered: "pre-rendered glamour output"}}},
 	}
 	m.syncViewport()
 	output := m.View().Content
@@ -71,7 +71,7 @@ func TestModel_View_AssistantTurn_FallbackToPlainText(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "plain text"}}},
+		{role: ledger.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "plain text"}}},
 	}
 	m.syncViewport()
 	output := m.View().Content
@@ -90,7 +90,7 @@ func TestModel_View_AssistantTurn_WithReasoning(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.expandAllDetails = true
 	m.turns = []renderedTurn{
-		{role: state.RoleAssistant, blocks: []renderedBlock{
+		{role: ledger.RoleAssistant, blocks: []renderedBlock{
 			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "the answer"},
 			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "because 2+2=4"},
 		}},
@@ -114,7 +114,7 @@ func TestModel_View_AssistantTurn_MultiBlockSpacing(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.expandAllDetails = true
 	m.turns = []renderedTurn{
-		{role: state.RoleAssistant, blocks: []renderedBlock{
+		{role: ledger.RoleAssistant, blocks: []renderedBlock{
 			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "let me think..."},
 			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "the answer"},
 		}},
@@ -143,8 +143,8 @@ func TestModel_View_AssistantTurn_Reasoning_Rendered(t *testing.T) {
 	// Simulate incremental artifact event arriving before TurnCompleteEvent.
 	newM, _ := m.Update(artifactMsg{artifact: artifact.ReasoningDelta{Content: "let me think..."}})
 	mm := newM.(*model)
-	turn := state.Turn{
-		Role: state.RoleAssistant,
+	turn := ledger.Turn{
+		Role: ledger.RoleAssistant,
 		Artifacts: []artifact.Artifact{
 			artifact.Reasoning{Content: "let me think..."},
 		},
@@ -165,7 +165,7 @@ func TestBuildContent_CacheHit(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "hello"}}},
+		{role: ledger.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "hello"}}},
 	}
 	first := m.buildContent()
 	require.False(t, m.contentDirty, "buildContent should clear dirty flag")
@@ -180,7 +180,7 @@ func TestBuildContent_Reasoning_Compact(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleAssistant, blocks: []renderedBlock{
+		{role: ledger.RoleAssistant, blocks: []renderedBlock{
 			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "the answer", rendered: "the answer"},
 			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "because 2+2=4"},
 		}},
@@ -198,7 +198,7 @@ func TestBuildContent_Reasoning_Expanded(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleAssistant, blocks: []renderedBlock{
+		{role: ledger.RoleAssistant, blocks: []renderedBlock{
 			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "the answer", rendered: "the answer"},
 			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "because 2+2=4", rendered: "rendered-reasoning"},
 		}},
@@ -217,11 +217,11 @@ func TestBuildContent_Reasoning_ExpandAllDetails_GlobalScope(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleAssistant, blocks: []renderedBlock{
+		{role: ledger.RoleAssistant, blocks: []renderedBlock{
 			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "first answer", rendered: "first answer"},
 			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "first reasoning", rendered: "first-reasoning"},
 		}},
-		{role: state.RoleAssistant, blocks: []renderedBlock{
+		{role: ledger.RoleAssistant, blocks: []renderedBlock{
 			{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "latest answer", rendered: "latest answer"},
 			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "latest reasoning", rendered: "latest-reasoning"},
 		}},
@@ -249,8 +249,8 @@ func TestModel_Update_KeyCtrlO_TogglesReasoningExpansion(t *testing.T) {
 	// Simulate incremental artifact event arriving before TurnCompleteEvent.
 	newM, _ := m.Update(artifactMsg{artifact: artifact.ReasoningDelta{Content: "let me think..."}})
 	mm := newM.(*model)
-	turn := state.Turn{
-		Role: state.RoleAssistant,
+	turn := ledger.Turn{
+		Role: ledger.RoleAssistant,
 		Artifacts: []artifact.Artifact{
 			artifact.Reasoning{Content: "let me think..."},
 		},
@@ -496,8 +496,8 @@ func TestRenderReasoning_ErrorFallback(t *testing.T) {
 	// Simulate incremental artifact event arriving before TurnCompleteEvent.
 	newM, _ := m.Update(artifactMsg{artifact: artifact.ReasoningDelta{Content: "let me think..."}})
 	mm := newM.(*model)
-	turn := state.Turn{
-		Role: state.RoleAssistant,
+	turn := ledger.Turn{
+		Role: ledger.RoleAssistant,
 		Artifacts: []artifact.Artifact{
 			artifact.Reasoning{Content: "let me think..."},
 		},
@@ -681,7 +681,7 @@ func TestBuildContent_ExpandLatestTools_Toggle(t *testing.T) {
 
 	m.turns = []renderedTurn{
 		{
-			role: state.RoleAssistant,
+			role: ledger.RoleAssistant,
 			blocks: []renderedBlock{
 				{
 					kind:       "tool_call",
@@ -692,7 +692,7 @@ func TestBuildContent_ExpandLatestTools_Toggle(t *testing.T) {
 			},
 		},
 		{
-			role: state.RoleTool,
+			role: ledger.RoleTool,
 			blocks: []renderedBlock{
 				{
 					kind:       "tool_result",
@@ -724,13 +724,13 @@ func TestBuildContent_CompactToolError_RedStyling(t *testing.T) {
 
 	m.turns = []renderedTurn{
 		{
-			role: state.RoleAssistant,
+			role: ledger.RoleAssistant,
 			blocks: []renderedBlock{
 				{title: "Tool", style: m.theme.AssistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
 			},
 		},
 		{
-			role: state.RoleTool,
+			role: ledger.RoleTool,
 			blocks: []renderedBlock{
 				{
 					kind:       "tool_result",
@@ -762,14 +762,14 @@ func TestBuildContent_MultipleToolCalls(t *testing.T) {
 
 	m.turns = []renderedTurn{
 		{
-			role: state.RoleAssistant,
+			role: ledger.RoleAssistant,
 			blocks: []renderedBlock{
 				{title: "Tool", style: m.theme.AssistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
 				{title: "Tool", style: m.theme.AssistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: bar({})", compact: "bar", toolCallID: "call_2"},
 			},
 		},
 		{
-			role: state.RoleTool,
+			role: ledger.RoleTool,
 			blocks: []renderedBlock{
 				{title: "Tool Result", style: m.theme.ToolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result1", compact: "result1", toolCallID: "call_1"},
 				{title: "Tool Result", style: m.theme.ToolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result2", compact: "result2", toolCallID: "call_2"},
@@ -804,7 +804,7 @@ func TestBuildContent_MixedBlocks(t *testing.T) {
 	// blocks interleaved. tool_result blocks belong in separate RoleTool turns.
 	m.turns = []renderedTurn{
 		{
-			role: state.RoleAssistant,
+			role: ledger.RoleAssistant,
 			blocks: []renderedBlock{
 				{title: "Tool", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "intro", rendered: "intro"},
 				{title: "Tool", style: m.theme.AssistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
@@ -813,7 +813,7 @@ func TestBuildContent_MixedBlocks(t *testing.T) {
 			},
 		},
 		{
-			role: state.RoleTool,
+			role: ledger.RoleTool,
 			blocks: []renderedBlock{
 				{title: "Tool Result", style: m.theme.ToolResultStyle, expandedByDefault: false, kind: "tool_result", source: "result", compact: "result", toolCallID: "call_1"},
 			},
@@ -847,7 +847,7 @@ func TestView_ZeroWidthViewport_NoPanic(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(0), viewport.WithHeight(10))
 	m.turns = []renderedTurn{
-		{role: state.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "hello world"}}},
+		{role: ledger.RoleUser, blocks: []renderedBlock{{title: "You", style: lipgloss.NewStyle(), expandedByDefault: true, kind: "text", source: "hello world"}}},
 	}
 
 	// Should not panic with zero-width viewport.
@@ -859,7 +859,7 @@ func TestBuildContent_ToggleNoToolBlocks(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 
 	m.turns = []renderedTurn{
-		{role: state.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "hello", rendered: "hello"}}},
+		{role: ledger.RoleAssistant, blocks: []renderedBlock{{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "hello", rendered: "hello"}}},
 	}
 
 	// Toggle on — no tool blocks, view should be unchanged
@@ -876,7 +876,7 @@ func TestBuildContent_CompactToolCall_BlockStyling(t *testing.T) {
 
 	m.turns = []renderedTurn{
 		{
-			role: state.RoleAssistant,
+			role: ledger.RoleAssistant,
 			blocks: []renderedBlock{
 				{title: "Tool", style: m.theme.AssistantStyle, expandedByDefault: false, kind: "tool_call", source: "Calling: foo({})", compact: "foo", toolCallID: "call_1"},
 			},
@@ -1024,7 +1024,7 @@ func TestBuildContent_HistoricalReasoning_CharCount(t *testing.T) {
 	m := newTestModel()
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.turns = []renderedTurn{
-		{role: state.RoleAssistant, blocks: []renderedBlock{
+		{role: ledger.RoleAssistant, blocks: []renderedBlock{
 			{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "historical reasoning"},
 		}},
 	}
@@ -1051,7 +1051,7 @@ func TestRenderArtifact_ToolCall_MarkdownRenderer(t *testing.T) {
 		Arguments: `{"command":"go test ./..."}`,
 		Display:   mockMarkdownValue{output: "```bash\n$ go test ./...\n```"},
 	}
-	block := m.renderArtifact(tc, state.RoleAssistant)
+	block := m.renderArtifact(tc, ledger.RoleAssistant)
 	assert.Equal(t, "tool_call", block.kind)
 	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "```bash\n$ go test ./...\n```", block.source)
@@ -1067,7 +1067,7 @@ func TestRenderArtifact_ToolCall_FallbackToArguments(t *testing.T) {
 		Name:      "search",
 		Arguments: `{"q":"hello"}`,
 	}
-	block := m.renderArtifact(tc, state.RoleAssistant)
+	block := m.renderArtifact(tc, ledger.RoleAssistant)
 	assert.Equal(t, "tool_call", block.kind)
 	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "Calling: search({\"q\":\"hello\"})", block.source)
@@ -1082,7 +1082,7 @@ func TestRenderArtifact_ToolResult_MarkdownRenderer(t *testing.T) {
 		Content:    `{"raw":"json"}`,
 		Value:      mockMarkdownValue{output: "# Custom Markdown"},
 	}
-	block := m.renderArtifact(tr, state.RoleTool)
+	block := m.renderArtifact(tr, ledger.RoleTool)
 	assert.Equal(t, "tool_result", block.kind)
 	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "# Custom Markdown", block.source)
@@ -1099,7 +1099,7 @@ func TestRenderArtifact_ToolResult_JSONFallback(t *testing.T) {
 		Content:    "fallback",
 		Value:      "json value",
 	}
-	block := m.renderArtifact(tr, state.RoleTool)
+	block := m.renderArtifact(tr, ledger.RoleTool)
 	assert.Equal(t, "tool_result", block.kind)
 	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "```json\n\"json value\"\n```", block.source)
@@ -1116,7 +1116,7 @@ func TestRenderArtifact_ToolResult_Error(t *testing.T) {
 		Content:    "failed",
 		IsError:    true,
 	}
-	block := m.renderArtifact(tr, state.RoleTool)
+	block := m.renderArtifact(tr, ledger.RoleTool)
 	assert.Equal(t, "tool_result", block.kind)
 	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "Error: failed", block.source)
@@ -1132,7 +1132,7 @@ func TestRenderArtifact_ToolResult_ContentFallback(t *testing.T) {
 		ToolCallID: "call_1",
 		Content:    "plain content",
 	}
-	block := m.renderArtifact(tr, state.RoleTool)
+	block := m.renderArtifact(tr, ledger.RoleTool)
 	assert.Equal(t, "tool_result", block.kind)
 	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "plain content", block.source)
@@ -1148,7 +1148,7 @@ func TestRenderArtifact_ToolResult_CompactFromRendered(t *testing.T) {
 		ToolCallID: "call_1",
 		Content:    "raw result",
 	}
-	block := m.renderArtifact(tr, state.RoleTool)
+	block := m.renderArtifact(tr, ledger.RoleTool)
 	assert.Equal(t, "tool_result", block.kind)
 	assert.Equal(t, "call_1", block.toolCallID)
 	assert.Equal(t, "raw result", block.source)
@@ -1471,14 +1471,14 @@ func TestBuildContent_InterMessageSpacing_OneBlankLine(t *testing.T) {
 	// is easy to reason about.
 	m.turns = []renderedTurn{
 		{
-			role:      state.RoleAssistant,
+			role:      ledger.RoleAssistant,
 			timestamp: time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
 			blocks: []renderedBlock{
 				{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "hello"},
 			},
 		},
 		{
-			role:      state.RoleAssistant,
+			role:      ledger.RoleAssistant,
 			timestamp: time.Date(2024, 1, 1, 12, 0, 5, 0, time.UTC),
 			blocks: []renderedBlock{
 				{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "world"},

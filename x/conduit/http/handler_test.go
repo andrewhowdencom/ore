@@ -18,7 +18,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,7 +31,7 @@ type mockProvider struct {
 	err       error
 }
 
-func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *mockProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	for _, art := range m.artifacts {
 		select {
 		case ch <- art:
@@ -62,7 +62,7 @@ func (e *errorFS) ReadFile(name string) ([]byte, error) { return nil, fs.ErrNotE
 
 // simpleProcessor runs a single Step.Turn with the mock provider.
 func simpleProcessor() junk.TurnProcessor {
-	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+	return func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
 		spec := models.Spec{Name: "test-model"}
 		return step.Turn(ctx, st, spec, prov)
 	}
@@ -70,7 +70,7 @@ func simpleProcessor() junk.TurnProcessor {
 
 // boomProcessor always fails.
 func boomProcessor() junk.TurnProcessor {
-	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+	return func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
 		return st, fmt.Errorf("boom")
 	}
 }
@@ -859,7 +859,7 @@ func seedThread(t *testing.T, store *junk.MemoryStore, id string, updatedAt time
 	t.Helper()
 	thr := &junk.Thread{
 		ID:        id,
-		State:     &state.Buffer{},
+		State:     &ledger.Buffer{},
 		CreatedAt: updatedAt,
 		UpdatedAt: updatedAt,
 		Metadata:  map[string]string{},
@@ -1275,7 +1275,7 @@ func TestHandler_WithUI_LandingPage(t *testing.T) {
 	// Seed a thread with a user message so we can verify snippet extraction.
 	thr, err := store.Create()
 	require.NoError(t, err)
-	thr.State.Append(state.RoleUser, artifact.Text{Content: "Hello world this is a test message for preview"})
+	thr.State.Append(ledger.RoleUser, artifact.Text{Content: "Hello world this is a test message for preview"})
 	thr.UpdatedAt = time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	require.NoError(t, store.Save(thr))
 
@@ -1319,7 +1319,7 @@ func TestHandler_WithUI_LandingPage_TruncatedPreview(t *testing.T) {
 	thr, err := store.Create()
 	require.NoError(t, err)
 	longMsg := strings.Repeat("a", 200)
-	thr.State.Append(state.RoleUser, artifact.Text{Content: longMsg})
+	thr.State.Append(ledger.RoleUser, artifact.Text{Content: longMsg})
 	require.NoError(t, store.Save(thr))
 
 	req := httptest.NewRequest("GET", "/", nil)

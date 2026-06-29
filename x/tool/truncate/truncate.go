@@ -28,7 +28,7 @@ import (
 //
 // The function is deterministic and side-effect-free: the input
 // string is never modified, and the returned Truncation is a value
-// type with no shared state.
+// type with no shared ledger.
 func Truncate(s string, cfg tool.TruncateConfig, style tool.TruncationStyle) (string, artifact.Truncation) {
 	originalBytes := len(s)
 	originalLines := countLines(s)

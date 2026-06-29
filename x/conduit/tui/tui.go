@@ -37,7 +37,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/compaction"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
@@ -45,7 +45,7 @@ import (
 )
 
 // readBoundaryFromStream fetches the current compaction BoundaryInfo
-// from the stream's state.Meta, returning the zero value if no
+// from the stream's ledger.Meta, returning the zero value if no
 // boundary has been recorded. The TUI uses this to render the
 // collapse marker at startup; the value is purely advisory
 // (the rendered marker has no semantic effect on the conversation).
@@ -240,7 +240,7 @@ func (t *TUI) initModel(eventsCh chan junk.Event, stream *junk.Stream) model {
 	}
 
 	// Pre-populate the model with historical turns when resuming a thread.
-	// The boundary info is read from state.Meta; loadHistory renders the
+	// The boundary info is read from ledger.Meta; loadHistory renders the
 	// collapse marker if one is present.
 	m.loadHistory(stream.Turns(), readBoundaryFromStream(stream))
 
@@ -397,7 +397,7 @@ func (t *TUI) PlayError(ctx context.Context) error {
 // boundary is the BoundaryInfo for the latest compaction, if any.
 // Pass the zero value when no compaction has occurred; the TUI
 // renders no collapse marker in that case.
-func (t *TUI) ReloadHistory(turns []state.Turn, boundary compaction.BoundaryInfo) error {
+func (t *TUI) ReloadHistory(turns []ledger.Turn, boundary compaction.BoundaryInfo) error {
 	if t.program != nil {
 		t.program.Send(reloadHistoryMsg{turns: turns, boundary: boundary})
 	}

@@ -11,7 +11,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,7 +23,7 @@ type mockProvider struct {
 	err       error
 }
 
-func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *mockProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	for _, art := range m.artifacts {
 		select {
 		case ch <- art:
@@ -36,7 +36,7 @@ func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec,
 
 // simpleProcessor runs a single Step.Turn with the mock provider.
 func simpleProcessor() junk.TurnProcessor {
-	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+	return func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
 		spec := models.Spec{Name: "test-model"}
 		return step.Turn(ctx, st, spec, prov)
 	}
@@ -192,11 +192,11 @@ func TestTUI_InitModel_ResumesThreadWithHistory(t *testing.T) {
 
 	// The model should have both turns pre-populated.
 	require.Len(t, m.turns, 2)
-	assert.Equal(t, state.RoleUser, m.turns[0].role)
+	assert.Equal(t, ledger.RoleUser, m.turns[0].role)
 	require.Len(t, m.turns[0].blocks, 1)
 	assert.Equal(t, "hello", m.turns[0].blocks[0].source)
 
-	assert.Equal(t, state.RoleAssistant, m.turns[1].role)
+	assert.Equal(t, ledger.RoleAssistant, m.turns[1].role)
 	require.Len(t, m.turns[1].blocks, 1)
 	assert.Equal(t, "assistant response", m.turns[1].blocks[0].source)
 	assert.NotEmpty(t, m.turns[1].blocks[0].rendered, "assistant turn should be markdown rendered")

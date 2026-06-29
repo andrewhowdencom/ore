@@ -10,7 +10,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +22,7 @@ type stubProvider struct{}
 
 var _ provider.Provider = (*stubProvider)(nil)
 
-func (s *stubProvider) Invoke(_ context.Context, _ state.State, _ models.Spec, _ chan<- artifact.Artifact, _ ...provider.InvokeOption) error {
+func (s *stubProvider) Invoke(_ context.Context, _ ledger.State, _ models.Spec, _ chan<- artifact.Artifact, _ ...provider.InvokeOption) error {
 	return nil
 }
 
@@ -30,16 +30,16 @@ func (s *stubProvider) Invoke(_ context.Context, _ state.State, _ models.Spec, _
 // It counts invocations and returns the configured state and error.
 type mockTurnRunner struct {
 	calls    int32
-	lastSt   state.State
+	lastSt   ledger.State
 	lastSpec models.Spec
 	lastProv provider.Provider
-	ret      state.State
+	ret      ledger.State
 	err      error
 }
 
 var _ loop.TurnRunner = (*mockTurnRunner)(nil)
 
-func (m *mockTurnRunner) Turn(_ context.Context, st state.State, spec models.Spec, p provider.Provider, _ ...provider.InvokeOption) (state.State, error) {
+func (m *mockTurnRunner) Turn(_ context.Context, st ledger.State, spec models.Spec, p provider.Provider, _ ...provider.InvokeOption) (ledger.State, error) {
 	atomic.AddInt32(&m.calls, 1)
 	m.lastSt = st
 	m.lastSpec = spec
@@ -54,14 +54,14 @@ func TestSingleShot_Name(t *testing.T) {
 func TestSingleShot_Run(t *testing.T) {
 	tests := []struct {
 		name      string
-		ret       state.State
+		ret       ledger.State
 		err       error
 		wantCalls int32
 		wantErr   bool
 	}{
 		{
 			name:      "returns state from step",
-			ret:       &state.Buffer{},
+			ret:       &ledger.Buffer{},
 			wantCalls: 1,
 		},
 		{
@@ -79,7 +79,7 @@ func TestSingleShot_Run(t *testing.T) {
 				Provider: &stubProvider{},
 				Spec:     models.Spec{Name: "test"},
 			}
-			st := &state.Buffer{}
+			st := &ledger.Buffer{}
 			result, err := pat.Run(context.Background(), st)
 			require.Equal(t, tt.wantCalls, atomic.LoadInt32(&mock.calls))
 			if tt.wantErr {
@@ -96,13 +96,13 @@ func TestSingleShot_Run(t *testing.T) {
 }
 
 func TestSingleShot_Run_ForwardsAllArgs(t *testing.T) {
-	mock := &mockTurnRunner{ret: &state.Buffer{}}
+	mock := &mockTurnRunner{ret: &ledger.Buffer{}}
 	pat := &SingleShot{
 		Step:     mock,
 		Provider: &stubProvider{},
 		Spec:     models.Spec{Name: "specific", Window: 100, MaxOutputTokens: 200},
 	}
-	st := &state.Buffer{}
+	st := &ledger.Buffer{}
 	_, err := pat.Run(context.Background(), st)
 	require.NoError(t, err)
 	assert.Equal(t, models.Spec{Name: "specific", Window: 100, MaxOutputTokens: 200}, mock.lastSpec)

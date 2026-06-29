@@ -14,7 +14,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"go.opentelemetry.io/otel/trace"
@@ -122,7 +122,7 @@ func (c *telegramConduit) Start(ctx context.Context) error {
 		}
 
 		// Only reply to assistant turns.
-		if tc.Turn.Role != state.RoleAssistant {
+		if tc.Turn.Role != ledger.RoleAssistant {
 			return
 		}
 

@@ -70,7 +70,7 @@ more internal complexity provided it is self-contained.
   concrete types, no logic.
 - `provider/provider.go` (~60 lines): one interface `Invoke()`, one marker
   interface, one helper. No branching logic.
-- `state/state.go` (~30 lines): one interface with two methods, one struct.
+- `ledger/ledger.go` (~30 lines): one interface with two methods, one struct.
 - `x/conduit/conduit.go` (~55 lines): one interface `Start()`, capability
   constants, one descriptor struct.
 
@@ -248,7 +248,7 @@ If any of the following are true, **STOP** and reassess:
   (~105 lines, one public interface, concrete types).
 - `provider/provider.go` — exemplar of a minimal provider contract
   (~60 lines, one method interface).
-- `state/state.go` — exemplar of minimal state abstraction (~30 lines,
+- `ledger/ledger.go` — exemplar of minimal state abstraction (~30 lines,
   two-method interface).
 - `x/conduit/conduit.go` — exemplar of minimal conduit interface
   (~55 lines, one method interface).

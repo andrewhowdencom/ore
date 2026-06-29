@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -37,7 +37,7 @@ func TestJSONStore_SaveUpdatesFile(t *testing.T) {
 	require.NoError(t, err)
 
 	// Append a turn and save.
-	thread.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	thread.State.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	err = store.Save(thread)
 	require.NoError(t, err)
 
@@ -49,7 +49,7 @@ func TestJSONStore_SaveUpdatesFile(t *testing.T) {
 	require.NoError(t, err)
 	turns := got.State.Turns()
 	require.Len(t, turns, 1)
-	assert.Equal(t, state.RoleUser, turns[0].Role)
+	assert.Equal(t, ledger.RoleUser, turns[0].Role)
 	require.Len(t, turns[0].Artifacts, 1)
 	assert.Equal(t, "text", turns[0].Artifacts[0].Kind())
 }
@@ -61,7 +61,7 @@ func TestJSONStore_GetLoadsFromDisk(t *testing.T) {
 
 	thread, err := store.Create()
 	require.NoError(t, err)
-	thread.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	thread.State.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	require.NoError(t, store.Save(thread))
 
 	// Create a fresh store pointing at the same directory.
@@ -105,12 +105,12 @@ func TestJSONStore_RestartRecoversThreads(t *testing.T) {
 
 	thread1, err := store1.Create()
 	require.NoError(t, err)
-	thread1.State.Append(state.RoleUser, artifact.Text{Content: "msg1"})
+	thread1.State.Append(ledger.RoleUser, artifact.Text{Content: "msg1"})
 	require.NoError(t, store1.Save(thread1))
 
 	thread2, err := store1.Create()
 	require.NoError(t, err)
-	thread2.State.Append(state.RoleUser, artifact.Text{Content: "msg2"})
+	thread2.State.Append(ledger.RoleUser, artifact.Text{Content: "msg2"})
 	require.NoError(t, store1.Save(thread2))
 
 	// Second store instance (simulating process restart).
@@ -136,7 +136,7 @@ func TestJSONStore_CreatedAtPreserved(t *testing.T) {
 	createdAt := thread.CreatedAt
 
 	time.Sleep(1 * time.Millisecond)
-	thread.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	thread.State.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	require.NoError(t, store1.Save(thread))
 
 	store2, err := NewJSONStore(dir)
@@ -197,11 +197,11 @@ func TestJSONStore_CorruptedFile(t *testing.T) {
 	// Write a valid thread file.
 	valid := &Thread{
 		ID:        "good",
-		State:     &state.Buffer{},
+		State:     &ledger.Buffer{},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	valid.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	valid.State.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	data, err := json.Marshal(valid)
 	require.NoError(t, err)
 	err = os.WriteFile(filepath.Join(dir, "good.json"), data, 0644)
@@ -243,7 +243,7 @@ func TestJSONStore_ConcurrentCreateSaveGet(t *testing.T) {
 			defer wg.Done()
 			thread, err := store.Create()
 			require.NoError(t, err)
-			thread.State.Append(state.RoleUser, artifact.Text{Content: fmt.Sprintf("msg-%d", i)})
+			thread.State.Append(ledger.RoleUser, artifact.Text{Content: fmt.Sprintf("msg-%d", i)})
 			require.NoError(t, store.Save(thread))
 
 			got, err := store.Get(thread.ID)

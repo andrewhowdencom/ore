@@ -10,7 +10,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -188,7 +188,7 @@ func New(inner provider.Provider, opts ...Option) *Provider {
 // confuses subscribers and risks double-billing on token-based
 // providers. Emission state resets per attempt; the rule applies to
 // the current attempt only.
-func (p *Provider) Invoke(ctx context.Context, s state.State, spec models.Spec, ch chan<- artifact.Artifact, oo ...provider.InvokeOption) error {
+func (p *Provider) Invoke(ctx context.Context, s ledger.State, spec models.Spec, ch chan<- artifact.Artifact, oo ...provider.InvokeOption) error {
 	var span trace.Span
 	if p.opts.tracer != nil {
 		ctx, span = p.opts.tracer.Start(ctx, "retry.invoke", trace.WithSpanKind(trace.SpanKindInternal))

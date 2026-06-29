@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -48,7 +48,7 @@ func TestMemoryStore_Save(t *testing.T) {
 	time.Sleep(1 * time.Millisecond) // ensure time advances
 
 	// Append a turn and save.
-	thread.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	thread.State.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	err = store.Save(thread)
 	require.NoError(t, err)
 

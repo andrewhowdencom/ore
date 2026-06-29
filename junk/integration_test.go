@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,8 +26,8 @@ func TestJSONStore_CrossConduitContinuity(t *testing.T) {
 	thread.Metadata["slack.thread_ts"] = "1234567890.123456"
 
 	// Step 2: Append user and assistant turns.
-	thread.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
-	thread.State.Append(state.RoleAssistant, artifact.Text{Content: "hi there"})
+	thread.State.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
+	thread.State.Append(ledger.RoleAssistant, artifact.Text{Content: "hi there"})
 
 	// Step 3: Save the thread.
 	time.Sleep(1 * time.Millisecond) // ensure time advances
@@ -46,12 +46,12 @@ func TestJSONStore_CrossConduitContinuity(t *testing.T) {
 	turns := got.State.Turns()
 	require.Len(t, turns, 2)
 
-	assert.Equal(t, state.RoleUser, turns[0].Role)
+	assert.Equal(t, ledger.RoleUser, turns[0].Role)
 	require.Len(t, turns[0].Artifacts, 1)
 	assert.Equal(t, "text", turns[0].Artifacts[0].Kind())
 	assert.Equal(t, artifact.Text{Content: "hello"}, turns[0].Artifacts[0])
 
-	assert.Equal(t, state.RoleAssistant, turns[1].Role)
+	assert.Equal(t, ledger.RoleAssistant, turns[1].Role)
 	require.Len(t, turns[1].Artifacts, 1)
 	assert.Equal(t, "text", turns[1].Artifacts[0].Kind())
 	assert.Equal(t, artifact.Text{Content: "hi there"}, turns[1].Artifacts[0])
@@ -66,13 +66,13 @@ func TestJSONStore_CrossConduitContinuity(t *testing.T) {
 func TestThread_MarshalJSON(t *testing.T) {
 	thread := &Thread{
 		ID:        "test-id",
-		State:     &state.Buffer{},
+		State:     &ledger.Buffer{},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Metadata:  map[string]string{"channel_id": "123", "user_id": "abc"},
 	}
-	thread.State.Append(state.RoleUser, artifact.Text{Content: "hello"})
-	thread.State.Append(state.RoleAssistant, artifact.Text{Content: "hi there"})
+	thread.State.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
+	thread.State.Append(ledger.RoleAssistant, artifact.Text{Content: "hi there"})
 
 	data, err := json.Marshal(thread)
 	require.NoError(t, err)
@@ -87,6 +87,6 @@ func TestThread_MarshalJSON(t *testing.T) {
 	assert.Equal(t, thread.Metadata, got.Metadata)
 	turns := got.State.Turns()
 	require.Len(t, turns, 2)
-	assert.Equal(t, state.RoleUser, turns[0].Role)
-	assert.Equal(t, state.RoleAssistant, turns[1].Role)
+	assert.Equal(t, ledger.RoleUser, turns[0].Role)
+	assert.Equal(t, ledger.RoleAssistant, turns[1].Role)
 }

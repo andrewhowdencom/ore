@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -46,13 +46,13 @@ func TestStyleForRole_Mapping(t *testing.T) {
 	// StyleForRole must return the right lipgloss style for each role,
 	// and a sensible fallback for unknown roles.
 	th := Dark()
-	assert.Equal(t, th.AssistantStyle, th.StyleForRole(state.RoleAssistant))
-	assert.Equal(t, th.UserStyle, th.StyleForRole(state.RoleUser))
-	assert.Equal(t, th.ToolResultStyle, th.StyleForRole(state.RoleTool))
-	assert.Equal(t, th.SystemStyle, th.StyleForRole(state.RoleSystem))
+	assert.Equal(t, th.AssistantStyle, th.StyleForRole(ledger.RoleAssistant))
+	assert.Equal(t, th.UserStyle, th.StyleForRole(ledger.RoleUser))
+	assert.Equal(t, th.ToolResultStyle, th.StyleForRole(ledger.RoleTool))
+	assert.Equal(t, th.SystemStyle, th.StyleForRole(ledger.RoleSystem))
 	// Unknown role falls back to the assistant style so the output is
 	// still legible.
-	assert.Equal(t, th.AssistantStyle, th.StyleForRole(state.Role("unknown")))
+	assert.Equal(t, th.AssistantStyle, th.StyleForRole(ledger.Role("unknown")))
 }
 
 func TestTheme_Gap(t *testing.T) {

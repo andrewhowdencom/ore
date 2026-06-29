@@ -14,14 +14,14 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 type mockProvider struct{}
 
-func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *mockProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	return nil
 }
 
@@ -31,8 +31,8 @@ func testManager(t *testing.T) *junk.Manager {
 		junk.NewMemoryStore(),
 		&mockProvider{},
 		func(*junk.Stream) ([]loop.Option, error) { return nil, nil },
-		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
-			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "Test reply"})
+		func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
+			return step.Submit(ctx, st, ledger.RoleAssistant, artifact.Text{Content: "Test reply"})
 		},
 	)
 }
@@ -327,9 +327,9 @@ func TestProvenanceFiltering(t *testing.T) {
 	// Create a manager with a processor that preserves the "http" provenance
 	// on the assistant turn. This simulates a multi-conduit setup where another
 	// conduit's events carry their own provenance.
-	preservingProcessor := func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+	preservingProcessor := func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
 		step.SetEventContext(loop.WithProvenance(context.Background(), "http"))
-		return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "Test reply"})
+		return step.Submit(ctx, st, ledger.RoleAssistant, artifact.Text{Content: "Test reply"})
 	}
 
 	mgr := junk.NewManager(
@@ -432,8 +432,8 @@ func TestMultipleTextArtifacts(t *testing.T) {
 		junk.NewMemoryStore(),
 		&mockProvider{},
 		func(*junk.Stream) ([]loop.Option, error) { return nil, nil },
-		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
-			return step.Submit(ctx, st, state.RoleAssistant,
+		func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
+			return step.Submit(ctx, st, ledger.RoleAssistant,
 				artifact.Text{Content: "Hello"},
 				artifact.Text{Content: "World"},
 			)
@@ -515,8 +515,8 @@ func TestEmptyAssistantTurn(t *testing.T) {
 		junk.NewMemoryStore(),
 		&mockProvider{},
 		func(*junk.Stream) ([]loop.Option, error) { return nil, nil },
-		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
-			return step.Submit(ctx, st, state.RoleAssistant)
+		func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
+			return step.Submit(ctx, st, ledger.RoleAssistant)
 		},
 	)
 
@@ -600,8 +600,8 @@ func TestNonTextArtifact(t *testing.T) {
 		junk.NewMemoryStore(),
 		&mockProvider{},
 		func(*junk.Stream) ([]loop.Option, error) { return nil, nil },
-		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
-			return step.Submit(ctx, st, state.RoleAssistant, mockArtifact{})
+		func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
+			return step.Submit(ctx, st, ledger.RoleAssistant, mockArtifact{})
 		},
 	)
 
@@ -680,8 +680,8 @@ func TestOffsetAdvancement(t *testing.T) {
 		junk.NewMemoryStore(),
 		&mockProvider{},
 		func(*junk.Stream) ([]loop.Option, error) { return nil, nil },
-		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
-			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "Test reply"})
+		func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
+			return step.Submit(ctx, st, ledger.RoleAssistant, artifact.Text{Content: "Test reply"})
 		},
 	)
 
@@ -731,8 +731,8 @@ func TestGetUpdatesHTTPError(t *testing.T) {
 		junk.NewMemoryStore(),
 		&mockProvider{},
 		func(*junk.Stream) ([]loop.Option, error) { return nil, nil },
-		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
-			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "Test reply"})
+		func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
+			return step.Submit(ctx, st, ledger.RoleAssistant, artifact.Text{Content: "Test reply"})
 		},
 	)
 
@@ -799,9 +799,9 @@ func TestNilChatField(t *testing.T) {
 		junk.NewMemoryStore(),
 		&mockProvider{},
 		func(*junk.Stream) ([]loop.Option, error) { return nil, nil },
-		func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+		func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
 			processCalled.Store(true)
-			return step.Submit(ctx, st, state.RoleAssistant, artifact.Text{Content: "reply"})
+			return step.Submit(ctx, st, ledger.RoleAssistant, artifact.Text{Content: "reply"})
 		},
 	)
 

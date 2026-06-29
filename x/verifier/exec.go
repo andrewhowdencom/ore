@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 )
 
 // ExecVerifier runs a shell command and maps the exit code to a
@@ -25,7 +25,7 @@ var _ Verifier = (*ExecVerifier)(nil)
 
 // Verify runs the configured command and returns a VerificationResult
 // based on the exit code.
-func (e *ExecVerifier) Verify(ctx context.Context, st state.State) (VerificationResult, error) {
+func (e *ExecVerifier) Verify(ctx context.Context, st ledger.State) (VerificationResult, error) {
 	if e.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, e.Timeout)

@@ -47,7 +47,7 @@ func (e InterruptEvent) Context() context.Context { return e.Ctx }
 // InterceptResult is the result of an interceptor processing an event.
 //
 // Notice carries ephemeral, user-visible messages that are emitted as
-// loop.NoticeEvent and never persisted to state. Each Notice carries
+// loop.NoticeEvent and never persisted to ledger. Each Notice carries
 // a Severity that conduits use to pick a rendering style (Success, Info,
 // Warn, Error). A nil slice means no notices were produced.
 type InterceptResult struct {
@@ -67,7 +67,7 @@ type InterceptResult struct {
 //   - Return an error to abort processing
 //
 // Notice messages are ephemeral UI messages that are not persisted to
-// state. Each Notice carries a Severity so conduits can pick a rendering
+// ledger. Each Notice carries a Severity so conduits can pick a rendering
 // style.
 //
 // The *junk.Stream parameter is the stream that owns the in-flight event,

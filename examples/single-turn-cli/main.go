@@ -16,7 +16,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
 )
 
@@ -26,9 +26,9 @@ import (
 // interface for ad-hoc, application-specific state assembly.
 type systemPromptTransform struct{ content string }
 
-func (t *systemPromptTransform) Transform(ctx context.Context, st state.State) (state.State, error) {
-	return state.Prepend(st, []state.Turn{{
-		Role:      state.RoleSystem,
+func (t *systemPromptTransform) Transform(ctx context.Context, st ledger.State) (ledger.State, error) {
+	return ledger.Prepend(st, []ledger.Turn{{
+		Role:      ledger.RoleSystem,
 		Artifacts: []artifact.Artifact{artifact.Text{Content: t.content}},
 	}}), nil
 }
@@ -77,8 +77,8 @@ func run() error {
 	baseURL := os.Getenv("ORE_BASE_URL")
 
 	// Build state with the user message.
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: message})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: message})
 
 	// Build provider.
 	var opts []openai.Option

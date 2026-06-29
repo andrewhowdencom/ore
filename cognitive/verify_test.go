@@ -7,19 +7,19 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/verifier"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 type mockPattern struct {
-	returnState state.State
+	returnState ledger.State
 	err         error
 	callCount   int
 }
 
-func (m *mockPattern) Run(ctx context.Context, st state.State) (state.State, error) {
+func (m *mockPattern) Run(ctx context.Context, st ledger.State) (ledger.State, error) {
 	m.callCount++
 	return m.returnState, m.err
 }
@@ -35,7 +35,7 @@ type mockVerifier struct {
 	err    error
 }
 
-func (m *mockVerifier) Verify(ctx context.Context, st state.State) (verifier.VerificationResult, error) {
+func (m *mockVerifier) Verify(ctx context.Context, st ledger.State) (verifier.VerificationResult, error) {
 	return verifier.VerificationResult{
 		Name:   m.name,
 		Status: m.status,
@@ -49,7 +49,7 @@ type failOnceVerifier struct {
 	called bool
 }
 
-func (f *failOnceVerifier) Verify(ctx context.Context, st state.State) (verifier.VerificationResult, error) {
+func (f *failOnceVerifier) Verify(ctx context.Context, st ledger.State) (verifier.VerificationResult, error) {
 	if !f.called {
 		f.called = true
 		return verifier.VerificationResult{Name: "fail-once", Status: verifier.VerificationFail, Report: "fail"}, nil
@@ -60,8 +60,8 @@ func (f *failOnceVerifier) Verify(ctx context.Context, st state.State) (verifier
 var _ verifier.Verifier = (*failOnceVerifier)(nil)
 
 func TestWithVerification_PassOnFirstTry(t *testing.T) {
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	mock := &mockPattern{returnState: mem}
 	v := &mockVerifier{name: "pass", status: verifier.VerificationPass}
@@ -77,12 +77,12 @@ func TestWithVerification_PassOnFirstTry(t *testing.T) {
 	// State should have only the user turn (no system turn injected).
 	turns := result.Turns()
 	require.Len(t, turns, 1)
-	assert.Equal(t, state.RoleUser, turns[0].Role)
+	assert.Equal(t, ledger.RoleUser, turns[0].Role)
 }
 
 func TestWithVerification_FailThenRetryThenPass(t *testing.T) {
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	mock := &mockPattern{returnState: mem}
 	failOnce := &failOnceVerifier{}
@@ -97,15 +97,15 @@ func TestWithVerification_FailThenRetryThenPass(t *testing.T) {
 	// State should have user + system turn (verification report).
 	turns := result.Turns()
 	require.Len(t, turns, 2)
-	assert.Equal(t, state.RoleUser, turns[0].Role)
-	assert.Equal(t, state.RoleSystem, turns[1].Role)
+	assert.Equal(t, ledger.RoleUser, turns[0].Role)
+	assert.Equal(t, ledger.RoleSystem, turns[1].Role)
 	assert.Equal(t, "text", turns[1].Artifacts[0].Kind())
 	assert.Contains(t, turns[1].Artifacts[0].(artifact.Text).Content, "Verification Report")
 }
 
 func TestWithVerification_MaxRetriesExceeded(t *testing.T) {
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	mock := &mockPattern{returnState: mem}
 	v := &mockVerifier{name: "always-fail", status: verifier.VerificationFail, report: "failed"}
@@ -120,8 +120,8 @@ func TestWithVerification_MaxRetriesExceeded(t *testing.T) {
 }
 
 func TestWithVerification_VerifierError(t *testing.T) {
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	mock := &mockPattern{returnState: mem}
 	v := &mockVerifier{name: "error", status: verifier.VerificationError, err: errors.New("boom")}
@@ -136,8 +136,8 @@ func TestWithVerification_VerifierError(t *testing.T) {
 }
 
 func TestWithVerification_InnerPatternError(t *testing.T) {
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	wantErr := errors.New("inner failed")
 	mock := &mockPattern{returnState: mem, err: wantErr}
@@ -152,8 +152,8 @@ func TestWithVerification_InnerPatternError(t *testing.T) {
 }
 
 func TestWithVerification_MultipleVerifiers(t *testing.T) {
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	mock := &mockPattern{returnState: mem}
 	v1 := &mockVerifier{name: "pass", status: verifier.VerificationPass}
@@ -169,8 +169,8 @@ func TestWithVerification_MultipleVerifiers(t *testing.T) {
 }
 
 func TestWithVerification_DefaultMaxRetries(t *testing.T) {
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	mock := &mockPattern{returnState: mem}
 	v := &mockVerifier{name: "always-fail", status: verifier.VerificationFail}

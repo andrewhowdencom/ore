@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +28,7 @@ func TestExecVerifier_Pass(t *testing.T) {
 		Command: "sh",
 		Args:    []string{"-c", "echo hello"},
 	}
-	res, err := ev.Verify(context.Background(), &state.Buffer{})
+	res, err := ev.Verify(context.Background(), &ledger.Buffer{})
 	require.NoError(t, err)
 	assert.Equal(t, "pass", res.Name)
 	assert.Equal(t, VerificationPass, res.Status)
@@ -42,7 +42,7 @@ func TestExecVerifier_Fail(t *testing.T) {
 		Command: "sh",
 		Args:    []string{"-c", "echo error-output && exit 1"},
 	}
-	res, err := ev.Verify(context.Background(), &state.Buffer{})
+	res, err := ev.Verify(context.Background(), &ledger.Buffer{})
 	require.NoError(t, err)
 	assert.Equal(t, "fail", res.Name)
 	assert.Equal(t, VerificationFail, res.Status)
@@ -54,7 +54,7 @@ func TestExecVerifier_Error(t *testing.T) {
 		Name:    "error",
 		Command: "nonexistent_command_that_should_not_exist_12345",
 	}
-	res, err := ev.Verify(context.Background(), &state.Buffer{})
+	res, err := ev.Verify(context.Background(), &ledger.Buffer{})
 	require.Error(t, err)
 	assert.Equal(t, "error", res.Name)
 	assert.Equal(t, VerificationError, res.Status)
@@ -69,7 +69,7 @@ func TestExecVerifier_Timeout(t *testing.T) {
 		Args:    []string{"2"},
 		Timeout: 100 * time.Millisecond,
 	}
-	res, err := ev.Verify(context.Background(), &state.Buffer{})
+	res, err := ev.Verify(context.Background(), &ledger.Buffer{})
 	require.Error(t, err)
 	assert.Equal(t, "timeout", res.Name)
 	assert.Equal(t, VerificationError, res.Status)
@@ -83,7 +83,7 @@ func TestExecVerifier_Dir(t *testing.T) {
 		Args:    []string{"-c", "pwd"},
 		Dir:     "/tmp",
 	}
-	res, err := ev.Verify(context.Background(), &state.Buffer{})
+	res, err := ev.Verify(context.Background(), &ledger.Buffer{})
 	require.NoError(t, err)
 	assert.Equal(t, VerificationPass, res.Status)
 	assert.Contains(t, res.Report, "/tmp")

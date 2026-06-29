@@ -10,7 +10,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +21,7 @@ type simpleProvider struct {
 	err       error
 }
 
-func (p *simpleProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (p *simpleProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	for _, art := range p.artifacts {
 		select {
 		case ch <- art:
@@ -40,7 +40,7 @@ type countingProvider struct {
 	callCount int
 }
 
-func (p *countingProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (p *countingProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.callCount++
@@ -71,7 +71,7 @@ var _ provider.Provider = (*countingProvider)(nil)
 // cancelCheckingProvider checks ctx.Err() before returning artifacts.
 type cancelCheckingProvider struct{}
 
-func (p *cancelCheckingProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (p *cancelCheckingProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -100,8 +100,8 @@ func (h *testHandler) Handle(ctx context.Context, art artifact.Artifact, e loop.
 var _ loop.Handler = (*testHandler)(nil)
 
 func TestReAct_SingleTurn(t *testing.T) {
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	s := loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
 		if tc, ok := event.(loop.TurnCompleteEvent); ok {
@@ -125,21 +125,21 @@ func TestReAct_SingleTurn(t *testing.T) {
 
 	turns := result.Turns()
 	require.Len(t, turns, 2)
-	assert.Equal(t, state.RoleUser, turns[0].Role)
-	assert.Equal(t, state.RoleAssistant, turns[1].Role)
+	assert.Equal(t, ledger.RoleUser, turns[0].Role)
+	assert.Equal(t, ledger.RoleAssistant, turns[1].Role)
 	assert.Equal(t, "hello!", turns[1].Artifacts[0].(artifact.Text).Content)
 }
 
 func TestReAct_ToolLoop(t *testing.T) {
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "do something"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "do something"})
 
 	toolHandler := &testHandler{
 		fn: func(ctx context.Context, art artifact.Artifact, e loop.Emitter) error {
 			if art.Kind() == "tool_call" {
 				e.Emit(ctx, loop.TurnCompleteEvent{
-					Turn: state.Turn{
-						Role:      state.RoleTool,
+					Turn: ledger.Turn{
+						Role:      ledger.RoleTool,
 						Artifacts: []artifact.Artifact{artifact.Text{Content: "tool result"}},
 					},
 				})
@@ -170,16 +170,16 @@ func TestReAct_ToolLoop(t *testing.T) {
 	// State should have: User, Assistant (tool call), Tool, Assistant (final).
 	turns := result.Turns()
 	require.Len(t, turns, 4)
-	assert.Equal(t, state.RoleUser, turns[0].Role)
-	assert.Equal(t, state.RoleAssistant, turns[1].Role)
-	assert.Equal(t, state.RoleTool, turns[2].Role)
-	assert.Equal(t, state.RoleAssistant, turns[3].Role)
+	assert.Equal(t, ledger.RoleUser, turns[0].Role)
+	assert.Equal(t, ledger.RoleAssistant, turns[1].Role)
+	assert.Equal(t, ledger.RoleTool, turns[2].Role)
+	assert.Equal(t, ledger.RoleAssistant, turns[3].Role)
 	assert.Equal(t, "done!", turns[3].Artifacts[0].(artifact.Text).Content)
 }
 
 func TestReAct_ProviderError(t *testing.T) {
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	s := loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
 		if tc, ok := event.(loop.TurnCompleteEvent); ok {
@@ -200,8 +200,8 @@ func TestReAct_ProviderError(t *testing.T) {
 }
 
 func TestReAct_HandlerError(t *testing.T) {
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "do something"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "do something"})
 
 	wantErr := errors.New("handler failed")
 	toolHandler := &testHandler{
@@ -239,8 +239,8 @@ func TestReAct_HandlerError(t *testing.T) {
 }
 
 func TestReAct_ContextCancellation(t *testing.T) {
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "do something"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "do something"})
 
 	prov := &cancelCheckingProvider{}
 	s := loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {

@@ -13,7 +13,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,7 +41,7 @@ type scriptProvider struct {
 	lastErr error
 }
 
-func (s *scriptProvider) Invoke(_ context.Context, _ state.State, _ models.Spec, ch chan<- artifact.Artifact, _ ...provider.InvokeOption) error {
+func (s *scriptProvider) Invoke(_ context.Context, _ ledger.State, _ models.Spec, ch chan<- artifact.Artifact, _ ...provider.InvokeOption) error {
 	idx := int(atomic.AddInt32(&s.calls, 1)) - 1
 	s.mu.Lock()
 	if idx < len(s.plan) {
@@ -86,9 +86,9 @@ func fastOpts() []Option {
 	}
 }
 
-func newState() *state.Buffer {
-	s := &state.Buffer{}
-	s.Append(state.RoleUser, artifact.Text{Content: "hi"})
+func newState() *ledger.Buffer {
+	s := &ledger.Buffer{}
+	s.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 	return s
 }
 

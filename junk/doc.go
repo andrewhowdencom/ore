@@ -63,7 +63,7 @@
 //	}
 //	mgr := junk.NewManager(store, prov, stepFactory, cognitive.NewTurnProcessor(cognitive.ReActFactory, tracer))
 //
-// The factory receives *Stream so it can bind per-session runtime state.
+// The factory receives *Stream so it can bind per-session runtime ledger.
 // For example, a factory can close over the stream to inject a dynamic
 // system prompt that reads from stream.GetMetadata("persona"):
 //

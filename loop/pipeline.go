@@ -8,7 +8,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 )
 
 // Pipeline is the single-turn execution engine. It runs transforms, invokes
@@ -32,7 +32,7 @@ func newPipeline() *Pipeline {
 //
 // The spec carries the model identity and inference configuration;
 // it is forwarded to the provider's Invoke method.
-func (p *Pipeline) Turn(ctx context.Context, st state.State, spec models.Spec, prov provider.Provider, onArtifact func(artifact.Artifact), opts ...provider.InvokeOption) (state.State, []artifact.Artifact, error) {
+func (p *Pipeline) Turn(ctx context.Context, st ledger.State, spec models.Spec, prov provider.Provider, onArtifact func(artifact.Artifact), opts ...provider.InvokeOption) (ledger.State, []artifact.Artifact, error) {
 	var err error
 
 	for _, tr := range p.transforms {

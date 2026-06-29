@@ -11,7 +11,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,7 +23,7 @@ type mockProvider struct {
 	err       error
 }
 
-func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *mockProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	for _, art := range m.artifacts {
 		select {
 		case ch <- art:
@@ -43,7 +43,7 @@ type contextCancellingProvider struct {
 	cancel context.CancelFunc
 }
 
-func (p *contextCancellingProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (p *contextCancellingProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	select {
 	case ch <- artifact.TextDelta{Content: "partial"}:
 	case <-ctx.Done():
@@ -74,7 +74,7 @@ func (m *mockHandler) Handle(ctx context.Context, art artifact.Artifact, e Emitt
 
 // stepWithState creates a Step that wires an OnEmit callback appending
 // TurnCompleteEvent to the given state, plus any additional options.
-func stepWithState(st state.State, opts ...Option) *Step {
+func stepWithState(st ledger.State, opts ...Option) *Step {
 	opts = append(opts, WithOnEmit(func(ctx context.Context, event OutputEvent) {
 		if tc, ok := event.(TurnCompleteEvent); ok {
 			st.Append(tc.Turn.Role, tc.Turn.Artifacts...)
@@ -85,10 +85,10 @@ func stepWithState(st state.State, opts ...Option) *Step {
 
 // mockTransform implements Transform for testing.
 type mockTransform struct {
-	fn func(ctx context.Context, s state.State) (state.State, error)
+	fn func(ctx context.Context, s ledger.State) (ledger.State, error)
 }
 
-func (m *mockTransform) Transform(ctx context.Context, s state.State) (state.State, error) {
+func (m *mockTransform) Transform(ctx context.Context, s ledger.State) (ledger.State, error) {
 	return m.fn(ctx, s)
 }
 
@@ -113,8 +113,8 @@ func collectEvents(ch <-chan OutputEvent, timeout time.Duration) []OutputEvent {
 
 func TestStep_Turn_AppendsArtifacts(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	mock := &mockProvider{
@@ -132,7 +132,7 @@ func TestStep_Turn_AppendsArtifacts(t *testing.T) {
 	require.Len(t, turns, 2)
 
 	last := turns[1]
-	assert.Equal(t, state.RoleAssistant, last.Role)
+	assert.Equal(t, ledger.RoleAssistant, last.Role)
 	require.Len(t, last.Artifacts, 2)
 	assert.Equal(t, "text", last.Artifacts[0].Kind())
 	assert.Equal(t, "tool_call", last.Artifacts[1].Kind())
@@ -140,8 +140,8 @@ func TestStep_Turn_AppendsArtifacts(t *testing.T) {
 
 func TestStep_Turn_PropagatesError(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	wantErr := errors.New("provider failed")
@@ -155,8 +155,8 @@ func TestStep_Turn_PropagatesError(t *testing.T) {
 
 func TestStep_Turn_AppendsReasoningArtifact(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	mock := &mockProvider{
@@ -174,7 +174,7 @@ func TestStep_Turn_AppendsReasoningArtifact(t *testing.T) {
 	require.Len(t, turns, 2)
 
 	last := turns[1]
-	assert.Equal(t, state.RoleAssistant, last.Role)
+	assert.Equal(t, ledger.RoleAssistant, last.Role)
 	require.Len(t, last.Artifacts, 2)
 	assert.Equal(t, "text", last.Artifacts[0].Kind())
 	assert.Equal(t, "reasoning", last.Artifacts[1].Kind())
@@ -182,8 +182,8 @@ func TestStep_Turn_AppendsReasoningArtifact(t *testing.T) {
 
 func TestStep_Turn_EmptyArtifacts(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	mock := &mockProvider{
@@ -197,7 +197,7 @@ func TestStep_Turn_EmptyArtifacts(t *testing.T) {
 	require.Len(t, turns, 2)
 
 	last := turns[1]
-	assert.Equal(t, state.RoleAssistant, last.Role)
+	assert.Equal(t, ledger.RoleAssistant, last.Role)
 	assert.Empty(t, last.Artifacts)
 }
 
@@ -205,19 +205,19 @@ func TestStep_Turn_Transform_Composition(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
 	var order []int
 	tr1 := &mockTransform{
-		fn: func(ctx context.Context, s state.State) (state.State, error) {
+		fn: func(ctx context.Context, s ledger.State) (ledger.State, error) {
 			order = append(order, 1)
 			return s, nil
 		},
 	}
 	tr2 := &mockTransform{
-		fn: func(ctx context.Context, s state.State) (state.State, error) {
+		fn: func(ctx context.Context, s ledger.State) (ledger.State, error) {
 			order = append(order, 2)
 			return s, nil
 		},
 	}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem, WithTransforms(tr1, tr2))
 	mock := &mockProvider{
@@ -235,12 +235,12 @@ func TestStep_Turn_Transform_ErrorAborts(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
 	wantErr := errors.New("transform failed")
 	tr := &mockTransform{
-		fn: func(ctx context.Context, s state.State) (state.State, error) {
+		fn: func(ctx context.Context, s ledger.State) (ledger.State, error) {
 			return s, wantErr
 		},
 	}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem, WithTransforms(tr))
 	mock := &mockProvider{
@@ -259,8 +259,8 @@ func TestStep_Turn_Transform_ErrorAborts(t *testing.T) {
 
 func TestStep_Turn_Transform_Identity(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	mock := &mockProvider{
@@ -275,26 +275,26 @@ func TestStep_Turn_Transform_Identity(t *testing.T) {
 
 	turns := mem.Turns()
 	require.Len(t, turns, 2)
-	assert.Equal(t, state.RoleAssistant, turns[1].Role)
+	assert.Equal(t, ledger.RoleAssistant, turns[1].Role)
 }
 
 func TestStep_Submit_DoesNotRunTransforms(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
 	var transformCalled bool
 	tr := &mockTransform{
-		fn: func(ctx context.Context, s state.State) (state.State, error) {
+		fn: func(ctx context.Context, s ledger.State) (ledger.State, error) {
 			transformCalled = true
 			return s, nil
 		},
 	}
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 
 	s := stepWithState(mem, WithTransforms(tr))
-	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
+	_, err := s.Submit(context.Background(), mem, ledger.RoleUser, artifact.Text{Content: "hello"})
 	require.NoError(t, err)
 	assert.False(t, transformCalled, "transforms must not run during Submit")
 
-	mem.Append(state.RoleUser, artifact.Text{Content: "turn"})
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "turn"})
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "world"},
@@ -307,22 +307,22 @@ func TestStep_Submit_DoesNotRunTransforms(t *testing.T) {
 
 func TestStep_Turn_Transform_ViewChaining(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	var seenTurns []state.Turn
+	var seenTurns []ledger.Turn
 	tr1 := &mockTransform{
-		fn: func(ctx context.Context, s state.State) (state.State, error) {
-			return state.Prepend(s, []state.Turn{
-				{Role: state.RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "system"}}},
+		fn: func(ctx context.Context, s ledger.State) (ledger.State, error) {
+			return ledger.Prepend(s, []ledger.Turn{
+				{Role: ledger.RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "system"}}},
 			}), nil
 		},
 	}
 	tr2 := &mockTransform{
-		fn: func(ctx context.Context, s state.State) (state.State, error) {
+		fn: func(ctx context.Context, s ledger.State) (ledger.State, error) {
 			seenTurns = s.Turns()
 			return s, nil
 		},
 	}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem, WithTransforms(tr1, tr2))
 	prov := &mockProvider{
@@ -334,15 +334,15 @@ func TestStep_Turn_Transform_ViewChaining(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, seenTurns, 2)
-	assert.Equal(t, state.RoleSystem, seenTurns[0].Role)
-	assert.Equal(t, state.RoleUser, seenTurns[1].Role)
+	assert.Equal(t, ledger.RoleSystem, seenTurns[0].Role)
+	assert.Equal(t, ledger.RoleUser, seenTurns[1].Role)
 }
 
 func TestStep_Turn_Handler(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
 	h := &mockHandler{}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem, WithHandlers(h))
 	prov := &mockProvider{
@@ -366,8 +366,8 @@ func TestStep_Turn_HandlerAppendsToolResult(t *testing.T) {
 		fn: func(ctx context.Context, art artifact.Artifact, e Emitter) error {
 			if art.Kind() == "tool_call" {
 				e.Emit(ctx, TurnCompleteEvent{
-					Turn: state.Turn{
-						Role:      state.RoleTool,
+					Turn: ledger.Turn{
+						Role:      ledger.RoleTool,
 						Artifacts: []artifact.Artifact{artifact.Text{Content: "tool result"}},
 					},
 				})
@@ -375,8 +375,8 @@ func TestStep_Turn_HandlerAppendsToolResult(t *testing.T) {
 			return nil
 		},
 	}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem, WithHandlers(h))
 	prov := &mockProvider{
@@ -391,17 +391,17 @@ func TestStep_Turn_HandlerAppendsToolResult(t *testing.T) {
 
 	turns := result.Turns()
 	require.Len(t, turns, 3)
-	assert.Equal(t, state.RoleUser, turns[0].Role)
-	assert.Equal(t, state.RoleAssistant, turns[1].Role)
-	assert.Equal(t, state.RoleTool, turns[2].Role)
+	assert.Equal(t, ledger.RoleUser, turns[0].Role)
+	assert.Equal(t, ledger.RoleAssistant, turns[1].Role)
+	assert.Equal(t, ledger.RoleTool, turns[2].Role)
 }
 
 func TestStep_Turn_HandlerError(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
 	wantErr := context.Canceled
 	h := &mockHandler{err: wantErr}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem, WithHandlers(h))
 	prov := &mockProvider{
@@ -426,8 +426,8 @@ func TestStep_Turn_UsageArtifact(t *testing.T) {
 		},
 	}
 
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem, WithHandlers(h))
 	prov := &mockProvider{
@@ -456,8 +456,8 @@ func TestStep_Turn_HandlerErrorAfterPartialProcessing(t *testing.T) {
 			return errors.New("handler failed on second artifact")
 		},
 	}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem, WithHandlers(h))
 	prov := &mockProvider{
@@ -478,8 +478,8 @@ func TestStep_Turn_HandlerErrorAfterPartialProcessing(t *testing.T) {
 
 func TestStep_Turn_OutputEvents(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	ch := s.Subscribe("text_delta", "text", "turn_complete")
@@ -515,7 +515,7 @@ func TestStep_Turn_OutputEvents(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "world!", text.Content)
 	assert.Equal(t, "turn_complete", events[4].Kind())
-	assert.Equal(t, state.RoleAssistant, events[4].(TurnCompleteEvent).Turn.Role)
+	assert.Equal(t, ledger.RoleAssistant, events[4].(TurnCompleteEvent).Turn.Role)
 	// Deltas are accumulated into ordered blocks: Text{"wor"} merges with
 	// Text{"ld"} into Text{"world"}, then Text{"world!"} starts a new block.
 	require.Len(t, events[4].(TurnCompleteEvent).Turn.Artifacts, 2)
@@ -529,8 +529,8 @@ func TestStep_Turn_OutputEvents(t *testing.T) {
 
 func TestStep_Turn_AccumulatesInterleavedDeltas(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	prov := &mockProvider{
@@ -549,7 +549,7 @@ func TestStep_Turn_AccumulatesInterleavedDeltas(t *testing.T) {
 	require.Len(t, turns, 2)
 
 	last := turns[1]
-	assert.Equal(t, state.RoleAssistant, last.Role)
+	assert.Equal(t, ledger.RoleAssistant, last.Role)
 	require.Len(t, last.Artifacts, 2)
 
 	text, ok := last.Artifacts[0].(artifact.Text)
@@ -563,8 +563,8 @@ func TestStep_Turn_AccumulatesInterleavedDeltas(t *testing.T) {
 
 func TestStep_Turn_AccumulatesAdjacentDeltas(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	prov := &mockProvider{
@@ -584,7 +584,7 @@ func TestStep_Turn_AccumulatesAdjacentDeltas(t *testing.T) {
 	require.Len(t, turns, 2)
 
 	last := turns[1]
-	assert.Equal(t, state.RoleAssistant, last.Role)
+	assert.Equal(t, ledger.RoleAssistant, last.Role)
 	require.Len(t, last.Artifacts, 2)
 
 	text, ok := last.Artifacts[0].(artifact.Text)
@@ -598,8 +598,8 @@ func TestStep_Turn_AccumulatesAdjacentDeltas(t *testing.T) {
 
 func TestStep_Turn_AccumulatesInterleavedToolCalls(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	prov := &mockProvider{
@@ -619,7 +619,7 @@ func TestStep_Turn_AccumulatesInterleavedToolCalls(t *testing.T) {
 	require.Len(t, turns, 2)
 
 	last := turns[1]
-	assert.Equal(t, state.RoleAssistant, last.Role)
+	assert.Equal(t, ledger.RoleAssistant, last.Role)
 	require.Len(t, last.Artifacts, 2)
 
 	tc0, ok := last.Artifacts[0].(artifact.ToolCall)
@@ -637,8 +637,8 @@ func TestStep_Turn_AccumulatesInterleavedToolCalls(t *testing.T) {
 
 func TestStep_Turn_MultiKeyAccumulationOrder(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	prov := &mockProvider{
@@ -659,7 +659,7 @@ func TestStep_Turn_MultiKeyAccumulationOrder(t *testing.T) {
 
 	turns := result.Turns()
 	last := turns[1]
-	assert.Equal(t, state.RoleAssistant, last.Role)
+	assert.Equal(t, ledger.RoleAssistant, last.Role)
 	require.Len(t, last.Artifacts, 4)
 
 	// Keys in insertion order: text, tool_call:0, reasoning, tool_call:1
@@ -686,15 +686,15 @@ func TestStep_Turn_MultiKeyAccumulationOrder(t *testing.T) {
 
 func TestStep_Turn_OutputEventsWithHandler(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem, WithHandlers(&mockHandler{
 		fn: func(ctx context.Context, art artifact.Artifact, e Emitter) error {
 			if art.Kind() == "tool_call" {
 				e.Emit(ctx, TurnCompleteEvent{
-					Turn: state.Turn{
-						Role:      state.RoleTool,
+					Turn: ledger.Turn{
+						Role:      ledger.RoleTool,
 						Artifacts: []artifact.Artifact{artifact.Text{Content: "tool result"}},
 					},
 				})
@@ -717,21 +717,21 @@ func TestStep_Turn_OutputEventsWithHandler(t *testing.T) {
 
 	// Both the assistant turn and the tool turn should emit TurnCompleteEvents.
 	require.Len(t, events, 2)
-	assert.Equal(t, state.RoleAssistant, events[0].(TurnCompleteEvent).Turn.Role)
-	assert.Equal(t, state.RoleTool, events[1].(TurnCompleteEvent).Turn.Role)
+	assert.Equal(t, ledger.RoleAssistant, events[0].(TurnCompleteEvent).Turn.Role)
+	assert.Equal(t, ledger.RoleTool, events[1].(TurnCompleteEvent).Turn.Role)
 
 	// State should have User, Assistant, Tool.
 	turns := result.Turns()
 	require.Len(t, turns, 3)
-	assert.Equal(t, state.RoleUser, turns[0].Role)
-	assert.Equal(t, state.RoleAssistant, turns[1].Role)
-	assert.Equal(t, state.RoleTool, turns[2].Role)
+	assert.Equal(t, ledger.RoleUser, turns[0].Role)
+	assert.Equal(t, ledger.RoleAssistant, turns[1].Role)
+	assert.Equal(t, ledger.RoleTool, turns[2].Role)
 }
 
 func TestStep_Turn_OutputEvents_OnlyCompletes(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	ch := s.Subscribe("text_delta", "turn_complete")
@@ -750,12 +750,12 @@ func TestStep_Turn_OutputEvents_OnlyCompletes(t *testing.T) {
 	// No deltas because provider doesn't emit any.
 	require.Len(t, events, 1)
 	assert.Equal(t, "turn_complete", events[0].Kind())
-	assert.Equal(t, state.RoleAssistant, events[0].(TurnCompleteEvent).Turn.Role)
+	assert.Equal(t, ledger.RoleAssistant, events[0].(TurnCompleteEvent).Turn.Role)
 
 	turns := result.Turns()
 	require.Len(t, turns, 2)
 	last := turns[1]
-	assert.Equal(t, state.RoleAssistant, last.Role)
+	assert.Equal(t, ledger.RoleAssistant, last.Role)
 	require.Len(t, last.Artifacts, 1)
 	text, ok := last.Artifacts[0].(artifact.Text)
 	require.True(t, ok)
@@ -764,8 +764,8 @@ func TestStep_Turn_OutputEvents_OnlyCompletes(t *testing.T) {
 
 func TestStep_Turn_DeltasDroppedWithoutSubscriber(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	prov := &mockProvider{
@@ -784,7 +784,7 @@ func TestStep_Turn_DeltasDroppedWithoutSubscriber(t *testing.T) {
 	turns := mem.Turns()
 	require.Len(t, turns, 2)
 	last := turns[1]
-	assert.Equal(t, state.RoleAssistant, last.Role)
+	assert.Equal(t, ledger.RoleAssistant, last.Role)
 	require.Len(t, last.Artifacts, 2)
 	text, ok := last.Artifacts[0].(artifact.Text)
 	require.True(t, ok)
@@ -796,8 +796,8 @@ func TestStep_Turn_DeltasDroppedWithoutSubscriber(t *testing.T) {
 
 func TestStep_Turn_CompleteArtifactEvent(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	ch := s.Subscribe("text", "turn_complete")
@@ -821,13 +821,13 @@ func TestStep_Turn_CompleteArtifactEvent(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "hello", text.Content)
 	assert.Equal(t, "turn_complete", events[1].Kind())
-	assert.Equal(t, state.RoleAssistant, events[1].(TurnCompleteEvent).Turn.Role)
+	assert.Equal(t, ledger.RoleAssistant, events[1].(TurnCompleteEvent).Turn.Role)
 
-	// Complete artifact should also be in state.
+	// Complete artifact should also be in ledger.
 	turns := mem.Turns()
 	require.Len(t, turns, 2)
 	last := turns[1]
-	assert.Equal(t, state.RoleAssistant, last.Role)
+	assert.Equal(t, ledger.RoleAssistant, last.Role)
 	require.Len(t, last.Artifacts, 1)
 	text, ok = last.Artifacts[0].(artifact.Text)
 	require.True(t, ok)
@@ -836,8 +836,8 @@ func TestStep_Turn_CompleteArtifactEvent(t *testing.T) {
 
 func TestStep_Turn_ErrorEmitsCompleteArtifacts(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	ch := s.Subscribe("text", "error")
@@ -870,8 +870,8 @@ func TestStep_Turn_ErrorEmitsCompleteArtifacts(t *testing.T) {
 
 func TestStep_Turn_ErrorEvent(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	ch := s.Subscribe("error")
@@ -898,8 +898,8 @@ func TestStep_Turn_ErrorEvent(t *testing.T) {
 
 func TestStep_Turn_ContextCancellationMidAccumulation(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -919,10 +919,10 @@ func TestStep_Turn_ContextCancellationMidAccumulation(t *testing.T) {
 }
 
 func TestStep_Submit_AppendsUserTurn(t *testing.T) {
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 
 	s := stepWithState(mem)
-	result, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
+	result, err := s.Submit(context.Background(), mem, ledger.RoleUser, artifact.Text{Content: "hello"})
 	require.NoError(t, err)
 	assert.Same(t, mem, result)
 
@@ -930,7 +930,7 @@ func TestStep_Submit_AppendsUserTurn(t *testing.T) {
 	require.Len(t, turns, 1)
 
 	last := turns[0]
-	assert.Equal(t, state.RoleUser, last.Role)
+	assert.Equal(t, ledger.RoleUser, last.Role)
 	require.Len(t, last.Artifacts, 1)
 	assert.Equal(t, "text", last.Artifacts[0].Kind())
 	text, ok := last.Artifacts[0].(artifact.Text)
@@ -939,11 +939,11 @@ func TestStep_Submit_AppendsUserTurn(t *testing.T) {
 }
 
 func TestStep_Submit_EmitsTurnCompleteEvent(t *testing.T) {
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 
 	s := stepWithState(mem)
 	ch := s.Subscribe("turn_complete")
-	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
+	_, err := s.Submit(context.Background(), mem, ledger.RoleUser, artifact.Text{Content: "hello"})
 	require.NoError(t, err)
 
 	events := collectEvents(ch, 100*time.Millisecond)
@@ -952,7 +952,7 @@ func TestStep_Submit_EmitsTurnCompleteEvent(t *testing.T) {
 	assert.Equal(t, "turn_complete", events[0].Kind())
 	turnComplete, ok := events[0].(TurnCompleteEvent)
 	require.True(t, ok)
-	assert.Equal(t, state.RoleUser, turnComplete.Turn.Role)
+	assert.Equal(t, ledger.RoleUser, turnComplete.Turn.Role)
 	require.Len(t, turnComplete.Turn.Artifacts, 1)
 	text, ok := turnComplete.Turn.Artifacts[0].(artifact.Text)
 	require.True(t, ok)
@@ -961,10 +961,10 @@ func TestStep_Submit_EmitsTurnCompleteEvent(t *testing.T) {
 
 func TestStep_Submit_Handler(t *testing.T) {
 	h := &mockHandler{}
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 
 	s := stepWithState(mem, WithHandlers(h))
-	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"}, artifact.ToolCall{Name: "test"})
+	_, err := s.Submit(context.Background(), mem, ledger.RoleUser, artifact.Text{Content: "hello"}, artifact.ToolCall{Name: "test"})
 	require.NoError(t, err)
 
 	require.Len(t, h.called, 2)
@@ -975,27 +975,27 @@ func TestStep_Submit_Handler(t *testing.T) {
 func TestStep_Submit_HandlerError(t *testing.T) {
 	wantErr := context.Canceled
 	h := &mockHandler{err: wantErr}
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 
 	s := stepWithState(mem, WithHandlers(h))
-	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
+	_, err := s.Submit(context.Background(), mem, ledger.RoleUser, artifact.Text{Content: "hello"})
 	require.ErrorIs(t, err, wantErr)
 }
 
 func TestStep_Submit_MultipleInOrder(t *testing.T) {
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 
 	s := stepWithState(mem)
-	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "first"})
+	_, err := s.Submit(context.Background(), mem, ledger.RoleUser, artifact.Text{Content: "first"})
 	require.NoError(t, err)
 
-	_, err = s.Submit(context.Background(), mem, state.RoleSystem, artifact.Text{Content: "second"})
+	_, err = s.Submit(context.Background(), mem, ledger.RoleSystem, artifact.Text{Content: "second"})
 	require.NoError(t, err)
 
 	turns := mem.Turns()
 	require.Len(t, turns, 2)
-	assert.Equal(t, state.RoleUser, turns[0].Role)
-	assert.Equal(t, state.RoleSystem, turns[1].Role)
+	assert.Equal(t, ledger.RoleUser, turns[0].Role)
+	assert.Equal(t, ledger.RoleSystem, turns[1].Role)
 
 	text, ok := turns[0].Artifacts[0].(artifact.Text)
 	require.True(t, ok)
@@ -1008,11 +1008,11 @@ func TestStep_Submit_MultipleInOrder(t *testing.T) {
 
 func TestStep_Submit_ThenTurn_EventsInOrder(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 
 	s := stepWithState(mem)
 	ch := s.Subscribe("turn_complete")
-	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
+	_, err := s.Submit(context.Background(), mem, ledger.RoleUser, artifact.Text{Content: "hello"})
 	require.NoError(t, err)
 
 	prov := &mockProvider{
@@ -1028,30 +1028,30 @@ func TestStep_Submit_ThenTurn_EventsInOrder(t *testing.T) {
 
 	require.Len(t, events, 2)
 	assert.Equal(t, "turn_complete", events[0].Kind())
-	assert.Equal(t, state.RoleUser, events[0].(TurnCompleteEvent).Turn.Role)
+	assert.Equal(t, ledger.RoleUser, events[0].(TurnCompleteEvent).Turn.Role)
 	assert.Equal(t, "turn_complete", events[1].Kind())
-	assert.Equal(t, state.RoleAssistant, events[1].(TurnCompleteEvent).Turn.Role)
+	assert.Equal(t, ledger.RoleAssistant, events[1].(TurnCompleteEvent).Turn.Role)
 }
 
 func TestStep_Submit_EmptyArtifacts(t *testing.T) {
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 
 	s := stepWithState(mem)
-	_, err := s.Submit(context.Background(), mem, state.RoleUser)
+	_, err := s.Submit(context.Background(), mem, ledger.RoleUser)
 	require.NoError(t, err)
 
 	turns := mem.Turns()
 	require.Len(t, turns, 1)
 	last := turns[0]
-	assert.Equal(t, state.RoleUser, last.Role)
+	assert.Equal(t, ledger.RoleUser, last.Role)
 	assert.Empty(t, last.Artifacts)
 }
 
 func TestStep_Submit_ToolRole(t *testing.T) {
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 
 	s := stepWithState(mem)
-	result, err := s.Submit(context.Background(), mem, state.RoleTool, artifact.Text{Content: "tool result"})
+	result, err := s.Submit(context.Background(), mem, ledger.RoleTool, artifact.Text{Content: "tool result"})
 	require.NoError(t, err)
 	assert.Same(t, mem, result)
 
@@ -1059,7 +1059,7 @@ func TestStep_Submit_ToolRole(t *testing.T) {
 	require.Len(t, turns, 1)
 
 	last := turns[0]
-	assert.Equal(t, state.RoleTool, last.Role)
+	assert.Equal(t, ledger.RoleTool, last.Role)
 	require.Len(t, last.Artifacts, 1)
 	assert.Equal(t, "text", last.Artifacts[0].Kind())
 	text, ok := last.Artifacts[0].(artifact.Text)
@@ -1076,10 +1076,10 @@ func TestStep_Submit_HandlerErrorAfterPartialProcessing(t *testing.T) {
 			return errors.New("handler failed on second artifact")
 		},
 	}
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 
 	s := stepWithState(mem, WithHandlers(h))
-	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"}, artifact.ToolCall{Name: "test"})
+	_, err := s.Submit(context.Background(), mem, ledger.RoleUser, artifact.Text{Content: "hello"}, artifact.ToolCall{Name: "test"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "handler failed on second artifact")
 
@@ -1091,44 +1091,44 @@ func TestStep_Submit_HandlerErrorAfterPartialProcessing(t *testing.T) {
 	// before running handlers).
 	turns := mem.Turns()
 	require.Len(t, turns, 1)
-	assert.Equal(t, state.RoleUser, turns[0].Role)
+	assert.Equal(t, ledger.RoleUser, turns[0].Role)
 	require.Len(t, turns[0].Artifacts, 2)
 }
 
 func TestStep_Submit_Multiple_EventsInOrder(t *testing.T) {
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 
 	s := stepWithState(mem)
 	ch := s.Subscribe("turn_complete")
-	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "first"})
+	_, err := s.Submit(context.Background(), mem, ledger.RoleUser, artifact.Text{Content: "first"})
 	require.NoError(t, err)
 
-	_, err = s.Submit(context.Background(), mem, state.RoleSystem, artifact.Text{Content: "second"})
+	_, err = s.Submit(context.Background(), mem, ledger.RoleSystem, artifact.Text{Content: "second"})
 	require.NoError(t, err)
 
-	_, err = s.Submit(context.Background(), mem, state.RoleTool, artifact.Text{Content: "third"})
+	_, err = s.Submit(context.Background(), mem, ledger.RoleTool, artifact.Text{Content: "third"})
 	require.NoError(t, err)
 
 	events := collectEvents(ch, 100*time.Millisecond)
 
 	require.Len(t, events, 3)
-	assert.Equal(t, state.RoleUser, events[0].(TurnCompleteEvent).Turn.Role)
-	assert.Equal(t, state.RoleSystem, events[1].(TurnCompleteEvent).Turn.Role)
-	assert.Equal(t, state.RoleTool, events[2].(TurnCompleteEvent).Turn.Role)
+	assert.Equal(t, ledger.RoleUser, events[0].(TurnCompleteEvent).Turn.Role)
+	assert.Equal(t, ledger.RoleSystem, events[1].(TurnCompleteEvent).Turn.Role)
+	assert.Equal(t, ledger.RoleTool, events[2].(TurnCompleteEvent).Turn.Role)
 }
 
 func TestStep_Submit_EmptyArtifacts_ByRole(t *testing.T) {
 	tests := []struct {
 		name string
-		role state.Role
+		role ledger.Role
 	}{
-		{"system", state.RoleSystem},
-		{"tool", state.RoleTool},
+		{"system", ledger.RoleSystem},
+		{"tool", ledger.RoleTool},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mem := &state.Buffer{}
+			mem := &ledger.Buffer{}
 
 			s := stepWithState(mem)
 			ch := s.Subscribe("turn_complete")
@@ -1149,12 +1149,12 @@ func TestStep_Submit_EmptyArtifacts_ByRole(t *testing.T) {
 }
 
 func TestStep_SetEventContext_PropagatesToSubmit(t *testing.T) {
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 
 	s := stepWithState(mem)
 	ch := s.Subscribe("turn_complete")
 	s.SetEventContext(WithProvenance(context.Background(), "test-provenance"))
-	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
+	_, err := s.Submit(context.Background(), mem, ledger.RoleUser, artifact.Text{Content: "hello"})
 	require.NoError(t, err)
 
 	events := collectEvents(ch, 100*time.Millisecond)
@@ -1168,8 +1168,8 @@ func TestStep_SetEventContext_PropagatesToSubmit(t *testing.T) {
 
 func TestStep_SetEventContext_PropagatesToTurn(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	ch := s.Subscribe("text", "turn_complete")
@@ -1209,8 +1209,8 @@ func TestStep_SetEventContext_PropagatesToTurn(t *testing.T) {
 
 func TestStep_SetEventContext_PropagatesToError(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	ch := s.Subscribe("error")
@@ -1231,12 +1231,12 @@ func TestStep_SetEventContext_PropagatesToError(t *testing.T) {
 }
 
 func TestStep_SetEventContext_Cleared(t *testing.T) {
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 
 	s := stepWithState(mem)
 	ch := s.Subscribe("turn_complete")
 	s.SetEventContext(WithProvenance(context.Background(), "first"))
-	_, err := s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "hello"})
+	_, err := s.Submit(context.Background(), mem, ledger.RoleUser, artifact.Text{Content: "hello"})
 	require.NoError(t, err)
 
 	events := collectEvents(ch, 100*time.Millisecond)
@@ -1248,7 +1248,7 @@ func TestStep_SetEventContext_Cleared(t *testing.T) {
 
 	// Second submit with cleared context should have empty provenance
 	s.SetEventContext(context.Background())
-	_, err = s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "again"})
+	_, err = s.Submit(context.Background(), mem, ledger.RoleUser, artifact.Text{Content: "again"})
 	require.NoError(t, err)
 
 	events = collectEvents(ch, 100*time.Millisecond)
@@ -1261,8 +1261,8 @@ func TestStep_SetEventContext_Cleared(t *testing.T) {
 
 func TestStep_ContextClearedOnError(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := stepWithState(mem)
 	ch := s.Subscribe("error", "turn_complete")
@@ -1281,7 +1281,7 @@ func TestStep_ContextClearedOnError(t *testing.T) {
 	assert.Equal(t, "first", name)
 
 	// Subsequent submit without setting context should have empty provenance
-	_, err = s.Submit(context.Background(), mem, state.RoleUser, artifact.Text{Content: "again"})
+	_, err = s.Submit(context.Background(), mem, ledger.RoleUser, artifact.Text{Content: "again"})
 	require.NoError(t, err)
 
 	events = collectEvents(ch, 100*time.Millisecond)
@@ -1318,8 +1318,8 @@ func TestStep_Emit_DeliversCustomEvents(t *testing.T) {
 
 func TestOnEmit_MultipleCallbacks_Order(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	var callbackOrder []string
 
@@ -1362,8 +1362,8 @@ func TestEmit_NoCallbacks(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
 	s := New()
 	ch := s.Subscribe("turn_complete")
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
@@ -1379,7 +1379,7 @@ func TestEmit_NoCallbacks(t *testing.T) {
 	require.Len(t, events, 1)
 	tc, ok := events[0].(TurnCompleteEvent)
 	require.True(t, ok)
-	assert.Equal(t, state.RoleAssistant, tc.Turn.Role)
+	assert.Equal(t, ledger.RoleAssistant, tc.Turn.Role)
 
 	// State should NOT be mutated because no OnEmit callback was wired
 	assert.Len(t, mem.Turns(), 1) // only the initial user turn
@@ -1393,8 +1393,8 @@ func TestOnEmit_ErrorEvent_ContextPropagation(t *testing.T) {
 	}
 
 	s := New(WithOnEmit(cb))
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	wantErr := errors.New("provider failed")
 	prov := &mockProvider{err: wantErr}
@@ -1483,7 +1483,7 @@ func TestTurn_LifecyclePhases(t *testing.T) {
 			lifecycleCh := step.Subscribe("lifecycle")
 
 			prov := &mockProvider{artifacts: tt.artifacts, err: tt.wantErr}
-			st := &state.Buffer{}
+			st := &ledger.Buffer{}
 
 			_, err := step.Turn(context.Background(), st, spec, prov)
 			if tt.wantErr != nil {
@@ -1510,8 +1510,8 @@ func TestTurn_LifecyclePhases(t *testing.T) {
 // context.Background() instead of the cancelled turn context.
 func TestStep_Turn_ErrorEvent_NoSubscriber(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	s := New()
 	wantErr := errors.New("provider failed")
@@ -1538,7 +1538,7 @@ func TestApplyDisplayHints_AttachesDisplay(t *testing.T) {
 	}
 
 	toolsOpt := provider.ToolsOption{
-		Tools: func(_ context.Context, _ state.State) []tool.Tool {
+		Tools: func(_ context.Context, _ ledger.State) []tool.Tool {
 			return []tool.Tool{
 				{Name: "bash", DisplayHint: displayHint},
 			}
@@ -1565,7 +1565,7 @@ func TestApplyDisplayHints_AttachesDisplay(t *testing.T) {
 
 func TestApplyDisplayHints_NoMatchingHint(t *testing.T) {
 	toolsOpt := provider.ToolsOption{
-		Tools: func(_ context.Context, _ state.State) []tool.Tool {
+		Tools: func(_ context.Context, _ ledger.State) []tool.Tool {
 			return []tool.Tool{
 				{Name: "other"},
 			}
@@ -1586,7 +1586,7 @@ func TestApplyDisplayHints_NoMatchingHint(t *testing.T) {
 func TestApplyDisplayHints_InvalidJSON(t *testing.T) {
 	displayHint := func(args map[string]any) any { return args }
 	toolsOpt := provider.ToolsOption{
-		Tools: func(_ context.Context, _ state.State) []tool.Tool {
+		Tools: func(_ context.Context, _ ledger.State) []tool.Tool {
 			return []tool.Tool{
 				{Name: "bash", DisplayHint: displayHint},
 			}
@@ -1605,19 +1605,19 @@ func TestApplyDisplayHints_InvalidJSON(t *testing.T) {
 }
 
 func TestStep_Emit_WithState_NoOnEmit(t *testing.T) {
-	buf := &state.Buffer{}
+	buf := &ledger.Buffer{}
 	s := New(WithState(buf))
 
 	ctx := context.Background()
-	turn := state.Turn{
-		Role:      state.RoleAssistant,
+	turn := ledger.Turn{
+		Role:      ledger.RoleAssistant,
 		Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}},
 	}
 	s.Emit(ctx, TurnCompleteEvent{Turn: turn, Ctx: ctx})
 
 	turns := buf.Turns()
 	require.Len(t, turns, 1)
-	assert.Equal(t, state.RoleAssistant, turns[0].Role)
+	assert.Equal(t, ledger.RoleAssistant, turns[0].Role)
 	assert.Len(t, turns[0].Artifacts, 1)
 }
 
@@ -1625,8 +1625,8 @@ func TestStep_WithState_Nil_NoPanic(t *testing.T) {
 	s := New(WithState(nil))
 
 	ctx := context.Background()
-	turn := state.Turn{
-		Role:      state.RoleUser,
+	turn := ledger.Turn{
+		Role:      ledger.RoleUser,
 		Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}},
 	}
 	// Should not panic even though state is nil.
@@ -1639,8 +1639,8 @@ type emitTurnCompleteHandler struct{}
 
 func (h *emitTurnCompleteHandler) Handle(ctx context.Context, art artifact.Artifact, e Emitter) error {
 	e.Emit(ctx, TurnCompleteEvent{
-		Turn: state.Turn{
-			Role:      state.RoleTool,
+		Turn: ledger.Turn{
+			Role:      ledger.RoleTool,
 			Artifacts: []artifact.Artifact{artifact.ToolResult{Content: "tool result"}},
 		},
 		Ctx: ctx,
@@ -1649,22 +1649,22 @@ func (h *emitTurnCompleteHandler) Handle(ctx context.Context, art artifact.Artif
 }
 
 func TestStep_Submit_WithState_HandlerEmitsTurnComplete(t *testing.T) {
-	buf := &state.Buffer{}
+	buf := &ledger.Buffer{}
 	handler := &emitTurnCompleteHandler{}
 	s := New(WithState(buf), WithHandlers(handler))
 
 	ctx := context.Background()
-	_, err := s.Submit(ctx, buf, state.RoleUser, artifact.Text{Content: "hello"})
+	_, err := s.Submit(ctx, buf, ledger.RoleUser, artifact.Text{Content: "hello"})
 	require.NoError(t, err)
 
 	turns := buf.Turns()
 	require.Len(t, turns, 2)
-	assert.Equal(t, state.RoleUser, turns[0].Role)
-	assert.Equal(t, state.RoleTool, turns[1].Role)
+	assert.Equal(t, ledger.RoleUser, turns[0].Role)
+	assert.Equal(t, ledger.RoleTool, turns[1].Role)
 }
 
 func TestStep_WithState_And_OnEmit_BothAppend_DocumentsAntiPattern(t *testing.T) {
-	buf := &state.Buffer{}
+	buf := &ledger.Buffer{}
 	customAppend := func(ctx context.Context, event OutputEvent) {
 		if tc, ok := event.(TurnCompleteEvent); ok {
 			buf.Append(tc.Turn.Role, tc.Turn.Artifacts...)
@@ -1673,8 +1673,8 @@ func TestStep_WithState_And_OnEmit_BothAppend_DocumentsAntiPattern(t *testing.T)
 	s := New(WithState(buf), WithOnEmit(customAppend))
 
 	ctx := context.Background()
-	turn := state.Turn{
-		Role:      state.RoleUser,
+	turn := ledger.Turn{
+		Role:      ledger.RoleUser,
 		Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}},
 	}
 	s.Emit(ctx, TurnCompleteEvent{Turn: turn, Ctx: ctx})
@@ -1682,14 +1682,14 @@ func TestStep_WithState_And_OnEmit_BothAppend_DocumentsAntiPattern(t *testing.T)
 	// Combining WithState (auto-append) with an OnEmit callback that also
 	// appends results in a double append. This is an anti-pattern:
 	// use WithState for persistence and WithOnEmit only for side-effects
-	// that do not mutate the same state.
+	// that do not mutate the same ledger.
 	turns := buf.Turns()
 	assert.Len(t, turns, 2, "combining WithState and an OnEmit that appends causes double append")
 }
 
 func TestTurnCompleteEvent_MarshalJSON(t *testing.T) {
-	turn := state.Turn{
-		Role:      state.RoleUser,
+	turn := ledger.Turn{
+		Role:      ledger.RoleUser,
 		Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}},
 		Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
@@ -1733,7 +1733,7 @@ func TestPropertiesEvent_MarshalJSON(t *testing.T) {
 }
 
 func TestTurnCompleteEvent_MarshalJSON_OmitEmptyContext(t *testing.T) {
-	event := TurnCompleteEvent{Turn: state.Turn{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}}
+	event := TurnCompleteEvent{Turn: ledger.Turn{Role: ledger.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}}
 	data, err := json.Marshal(event)
 	require.NoError(t, err)
 	assert.NotContains(t, string(data), "context")

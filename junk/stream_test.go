@@ -12,7 +12,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -67,16 +67,16 @@ func TestStream_Turns(t *testing.T) {
 
 	turns := stream.Turns()
 	require.Len(t, turns, 2)
-	assert.Equal(t, state.RoleUser, turns[0].Role)
+	assert.Equal(t, ledger.RoleUser, turns[0].Role)
 	assert.Equal(t, "hello", turns[0].Artifacts[0].(artifact.Text).Content)
-	assert.Equal(t, state.RoleAssistant, turns[1].Role)
+	assert.Equal(t, ledger.RoleAssistant, turns[1].Role)
 
 	// Modifying the returned slice must not affect the stream.
-	turns[0].Role = state.RoleSystem
-	_ = append(turns, state.Turn{Role: state.RoleSystem})
+	turns[0].Role = ledger.RoleSystem
+	_ = append(turns, ledger.Turn{Role: ledger.RoleSystem})
 	freshTurns := stream.Turns()
 	require.Len(t, freshTurns, 2)
-	assert.Equal(t, state.RoleUser, freshTurns[0].Role)
+	assert.Equal(t, ledger.RoleUser, freshTurns[0].Role)
 
 	_ = stream.Close()
 }
@@ -97,14 +97,14 @@ func TestStream_LoadTurns(t *testing.T) {
 	require.Len(t, initialTurns, 2)
 
 	// Replace the turns with a single synthetic turn.
-	replacement := []state.Turn{
-		{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "replaced"}}},
+	replacement := []ledger.Turn{
+		{Role: ledger.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "replaced"}}},
 	}
 	stream.LoadTurns(replacement)
 
 	got := stream.Turns()
 	require.Len(t, got, 1)
-	assert.Equal(t, state.RoleUser, got[0].Role)
+	assert.Equal(t, ledger.RoleUser, got[0].Role)
 	assert.Equal(t, "replaced", got[0].Artifacts[0].(artifact.Text).Content)
 
 	_ = stream.Close()
@@ -126,9 +126,9 @@ func TestStream_AppendTurn_AppendsToState(t *testing.T) {
 	// Append a synthetic RoleSystem turn that mirrors the post-refactor
 	// compaction shape: the LLM-facing summary as Text. The boundary
 	// marker used to be a sibling artifact.Compaction artifact; it
-	// now lives in state.Meta (see x/compaction).
+	// now lives in ledger.Meta (see x/compaction).
 	err = stream.AppendTurn(context.Background(),
-		state.RoleSystem,
+		ledger.RoleSystem,
 		artifact.Text{Content: "summary"},
 	)
 	require.NoError(t, err)
@@ -137,7 +137,7 @@ func TestStream_AppendTurn_AppendsToState(t *testing.T) {
 	require.Len(t, got, 3, "AppendTurn appends to the existing buffer")
 
 	// The appended turn is at the end.
-	assert.Equal(t, state.RoleSystem, got[2].Role)
+	assert.Equal(t, ledger.RoleSystem, got[2].Role)
 	require.Len(t, got[2].Artifacts, 1)
 	assert.Equal(t, "summary", got[2].Artifacts[0].(artifact.Text).Content)
 	assert.False(t, got[2].Timestamp.IsZero())
@@ -157,7 +157,7 @@ func TestStream_AppendTurn_BroadcastsTurnComplete(t *testing.T) {
 
 	err = stream.AppendTurn(
 		loop.WithProvenance(context.Background(), "external"),
-		state.RoleSystem,
+		ledger.RoleSystem,
 		artifact.Text{Content: "summary"},
 	)
 	require.NoError(t, err)
@@ -166,7 +166,7 @@ func TestStream_AppendTurn_BroadcastsTurnComplete(t *testing.T) {
 	case ev := <-ch:
 		tc, ok := ev.(loop.TurnCompleteEvent)
 		require.True(t, ok, "expected TurnCompleteEvent, got %T", ev)
-		assert.Equal(t, state.RoleSystem, tc.Turn.Role)
+		assert.Equal(t, ledger.RoleSystem, tc.Turn.Role)
 		require.Len(t, tc.Turn.Artifacts, 1)
 		assert.Equal(t, "summary", tc.Turn.Artifacts[0].(artifact.Text).Content)
 		assert.Equal(t, "external", provenance(tc.Ctx))
@@ -187,7 +187,7 @@ func TestStream_AppendTurn_ClosedReturnsError(t *testing.T) {
 
 	require.NoError(t, stream.Close())
 
-	err = stream.AppendTurn(context.Background(), state.RoleSystem, artifact.Text{Content: "after close"})
+	err = stream.AppendTurn(context.Background(), ledger.RoleSystem, artifact.Text{Content: "after close"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "closed")
 }
@@ -204,7 +204,7 @@ func TestStream_AppendTurn_NoSubscribers_NoError(t *testing.T) {
 	require.NoError(t, err)
 
 	// No subscription — AppendTurn returns nil and the state is updated.
-	err = stream.AppendTurn(context.Background(), state.RoleSystem, artifact.Text{Content: "no listeners"})
+	err = stream.AppendTurn(context.Background(), ledger.RoleSystem, artifact.Text{Content: "no listeners"})
 	require.NoError(t, err)
 
 	require.Len(t, stream.Turns(), 1)
@@ -512,7 +512,7 @@ func TestStream_Process_EmitsLifecycleEvent(t *testing.T) {
 
 func TestStream_Process_EmitsLifecycleEvent_WithError(t *testing.T) {
 	store := NewMemoryStore()
-	mgr := NewManager(store, &mockProvider{}, func(*Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+	mgr := NewManager(store, &mockProvider{}, func(*Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
 		return st, errors.New("processor failed")
 	})
 
@@ -664,7 +664,7 @@ func TestStream_Process_EmitsLifecycleEvent_PropagatesProvenance(t *testing.T) {
 func TestStream_Process_EmitsSingleLifecycleEvent_ForMultiTurn(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
 		spec := models.Spec{Name: "test-model"}
 		st, err := step.Turn(ctx, st, spec, prov)
 		if err != nil {
@@ -715,7 +715,7 @@ func TestStream_Process_EmitsSingleLifecycleEvent_ForMultiTurn(t *testing.T) {
 func TestStream_Submit_NonBlocking(t *testing.T) {
 	store := NewMemoryStore()
 	sleepyProcessor := func() TurnProcessor {
-		return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+		return func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
 			time.Sleep(50 * time.Millisecond)
 			return st, nil
 		}
@@ -760,7 +760,7 @@ func TestStream_Submit_FIFOOrder(t *testing.T) {
 	require.NoError(t, stream.Submit(UserMessageEvent{Content: "third"}))
 
 	// Flush the queue with a synchronous Process to ensure all prior
-	// Submits have completed before inspecting state.
+	// Submits have completed before inspecting ledger.
 	require.NoError(t, stream.Process(context.Background(), UserMessageEvent{Content: "flush"}))
 
 	turns := stream.thread.State.Turns()
@@ -861,7 +861,7 @@ func TestStream_ProcessAndSubmit_Mixed(t *testing.T) {
 // slowProvider sleeps for a short duration, simulating a slow turn.
 type slowProvider struct{}
 
-func (m *slowProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *slowProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	select {
 	case <-time.After(100 * time.Millisecond):
 		return nil
@@ -877,7 +877,7 @@ type serialProvider struct {
 	detected bool
 }
 
-func (m *serialProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *serialProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	m.mu.Lock()
 	if m.active {
 		m.detected = true
@@ -1004,7 +1004,7 @@ func TestStream_Interceptor_Consume(t *testing.T) {
 		// Expected timeout — no events.
 	}
 
-	// No turns should be added to state.
+	// No turns should be added to ledger.
 	assert.Empty(t, stream.Turns())
 
 	_ = stream.Close()
@@ -1117,7 +1117,7 @@ func TestStream_Interceptor_Notice(t *testing.T) {
 		// Expected timeout — no events.
 	}
 
-	// No turns should be added to state.
+	// No turns should be added to ledger.
 	assert.Empty(t, stream.Turns())
 
 	_ = stream.Close()
@@ -1352,7 +1352,7 @@ func TestStream_Interceptor_NonUserMessage(t *testing.T) {
 // recorded via MarkBoundary persists across Save/Load through the
 // in-memory store. The boundary index and the encoded info
 // round-trip through thread.Metadata under the
-// ore.compaction.boundary.* keys and are restored to state.Meta
+// ore.compaction.boundary.* keys and are restored to ledger.Meta
 // on the loaded stream.
 func TestStream_MarkBoundary_RoundTrip(t *testing.T) {
 	store := NewMemoryStore()
@@ -1383,17 +1383,17 @@ func TestStream_MarkBoundary_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	defer mgr2.Close(threadID)
 
-	// The loaded buffer should carry the boundary keys on state.Meta.
+	// The loaded buffer should carry the boundary keys on ledger.Meta.
 	got, ok := stream2.State().Meta().Get("ore.compaction.boundary.index")
-	require.True(t, ok, "boundary index must round-trip via state.Meta")
+	require.True(t, ok, "boundary index must round-trip via ledger.Meta")
 	assert.Equal(t, boundaryIdx, mustAtoi(t, got))
 	gotInfo, ok := stream2.State().Meta().Get("ore.compaction.boundary.info")
-	require.True(t, ok, "boundary info must round-trip via state.Meta")
+	require.True(t, ok, "boundary info must round-trip via ledger.Meta")
 	assert.Equal(t, info, gotInfo)
 }
 
 // mustAtoi parses a decimal integer and fails the test on error.
-// Used to read the boundary index from state.Meta.
+// Used to read the boundary index from ledger.Meta.
 func mustAtoi(t *testing.T, s string) int {
 	t.Helper()
 	n, err := strconv.Atoi(s)

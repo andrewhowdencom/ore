@@ -5,7 +5,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 )
 
 // Transform prepends safety and formatting guardrails to the inference
@@ -45,19 +45,19 @@ func New(opts ...Option) (loop.Transform, error) {
 
 // Transform implements loop.Transform. It returns a state view with
 // RoleUser turns prepended before the base state's turns, one per rule.
-func (t *Transform) Transform(ctx context.Context, st state.State) (state.State, error) {
+func (t *Transform) Transform(ctx context.Context, st ledger.State) (ledger.State, error) {
 	if len(t.rules) == 0 {
 		return st, nil
 	}
 
-	virtual := make([]state.Turn, 0, len(t.rules))
+	virtual := make([]ledger.Turn, 0, len(t.rules))
 	for _, rule := range t.rules {
-		virtual = append(virtual, state.Turn{
-			Role:      state.RoleUser,
+		virtual = append(virtual, ledger.Turn{
+			Role:      ledger.RoleUser,
 			Artifacts: []artifact.Artifact{artifact.Text{Content: rule}},
 		})
 	}
-	return state.Prepend(st, virtual), nil
+	return ledger.Prepend(st, virtual), nil
 }
 
 // Rules returns the configured guardrail rules.

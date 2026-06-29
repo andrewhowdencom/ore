@@ -11,7 +11,7 @@ import (
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
@@ -33,7 +33,7 @@ type mockProvider struct {
 
 var _ provider.Provider = (*mockProvider)(nil)
 
-func (m *mockProvider) Invoke(ctx context.Context, _ state.State, _ models.Spec, ch chan<- artifact.Artifact, _ ...provider.InvokeOption) error {
+func (m *mockProvider) Invoke(ctx context.Context, _ ledger.State, _ models.Spec, ch chan<- artifact.Artifact, _ ...provider.InvokeOption) error {
 	atomic.AddInt32(&m.called, 1)
 	for _, a := range m.artifacts {
 		select {
@@ -53,15 +53,15 @@ type recordingPattern struct {
 
 	mu     sync.Mutex
 	calls  int32
-	lastSt state.State
+	lastSt ledger.State
 
 	err error
-	ret state.State
+	ret ledger.State
 }
 
 var _ cognitive.Pattern = (*recordingPattern)(nil)
 
-func (p *recordingPattern) Run(_ context.Context, st state.State) (state.State, error) {
+func (p *recordingPattern) Run(_ context.Context, st ledger.State) (ledger.State, error) {
 	atomic.AddInt32(&p.calls, 1)
 	p.mu.Lock()
 	p.lastSt = st
@@ -151,7 +151,7 @@ func TestAgent_Run_DelegatesToPattern(t *testing.T) {
 	)
 	defer a.Close()
 
-	st := &state.Buffer{}
+	st := &ledger.Buffer{}
 	result, err := a.Run(context.Background(), st)
 	require.NoError(t, err)
 	assert.Same(t, st, result)
@@ -171,7 +171,7 @@ func TestAgent_Run_PatternErrorPropagates(t *testing.T) {
 	)
 	defer a.Close()
 
-	_, err := a.Run(context.Background(), &state.Buffer{})
+	_, err := a.Run(context.Background(), &ledger.Buffer{})
 	require.ErrorIs(t, err, want)
 }
 
@@ -185,7 +185,7 @@ func TestAgent_Run_RecordsAgentRunSpan(t *testing.T) {
 	)
 	defer a.Close()
 
-	_, err := a.Run(context.Background(), &state.Buffer{})
+	_, err := a.Run(context.Background(), &ledger.Buffer{})
 	require.NoError(t, err)
 
 	tracer.mu.Lock()
@@ -212,9 +212,9 @@ func TestAgent_Run_ReusesStep(t *testing.T) {
 	defer a.Close()
 
 	step1 := a.Step()
-	_, err := a.Run(context.Background(), &state.Buffer{})
+	_, err := a.Run(context.Background(), &ledger.Buffer{})
 	require.NoError(t, err)
-	_, err = a.Run(context.Background(), &state.Buffer{})
+	_, err = a.Run(context.Background(), &ledger.Buffer{})
 	require.NoError(t, err)
 	step2 := a.Step()
 	assert.Same(t, step1, step2, "step should be reused across Run calls")

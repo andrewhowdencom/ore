@@ -270,7 +270,7 @@ func run() error {
 			}}, nil
 		}
 
-		// Record the boundary on state.Meta so the next Transform
+		// Record the boundary on ledger.Meta so the next Transform
 		// call projects the buffer from the compaction turn onward.
 		// The boundary index is the position of the just-appended
 		// summary turn (the last element). MarkBoundary takes a

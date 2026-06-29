@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 )
 
 // Thread represents a persistent thread with identity,
@@ -14,7 +14,7 @@ type Thread struct {
 	// ID is the unique identifier for this thread (random UUID).
 	ID string
 	// State holds the mutable thread turn history.
-	State *state.Buffer
+	State *ledger.Buffer
 	// CreatedAt is set when the thread is first created.
 	CreatedAt time.Time
 	// UpdatedAt is advanced on every successful Save.
@@ -78,11 +78,11 @@ func (c *Thread) UnmarshalJSON(data []byte) error {
 	} else {
 		c.Metadata = make(map[string]string)
 	}
-	c.State = &state.Buffer{}
+	c.State = &ledger.Buffer{}
 	c.State.LoadTurns(turns)
 
 	// Restore the compaction boundary from thread.Metadata to
-	// state.Meta under the ore.compaction.boundary.* keys. This
+	// ledger.Meta under the ore.compaction.boundary.* keys. This
 	// is the symmetric read of Stream.Save's write — the boundary
 	// is the only state-level fact that round-trips through
 	// thread.Metadata today.

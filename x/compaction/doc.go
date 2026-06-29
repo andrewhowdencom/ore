@@ -1,7 +1,7 @@
 // Package compaction provides a state-buffer compaction framework for
 // ore conversations. The design is non-destructive: a compaction is an
 // in-band event recorded in the buffer, not a destructive rewrite of
-// state.
+// ledger.
 //
 // # Design
 //
@@ -13,12 +13,12 @@
 //     an artifact.Text (the LLM-facing summary), and a companion
 //     BoundaryInfo struct (the structured provenance of the
 //     compaction event). The turn is appended to the buffer by the
-//     caller; the BoundaryInfo is written to state.Meta under the
+//     caller; the BoundaryInfo is written to ledger.Meta under the
 //     ore.compaction.boundary.* keys (see [MetaKeyBoundaryIndex] and
 //     [MetaKeyBoundaryInfo]) via stream.MarkBoundary or an equivalent
 //     helper.
 //   - The LLM-facing view is projected through the boundary recorded
-//     in state.Meta via the Transform in this package. The summary
+//     in ledger.Meta via the Transform in this package. The summary
 //     stands in for everything older than itself; multiple
 //     compactions are cumulative, with each summary absorbing
 //     everything that preceded it.
@@ -39,12 +39,12 @@
 //     agent.Agent (configured with a cognitive.SingleShot pattern)
 //     to produce a single RoleSystem compaction turn carrying only
 //     artifact.Text, plus a BoundaryInfo describing the event. The
-//     function returns (state.Turn{}, BoundaryInfo{}, ErrTruncatedSummary)
+//     function returns (ledger.Turn{}, BoundaryInfo{}, ErrTruncatedSummary)
 //     on truncation; the caller is expected to NOT append anything
 //     to the buffer in that case.
 //
 //   - Transform: a loop.Transform that reads the boundary index from
-//     state.Meta and returns a state.View exposing only the
+//     ledger.Meta and returns a ledger.View exposing only the
 //     boundary turn and subsequent turns. It is stateless and
 //     goroutine-safe; a single instance may be shared across many
 //     Step configurations.
@@ -54,9 +54,9 @@
 //     Lives in this package because it is a compaction-specific
 //     concern; the state package remains agnostic.
 //
-// # Why the boundary is in state.Meta, not the artifact stream
+// # Why the boundary is in ledger.Meta, not the artifact stream
 //
-// The artifact stream ([state.Turn.Artifacts]) is a journal of what
+// The artifact stream ([ledger.Turn.Artifacts]) is a journal of what
 // was produced in a conversation. Every artifact kind that lives
 // there describes something produced by its turn — content
 // (artifact.Text, artifact.ToolCall, …), in-flight fragments
@@ -68,8 +68,8 @@
 // artifact stream forced every consumer (the Anthropic wire's
 // onlyText predicate, the TUI, the session serializer) to either
 // know about the boundary, tolerate it, or silently fail when
-// encountering it. The boundary now lives in state.Meta — a
-// generic metadata channel added to state.State for state-level
+// encountering it. The boundary now lives in ledger.Meta — a
+// generic metadata channel added to ledger.State for state-level
 // facts (compaction boundaries, future checkpoint markers) that
 // are not turn-level artifacts.
 //
@@ -89,7 +89,7 @@
 //
 // Summarize reads the agent's produced turn for artifact.StopReason.
 // If the reason is StopReasonLength, the function returns the zero
-// state.Turn, the zero BoundaryInfo, and an error wrapping
+// ledger.Turn, the zero BoundaryInfo, and an error wrapping
 // ErrTruncatedSummary. This replaces the previous silent-corruption
 // behavior in which a truncated summary (often a one-token '##'
 // fragment) was written into the conversation buffer as if it were
@@ -158,7 +158,7 @@
 // # Threading
 //
 // Summarize and Transform are goroutine-safe. They do not share
-// mutable state. The state.Buffer itself is not goroutine-safe, as
+// mutable ledger. The ledger.Buffer itself is not goroutine-safe, as
 // documented in package state; compaction must be called from the
 // same goroutine as the buffer's owner (typically the session's
 // worker goroutine).

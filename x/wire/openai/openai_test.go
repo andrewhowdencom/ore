@@ -17,7 +17,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/provider/retry"
 	toolpkg "github.com/andrewhowdencom/ore/tool"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
@@ -229,8 +229,8 @@ func TestProviderInvoke_Success(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	err = p.Invoke(t.Context(), mem, spec, ch)
@@ -251,8 +251,8 @@ func TestProviderInvoke_HTTPError(t *testing.T) {
 	p, err := New(WithAPIKey("bad-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	err = p.Invoke(t.Context(), mem, spec, ch)
@@ -267,8 +267,8 @@ func TestProviderInvoke_EmptyChoices(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	err = p.Invoke(t.Context(), mem, spec, ch)
@@ -286,8 +286,8 @@ func TestProviderInvoke_UsageChunk(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	err = p.Invoke(t.Context(), mem, spec, ch)
@@ -311,8 +311,8 @@ func TestProviderInvoke_MultipleTextArtifacts(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser,
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser,
 		artifact.Text{Content: "line1"},
 		artifact.Text{Content: "line2"},
 	)
@@ -336,8 +336,8 @@ func TestProviderInvoke_NonTextArtifactsSkipped(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser,
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser,
 		artifact.Text{Content: "hello"},
 		artifact.ToolCall{Name: "foo", Arguments: "{}"},
 		artifact.Image{URL: "http://example.com/img.png"},
@@ -371,7 +371,7 @@ func TestProviderInvoke_EmptyState(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 
 	ch := make(chan artifact.Artifact, 10)
 	_ = p.Invoke(t.Context(), mem, spec, ch)
@@ -397,8 +397,8 @@ func TestProviderInvoke_MultipleChoices(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	err = p.Invoke(t.Context(), mem, spec, ch)
@@ -420,8 +420,8 @@ func TestProviderInvoke_MalformedJSON(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	err = p.Invoke(t.Context(), mem, spec, ch)
@@ -436,8 +436,8 @@ func TestProviderInvoke_ContextCancellation(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -457,8 +457,8 @@ func TestProviderInvoke_CustomClient(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	err = p.Invoke(t.Context(), mem, spec, ch)
@@ -474,8 +474,8 @@ func TestProviderInvoke_WithReasoning(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "o3-mini"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	err = p.Invoke(t.Context(), mem, spec, ch)
@@ -498,8 +498,8 @@ func TestProviderInvoke_EmptyReasoning(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "o3-mini"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	err = p.Invoke(t.Context(), mem, spec, ch)
@@ -519,8 +519,8 @@ func TestProviderInvoke_ReasoningOnly(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "o3-mini"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	err = p.Invoke(t.Context(), mem, spec, ch)
@@ -543,11 +543,11 @@ func TestProviderInvoke_RoleMapping(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleSystem, artifact.Text{Content: "sys"})
-	mem.Append(state.RoleUser, artifact.Text{Content: "usr"})
-	mem.Append(state.RoleAssistant, artifact.Text{Content: "asst"})
-	mem.Append(state.RoleTool, artifact.Text{Content: "tool"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleSystem, artifact.Text{Content: "sys"})
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "usr"})
+	mem.Append(ledger.RoleAssistant, artifact.Text{Content: "asst"})
+	mem.Append(ledger.RoleTool, artifact.Text{Content: "tool"})
 
 	ch := make(chan artifact.Artifact, 10)
 	_ = p.Invoke(t.Context(), mem, spec, ch)
@@ -580,8 +580,8 @@ func TestProviderInvoke_ConcurrentOptions(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(&http.Client{Transport: transport}))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
@@ -607,8 +607,8 @@ func TestProviderInvoke_WithTemperature(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	_ = p.Invoke(t.Context(), mem, spec, ch, WithTemperature(0.7))
@@ -631,8 +631,8 @@ func TestProviderInvoke_WithMaxTokens(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	_ = p.Invoke(t.Context(), mem, spec, ch, WithMaxTokens(12345))
@@ -655,8 +655,8 @@ func TestProviderInvoke_WithoutMaxTokens(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	_ = p.Invoke(t.Context(), mem, spec, ch)
@@ -702,8 +702,8 @@ func TestProviderInvoke_WithReasoningEffort(t *testing.T) {
 			p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 			spec := models.Spec{Name: "o3-mini"}
 			require.NoError(t, err)
-			mem := &state.Buffer{}
-			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+			mem := &ledger.Buffer{}
+			mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 			ch := make(chan artifact.Artifact, 10)
 			if tt.hasOption {
@@ -812,8 +812,8 @@ func TestInvoke_ReasoningIncludeField(t *testing.T) {
 			p, err := New(opts...)
 			spec := models.Spec{Name: "deepseek/deepseek-r1"}
 			require.NoError(t, err)
-			mem := &state.Buffer{}
-			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+			mem := &ledger.Buffer{}
+			mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 			ch := make(chan artifact.Artifact, 10)
 			_ = p.Invoke(t.Context(), mem, spec, ch)
@@ -845,11 +845,11 @@ func TestProviderInvoke_MixedAssistantTextAndToolCalls(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	// Manually append an assistant turn with both text and tool calls.
-	mem.Append(state.RoleAssistant,
+	mem.Append(ledger.RoleAssistant,
 		artifact.Text{Content: "I'll look that up"},
 		artifact.ToolCall{ID: "call_1", Name: "search", Arguments: `{"query":"test"}`},
 		artifact.ToolCall{ID: "call_2", Name: "calculate", Arguments: `{"expr":"1+1"}`},
@@ -933,8 +933,8 @@ func TestProviderInvoke_ToolsWithDescription(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	_ = p.Invoke(t.Context(), mem, spec, ch, WithTools(tools))
@@ -980,8 +980,8 @@ func TestProviderInvoke_InterleavedTextReasoningChunks(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "o3-mini"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	err = p.Invoke(t.Context(), mem, spec, ch)
@@ -1015,12 +1015,12 @@ func TestProviderInvoke_ToolResult_LLMRenderer(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	// Append an assistant turn with a tool call.
-	mem.Append(state.RoleAssistant, artifact.ToolCall{ID: "call_1", Name: "search", Arguments: `{}`})
+	mem.Append(ledger.RoleAssistant, artifact.ToolCall{ID: "call_1", Name: "search", Arguments: `{}`})
 	// Append a tool result with a Value that implements LLMRenderer.
-	mem.Append(state.RoleTool, artifact.ToolResult{
+	mem.Append(ledger.RoleTool, artifact.ToolResult{
 		ToolCallID: "call_1",
 		Content:    `{"raw":"json"}`,
 		Value:      &mockLLMValue{output: "custom llm output"},
@@ -1057,11 +1057,11 @@ func TestProviderInvoke_ToolResult_JSONFallback(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
-	mem.Append(state.RoleAssistant, artifact.ToolCall{ID: "call_1", Name: "search", Arguments: `{}`})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
+	mem.Append(ledger.RoleAssistant, artifact.ToolCall{ID: "call_1", Name: "search", Arguments: `{}`})
 	// Tool result with a simple string Value (no LLMRenderer).
-	mem.Append(state.RoleTool, artifact.ToolResult{
+	mem.Append(ledger.RoleTool, artifact.ToolResult{
 		ToolCallID: "call_1",
 		Content:    "fallback",
 		Value:      "json value",
@@ -1097,11 +1097,11 @@ func TestProviderInvoke_ToolResult_ContentFallback(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
-	mem.Append(state.RoleAssistant, artifact.ToolCall{ID: "call_1", Name: "search", Arguments: `{}`})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
+	mem.Append(ledger.RoleAssistant, artifact.ToolCall{ID: "call_1", Name: "search", Arguments: `{}`})
 	// Tool result with nil Value — should fall back to Content.
-	mem.Append(state.RoleTool, artifact.ToolResult{
+	mem.Append(ledger.RoleTool, artifact.ToolResult{
 		ToolCallID: "call_1",
 		Content:    "plain content",
 	})
@@ -1139,8 +1139,8 @@ func TestProviderInvoke_ToolCallDeltaAccumulation(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	err = p.Invoke(t.Context(), mem, spec, ch)
@@ -1177,8 +1177,8 @@ func TestProviderInvoke_EmptyToolsOmitted(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	_ = p.Invoke(t.Context(), mem, spec, ch, WithTools([]toolpkg.Tool{}))
@@ -1203,16 +1203,16 @@ func TestProviderInvoke_DynamicToolsOption(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
-	// Dynamic ToolsOption whose function inspects context and state.
+	// Dynamic ToolsOption whose function inspects context and ledger.
 	dynamicOpt := provider.ToolsOption{
-		Tools: func(ctx context.Context, st state.State) []toolpkg.Tool {
+		Tools: func(ctx context.Context, st ledger.State) []toolpkg.Tool {
 			assert.NotNil(t, ctx)
 			turns := st.Turns()
 			assert.Len(t, turns, 1)
-			assert.Equal(t, state.RoleUser, turns[0].Role)
+			assert.Equal(t, ledger.RoleUser, turns[0].Role)
 
 			return []toolpkg.Tool{
 				{
@@ -1255,14 +1255,14 @@ func TestProviderInvoke_ToolsOptionPrecedence(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	// Later ToolsOption should override the earlier one.
 	_ = p.Invoke(t.Context(), mem, spec, ch,
 		provider.WithTools([]toolpkg.Tool{{Name: "first", Description: "first tool"}}),
-		provider.ToolsOption{Tools: func(context.Context, state.State) []toolpkg.Tool {
+		provider.ToolsOption{Tools: func(context.Context, ledger.State) []toolpkg.Tool {
 			return []toolpkg.Tool{
 				{
 					Name:        "second",
@@ -1300,12 +1300,12 @@ func TestProviderInvoke_DynamicTools_EmptyResult(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	_ = p.Invoke(t.Context(), mem, spec, ch, provider.ToolsOption{
-		Tools: func(context.Context, state.State) []toolpkg.Tool {
+		Tools: func(context.Context, ledger.State) []toolpkg.Tool {
 			return nil
 		},
 	})
@@ -1330,8 +1330,8 @@ func TestProviderInvoke_DynamicTools_Concurrency(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(&http.Client{Transport: transport}))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
@@ -1347,7 +1347,7 @@ func TestProviderInvoke_DynamicTools_Concurrency(t *testing.T) {
 			}
 			ch := make(chan artifact.Artifact, 10)
 			_ = p.Invoke(t.Context(), mem, spec, ch, provider.ToolsOption{
-				Tools: func(context.Context, state.State) []toolpkg.Tool {
+				Tools: func(context.Context, ledger.State) []toolpkg.Tool {
 					return tools
 				},
 			})
@@ -1393,8 +1393,8 @@ func TestProviderInvoke_WithFilteredTools(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	registry := toolpkg.NewRegistry()
 	require.NoError(t, registry.Register(toolpkg.Tool{Name: "allowed", Description: "Allowed tool", Schema: map[string]any{"type": "object"}}, func(context.Context, toolpkg.Sandbox, map[string]any) (any, error) {
@@ -1404,7 +1404,7 @@ func TestProviderInvoke_WithFilteredTools(t *testing.T) {
 		return nil, nil
 	}))
 
-	filter := func(ctx context.Context, st state.State, tools []toolpkg.Tool) []toolpkg.Tool {
+	filter := func(ctx context.Context, st ledger.State, tools []toolpkg.Tool) []toolpkg.Tool {
 		var result []toolpkg.Tool
 		for _, tool := range tools {
 			if tool.Name == "allowed" {
@@ -1445,8 +1445,8 @@ func TestProviderInvoke_WithUsage(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	err = p.Invoke(t.Context(), mem, spec, ch)
@@ -1472,8 +1472,8 @@ func TestProviderInvoke_WithoutUsage(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	err = p.Invoke(t.Context(), mem, spec, ch)
@@ -1493,8 +1493,8 @@ func TestProviderInvoke_IncludeUsageFlag(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	_ = p.Invoke(t.Context(), mem, spec, ch)
@@ -1528,8 +1528,8 @@ func TestProviderInvoke_PartialStreamError(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	err = p.Invoke(t.Context(), mem, spec, ch)
@@ -1575,8 +1575,8 @@ func TestProviderInvoke_HTTPTraceContext(t *testing.T) {
 			spec := models.Spec{Name: "gpt-4"}
 			require.NoError(t, err)
 
-			mem := &state.Buffer{}
-			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+			mem := &ledger.Buffer{}
+			mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 			ch := make(chan artifact.Artifact, 10)
 			_ = p.Invoke(t.Context(), mem, spec, ch)
@@ -1673,8 +1673,8 @@ func TestProviderInvoke_SpanLifecycle(t *testing.T) {
 			spec := models.Spec{Name: "gpt-4"}
 			require.NoError(t, err)
 
-			mem := &state.Buffer{}
-			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+			mem := &ledger.Buffer{}
+			mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 			ch := make(chan artifact.Artifact, 10)
 			err = p.Invoke(t.Context(), mem, spec, ch)
@@ -1710,8 +1710,8 @@ func TestProviderInvoke_HTTPTrace_Events(t *testing.T) {
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	err = p.Invoke(t.Context(), mem, spec, ch)
@@ -1737,8 +1737,8 @@ func TestProviderInvoke_WithoutSubSpans(t *testing.T) {
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	err = p.Invoke(t.Context(), mem, spec, ch)
@@ -1793,8 +1793,8 @@ func TestInvoke_WithSessionID(t *testing.T) {
 			spec := models.Spec{Name: "gpt-4"}
 			require.NoError(t, err)
 
-			mem := &state.Buffer{}
-			mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+			mem := &ledger.Buffer{}
+			mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 			ch := make(chan artifact.Artifact, 10)
 			invokeOpts := []provider.InvokeOption{}
@@ -1869,11 +1869,11 @@ func TestInvoke_WithCacheControl(t *testing.T) {
 			spec := models.Spec{Name: "gpt-4"}
 			require.NoError(t, err)
 
-			mem := &state.Buffer{}
-			mem.Append(state.RoleSystem, artifact.Text{Content: "You are a helpful assistant."})
-			mem.Append(state.RoleUser, artifact.Text{Content: "first question"})
-			mem.Append(state.RoleAssistant, artifact.Text{Content: "first answer"})
-			mem.Append(state.RoleUser, artifact.Text{Content: "follow up"})
+			mem := &ledger.Buffer{}
+			mem.Append(ledger.RoleSystem, artifact.Text{Content: "You are a helpful assistant."})
+			mem.Append(ledger.RoleUser, artifact.Text{Content: "first question"})
+			mem.Append(ledger.RoleAssistant, artifact.Text{Content: "first answer"})
+			mem.Append(ledger.RoleUser, artifact.Text{Content: "follow up"})
 
 			invokeOpts := []provider.InvokeOption{
 				provider.WithTools(tools),
@@ -1996,8 +1996,8 @@ func TestProviderInvoke_UsageChunkWithOpenAICache(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -2025,8 +2025,8 @@ func TestProviderInvoke_UsageChunkWithAnthropicCache(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -2055,8 +2055,8 @@ func TestProviderInvoke_UsageChunkNoCache(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -2112,8 +2112,8 @@ func TestProviderInvoke_EmitsStopReason_Stop(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 10)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -2141,8 +2141,8 @@ func TestProviderInvoke_EmitsStopReason_Length(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "summarize this"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "summarize this"})
 
 	ch := make(chan artifact.Artifact, 10)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -2180,8 +2180,8 @@ func TestProviderInvoke_EmitsStopReason_ToolCalls(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "find something"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "find something"})
 
 	ch := make(chan artifact.Artifact, 10)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -2208,8 +2208,8 @@ func TestProviderInvoke_EmitsStopReason_ContentFilter(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "do something dangerous"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "do something dangerous"})
 
 	ch := make(chan artifact.Artifact, 10)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -2243,8 +2243,8 @@ func TestProviderInvoke_StopReason_NotOverwrittenByNull(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 10)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -2298,8 +2298,8 @@ func TestProviderInvoke_StreamsReasoning_FlatField(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "deepseek/deepseek-r1"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -2322,8 +2322,8 @@ func TestProviderInvoke_StreamsReasoning_DetailsArray_Text(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "anthropic/claude-3.7-sonnet:thinking"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -2348,8 +2348,8 @@ func TestProviderInvoke_StreamsReasoning_DetailsArray_Encrypted(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "anthropic/claude-3.7-sonnet:thinking"}
 	require.NoError(t, err)
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -2391,9 +2391,9 @@ func TestProviderSerialize_ReplaysReasoning_OpenAINative(t *testing.T) {
 	// the resulting text. Also include an Anthropic-style
 	// ReasoningSignature in the same turn to assert that it is
 	// dropped on the native wire.
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "what is 2+2?"})
-	mem.Append(state.RoleAssistant,
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "what is 2+2?"})
+	mem.Append(ledger.RoleAssistant,
 		artifact.Reasoning{Content: "Let me think..."},
 		artifact.Reasoning{Content: " ...step by step."},
 		artifact.ReasoningSignature{Provider: "anthropic", SubKind: "thinking", Data: "anth-blob"},
@@ -2461,9 +2461,9 @@ func TestProviderSerialize_ReplaysReasoning_OpenRouter(t *testing.T) {
 	spec := models.Spec{Name: "anthropic/claude-3.7-sonnet:thinking"}
 	require.NoError(t, err)
 
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "what is 2+2?"})
-	mem.Append(state.RoleAssistant,
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "what is 2+2?"})
+	mem.Append(ledger.RoleAssistant,
 		artifact.Reasoning{Content: "I am thinking"},
 		artifact.ReasoningSignature{Provider: "openai", SubKind: "encrypted", Data: "openai-blob"},
 		artifact.ReasoningSignature{Provider: "anthropic", SubKind: "thinking", Data: "anth-blob"},
@@ -2544,14 +2544,14 @@ func TestProviderSerialize_ComposesWithCacheControl(t *testing.T) {
 	spec := models.Spec{Name: "anthropic/claude-3.7-sonnet:thinking"}
 	require.NoError(t, err)
 
-	mem := &state.Buffer{}
-	mem.Append(state.RoleSystem, artifact.Text{Content: "You are a helpful assistant."})
-	mem.Append(state.RoleUser, artifact.Text{Content: "first question"})
-	mem.Append(state.RoleAssistant,
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleSystem, artifact.Text{Content: "You are a helpful assistant."})
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "first question"})
+	mem.Append(ledger.RoleAssistant,
 		artifact.Reasoning{Content: "thinking"},
 		artifact.Text{Content: "first answer"},
 	)
-	mem.Append(state.RoleUser, artifact.Text{Content: "follow up"})
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "follow up"})
 
 	ch := make(chan artifact.Artifact, 10)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch,

@@ -7,7 +7,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/models"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -81,8 +81,8 @@ func TestWithNameResolver_AppliesMapping(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 1)
 	spec := models.Spec{Name: "claude-test"}
@@ -115,8 +115,8 @@ func TestWithNameResolver_NotCalledForEmptyName(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 	ch := make(chan artifact.Artifact, 1)
 	err = p.Invoke(t.Context(), mem, models.Spec{Name: ""}, ch)
 	require.Error(t, err, "empty spec.Name must produce a hard error")

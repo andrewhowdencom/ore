@@ -8,7 +8,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/tool"
 )
 
@@ -138,7 +138,7 @@ func New(opts ...Option) (loop.Transform, error) {
 // RoleSystem turn prepended before the base state's turns.
 // Fragments are evaluated in registration order, empty results are omitted,
 // and non-empty results are joined with "\n\n".
-func (t *Transform) Transform(ctx context.Context, st state.State) (state.State, error) {
+func (t *Transform) Transform(ctx context.Context, st ledger.State) (ledger.State, error) {
 	var parts []string
 	for _, fn := range t.contentFuncs {
 		if fn == nil {
@@ -157,11 +157,11 @@ func (t *Transform) Transform(ctx context.Context, st state.State) (state.State,
 		}
 	}
 
-	virtual := []state.Turn{
+	virtual := []ledger.Turn{
 		{
-			Role:      state.RoleSystem,
+			Role:      ledger.RoleSystem,
 			Artifacts: []artifact.Artifact{artifact.Text{Content: strings.Join(parts, "\n\n")}},
 		},
 	}
-	return state.Prepend(st, virtual), nil
+	return ledger.Prepend(st, virtual), nil
 }

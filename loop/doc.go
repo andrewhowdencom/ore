@@ -51,14 +51,14 @@
 //   - WithTransforms — modify the state view presented to the provider
 //     during inference. Transforms run before each provider call in Turn(),
 //     composing in registration order. They must not mutate the underlying
-//     persistent buffer; use state.Prepend or state.NewView to create derived
+//     persistent buffer; use ledger.Prepend or ledger.NewView to create derived
 //     views that prepend virtual turns. See x/systemprompt for a reusable
 //     transform that injects a system prompt without touching history.
 //   - WithHandlers — run artifact handlers on the complete response.
-//   - WithState — bind a mutable state.State so that TurnCompleteEvent
+//   - WithState — bind a mutable ledger.State so that TurnCompleteEvent
 //     is automatically appended by Emit before OnEmit callbacks run.
 //     This is the canonical mechanism for state persistence; use
-//     WithOnEmit only for custom side-effects that do not mutate state.
+//     WithOnEmit only for custom side-effects that do not mutate ledger.
 //
 // Step is the single canonical single-turn execution primitive with
 // optional, opt-in capabilities via functional options. A Step with no
@@ -74,7 +74,7 @@
 //
 // Subscribe is live-only: it delivers events from the point of subscription
 // onward and does not replay historical events. Conduits that need historical
-// state should fetch it directly from the bound state.State (via Turns() or
+// state should fetch it directly from the bound ledger.State (via Turns() or
 // the store) rather than relying on the event stream.
 //
 // Output event taxonomy:

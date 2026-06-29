@@ -17,7 +17,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/compaction"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
@@ -35,7 +35,7 @@ type artifactMsg struct {
 // the model.Update loop so it can be finalized in the conversation
 // history.
 type turnMsg struct {
-	turn state.Turn
+	turn ledger.Turn
 }
 
 // statusMsg is a Bubble Tea message that carries a status update into
@@ -91,7 +91,7 @@ type renderTickMsg struct{}
 
 // reloadHistoryMsg is a Bubble Tea message that instructs the model to
 // discard its current turn history and rebuild it from a fresh slice of
-// state.Turn values. This is used after compaction (or any other
+// ledger.Turn values. This is used after compaction (or any other
 // operation that replaces the persistent state via stream.LoadTurns) so
 // the TUI view remains synchronized with the backend.
 //
@@ -99,7 +99,7 @@ type renderTickMsg struct{}
 // When non-zero, the turn at the boundary index in `turns` is rendered
 // with the collapse marker in addition to its Text artifact.
 type reloadHistoryMsg struct {
-	turns    []state.Turn
+	turns    []ledger.Turn
 	boundary compaction.BoundaryInfo
 }
 
@@ -263,7 +263,7 @@ type model struct {
 
 // renderedTurn represents a single turn in the conversation history.
 type renderedTurn struct {
-	role      state.Role
+	role      ledger.Role
 	blocks    []renderedBlock
 	timestamp time.Time
 }
@@ -354,21 +354,21 @@ func (m *model) syncViewport() {
 
 // renderArtifact converts an artifact into a renderedBlock. Markdown rendering is
 // applied unconditionally for all text-bearing block kinds so the pipeline is role-agnostic.
-func (m *model) renderArtifact(art artifact.Artifact, role state.Role) renderedBlock {
+func (m *model) renderArtifact(art artifact.Artifact, role ledger.Role) renderedBlock {
 	switch a := art.(type) {
 	case artifact.Text:
 		block := renderedBlock{kind: "text", source: a.Content}
 		switch role {
-		case state.RoleAssistant:
+		case ledger.RoleAssistant:
 			block.title = "Assistant"
 			block.style = m.theme.AssistantStyle
-		case state.RoleUser:
+		case ledger.RoleUser:
 			block.title = "You"
 			block.style = m.theme.UserStyle
-		case state.RoleTool:
+		case ledger.RoleTool:
 			block.title = "Tool"
 			block.style = m.theme.ToolResultStyle
-		case state.RoleSystem:
+		case ledger.RoleSystem:
 			block.title = "System"
 			block.style = m.theme.SystemStyle
 		}
@@ -450,7 +450,7 @@ func (m *model) renderArtifact(art artifact.Artifact, role state.Role) renderedB
 }
 
 // renderCompactionBlock produces a one-line marker block for a
-// compaction boundary recorded in state.Meta. The marker is collapsed
+// compaction boundary recorded in ledger.Meta. The marker is collapsed
 // by default (just the turn count and bytes saved); expanding via
 // Ctrl+O reveals the strategy, model, and timestamp as a small
 // metadata footer.
@@ -525,16 +525,16 @@ func (m *model) renderPlainBlock(kind, source, title string, style lipgloss.Styl
 }
 
 // loadHistory pre-populates the model's turn slice from a stream's
-// historical conversation state. It is called once during TUI startup
+// historical conversation ledger. It is called once during TUI startup
 // when resuming an existing thread. The supplied turns are expected to be
 // read-only; the method does not modify the slice or its contained artifacts.
 //
 // boundary, if non-zero, is rendered as a collapse-marker block appended
 // to the turn at the boundary's index in `turns`. In the typical flow
-// the caller passes the BoundaryInfo read from state.Meta; the
+// the caller passes the BoundaryInfo read from ledger.Meta; the
 // (turns, boundary) tuple is self-contained — the TUI does not need
 // access to the State to render the boundary.
-func (m *model) loadHistory(turns []state.Turn, boundary compaction.BoundaryInfo) {
+func (m *model) loadHistory(turns []ledger.Turn, boundary compaction.BoundaryInfo) {
 	hasBoundary := !boundary.CreatedAt.IsZero()
 	for _, turn := range turns {
 		var blocks []renderedBlock
@@ -651,7 +651,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.currentTurn.blocks = append(m.currentTurn.blocks, renderedBlock{kind: "reasoning", source: a.Content, title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false})
 			}
 		default:
-			block := m.renderArtifact(msg.artifact, state.RoleAssistant)
+			block := m.renderArtifact(msg.artifact, ledger.RoleAssistant)
 			if block.kind != "" {
 				m.currentTurn.blocks = append(m.currentTurn.blocks, block)
 			}
@@ -664,7 +664,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 		}
 	case turnMsg:
-		if msg.turn.Role == state.RoleAssistant {
+		if msg.turn.Role == ledger.RoleAssistant {
 			// Cancel any pending render tick.
 			m.renderScheduled = false
 
@@ -796,7 +796,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status["phase"] = "error"
 		block := m.renderPlainBlock("error", msg.err.Error(), "System", m.theme.ErrorStyle)
 		m.turns = append(m.turns, renderedTurn{
-			role:   state.RoleSystem,
+			role:   ledger.RoleSystem,
 			blocks: []renderedBlock{block},
 		})
 		m.contentDirty = true
@@ -810,7 +810,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		wasAtBottom := m.viewport.AtBottom()
 		block := m.renderPlainBlock("notice", msg.notice.Content, "System", m.theme.StyleForSeverity(msg.notice.Severity))
 		m.turns = append(m.turns, renderedTurn{
-			role:   state.RoleSystem,
+			role:   ledger.RoleSystem,
 			blocks: []renderedBlock{block},
 		})
 		m.contentDirty = true
@@ -957,7 +957,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// change.
 		width := m.viewport.Width()
 		for i, turn := range m.turns {
-			if turn.role != state.RoleAssistant {
+			if turn.role != ledger.RoleAssistant {
 				continue
 			}
 			for j := range turn.blocks {

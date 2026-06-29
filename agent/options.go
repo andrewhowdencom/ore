@@ -5,7 +5,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -54,10 +54,10 @@ func WithTracer(tracer trace.Tracer) Option {
 }
 
 // WithState binds a mutable state to the agent so that TurnCompleteEvents
-// from Run auto-append to the state. If not set, Run does not auto-append;
+// from Run auto-append to the ledger. If not set, Run does not auto-append;
 // callers manage state themselves. Use LoadTurns to reset the bound
 // state between Run calls.
-func WithState(st state.State) Option {
+func WithState(st ledger.State) Option {
 	return func(a *Agent) { a.state = st }
 }
 

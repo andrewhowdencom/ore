@@ -6,7 +6,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/models"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,8 +30,8 @@ func TestWithNameResolver_IdentityDefault(t *testing.T) {
 	assert.Equal(t, "gpt-test", p.nameResolver("gpt-test"),
 		"identity resolver must forward unchanged")
 
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 	ch := make(chan artifact.Artifact, 1)
 	require.NoError(t, p.Invoke(t.Context(), mem, models.Spec{Name: "gpt-test"}, ch))
 	close(ch)
@@ -64,8 +64,8 @@ func TestWithNameResolver_AppliesMapping(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 	ch := make(chan artifact.Artifact, 1)
 	require.NoError(t, p.Invoke(t.Context(), mem, models.Spec{Name: "gpt-test"}, ch))
 	close(ch)
@@ -95,8 +95,8 @@ func TestWithNameResolver_NotCalledForEmptyName(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 	ch := make(chan artifact.Artifact, 1)
 	err = p.Invoke(t.Context(), mem, models.Spec{Name: ""}, ch)
 	require.Error(t, err, "empty spec.Name must produce a hard error")

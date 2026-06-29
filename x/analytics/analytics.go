@@ -5,7 +5,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/llmbytes"
 )
 
@@ -49,7 +49,7 @@ const orphanToolSource = "(unknown)"
 // empty when resolving a tool_result. The fix is to build one map
 // per scope (the slice the caller passes to AnalyzeTurns, or the
 // thread in AnalyzeStore).
-func toolNamesInTurns(turns []state.Turn) map[string]string {
+func toolNamesInTurns(turns []ledger.Turn) map[string]string {
 	m := make(map[string]string)
 	for _, turn := range turns {
 		for _, art := range turn.Artifacts {
@@ -89,7 +89,7 @@ func sourceFor(art artifact.Artifact, nameByID map[string]string) string {
 // the same slice via a whole-slice ToolCallID→Name map. A result
 // whose ToolCallID has no matching call anywhere in the slice
 // buckets under orphanToolSource ("(unknown)").
-func AnalyzeTurns(turns []state.Turn) []Stats {
+func AnalyzeTurns(turns []ledger.Turn) []Stats {
 	stats := make(map[statsKey]*Stats)
 	nameByID := toolNamesInTurns(turns)
 

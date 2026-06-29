@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -41,7 +41,7 @@ func TestFanOut_MultipleSubscribersDifferentKinds(t *testing.T) {
 	turnCh := f.Subscribe("turn_complete")
 
 	src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "hello"}}, done: make(chan struct{})}
-	src <- outputEventEnvelope{event: TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant}}, done: make(chan struct{})}
+	src <- outputEventEnvelope{event: TurnCompleteEvent{Turn: ledger.Turn{Role: ledger.RoleAssistant}}, done: make(chan struct{})}
 	close(src)
 
 	var deltas []OutputEvent
@@ -67,7 +67,7 @@ func TestFanOut_NoMatchingEvents(t *testing.T) {
 
 	ch := f.Subscribe("text_delta")
 
-	src <- outputEventEnvelope{event: TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant}}, done: make(chan struct{})}
+	src <- outputEventEnvelope{event: TurnCompleteEvent{Turn: ledger.Turn{Role: ledger.RoleAssistant}}, done: make(chan struct{})}
 	close(src)
 
 	var events []OutputEvent
@@ -171,7 +171,7 @@ func TestFanOut_MultipleKindsOneSubscriber(t *testing.T) {
 	ch := f.Subscribe("text_delta", "turn_complete")
 
 	src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "hello"}}, done: make(chan struct{})}
-	src <- outputEventEnvelope{event: TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant}}, done: make(chan struct{})}
+	src <- outputEventEnvelope{event: TurnCompleteEvent{Turn: ledger.Turn{Role: ledger.RoleAssistant}}, done: make(chan struct{})}
 	close(src)
 
 	var events []OutputEvent
@@ -215,7 +215,7 @@ func TestFanOut_SubscribeAllKinds(t *testing.T) {
 	ch := f.Subscribe() // no kinds = all events
 
 	src <- outputEventEnvelope{event: ArtifactEvent{Artifact: artifact.TextDelta{Content: "hello"}}, done: make(chan struct{})}
-	src <- outputEventEnvelope{event: TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant}}, done: make(chan struct{})}
+	src <- outputEventEnvelope{event: TurnCompleteEvent{Turn: ledger.Turn{Role: ledger.RoleAssistant}}, done: make(chan struct{})}
 	src <- outputEventEnvelope{event: ErrorEvent{Err: assert.AnError}, done: make(chan struct{})}
 	close(src)
 

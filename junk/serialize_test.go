@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -133,33 +133,33 @@ func TestMarshalTurns_Empty(t *testing.T) {
 func TestMarshalTurns_RoundTrip(t *testing.T) {
 	tests := []struct {
 		name  string
-		turns []state.Turn
+		turns []ledger.Turn
 	}{
 		{
 			name: "single user turn with text",
-			turns: []state.Turn{
-				{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}},
+			turns: []ledger.Turn{
+				{Role: ledger.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}},
 			},
 		},
 		{
 			name: "system and user turns",
-			turns: []state.Turn{
-				{Role: state.RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "sys"}}},
-				{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "usr"}}},
+			turns: []ledger.Turn{
+				{Role: ledger.RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "sys"}}},
+				{Role: ledger.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "usr"}}},
 			},
 		},
 		{
 			name: "assistant turn with multiple artifacts",
-			turns: []state.Turn{
+			turns: []ledger.Turn{
 				{
-					Role: state.RoleAssistant,
+					Role: ledger.RoleAssistant,
 					Artifacts: []artifact.Artifact{
 						artifact.Reasoning{Content: "thinking..."},
 						artifact.ToolCall{ID: "call_1", Name: "add", Arguments: `{"a":1}`},
 					},
 				},
 				{
-					Role: state.RoleTool,
+					Role: ledger.RoleTool,
 					Artifacts: []artifact.Artifact{
 						artifact.ToolResult{ToolCallID: "call_1", Content: "result"},
 					},
@@ -168,33 +168,33 @@ func TestMarshalTurns_RoundTrip(t *testing.T) {
 		},
 		{
 			name: "usage artifact",
-			turns: []state.Turn{
+			turns: []ledger.Turn{
 				{
-					Role:      state.RoleAssistant,
+					Role:      ledger.RoleAssistant,
 					Artifacts: []artifact.Artifact{artifact.Usage{PromptTokens: 5, CompletionTokens: 3, TotalTokens: 8}},
 				},
 			},
 		},
 		{
 			name: "image artifact",
-			turns: []state.Turn{
+			turns: []ledger.Turn{
 				{
-					Role:      state.RoleUser,
+					Role:      ledger.RoleUser,
 					Artifacts: []artifact.Artifact{artifact.Image{URL: "http://example.com/img.png"}},
 				},
 			},
 		},
 		{
 			name: "turn with zero artifacts",
-			turns: []state.Turn{
-				{Role: state.RoleSystem},
+			turns: []ledger.Turn{
+				{Role: ledger.RoleSystem},
 			},
 		},
 		{
 			name: "turns with timestamps",
-			turns: []state.Turn{
-				{Role: state.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}, Timestamp: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)},
-				{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}}, Timestamp: time.Date(2026, 1, 1, 12, 0, 5, 0, time.UTC)},
+			turns: []ledger.Turn{
+				{Role: ledger.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}, Timestamp: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)},
+				{Role: ledger.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}}, Timestamp: time.Date(2026, 1, 1, 12, 0, 5, 0, time.UTC)},
 			},
 		},
 	}

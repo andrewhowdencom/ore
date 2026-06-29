@@ -28,7 +28,7 @@ package models
 //
 //   - System prompt
 //   - Tools (function definitions available to the model)
-//   - Message history (in state.State)
+//   - Message history (in ledger.State)
 //   - User-visible content
 //
 // Capabilities (audio, video, image, tool support) are a separate

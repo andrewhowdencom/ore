@@ -14,7 +14,7 @@
 // agent.Agent.
 //
 // When WithState is bound, Run auto-appends the produced turn to the
-// bound state. Callers that want a fresh state per Run should not bind
+// bound ledger. Callers that want a fresh state per Run should not bind
 // state or should call LoadTurns before each Run.
 //
 // Lifecycle: an agent constructed by New owns an internal *loop.Step.

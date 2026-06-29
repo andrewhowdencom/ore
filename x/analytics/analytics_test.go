@@ -8,7 +8,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/analytics"
 )
 
@@ -47,16 +47,16 @@ func TestAnalyzeTurns_Empty(t *testing.T) {
 		t.Fatalf("expected empty slice, got %d entries", len(got))
 	}
 
-	got = analytics.AnalyzeTurns([]state.Turn{})
+	got = analytics.AnalyzeTurns([]ledger.Turn{})
 	if len(got) != 0 {
 		t.Fatalf("expected empty slice for empty turns, got %d entries", len(got))
 	}
 }
 
 func TestAnalyzeTurns_MixedArtifacts(t *testing.T) {
-	turns := []state.Turn{
+	turns := []ledger.Turn{
 		{
-			Role:      state.RoleUser,
+			Role:      ledger.RoleUser,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "hello"},
 				artifact.Text{Content: "world"},
@@ -68,7 +68,7 @@ func TestAnalyzeTurns_MixedArtifacts(t *testing.T) {
 			// non-tool artifacts (image, usage). The framework never
 			// co-locates tool_result with tool_call, but the analytics
 			// resolution is whole-scope so it doesn't matter.
-			Role: state.RoleAssistant,
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.ToolCall{ID: "1", Name: "bash", Arguments: `{"cmd":"ls"}`},
 				artifact.Image{URL: "http://example.com/img.png"},
@@ -77,7 +77,7 @@ func TestAnalyzeTurns_MixedArtifacts(t *testing.T) {
 		},
 		{
 			// Tool turn: the handler emits the result separately.
-			Role: state.RoleTool,
+			Role: ledger.RoleTool,
 			Artifacts: []artifact.Artifact{
 				artifact.ToolResult{ToolCallID: "1", Content: "ok"},
 			},
@@ -128,7 +128,7 @@ func TestAnalyzeTurns_MixedArtifacts(t *testing.T) {
 	// Source is resolved by joining ToolCallID="1" against the
 	// tool_call{Name="bash", ID="1"} in the assistant turn above
 	// via whole-scope resolution (the call and result are in
-	// separate state.Turn values; the framework always emits them
+	// separate ledger.Turn values; the framework always emits them
 	// that way).
 	if s, ok := byKind["tool_result"]; !ok {
 		t.Fatal("missing 'tool_result' kind")
@@ -164,9 +164,9 @@ func TestAnalyzeTurns_MixedArtifacts(t *testing.T) {
 // targeting different tools must produce distinct rows, and two
 // tool_calls targeting the same tool must aggregate into one row.
 func TestAnalyzeTurns_ToolCallBucketedByName(t *testing.T) {
-	turns := []state.Turn{
+	turns := []ledger.Turn{
 		{
-			Role: state.RoleAssistant,
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				// Two calls target "bash" (different IDs, different args).
 				// The (tool_call, bash) row should aggregate both.
@@ -212,15 +212,15 @@ func TestAnalyzeTurns_ToolCallBucketedByName(t *testing.T) {
 // specifically across the assistant/role-tool turn boundary that
 // the framework always produces.
 func TestAnalyzeTurns_ToolResultResolvedByToolCall(t *testing.T) {
-	turns := []state.Turn{
+	turns := []ledger.Turn{
 		{
-			Role: state.RoleAssistant,
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.ToolCall{ID: "1", Name: "bash", Arguments: `{"cmd":"ls"}`},
 			},
 		},
 		{
-			Role: state.RoleTool,
+			Role: ledger.RoleTool,
 			Artifacts: []artifact.Artifact{
 				artifact.ToolResult{ToolCallID: "1", Content: "ok"},
 			},
@@ -258,18 +258,18 @@ func TestAnalyzeTurns_ToolResultResolvedByToolCall(t *testing.T) {
 // scope. The result should bucket under the Source "(unknown)" so
 // the gap is visible in the report.
 func TestAnalyzeTurns_ToolResultOrphan(t *testing.T) {
-	turns := []state.Turn{
+	turns := []ledger.Turn{
 		{
 			// An unrelated tool_call, deliberately with a
 			// different ID than the orphan's ToolCallID.
-			Role: state.RoleAssistant,
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.ToolCall{ID: "1", Name: "file_read", Arguments: `{"path":"/tmp/x"}`},
 			},
 		},
 		{
 			// Orphan: no tool_call in this scope has ID "missing".
-			Role: state.RoleTool,
+			Role: ledger.RoleTool,
 			Artifacts: []artifact.Artifact{
 				artifact.ToolResult{ToolCallID: "missing", Content: "ok"},
 			},
@@ -295,9 +295,9 @@ func TestAnalyzeTurns_ToolResultOrphan(t *testing.T) {
 }
 
 func TestAnalyzeTurns_UnknownArtifact(t *testing.T) {
-	turns := []state.Turn{
+	turns := []ledger.Turn{
 		{
-			Role:      state.RoleUser,
+			Role:      ledger.RoleUser,
 			Artifacts: []artifact.Artifact{
 				customArtifact{Data: "hello world"},
 			},
@@ -328,7 +328,7 @@ func TestAnalyzeThread_Nil(t *testing.T) {
 }
 
 func TestAnalyzeThread_Empty(t *testing.T) {
-	th := &junk.Thread{State: &state.Buffer{}}
+	th := &junk.Thread{State: &ledger.Buffer{}}
 	got := analytics.AnalyzeThread(th)
 	if len(got) != 0 {
 		t.Fatalf("expected empty slice, got %d entries", len(got))
@@ -336,8 +336,8 @@ func TestAnalyzeThread_Empty(t *testing.T) {
 }
 
 func TestAnalyzeThread_WithTurns(t *testing.T) {
-	buf := &state.Buffer{}
-	buf.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	buf := &ledger.Buffer{}
+	buf.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 	th := &junk.Thread{State: buf}
 
 	got := analytics.AnalyzeThread(th)
@@ -356,10 +356,10 @@ func TestAnalyzeThread_WithTurns(t *testing.T) {
 }
 
 func TestAnalyzeStore(t *testing.T) {
-	buf1 := &state.Buffer{}
-	buf1.Append(state.RoleUser, artifact.Text{Content: "hi"})
-	buf2 := &state.Buffer{}
-	buf2.Append(state.RoleAssistant, artifact.Reasoning{Content: "think"})
+	buf1 := &ledger.Buffer{}
+	buf1.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
+	buf2 := &ledger.Buffer{}
+	buf2.Append(ledger.RoleAssistant, artifact.Reasoning{Content: "think"})
 
 	store := &mockStore{
 		threads: []*junk.Thread{
@@ -417,9 +417,9 @@ func TestAnalyzeThread_AfterJSONRoundTrip(t *testing.T) {
 	// Tool_call and tool_result are placed in the separate turns the
 	// framework actually produces: the call in RoleAssistant, the
 	// result in a subsequent RoleTool turn.
-	turns := []state.Turn{
+	turns := []ledger.Turn{
 		{
-			Role: state.RoleUser,
+			Role: ledger.RoleUser,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "hi"},
 				artifact.Reasoning{Content: "think"},
@@ -429,7 +429,7 @@ func TestAnalyzeThread_AfterJSONRoundTrip(t *testing.T) {
 			},
 		},
 		{
-			Role: state.RoleTool,
+			Role: ledger.RoleTool,
 			Artifacts: []artifact.Artifact{
 				artifact.ToolResult{ToolCallID: "1", Content: "ok"},
 			},
@@ -548,14 +548,14 @@ func TestAnalyzeStore_AfterJSONRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create thread: %v", err)
 	}
-	thr.State.Append(state.RoleUser,
+	thr.State.Append(ledger.RoleUser,
 		artifact.Text{Content: "hi"},
 		artifact.Reasoning{Content: "think"},
 		artifact.ToolCall{ID: "1", Name: "bash", Arguments: `{"cmd":"ls"}`},
 		artifact.Image{URL: "http://example.com/img.png"},
 		artifact.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15},
 	)
-	thr.State.Append(state.RoleTool,
+	thr.State.Append(ledger.RoleTool,
 		artifact.ToolResult{ToolCallID: "1", Content: "ok"},
 	)
 	if err := store.Save(thr); err != nil {
@@ -623,7 +623,7 @@ func TestAnalyzeThread_NoJSONEnvelopeLeak(t *testing.T) {
 	dir := t.TempDir()
 	store, _ := junk.NewJSONStore(dir)
 	thr, _ := store.Create()
-	thr.State.Append(state.RoleUser, art)
+	thr.State.Append(ledger.RoleUser, art)
 	_ = store.Save(thr)
 	reopened, _ := junk.NewJSONStore(dir)
 	loaded, ok := reopened.Get(thr.ID)
@@ -658,11 +658,11 @@ func TestAnalyzeStore_ToolResultOrphanPerThread(t *testing.T) {
 	// Thread A: a tool_call in the assistant turn and a matching
 	// tool_result in a separate role-tool turn. The result must
 	// resolve to "bash" via the whole-scope join within thread A.
-	bufA := &state.Buffer{}
-	bufA.Append(state.RoleAssistant,
+	bufA := &ledger.Buffer{}
+	bufA.Append(ledger.RoleAssistant,
 		artifact.ToolCall{ID: "1", Name: "bash", Arguments: `{"cmd":"ls"}`},
 	)
-	bufA.Append(state.RoleTool,
+	bufA.Append(ledger.RoleTool,
 		artifact.ToolResult{ToolCallID: "1", Content: "ok"},
 	)
 
@@ -671,11 +671,11 @@ func TestAnalyzeStore_ToolResultOrphanPerThread(t *testing.T) {
 	// the local call ("2" vs "1"). Even though thread A has a call
 	// with the matching ID, the per-thread scope prevents it from
 	// rescuing thread B's result.
-	bufB := &state.Buffer{}
-	bufB.Append(state.RoleAssistant,
+	bufB := &ledger.Buffer{}
+	bufB.Append(ledger.RoleAssistant,
 		artifact.ToolCall{ID: "2", Name: "file_read", Arguments: `{"path":"/tmp/x"}`},
 	)
-	bufB.Append(state.RoleTool,
+	bufB.Append(ledger.RoleTool,
 		artifact.ToolResult{ToolCallID: "1", Content: "ok"},
 	)
 
@@ -727,21 +727,21 @@ func TestAnalyzeStore_ToolResultOrphanPerThread(t *testing.T) {
 // new architecture — but it must never be re-shaped to silently
 // pass under a same-turn resolution that hides the original bug.
 func TestAnalyzeTurns_ToolResultResolvedAcrossTurns(t *testing.T) {
-	turns := []state.Turn{
+	turns := []ledger.Turn{
 		{
-			Role: state.RoleUser,
+			Role: ledger.RoleUser,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "list /tmp"},
 			},
 		},
 		{
-			Role: state.RoleAssistant,
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.ToolCall{ID: "A", Name: "bash", Arguments: `{"cmd":"ls"}`},
 			},
 		},
 		{
-			Role: state.RoleTool,
+			Role: ledger.RoleTool,
 			Artifacts: []artifact.Artifact{
 				artifact.ToolResult{ToolCallID: "A", Content: "a.txt b.txt"},
 			},
@@ -750,7 +750,7 @@ func TestAnalyzeTurns_ToolResultResolvedAcrossTurns(t *testing.T) {
 			// Subsequent assistant turn, with no new tool calls.
 			// The previous result is still in state and would be
 			// re-sent on the next API call.
-			Role: state.RoleAssistant,
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "you have a.txt and b.txt"},
 			},
@@ -791,9 +791,9 @@ func TestAnalyzeTurns_ToolResultResolvedAcrossTurns(t *testing.T) {
 // in a single role-tool turn. Each result must resolve to the
 // originating call's Name.
 func TestAnalyzeTurns_ParallelToolCalls(t *testing.T) {
-	turns := []state.Turn{
+	turns := []ledger.Turn{
 		{
-			Role: state.RoleAssistant,
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.ToolCall{ID: "A", Name: "bash", Arguments: `{"cmd":"ls /tmp"}`},
 				artifact.ToolCall{ID: "B", Name: "bash", Arguments: `{"cmd":"ls /etc"}`},
@@ -801,7 +801,7 @@ func TestAnalyzeTurns_ParallelToolCalls(t *testing.T) {
 			},
 		},
 		{
-			Role: state.RoleTool,
+			Role: ledger.RoleTool,
 			Artifacts: []artifact.Artifact{
 				artifact.ToolResult{ToolCallID: "A", Content: "tmp-a"},
 				artifact.ToolResult{ToolCallID: "B", Content: "etc-b"},
@@ -850,11 +850,11 @@ func TestAnalyzeTurns_ParallelToolCalls(t *testing.T) {
 func TestAnalyzeStore_PerThreadIsolation_ToolCallInThreadAResolvesOnlyInThreadA(t *testing.T) {
 	// Thread A: a tool_call with ID "1" and a matching tool_result.
 	// Whole-scope join within thread A resolves the result to "bash".
-	bufA := &state.Buffer{}
-	bufA.Append(state.RoleAssistant,
+	bufA := &ledger.Buffer{}
+	bufA.Append(ledger.RoleAssistant,
 		artifact.ToolCall{ID: "1", Name: "bash", Arguments: `{"cmd":"ls"}`},
 	)
-	bufA.Append(state.RoleTool,
+	bufA.Append(ledger.RoleTool,
 		artifact.ToolResult{ToolCallID: "1", Content: "ok"},
 	)
 
@@ -862,8 +862,8 @@ func TestAnalyzeStore_PerThreadIsolation_ToolCallInThreadAResolvesOnlyInThreadA(
 	// as thread A's call. Per-thread scope prevents thread A's call
 	// from resolving thread B's result. Thread B has no local call
 	// with ID "1" → orphan.
-	bufB := &state.Buffer{}
-	bufB.Append(state.RoleTool,
+	bufB := &ledger.Buffer{}
+	bufB.Append(ledger.RoleTool,
 		artifact.ToolResult{ToolCallID: "1", Content: "ok"},
 	)
 

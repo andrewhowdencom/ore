@@ -7,7 +7,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/models"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/tool"
 )
 
@@ -28,7 +28,7 @@ type ToolsOption struct {
 	// The function receives the request context and the current state, enabling
 	// per-turn dynamic selection of tools. Returning nil is equivalent to an
 	// empty tool list (no tools are offered to the provider).
-	Tools func(ctx context.Context, st state.State) []tool.Tool
+	Tools func(ctx context.Context, st ledger.State) []tool.Tool
 }
 
 // IsInvokeOption marks ToolsOption as a provider.InvokeOption.
@@ -38,9 +38,9 @@ func (ToolsOption) IsInvokeOption() {}
 // for a single provider invocation. It is a convenience wrapper for the common
 // case where the tool set is static; it creates a ToolsOption whose Tools
 // function simply returns the provided slice, ignoring the request context and
-// state.
+// ledger.
 func WithTools(tools []tool.Tool) InvokeOption {
-	return ToolsOption{Tools: func(context.Context, state.State) []tool.Tool { return tools }}
+	return ToolsOption{Tools: func(context.Context, ledger.State) []tool.Tool { return tools }}
 }
 
 // MaxTokensOption is a per-invocation option that sets the maximum
@@ -104,5 +104,5 @@ type Provider interface {
 	// the framework / model has a default.
 	//
 	// The channel must not be closed by the adapter.
-	Invoke(ctx context.Context, s state.State, spec models.Spec, ch chan<- artifact.Artifact, opts ...InvokeOption) error
+	Invoke(ctx context.Context, s ledger.State, spec models.Spec, ch chan<- artifact.Artifact, opts ...InvokeOption) error
 }

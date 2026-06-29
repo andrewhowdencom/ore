@@ -33,7 +33,7 @@
 // prevents the core contracts from importing loop/ or provider/, preserving
 // the framework's cycle-free dependency graph.
 //
-// The default in-memory Registry implementation is analogous to state.Buffer:
+// The default in-memory Registry implementation is analogous to ledger.Buffer:
 // it is not goroutine-safe, and concurrency control is a future middleware
 // concern.
 package tool

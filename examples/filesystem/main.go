@@ -16,7 +16,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/models"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
@@ -107,11 +107,11 @@ func run() error {
 	}
 
 	// Build state with the user message.
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: message})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: message})
 
 	// Construct the agent: provider, model spec, ReAct pattern, tool
-	// handler, pre-bound tool options, and a bound state. The pattern
+	// handler, pre-bound tool options, and a bound ledger. The pattern
 	// is configured empty — its Step, Provider, Spec, and tracer are
 	// injected at agent construction time via SetRuntime. The bound
 	// state's auto-append path replaces the explicit OnEmit callback

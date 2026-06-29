@@ -83,12 +83,12 @@
 //	import (
 //	    "context"
 //	    "github.com/andrewhowdencom/ore/provider"
-//	    "github.com/andrewhowdencom/ore/state"
+//	    "github.com/andrewhowdencom/ore/ledger"
 //	    "github.com/andrewhowdencom/ore/x/provider/openai"
 //	    xtool "github.com/andrewhowdencom/ore/x/tool"
 //	)
 //
-//	filter := func(ctx context.Context, st state.State, tools []tool.Tool) []tool.Tool {
+//	filter := func(ctx context.Context, st ledger.State, tools []tool.Tool) []tool.Tool {
 //	    // Return only tools permitted for the current user/role.
 //	    return filterByRole(tools, st)
 //	}

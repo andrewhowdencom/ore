@@ -13,7 +13,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,7 +22,7 @@ type mockProvider struct {
 	err       error
 }
 
-func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *mockProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	for _, art := range m.artifacts {
 		select {
 		case ch <- art:
@@ -35,7 +35,7 @@ func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec,
 
 type blockingProvider struct{}
 
-func (p *blockingProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (p *blockingProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	<-ctx.Done()
 	return ctx.Err()
 }
@@ -44,7 +44,7 @@ type multiTurnProvider struct {
 	invocations int
 }
 
-func (m *multiTurnProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *multiTurnProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	m.invocations++
 	switch m.invocations {
 	case 1:
@@ -58,7 +58,7 @@ func (m *multiTurnProvider) Invoke(ctx context.Context, s state.State, _ models.
 }
 
 func simpleProcessor() junk.TurnProcessor {
-	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+	return func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
 		spec := models.Spec{Name: "test-model"}; _ = spec
 		return step.Turn(ctx, st, spec, prov)
 	}
@@ -205,7 +205,7 @@ func TestStart_NoticeEvent(t *testing.T) {
 	// junk.Stream's FanOut alongside the other output events.
 	store := junk.NewMemoryStore()
 	prov := &mockProvider{}
-	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
 		spec := models.Spec{Name: "test-model"}
 		st, err := step.Turn(ctx, st, spec, prov)
 		if err != nil {
@@ -263,7 +263,7 @@ func TestStart_WithThreadID(t *testing.T) {
 
 func TestStart_ProvenanceFiltering(t *testing.T) {
 	store := junk.NewMemoryStore()
-	foreignProcessor := func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+	foreignProcessor := func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
 		step.SetEventContext(loop.WithProvenance(context.Background(), "other"))
 		spec := models.Spec{Name: "test-model"}; _ = spec
 		return step.Turn(ctx, st, spec, prov)
@@ -312,7 +312,7 @@ func TestStart_ContextCancellation(t *testing.T) {
 func TestStart_MultiTurnCapture(t *testing.T) {
 	prov := &multiTurnProvider{}
 	store := junk.NewMemoryStore()
-	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
 		spec := models.Spec{Name: "test-model"}
 		st, err := step.Turn(ctx, st, spec, prov)
 		if err != nil {

@@ -16,7 +16,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/andrewhowdencom/ore/x/provider/retry"
 	"github.com/anthropics/anthropic-sdk-go"
@@ -242,7 +242,7 @@ func applyInvokeOptions(opts ...provider.InvokeOption) invokeOptions {
 			// list is static for the duration of the call;
 			// the framework supplies the live values at
 			// the call site, not here.
-			out.tools = o.Tools(context.Background(), state.NewBuffer())
+			out.tools = o.Tools(context.Background(), ledger.NewBuffer())
 			out.toolsSet = true
 		}
 	}
@@ -412,7 +412,7 @@ var _ provider.Provider = (*Provider)(nil)
 // The provider never closes the channel (the contract forbids it).
 // Every send is guarded by `select { case ch <- ...: case <-ctx.Done():
 // return ctx.Err() }` so context cancellation aborts the call promptly.
-func (p *Provider) Invoke(ctx context.Context, s state.State, spec models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (p *Provider) Invoke(ctx context.Context, s ledger.State, spec models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	var span trace.Span
 	if p.tracer != nil {
 		ctx, span = p.tracer.Start(ctx, "provider.invoke", trace.WithSpanKind(trace.SpanKindClient))
@@ -882,7 +882,7 @@ type serializeResult struct {
 // RoleTool turns and are forwarded as user-role messages with
 // tool_result content blocks, which is the Anthropic-recommended
 // representation for round-tripping tool execution.
-func (p *Provider) serializeMessages(s state.State) serializeResult {
+func (p *Provider) serializeMessages(s ledger.State) serializeResult {
 	turns := s.Turns()
 	out := serializeResult{
 		messages: make([]anthropic.MessageParam, 0, len(turns)),
@@ -890,7 +890,7 @@ func (p *Provider) serializeMessages(s state.State) serializeResult {
 
 	for _, turn := range turns {
 		switch turn.Role {
-		case state.RoleSystem:
+		case ledger.RoleSystem:
 			// Anthropic has no system role on input messages.
 			// Collect text and append to the request-level system
 			// field below. Non-text artifacts in a system turn
@@ -902,14 +902,14 @@ func (p *Provider) serializeMessages(s state.State) serializeResult {
 					Text: txt,
 				})
 			}
-		case state.RoleUser:
+		case ledger.RoleUser:
 			txt := concatText(turn.Artifacts)
 			out.messages = append(out.messages, anthropic.NewUserMessage(
 				anthropic.NewTextBlock(txt),
 			))
-		case state.RoleAssistant:
+		case ledger.RoleAssistant:
 			out.messages = append(out.messages, serializeAssistantTurn(turn.Artifacts))
-		case state.RoleTool:
+		case ledger.RoleTool:
 			// Tool results belong on the user side of an
 			// assistant turn, in tool_result content blocks.
 			// Concatenate multiple tool results into a single

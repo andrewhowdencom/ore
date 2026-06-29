@@ -375,9 +375,9 @@ func (s StopReason) MarshalJSON() ([]byte, error) {
 }
 
 // Compaction was removed: the boundary marker that previously lived
-// in the artifact stream has moved to state.Meta. The replacement
+// in the artifact stream has moved to ledger.Meta. The replacement
 // type is x/compaction.BoundaryInfo, which is JSON-serialized for
-// storage under the ore.compaction.boundary.* keys in state.Meta.
+// storage under the ore.compaction.boundary.* keys in ledger.Meta.
 // See the x/compaction package for the new contract.
 //
 // The Compaction artifact kind was originally added so the Transform
