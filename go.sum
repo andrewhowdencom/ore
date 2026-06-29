@@ -1,5 +1,5 @@
-github.com/andrewhowdencom/ore/x/conduit v0.1.4 h1:t2ilOrjbs/cdGTWUPvRNwxVSwz6xdZOhAMHT0YnlZEk=
-github.com/andrewhowdencom/ore/x/conduit v0.1.4/go.mod h1:83aDeFABkaP1x98A9jxkqIr3zN4XsiprPnpAxHGpPFw=
+github.com/andrewhowdencom/ore/x/conduit v0.1.5 h1:92q2VFr+2Fb9GoeALh0YOIspy/jPZFLjl9CLyRsVo8I=
+github.com/andrewhowdencom/ore/x/conduit v0.1.5/go.mod h1:83aDeFABkaP1x98A9jxkqIr3zN4XsiprPnpAxHGpPFw=
 github.com/andrewhowdencom/ore/x/verifier v0.1.1 h1:RkRd3gFkX/Pd1pJuXmNpO23ZHVorgaqXEnKQuHzTN0M=
 github.com/andrewhowdencom/ore/x/verifier v0.1.1/go.mod h1:FCorXnOAQVtyY+4WcHLoGRpYg23eleOWYN8+KAtB5lw=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
