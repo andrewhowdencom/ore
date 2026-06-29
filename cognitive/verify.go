@@ -6,7 +6,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/verifier"
 )
 
@@ -51,7 +51,7 @@ type verifyingPattern struct {
 	maxRetries int
 }
 
-func (p *verifyingPattern) Run(ctx context.Context, st state.State) (state.State, error) {
+func (p *verifyingPattern) Run(ctx context.Context, st ledger.State) (ledger.State, error) {
 	for attempt := 0; attempt <= p.maxRetries; attempt++ {
 		result, err := p.inner.Run(ctx, st)
 		if err != nil {
@@ -87,7 +87,7 @@ func (p *verifyingPattern) Run(ctx context.Context, st state.State) (state.State
 		}
 
 		report := verifier.BuildReport(results)
-		_, err = p.submitter.Submit(ctx, result, state.RoleSystem, artifact.Text{Content: report})
+		_, err = p.submitter.Submit(ctx, result, ledger.RoleSystem, artifact.Text{Content: report})
 		if err != nil {
 			return result, fmt.Errorf("failed to inject verification report: %w", err)
 		}

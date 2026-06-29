@@ -12,7 +12,7 @@ import (
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,14 +25,14 @@ type stubProvider struct {
 	artifacts    []artifact.Artifact
 	err          error
 	called       int32
-	receivedSt   state.State
+	receivedSt   ledger.State
 	receivedSpec models.Spec
 	receivedOpts []provider.InvokeOption
 }
 
 var _ provider.Provider = (*stubProvider)(nil)
 
-func (s *stubProvider) Invoke(_ context.Context, st state.State, spec models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (s *stubProvider) Invoke(_ context.Context, st ledger.State, spec models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	atomic.AddInt32(&s.called, 1)
 	s.receivedSt = st
 	s.receivedSpec = spec
@@ -57,14 +57,14 @@ func newCompactorAgent(t *testing.T, p provider.Provider) *agent.Agent {
 	return a
 }
 
-func textTurn(role state.Role, content string) state.Turn {
-	return state.Turn{
+func textTurn(role ledger.Role, content string) ledger.Turn {
+	return ledger.Turn{
 		Role:      role,
 		Artifacts: []artifact.Artifact{artifact.Text{Content: content}},
 	}
 }
 
-func findText(t *testing.T, turn state.Turn) artifact.Text {
+func findText(t *testing.T, turn ledger.Turn) artifact.Text {
 	t.Helper()
 	for _, a := range turn.Artifacts {
 		if tx, ok := a.(artifact.Text); ok {
@@ -79,9 +79,9 @@ func TestSummarize_EmptyTurns_ReturnsZeroValuesNoError(t *testing.T) {
 	stub := &stubProvider{}
 	a := newCompactorAgent(t, stub)
 
-	turn, info, err := Summarize(context.Background(), a, []state.Turn{})
+	turn, info, err := Summarize(context.Background(), a, []ledger.Turn{})
 	require.NoError(t, err)
-	assert.Equal(t, state.Turn{}, turn, "empty turns return the zero turn")
+	assert.Equal(t, ledger.Turn{}, turn, "empty turns return the zero turn")
 	assert.Equal(t, BoundaryInfo{}, info, "empty turns return zero BoundaryInfo")
 	assert.Equal(t, int32(0), atomic.LoadInt32(&stub.called), "provider should not be called for empty turns")
 }
@@ -94,16 +94,16 @@ func TestSummarize_ProducesTextOnlyTurn(t *testing.T) {
 	}
 	a := newCompactorAgent(t, stub)
 
-	turns := []state.Turn{
-		textTurn(state.RoleUser, "aaaa"),
-		textTurn(state.RoleAssistant, "aaaa"),
-		textTurn(state.RoleUser, "aaaa"),
-		textTurn(state.RoleAssistant, "aaaa"),
+	turns := []ledger.Turn{
+		textTurn(ledger.RoleUser, "aaaa"),
+		textTurn(ledger.RoleAssistant, "aaaa"),
+		textTurn(ledger.RoleUser, "aaaa"),
+		textTurn(ledger.RoleAssistant, "aaaa"),
 	}
 
 	turn, info, err := Summarize(context.Background(), a, turns)
 	require.NoError(t, err)
-	assert.Equal(t, state.RoleSystem, turn.Role)
+	assert.Equal(t, ledger.RoleSystem, turn.Role)
 
 	// The turn carries exactly one Text artifact — no Compaction sibling.
 	require.Len(t, turn.Artifacts, 1, "compaction turn must carry only the LLM-facing Text artifact")
@@ -111,7 +111,7 @@ func TestSummarize_ProducesTextOnlyTurn(t *testing.T) {
 	assert.Equal(t, "Summary of earlier discussion.", summary.Content)
 
 	// The companion BoundaryInfo carries the metadata that used to live in
-	// artifact.Compaction. Callers write this to state.Meta themselves.
+	// artifact.Compaction. Callers write this to ledger.Meta themselves.
 	assert.Equal(t, len(turns), info.CompactedThrough)
 	assert.Equal(t, len(turns), info.DroppedTurnCount)
 	assert.Equal(t, StrategyNameSummarize, info.Strategy)
@@ -124,9 +124,9 @@ func TestSummarize_PropagatesAgentError(t *testing.T) {
 	stub := &stubProvider{err: wantErr}
 	a := newCompactorAgent(t, stub)
 
-	turns := []state.Turn{
-		textTurn(state.RoleUser, "aaaa"),
-		textTurn(state.RoleAssistant, "aaaa"),
+	turns := []ledger.Turn{
+		textTurn(ledger.RoleUser, "aaaa"),
+		textTurn(ledger.RoleAssistant, "aaaa"),
 	}
 
 	_, _, err := Summarize(context.Background(), a, turns)
@@ -146,9 +146,9 @@ func TestSummarize_IgnoresNonTextArtifacts(t *testing.T) {
 	}
 	a := newCompactorAgent(t, stub)
 
-	turns := []state.Turn{
+	turns := []ledger.Turn{
 		{
-			Role: state.RoleUser,
+			Role: ledger.RoleUser,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "aaaa"},
 				artifact.Usage{TotalTokens: 10000},
@@ -156,7 +156,7 @@ func TestSummarize_IgnoresNonTextArtifacts(t *testing.T) {
 				artifact.ToolCall{Name: "test"},
 			},
 		},
-		textTurn(state.RoleAssistant, "aaaa"),
+		textTurn(ledger.RoleAssistant, "aaaa"),
 	}
 
 	turn, _, err := Summarize(context.Background(), a, turns)
@@ -174,10 +174,10 @@ func TestSummarize_MultipleTextArtifactsConcatenated(t *testing.T) {
 	}
 	a := newCompactorAgent(t, stub)
 
-	turns := []state.Turn{
-		textTurn(state.RoleUser, "aaaa"),
-		textTurn(state.RoleAssistant, "aaaa"),
-		textTurn(state.RoleUser, "aaaa"),
+	turns := []ledger.Turn{
+		textTurn(ledger.RoleUser, "aaaa"),
+		textTurn(ledger.RoleAssistant, "aaaa"),
+		textTurn(ledger.RoleUser, "aaaa"),
 	}
 
 	turn, _, err := Summarize(context.Background(), a, turns)
@@ -195,9 +195,9 @@ func TestSummarize_TextDeltaArtifacts(t *testing.T) {
 	}
 	a := newCompactorAgent(t, stub)
 
-	turns := []state.Turn{
-		textTurn(state.RoleUser, "aaaa"),
-		textTurn(state.RoleAssistant, "aaaa"),
+	turns := []ledger.Turn{
+		textTurn(ledger.RoleUser, "aaaa"),
+		textTurn(ledger.RoleAssistant, "aaaa"),
 	}
 
 	turn, _, err := Summarize(context.Background(), a, turns)
@@ -215,9 +215,9 @@ func TestSummarize_MixedTextAndTextDelta(t *testing.T) {
 	}
 	a := newCompactorAgent(t, stub)
 
-	turns := []state.Turn{
-		textTurn(state.RoleUser, "aaaa"),
-		textTurn(state.RoleAssistant, "aaaa"),
+	turns := []ledger.Turn{
+		textTurn(ledger.RoleUser, "aaaa"),
+		textTurn(ledger.RoleAssistant, "aaaa"),
 	}
 
 	turn, _, err := Summarize(context.Background(), a, turns)
@@ -236,14 +236,14 @@ func TestSummarize_NoTextArtifacts(t *testing.T) {
 	}
 	a := newCompactorAgent(t, stub)
 
-	turns := []state.Turn{
-		textTurn(state.RoleUser, "aaaa"),
-		textTurn(state.RoleAssistant, "bbbb"),
+	turns := []ledger.Turn{
+		textTurn(ledger.RoleUser, "aaaa"),
+		textTurn(ledger.RoleAssistant, "bbbb"),
 	}
 
 	turn, _, err := Summarize(context.Background(), a, turns)
 	require.NoError(t, err)
-	assert.Equal(t, state.RoleSystem, turn.Role)
+	assert.Equal(t, ledger.RoleSystem, turn.Role)
 	require.Len(t, turn.Artifacts, 1, "compaction turn carries exactly one Text artifact, even when empty")
 	summary := findText(t, turn)
 	assert.Empty(t, summary.Content)
@@ -257,9 +257,9 @@ func TestSummarize_TimestampNonZero(t *testing.T) {
 	}
 	a := newCompactorAgent(t, stub)
 
-	turns := []state.Turn{
-		textTurn(state.RoleUser, "aaaa"),
-		textTurn(state.RoleAssistant, "aaaa"),
+	turns := []ledger.Turn{
+		textTurn(ledger.RoleUser, "aaaa"),
+		textTurn(ledger.RoleAssistant, "aaaa"),
 	}
 
 	turn, info, err := Summarize(context.Background(), a, turns)
@@ -276,10 +276,10 @@ func TestSummarize_UsesDefaultPrompt(t *testing.T) {
 	}
 	a := newCompactorAgent(t, stub)
 
-	turns := []state.Turn{
-		textTurn(state.RoleUser, "aaaa"),
-		textTurn(state.RoleAssistant, "aaaa"),
-		textTurn(state.RoleUser, "aaaa"),
+	turns := []ledger.Turn{
+		textTurn(ledger.RoleUser, "aaaa"),
+		textTurn(ledger.RoleAssistant, "aaaa"),
+		textTurn(ledger.RoleUser, "aaaa"),
 	}
 
 	_, _, err := Summarize(context.Background(), a, turns)
@@ -287,7 +287,7 @@ func TestSummarize_UsesDefaultPrompt(t *testing.T) {
 	require.NotNil(t, stub.receivedSt)
 	receivedTurns := stub.receivedSt.Turns()
 	require.Len(t, receivedTurns, len(turns)+1)
-	assert.Equal(t, state.RoleUser, receivedTurns[len(receivedTurns)-1].Role)
+	assert.Equal(t, ledger.RoleUser, receivedTurns[len(receivedTurns)-1].Role)
 	require.Len(t, receivedTurns[len(receivedTurns)-1].Artifacts, 1)
 	prompt, ok := receivedTurns[len(receivedTurns)-1].Artifacts[0].(artifact.Text)
 	require.True(t, ok)
@@ -302,11 +302,11 @@ func TestSummarize_PassesAllTurnsPlusPrompt(t *testing.T) {
 	}
 	a := newCompactorAgent(t, stub)
 
-	turns := []state.Turn{
-		textTurn(state.RoleUser, "u1"),
-		textTurn(state.RoleAssistant, "a1"),
-		textTurn(state.RoleUser, "u2"),
-		textTurn(state.RoleAssistant, "a2"),
+	turns := []ledger.Turn{
+		textTurn(ledger.RoleUser, "u1"),
+		textTurn(ledger.RoleAssistant, "a1"),
+		textTurn(ledger.RoleUser, "u2"),
+		textTurn(ledger.RoleAssistant, "a2"),
 	}
 
 	_, _, err := Summarize(context.Background(), a, turns)
@@ -314,11 +314,11 @@ func TestSummarize_PassesAllTurnsPlusPrompt(t *testing.T) {
 	require.NotNil(t, stub.receivedSt)
 	receivedTurns := stub.receivedSt.Turns()
 	require.Len(t, receivedTurns, len(turns)+1)
-	assert.Equal(t, state.RoleUser, receivedTurns[0].Role)
-	assert.Equal(t, state.RoleAssistant, receivedTurns[1].Role)
-	assert.Equal(t, state.RoleUser, receivedTurns[2].Role)
-	assert.Equal(t, state.RoleAssistant, receivedTurns[3].Role)
-	assert.Equal(t, state.RoleUser, receivedTurns[4].Role)
+	assert.Equal(t, ledger.RoleUser, receivedTurns[0].Role)
+	assert.Equal(t, ledger.RoleAssistant, receivedTurns[1].Role)
+	assert.Equal(t, ledger.RoleUser, receivedTurns[2].Role)
+	assert.Equal(t, ledger.RoleAssistant, receivedTurns[3].Role)
+	assert.Equal(t, ledger.RoleUser, receivedTurns[4].Role)
 }
 
 func TestSummarize_TruncatedResultReturnsError(t *testing.T) {
@@ -330,17 +330,17 @@ func TestSummarize_TruncatedResultReturnsError(t *testing.T) {
 	}
 	a := newCompactorAgent(t, stub)
 
-	turns := []state.Turn{
-		textTurn(state.RoleUser, "a very long history to summarize"),
-		textTurn(state.RoleAssistant, "first response"),
-		textTurn(state.RoleUser, "more context"),
-		textTurn(state.RoleAssistant, "more response"),
+	turns := []ledger.Turn{
+		textTurn(ledger.RoleUser, "a very long history to summarize"),
+		textTurn(ledger.RoleAssistant, "first response"),
+		textTurn(ledger.RoleUser, "more context"),
+		textTurn(ledger.RoleAssistant, "more response"),
 	}
 
 	turn, info, err := Summarize(context.Background(), a, turns)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrTruncatedSummary)
-	assert.Equal(t, state.Turn{}, turn, "zero turn returned so the caller doesn't accidentally append")
+	assert.Equal(t, ledger.Turn{}, turn, "zero turn returned so the caller doesn't accidentally append")
 	assert.Equal(t, BoundaryInfo{}, info, "zero BoundaryInfo returned on truncation")
 }
 
@@ -353,10 +353,10 @@ func TestSummarize_StopReasonStopDoesNotError(t *testing.T) {
 	}
 	a := newCompactorAgent(t, stub)
 
-	turns := []state.Turn{
-		textTurn(state.RoleUser, "aaaa"),
-		textTurn(state.RoleAssistant, "aaaa"),
-		textTurn(state.RoleUser, "aaaa"),
+	turns := []ledger.Turn{
+		textTurn(ledger.RoleUser, "aaaa"),
+		textTurn(ledger.RoleAssistant, "aaaa"),
+		textTurn(ledger.RoleUser, "aaaa"),
 	}
 
 	turn, _, err := Summarize(context.Background(), a, turns)
@@ -375,9 +375,9 @@ func TestSummarize_StopReasonToolUseDoesNotError(t *testing.T) {
 	}
 	a := newCompactorAgent(t, stub)
 
-	turns := []state.Turn{
-		textTurn(state.RoleUser, "aaaa"),
-		textTurn(state.RoleAssistant, "aaaa"),
+	turns := []ledger.Turn{
+		textTurn(ledger.RoleUser, "aaaa"),
+		textTurn(ledger.RoleAssistant, "aaaa"),
 	}
 
 	turn, _, err := Summarize(context.Background(), a, turns)
@@ -394,10 +394,10 @@ func TestSummarize_NoStopReasonDoesNotError(t *testing.T) {
 	}
 	a := newCompactorAgent(t, stub)
 
-	turns := []state.Turn{
-		textTurn(state.RoleUser, "aaaa"),
-		textTurn(state.RoleAssistant, "aaaa"),
-		textTurn(state.RoleUser, "aaaa"),
+	turns := []ledger.Turn{
+		textTurn(ledger.RoleUser, "aaaa"),
+		textTurn(ledger.RoleAssistant, "aaaa"),
+		textTurn(ledger.RoleUser, "aaaa"),
 	}
 
 	turn, _, err := Summarize(context.Background(), a, turns)
@@ -416,10 +416,10 @@ func TestSummarize_StopReason_InterleavedTextAndReason(t *testing.T) {
 	}
 	a := newCompactorAgent(t, stub)
 
-	turns := []state.Turn{
-		textTurn(state.RoleUser, "aaaa"),
-		textTurn(state.RoleAssistant, "aaaa"),
-		textTurn(state.RoleUser, "aaaa"),
+	turns := []ledger.Turn{
+		textTurn(ledger.RoleUser, "aaaa"),
+		textTurn(ledger.RoleAssistant, "aaaa"),
+		textTurn(ledger.RoleUser, "aaaa"),
 	}
 
 	_, _, err := Summarize(context.Background(), a, turns)
@@ -435,16 +435,16 @@ func TestSummarize_DroppedTokenEstimateFromDroppedArtifacts(t *testing.T) {
 	}
 	a := newCompactorAgent(t, stub)
 
-	turns := []state.Turn{
+	turns := []ledger.Turn{
 		{
-			Role: state.RoleUser,
+			Role: ledger.RoleUser,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "1234567890"}, // 10 bytes
 				artifact.Text{Content: "12345"},     // 5 bytes
 			},
 		},
 		{
-			Role: state.RoleAssistant,
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "12345"}, // 5 bytes
 			},
@@ -471,7 +471,7 @@ func TestSummarize_SpecNameForwardedToBoundaryInfo(t *testing.T) {
 	)
 	t.Cleanup(func() { _ = a.Close() })
 
-	turns := []state.Turn{textTurn(state.RoleUser, "aaaa")}
+	turns := []ledger.Turn{textTurn(ledger.RoleUser, "aaaa")}
 
 	_, info, err := Summarize(context.Background(), a, turns)
 	require.NoError(t, err)

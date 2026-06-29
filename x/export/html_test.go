@@ -8,7 +8,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 )
 
 func TestHTML(t *testing.T) {
@@ -21,7 +21,7 @@ func TestHTML(t *testing.T) {
 			name: "empty thread",
 			thread: &junk.Thread{
 				ID:        "thread-a",
-				State:     &state.Buffer{},
+				State:     &ledger.Buffer{},
 				CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			},
 			wantSubstr: []string{
@@ -33,8 +33,8 @@ func TestHTML(t *testing.T) {
 		{
 			name: "text turn",
 			thread: func() *junk.Thread {
-				buf := &state.Buffer{}
-				buf.Append(state.RoleUser, artifact.Text{Content: "Hello!"})
+				buf := &ledger.Buffer{}
+				buf.Append(ledger.RoleUser, artifact.Text{Content: "Hello!"})
 				return &junk.Thread{
 					ID:    "thread-b",
 					State: buf,
@@ -49,8 +49,8 @@ func TestHTML(t *testing.T) {
 		{
 			name: "assistant with reasoning and text",
 			thread: func() *junk.Thread {
-				buf := &state.Buffer{}
-				buf.Append(state.RoleAssistant,
+				buf := &ledger.Buffer{}
+				buf.Append(ledger.RoleAssistant,
 					artifact.Reasoning{Content: "Let me think..."},
 					artifact.Text{Content: "The answer is 42."},
 				)
@@ -68,13 +68,13 @@ func TestHTML(t *testing.T) {
 		{
 			name: "tool call and result",
 			thread: func() *junk.Thread {
-				buf := &state.Buffer{}
-				buf.Append(state.RoleAssistant, artifact.ToolCall{
+				buf := &ledger.Buffer{}
+				buf.Append(ledger.RoleAssistant, artifact.ToolCall{
 					ID:        "call-1",
 					Name:      "calculator",
 					Arguments: `{"expr":"1+1"}`,
 				})
-				buf.Append(state.RoleTool, artifact.ToolResult{
+				buf.Append(ledger.RoleTool, artifact.ToolResult{
 					ToolCallID: "call-1",
 					Content:    "2",
 				})
@@ -93,8 +93,8 @@ func TestHTML(t *testing.T) {
 		{
 			name: "usage and image",
 			thread: func() *junk.Thread {
-				buf := &state.Buffer{}
-				buf.Append(state.RoleAssistant,
+				buf := &ledger.Buffer{}
+				buf.Append(ledger.RoleAssistant,
 					artifact.Text{Content: "Here is an image."},
 					artifact.Image{URL: "https://example.com/img.png"},
 					artifact.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15},
@@ -113,7 +113,7 @@ func TestHTML(t *testing.T) {
 			name: "metadata",
 			thread: &junk.Thread{
 				ID:        "thread-f",
-				State:     &state.Buffer{},
+				State:     &ledger.Buffer{},
 				Metadata:  map[string]string{"key1": "val1"},
 				CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			},
@@ -124,8 +124,8 @@ func TestHTML(t *testing.T) {
 		{
 			name: "error tool result",
 			thread: func() *junk.Thread {
-				buf := &state.Buffer{}
-				buf.Append(state.RoleTool, artifact.ToolResult{
+				buf := &ledger.Buffer{}
+				buf.Append(ledger.RoleTool, artifact.ToolResult{
 					ToolCallID: "call-err",
 					Content:    "something broke",
 					IsError:    true,

@@ -40,7 +40,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
 )
 
@@ -182,10 +182,10 @@ func buildPattern(name string) cognitive.Pattern {
 func runCase(ctx context.Context, a *agent.Agent, c Case) Result {
 	start := time.Now()
 
-	buf := &state.Buffer{}
-	buf.Append(state.RoleUser, artifact.Text{Content: c.Input})
+	buf := &ledger.Buffer{}
+	buf.Append(ledger.RoleUser, artifact.Text{Content: c.Input})
 
-	type captured struct{ turn state.Turn }
+	type captured struct{ turn ledger.Turn }
 	capturedCh := make(chan captured, 1)
 	events := a.Subscribe("turn_complete")
 	go func() {
@@ -220,7 +220,7 @@ func runCase(ctx context.Context, a *agent.Agent, c Case) Result {
 
 // assistantText concatenates Text and TextDelta content of a turn
 // into a single string. Other artifact kinds are ignored.
-func assistantText(turn state.Turn) string {
+func assistantText(turn ledger.Turn) string {
 	var s string
 	for _, a := range turn.Artifacts {
 		switch v := a.(type) {

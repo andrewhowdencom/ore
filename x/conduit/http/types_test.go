@@ -8,7 +8,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -119,7 +119,7 @@ func TestMarshalOutputEvent(t *testing.T) {
 	}{
 		{
 			name:  "turn_complete",
-			event: loop.TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}}}},
+			event: loop.TurnCompleteEvent{Turn: ledger.Turn{Role: ledger.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}}}},
 			want:  `{"kind":"turn_complete","turn":{"role":"assistant","artifacts":[{"kind":"text","content":"hi"}]}}`,
 		},
 		{
@@ -183,7 +183,7 @@ func TestUnmarshalOutputEvent(t *testing.T) {
 		{
 			name:  "turn_complete",
 			input: `{"kind":"turn_complete","turn":{"role":"assistant","artifacts":[{"kind":"text","content":"hi"}]}}`,
-			want:  loop.TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}}}},
+			want:  loop.TurnCompleteEvent{Turn: ledger.Turn{Role: ledger.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}}}},
 		},
 		{
 			name:  "error",
@@ -237,7 +237,7 @@ func TestUnmarshalOutputEvent(t *testing.T) {
 
 func TestRoundTrip_OutputEvent(t *testing.T) {
 	events := []loop.OutputEvent{
-		loop.TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}},
+		loop.TurnCompleteEvent{Turn: ledger.Turn{Role: ledger.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}},
 		loop.ErrorEvent{Err: errors.New("something went wrong")},
 		loop.LifecycleEvent{Phase: "done"},
 		loop.ArtifactEvent{Artifact: artifact.Text{Content: "some text"}},
@@ -268,7 +268,7 @@ func TestMarshalOutputEvent_WithContext(t *testing.T) {
 	}{
 		{
 			name:  "turn_complete_with_context",
-			event: loop.TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}, Ctx: loop.WithProvenance(context.Background(), "http")},
+			event: loop.TurnCompleteEvent{Turn: ledger.Turn{Role: ledger.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}, Ctx: loop.WithProvenance(context.Background(), "http")},
 			want:  `{"kind":"turn_complete","turn":{"role":"assistant","artifacts":[{"kind":"text","content":"hello"}]},"context":{"provenance":"http"}}`,
 		},
 		{
@@ -315,7 +315,7 @@ func TestUnmarshalOutputEvent_WithContext(t *testing.T) {
 		{
 			name:  "turn_complete_with_context",
 			input: `{"kind":"turn_complete","turn":{"role":"assistant","artifacts":[{"kind":"text","content":"hello"}]},"context":{"provenance":"http"}}`,
-			want:  loop.TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}, Ctx: loop.WithProvenance(context.Background(), "http")},
+			want:  loop.TurnCompleteEvent{Turn: ledger.Turn{Role: ledger.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}, Ctx: loop.WithProvenance(context.Background(), "http")},
 		},
 		{
 			name:  "error_with_context",
@@ -361,7 +361,7 @@ func (b *bogusOutputEvent) Context() context.Context { return context.Background
 
 func TestMarshalOutputEvent_OmitEmptyContext(t *testing.T) {
 	data, err := MarshalOutputEvent(loop.TurnCompleteEvent{
-		Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}},
+		Turn: ledger.Turn{Role: ledger.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}},
 	})
 	require.NoError(t, err)
 
@@ -544,8 +544,8 @@ func TestValidateEventSchemas(t *testing.T) {
 		{
 			name: "turn_complete",
 			event: loop.TurnCompleteEvent{
-				Turn: state.Turn{
-					Role:      state.RoleAssistant,
+				Turn: ledger.Turn{
+					Role:      ledger.RoleAssistant,
 					Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}},
 				},
 			},
@@ -627,7 +627,7 @@ func TestValidateEventSchemas_WithContext(t *testing.T) {
 		},
 		{
 			name:       "turn_complete_with_context",
-			event:      loop.TurnCompleteEvent{Turn: state.Turn{Role: state.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}}}, Ctx: ctx},
+			event:      loop.TurnCompleteEvent{Turn: ledger.Turn{Role: ledger.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}}}, Ctx: ctx},
 			schemaName: "TurnCompleteEvent",
 		},
 		{

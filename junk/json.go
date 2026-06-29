@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 )
 
 // JSONStore persists threads as individual JSON files in a directory.
@@ -45,7 +45,7 @@ func (s *JSONStore) Create() (*Thread, error) {
 
 	thread := &Thread{
 		ID:        id,
-		State:     &state.Buffer{},
+		State:     &ledger.Buffer{},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Metadata:  make(map[string]string),

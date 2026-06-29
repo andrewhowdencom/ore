@@ -7,7 +7,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -68,5 +68,5 @@ var (
 	_ = context.Background
 	_ = artifact.Text{}
 	_ = models.Spec{}
-	_ = state.NewBuffer()
+	_ = ledger.NewBuffer()
 )

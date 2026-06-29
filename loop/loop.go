@@ -10,7 +10,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
@@ -18,13 +18,13 @@ import (
 
 // Transform modifies the state view presented to the provider during
 // inference. Implementations must not mutate the underlying persistent
-// buffer; they may return a derived state.State wrapper instead.
+// buffer; they may return a derived ledger.State wrapper instead.
 //
 // Multiple transforms compose in registration order. Each transform
 // receives the state returned by the previous one. An error from any
 // transform aborts the turn before the provider is invoked.
 type Transform interface {
-	Transform(ctx context.Context, st state.State) (state.State, error)
+	Transform(ctx context.Context, st ledger.State) (ledger.State, error)
 }
 
 // OutputEvent represents any event emitted by a Step.
@@ -42,7 +42,7 @@ type OutputEvent interface {
 // before the event reaches the async FanOut and may mutate persistent
 // state; handlers run after OnEmit completes.
 type TurnCompleteEvent struct {
-	Turn state.Turn
+	Turn ledger.Turn
 
 	// Ctx carries routing metadata for the event, such as provenance
 	// information for echo suppression.
@@ -59,7 +59,7 @@ func (e TurnCompleteEvent) Context() context.Context { return e.Ctx }
 func (e TurnCompleteEvent) MarshalJSON() ([]byte, error) {
 	type output struct {
 		Kind    string                 `json:"kind"`
-		Turn    state.Turn             `json:"turn"`
+		Turn    ledger.Turn             `json:"turn"`
 		Context map[string]interface{} `json:"context,omitempty"`
 	}
 	o := output{
@@ -311,7 +311,7 @@ func ThreadIDFrom(ctx context.Context) (string, bool) {
 
 // OnEmit is a synchronous callback invoked by Emit before the event is
 // forwarded to the async FanOut. OnEmit callbacks are blocking, ordered,
-// and zero-drop. They replace previous direct state.Append calls,
+// and zero-drop. They replace previous direct ledger.Append calls,
 // ensuring lossless state updates while keeping the event stream
 // observable for UI conduits. This is the canonical mechanism for wiring
 // state persistence.
@@ -418,18 +418,18 @@ func WithOnEmit(fns ...OnEmit) Option {
 	}
 }
 
-// WithState binds a mutable state.State to the Step so that every
+// WithState binds a mutable ledger.State to the Step so that every
 // TurnCompleteEvent emitted by the Step (including from finalizeTurn and
 // from artifact handlers) is automatically appended to the state before
 // OnEmit callbacks run. The supplied state is mutated in-place. When no
-// state is bound, TurnCompleteEvent has no automatic side effects on state.
+// state is bound, TurnCompleteEvent has no automatic side effects on ledger.
 //
 // WithState is the canonical mechanism for state persistence. Use
 // WithOnEmit only for custom side-effects that do not also append to the
 // same state, or duplicate turns will result.
-func WithState(st state.State) Option {
+func WithState(st ledger.State) Option {
 	return func(s *Step) {
-		s.eventBus.state = st
+		s.eventBus.bound = st
 	}
 }
 
@@ -489,7 +489,7 @@ func (s *Step) startSpan(ctx context.Context) (context.Context, func()) {
 // (configured via WithDefaultSpec); an empty per-call spec falls
 // back to the default. The resolved spec is forwarded to the
 // provider's Invoke.
-func (s *Step) Turn(ctx context.Context, st state.State, spec models.Spec, p provider.Provider, opts ...provider.InvokeOption) (state.State, error) {
+func (s *Step) Turn(ctx context.Context, st ledger.State, spec models.Spec, p provider.Provider, opts ...provider.InvokeOption) (ledger.State, error) {
 	defer s.clearEventContext()
 	ctx, endSpan := s.startSpan(ctx)
 	defer endSpan()
@@ -520,7 +520,7 @@ func (s *Step) Turn(ctx context.Context, st state.State, spec models.Spec, p pro
 		return st, fmt.Errorf("turn failed: %w", err)
 	}
 
-	turn := state.Turn{Role: state.RoleAssistant, Artifacts: accumulatedArtifacts, Timestamp: time.Now()}
+	turn := ledger.Turn{Role: ledger.RoleAssistant, Artifacts: accumulatedArtifacts, Timestamp: time.Now()}
 	s.Emit(ctx, TurnCompleteEvent{Turn: turn, Ctx: s.eventContext})
 
 	if err := s.pipeline.RunHandlers(ctx, accumulatedArtifacts, s); err != nil {
@@ -581,7 +581,7 @@ func applyDisplayHints(ctx context.Context, artifacts []artifact.Artifact, opts 
 // and emits a TurnCompleteEvent to all subscribers. It is the canonical
 // mechanism for user, system, or tool turns to enter the same artifact stream
 // as assistant responses from Turn().
-func (s *Step) Submit(ctx context.Context, st state.State, role state.Role, artifacts ...artifact.Artifact) (state.State, error) {
+func (s *Step) Submit(ctx context.Context, st ledger.State, role ledger.Role, artifacts ...artifact.Artifact) (ledger.State, error) {
 	ctx, endSpan := s.startSpan(ctx)
 	defer endSpan()
 	return s.finalizeTurn(ctx, st, role, artifacts)
@@ -590,11 +590,11 @@ func (s *Step) Submit(ctx context.Context, st state.State, role state.Role, arti
 // finalizeTurn builds a turn and emits a TurnCompleteEvent. OnEmit
 // callbacks execute synchronously, in registration order, before
 // handler processing and before the event is forwarded to the
-// asynchronous FanOut. They may append to state. After OnEmit
+// asynchronous FanOut. They may append to ledger. After OnEmit
 // completes, registered handlers run on each artifact. It is the
 // shared post-processing pipeline used by both Turn() and Submit().
-func (s *Step) finalizeTurn(ctx context.Context, st state.State, role state.Role, artifacts []artifact.Artifact) (state.State, error) {
-	turn := state.Turn{Role: role, Artifacts: artifacts, Timestamp: time.Now()}
+func (s *Step) finalizeTurn(ctx context.Context, st ledger.State, role ledger.Role, artifacts []artifact.Artifact) (ledger.State, error) {
+	turn := ledger.Turn{Role: role, Artifacts: artifacts, Timestamp: time.Now()}
 	s.Emit(ctx, TurnCompleteEvent{Turn: turn, Ctx: s.eventContext})
 
 	if err := s.pipeline.RunHandlers(ctx, artifacts, s); err != nil {

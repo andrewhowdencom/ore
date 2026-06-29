@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 )
 
 // artifactRegistry is removed. The package-level registry in the
@@ -29,7 +29,7 @@ type turnWrapper struct {
 
 // isDelta reports whether the artifact implements artifact.Delta,
 // indicating it is an ephemeral streaming fragment that must not be
-// persisted to state.
+// persisted to ledger.
 func isDelta(a artifact.Artifact) bool {
 	_, ok := a.(artifact.Delta)
 	return ok
@@ -125,7 +125,7 @@ func dereferenceArtifact(a artifact.Artifact) artifact.Artifact {
 }
 
 // marshalTurns serializes a slice of turns to JSON.
-func marshalTurns(turns []state.Turn) ([]byte, error) {
+func marshalTurns(turns []ledger.Turn) ([]byte, error) {
 	wrappers := make([]turnWrapper, len(turns))
 	for i, turn := range turns {
 		artifactsJSON, err := marshalArtifacts(turn.Artifacts)
@@ -142,20 +142,20 @@ func marshalTurns(turns []state.Turn) ([]byte, error) {
 }
 
 // unmarshalTurns deserializes a JSON array into turns.
-func unmarshalTurns(data []byte) ([]state.Turn, error) {
+func unmarshalTurns(data []byte) ([]ledger.Turn, error) {
 	var wrappers []turnWrapper
 	if err := json.Unmarshal(data, &wrappers); err != nil {
 		return nil, fmt.Errorf("unmarshal turn wrappers: %w", err)
 	}
 
-	turns := make([]state.Turn, len(wrappers))
+	turns := make([]ledger.Turn, len(wrappers))
 	for i, w := range wrappers {
 		artifacts, err := unmarshalArtifacts(w.Artifacts)
 		if err != nil {
 			return nil, fmt.Errorf("unmarshal turn %d artifacts: %w", i, err)
 		}
-		turns[i] = state.Turn{
-			Role:      state.Role(w.Role),
+		turns[i] = ledger.Turn{
+			Role:      ledger.Role(w.Role),
 			Artifacts: artifacts,
 			Timestamp: w.Timestamp,
 		}

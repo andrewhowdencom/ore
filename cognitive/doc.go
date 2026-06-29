@@ -5,11 +5,11 @@
 //
 // The core abstraction is the Pattern interface:
 //
-//   - Pattern — Run(ctx, state.State) → (state.State, error)
+//   - Pattern — Run(ctx, ledger.State) → (ledger.State, error)
 //
 // Concrete implementations include:
 //
-//   - ReAct — implements the ReAct feedback loop via Run(ctx, state.State).
+//   - ReAct — implements the ReAct feedback loop via Run(ctx, ledger.State).
 //     It depends on loop.TurnRunner (not the concrete *loop.Step) so it can
 //     be composed with any component that can run a single inference turn.
 //
@@ -29,7 +29,7 @@
 // TurnSubmitter. The concrete *loop.Step satisfies both interfaces.
 //
 // Cognitive patterns are conduit-agnostic and stateless. They receive
-// state.State as a parameter and return it, without embedding it. The caller
+// ledger.State as a parameter and return it, without embedding it. The caller
 // (typically application-level code) is responsible for IO wiring: reading
 // conduit events, appending user messages, routing output events to a
 // conduit, and managing status.

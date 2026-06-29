@@ -14,7 +14,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/conduit"
 
 	"go.opentelemetry.io/otel/propagation"
@@ -170,7 +170,7 @@ func (h *Handler) serveLanding(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 // thread's state, truncated to the given length with "...".
 func previewSnippet(thr *junk.Thread, maxLen int) string {
 	for _, turn := range thr.State.Turns() {
-		if turn.Role != state.RoleUser {
+		if turn.Role != ledger.RoleUser {
 			continue
 		}
 		for _, art := range turn.Artifacts {

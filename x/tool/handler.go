@@ -8,7 +8,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	toolpkg "github.com/andrewhowdencom/ore/tool"
 	"github.com/andrewhowdencom/ore/x/tool/truncate"
 	"go.opentelemetry.io/otel/attribute"
@@ -306,8 +306,8 @@ func (h *Handler) applyTruncationToString(ctx context.Context, s string, format 
 // ToolResult serialization only need to be made once.
 func (h *Handler) emitResult(ctx context.Context, e loop.Emitter, toolCallID, content string, value any, isError bool, trunc *artifact.Truncation) {
 	e.Emit(ctx, loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role: state.RoleTool,
+		Turn: ledger.Turn{
+			Role: ledger.RoleTool,
 			Artifacts: []artifact.Artifact{artifact.ToolResult{
 				ToolCallID: toolCallID,
 				Content:    content,

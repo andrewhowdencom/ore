@@ -9,7 +9,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 )
 
 const htmlTemplate = `<!DOCTYPE html>
@@ -214,15 +214,15 @@ func HTML(w io.Writer, thread *junk.Thread) error {
 	return nil
 }
 
-func roleClass(r state.Role) string {
+func roleClass(r ledger.Role) string {
 	switch r {
-	case state.RoleUser:
+	case ledger.RoleUser:
 		return "user"
-	case state.RoleAssistant:
+	case ledger.RoleAssistant:
 		return "assistant"
-	case state.RoleSystem:
+	case ledger.RoleSystem:
 		return "system"
-	case state.RoleTool:
+	case ledger.RoleTool:
 		return "tool"
 	default:
 		return "unknown"

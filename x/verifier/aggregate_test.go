@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,7 +16,7 @@ func TestRunAll_MixedResults(t *testing.T) {
 	v2 := &mockVerifier{name: "fail", status: VerificationFail, report: "not ok"}
 	v3 := &mockVerifier{name: "error", status: VerificationError, err: errors.New("boom")}
 
-	results := RunAll(context.Background(), []Verifier{v1, v2, v3}, &state.Buffer{})
+	results := RunAll(context.Background(), []Verifier{v1, v2, v3}, &ledger.Buffer{})
 
 	require.Len(t, results, 3)
 	// Sorted by name.
@@ -30,7 +30,7 @@ func TestRunAll_MixedResults(t *testing.T) {
 }
 
 func TestRunAll_Empty(t *testing.T) {
-	results := RunAll(context.Background(), nil, &state.Buffer{})
+	results := RunAll(context.Background(), nil, &ledger.Buffer{})
 	assert.Empty(t, results)
 }
 
@@ -39,7 +39,7 @@ func TestRunAll_ContextCancellation(t *testing.T) {
 	cancel()
 
 	v := &mockVerifier{name: "cancelled", status: VerificationPass}
-	results := RunAll(ctx, []Verifier{v}, &state.Buffer{})
+	results := RunAll(ctx, []Verifier{v}, &ledger.Buffer{})
 	require.Len(t, results, 1)
 	// The mock verifier does not check context, so it still returns Pass.
 	assert.Equal(t, VerificationPass, results[0].Status)
@@ -50,7 +50,7 @@ func TestRunAll_ParallelExecution(t *testing.T) {
 	v2 := &slowVerifier{name: "slow2", duration: 100 * time.Millisecond}
 
 	start := time.Now()
-	results := RunAll(context.Background(), []Verifier{v1, v2}, &state.Buffer{})
+	results := RunAll(context.Background(), []Verifier{v1, v2}, &ledger.Buffer{})
 	elapsed := time.Since(start)
 
 	require.Len(t, results, 2)
@@ -63,7 +63,7 @@ type slowVerifier struct {
 	duration time.Duration
 }
 
-func (s *slowVerifier) Verify(ctx context.Context, st state.State) (VerificationResult, error) {
+func (s *slowVerifier) Verify(ctx context.Context, st ledger.State) (VerificationResult, error) {
 	select {
 	case <-time.After(s.duration):
 		return VerificationResult{Name: s.name, Status: VerificationPass}, nil

@@ -8,7 +8,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,8 +28,8 @@ func (m *mockEmitter) Emit(ctx context.Context, event OutputEvent) {
 func TestPipeline_Turn_AccumulatesDeltas(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
 	p := newPipeline()
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
@@ -70,8 +70,8 @@ func TestPipeline_Turn_AccumulatesDeltas(t *testing.T) {
 func TestPipeline_Turn_FlushesAccumulatorsOnNonDelta(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
 	p := newPipeline()
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
@@ -110,8 +110,8 @@ func TestPipeline_Turn_FlushesAccumulatorsOnNonDelta(t *testing.T) {
 func TestPipeline_Turn_ErrorPropagatesProviderError(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
 	p := newPipeline()
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
@@ -146,20 +146,20 @@ func TestPipeline_Turn_TransformErrorAborts(t *testing.T) {
 	p := newPipeline()
 	wantErr := errors.New("transform failed")
 	p.transforms = []Transform{
-		&mockTransform{fn: func(ctx context.Context, s state.State) (state.State, error) {
+		&mockTransform{fn: func(ctx context.Context, s ledger.State) (ledger.State, error) {
 			return s, nil
 		}},
-		&mockTransform{fn: func(ctx context.Context, s state.State) (state.State, error) {
+		&mockTransform{fn: func(ctx context.Context, s ledger.State) (ledger.State, error) {
 			return s, wantErr
 		}},
-		&mockTransform{fn: func(ctx context.Context, s state.State) (state.State, error) {
+		&mockTransform{fn: func(ctx context.Context, s ledger.State) (ledger.State, error) {
 			t.Fatal("third transform should not run")
 			return s, nil
 		}},
 	}
 
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	prov := &mockProvider{}
 
 	st, accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {})
@@ -176,22 +176,22 @@ func TestPipeline_Turn_TransformOrdering(t *testing.T) {
 	p := newPipeline()
 	var order []int
 	p.transforms = []Transform{
-		&mockTransform{fn: func(ctx context.Context, s state.State) (state.State, error) {
+		&mockTransform{fn: func(ctx context.Context, s ledger.State) (ledger.State, error) {
 			order = append(order, 1)
 			return s, nil
 		}},
-		&mockTransform{fn: func(ctx context.Context, s state.State) (state.State, error) {
+		&mockTransform{fn: func(ctx context.Context, s ledger.State) (ledger.State, error) {
 			order = append(order, 2)
 			return s, nil
 		}},
-		&mockTransform{fn: func(ctx context.Context, s state.State) (state.State, error) {
+		&mockTransform{fn: func(ctx context.Context, s ledger.State) (ledger.State, error) {
 			order = append(order, 3)
 			return s, nil
 		}},
 	}
 
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	prov := &mockProvider{artifacts: []artifact.Artifact{artifact.Text{Content: "response"}}}
 
 	_, _, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {})
@@ -266,7 +266,7 @@ func TestPipeline_Turn_ApplyDisplayHints(t *testing.T) {
 	p := newPipeline()
 	p.invokeOpts = []provider.InvokeOption{
 		provider.ToolsOption{
-			Tools: func(ctx context.Context, s state.State) []tool.Tool {
+			Tools: func(ctx context.Context, s ledger.State) []tool.Tool {
 				return []tool.Tool{
 					{
 						Name: "test",
@@ -279,8 +279,8 @@ func TestPipeline_Turn_ApplyDisplayHints(t *testing.T) {
 		},
 	}
 
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.ToolCall{Name: "test", Arguments: `{"query":"hello"}`},
@@ -304,7 +304,7 @@ func TestPipeline_Turn_ApplyDisplayHints_NoMatchingHint(t *testing.T) {
 	p := newPipeline()
 	p.invokeOpts = []provider.InvokeOption{
 		provider.ToolsOption{
-			Tools: func(ctx context.Context, s state.State) []tool.Tool {
+			Tools: func(ctx context.Context, s ledger.State) []tool.Tool {
 				return []tool.Tool{
 					{
 						Name: "other",
@@ -317,8 +317,8 @@ func TestPipeline_Turn_ApplyDisplayHints_NoMatchingHint(t *testing.T) {
 		},
 	}
 
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
 			artifact.ToolCall{Name: "test", Arguments: `{"query":"hello"}`},

@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/llmbytes"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -54,9 +54,9 @@ func (t *Telemetry) OnEmit() loop.OnEmit {
 
 		var counter metric.Int64Counter
 		switch tc.Turn.Role {
-		case state.RoleUser, state.RoleSystem, state.RoleTool:
+		case ledger.RoleUser, ledger.RoleSystem, ledger.RoleTool:
 			counter = t.sent
-		case state.RoleAssistant:
+		case ledger.RoleAssistant:
 			counter = t.received
 		default:
 			return

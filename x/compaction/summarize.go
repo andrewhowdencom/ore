@@ -11,11 +11,11 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/llmbytes"
 )
 
-// MetaKeyBoundaryIndex is the state.Meta key under which the compaction
+// MetaKeyBoundaryIndex is the ledger.Meta key under which the compaction
 // boundary's turn index is stored. The Transform reads this key on every
 // LLM call to project the buffer; the value is the string form of an
 // int. This is the hot-path key — reads happen on every turn.
@@ -26,7 +26,7 @@ import (
 // metadata that lives in junk.Thread.Metadata.
 const MetaKeyBoundaryIndex = "ore.compaction.boundary.index"
 
-// MetaKeyBoundaryInfo is the state.Meta key under which the BoundaryInfo
+// MetaKeyBoundaryInfo is the ledger.Meta key under which the BoundaryInfo
 // struct is stored as a JSON-encoded string. The TUI reads this key to
 // render the compaction collapse block (turn count, bytes saved,
 // strategy, model, timestamp). This is the cold-path key — reads
@@ -40,7 +40,7 @@ const MetaKeyBoundaryInfo = "ore.compaction.boundary.info"
 // framework (the TUI, future analytics) needs to reason about what
 // was folded.
 //
-// BoundaryInfo is JSON-serialized for storage in state.Meta under
+// BoundaryInfo is JSON-serialized for storage in ledger.Meta under
 // [MetaKeyBoundaryInfo]. The fields are stable; new fields may be
 // added without breaking older readers.
 type BoundaryInfo struct {
@@ -53,7 +53,7 @@ type BoundaryInfo struct {
 }
 
 // encodeBoundaryInfo serializes a BoundaryInfo for storage in
-// state.Meta. The returned string is the raw JSON encoding; callers
+// ledger.Meta. The returned string is the raw JSON encoding; callers
 // that want error-tolerant storage can ignore the error path (it
 // cannot fail for valid BoundaryInfo values).
 func encodeBoundaryInfo(info BoundaryInfo) (string, error) {
@@ -67,7 +67,7 @@ func encodeBoundaryInfo(info BoundaryInfo) (string, error) {
 // EncodeBoundaryInfo is the public form of [encodeBoundaryInfo],
 // exposed for callers outside the package (notably
 // junk.Stream.MarkBoundary) that need to write a BoundaryInfo
-// into state.Meta.
+// into ledger.Meta.
 func EncodeBoundaryInfo(info BoundaryInfo) (string, error) {
 	return encodeBoundaryInfo(info)
 }
@@ -79,7 +79,7 @@ func EncodeBoundaryInfo(info BoundaryInfo) (string, error) {
 //
 // Exposed as [DecodeBoundaryInfo] for callers outside the package
 // (notably the TUI) that need to read a boundary recorded by
-// [Summarize] from state.Meta.
+// [Summarize] from ledger.Meta.
 func decodeBoundaryInfo(encoded string) (BoundaryInfo, error) {
 	if encoded == "" {
 		return BoundaryInfo{}, nil
@@ -101,7 +101,7 @@ func DecodeBoundaryInfo(encoded string) (BoundaryInfo, error) {
 // ErrTruncatedSummary is the sentinel returned by Summarize when the
 // produced turn carries an artifact.StopReason with StopReasonLength.
 // The error indicates the model hit its output-token cap mid-summary;
-// the returned state.Turn is the zero value, so callers can detect
+// the returned ledger.Turn is the zero value, so callers can detect
 // the failure and refuse to append anything to the buffer.
 //
 // Use errors.Is to detect:
@@ -122,7 +122,7 @@ const StrategyNameSummarize = "summarize"
 // turns. The produced turn carries only an artifact.Text (the
 // LLM-facing summary). The companion BoundaryInfo — the structured
 // provenance of the compaction — is returned alongside so the caller
-// can write it to state.Meta via stream.MarkBoundary (or equivalent).
+// can write it to ledger.Meta via stream.MarkBoundary (or equivalent).
 //
 // The agent is expected to be configured with a cognitive.SingleShot
 // pattern (constructed by the caller). The caller owns the agent's
@@ -146,7 +146,7 @@ const StrategyNameSummarize = "summarize"
 // The previous per-invocation 8192-token default is gone. Callers that
 // want an explicit output budget set spec.MaxOutputTokens on the
 // compactor agent (or pass it through agent.WithSpec).
-func Summarize(ctx context.Context, a *agent.Agent, turns []state.Turn) (state.Turn, BoundaryInfo, error) {
+func Summarize(ctx context.Context, a *agent.Agent, turns []ledger.Turn) (ledger.Turn, BoundaryInfo, error) {
 	// Compute dropped bytes from input turns. The estimate is best-effort;
 	// it is what the TUI marker renders and what analytics attributes to
 	// the compaction, not what the provider reports.
@@ -157,13 +157,13 @@ func Summarize(ctx context.Context, a *agent.Agent, turns []state.Turn) (state.T
 		}
 	}
 	if len(turns) == 0 {
-		return state.Turn{}, BoundaryInfo{}, nil
+		return ledger.Turn{}, BoundaryInfo{}, nil
 	}
 
 	// Build an ephemeral buffer with the input turns and the user prompt.
-	buf := &state.Buffer{}
+	buf := &ledger.Buffer{}
 	buf.LoadTurns(turns)
-	buf.Append(state.RoleUser, artifact.Text{Content: defaultPrompt})
+	buf.Append(ledger.RoleUser, artifact.Text{Content: defaultPrompt})
 
 	// Subscribe to the agent's turn_complete event before running the
 	// agent. The subscriber goroutine reads the first such event, copies
@@ -172,7 +172,7 @@ func Summarize(ctx context.Context, a *agent.Agent, turns []state.Turn) (state.T
 	// time agent.Run returns, the event is already queued on this
 	// subscriber's channel — the main goroutine will receive it from
 	// capturedCh without a race.
-	type captured struct{ turn state.Turn }
+	type captured struct{ turn ledger.Turn }
 	capturedCh := make(chan captured, 1)
 	events := a.Subscribe("turn_complete")
 	go func() {
@@ -188,15 +188,15 @@ func Summarize(ctx context.Context, a *agent.Agent, turns []state.Turn) (state.T
 	}()
 
 	if _, err := a.Run(ctx, buf); err != nil {
-		return state.Turn{}, BoundaryInfo{}, fmt.Errorf("summarization agent run failed: %w", err)
+		return ledger.Turn{}, BoundaryInfo{}, fmt.Errorf("summarization agent run failed: %w", err)
 	}
 
-	var produced state.Turn
+	var produced ledger.Turn
 	select {
 	case c := <-capturedCh:
 		produced = c.turn
 	case <-ctx.Done():
-		return state.Turn{}, BoundaryInfo{}, ctx.Err()
+		return ledger.Turn{}, BoundaryInfo{}, ctx.Err()
 	}
 
 	// Truncation check: the produced turn carries an artifact.StopReason
@@ -206,7 +206,7 @@ func Summarize(ctx context.Context, a *agent.Agent, turns []state.Turn) (state.T
 	// can decide policy.
 	for _, art := range produced.Artifacts {
 		if sr, ok := art.(artifact.StopReason); ok && sr.Reason == artifact.StopReasonLength {
-			return state.Turn{}, BoundaryInfo{}, ErrTruncatedSummary
+			return ledger.Turn{}, BoundaryInfo{}, ErrTruncatedSummary
 		}
 	}
 
@@ -216,14 +216,14 @@ func Summarize(ctx context.Context, a *agent.Agent, turns []state.Turn) (state.T
 // wrapSummaryTurn concatenates the produced turn's Text / TextDelta
 // content into a single Text artifact. The result is the RoleSystem
 // turn that the compactor returns to its caller, paired with a
-// BoundaryInfo describing the compaction event for state.Meta.
+// BoundaryInfo describing the compaction event for ledger.Meta.
 //
 // Note: this no longer embeds an artifact.Compaction alongside the
-// summary. The boundary marker has moved to state.Meta — see
+// summary. The boundary marker has moved to ledger.Meta — see
 // [MetaKeyBoundaryIndex] and [MetaKeyBoundaryInfo]. The wire now sees
 // only `[Text]` for the compaction turn, which is what the Anthropic
 // `onlyText` predicate expects.
-func wrapSummaryTurn(turn state.Turn, spec models.Spec, droppedBytes int64, droppedTurnCount int) (state.Turn, BoundaryInfo, error) {
+func wrapSummaryTurn(turn ledger.Turn, spec models.Spec, droppedBytes int64, droppedTurnCount int) (ledger.Turn, BoundaryInfo, error) {
 	var content string
 	for _, art := range turn.Artifacts {
 		switch a := art.(type) {
@@ -234,8 +234,8 @@ func wrapSummaryTurn(turn state.Turn, spec models.Spec, droppedBytes int64, drop
 		}
 	}
 	now := time.Now()
-	out := state.Turn{
-		Role: state.RoleSystem,
+	out := ledger.Turn{
+		Role: ledger.RoleSystem,
 		Artifacts: []artifact.Artifact{
 			artifact.Text{Content: content},
 		},

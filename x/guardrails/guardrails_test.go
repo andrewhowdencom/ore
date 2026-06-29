@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -13,17 +13,17 @@ import (
 func TestTransform_PrependsGuardrails(t *testing.T) {
 	tr, err := New(WithRules("rule one", "rule two"))
 	require.NoError(t, err)
-	base := &state.Buffer{}
-	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	base := &ledger.Buffer{}
+	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
 	require.NoError(t, err)
 
 	turns := result.Turns()
 	require.Len(t, turns, 3)
-	assert.Equal(t, state.RoleUser, turns[0].Role)
-	assert.Equal(t, state.RoleUser, turns[1].Role)
-	assert.Equal(t, state.RoleUser, turns[2].Role)
+	assert.Equal(t, ledger.RoleUser, turns[0].Role)
+	assert.Equal(t, ledger.RoleUser, turns[1].Role)
+	assert.Equal(t, ledger.RoleUser, turns[2].Role)
 
 	text0, ok := turns[0].Artifacts[0].(artifact.Text)
 	require.True(t, ok)
@@ -37,8 +37,8 @@ func TestTransform_PrependsGuardrails(t *testing.T) {
 func TestTransform_NoRules(t *testing.T) {
 	tr, err := New()
 	require.NoError(t, err)
-	base := &state.Buffer{}
-	base.Append(state.RoleUser, artifact.Text{Content: "hello"})
+	base := &ledger.Buffer{}
+	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
 	require.NoError(t, err)
@@ -53,23 +53,23 @@ func TestTransform_NoRules(t *testing.T) {
 func TestTransform_DelegatesAppend(t *testing.T) {
 	tr, err := New(WithRules("rule"))
 	require.NoError(t, err)
-	base := &state.Buffer{}
-	base.Append(state.RoleUser, artifact.Text{Content: "user"})
+	base := &ledger.Buffer{}
+	base.Append(ledger.RoleUser, artifact.Text{Content: "user"})
 
 	result, err := tr.Transform(context.Background(), base)
 	require.NoError(t, err)
 
-	result.Append(state.RoleAssistant, artifact.Text{Content: "assistant"})
+	result.Append(ledger.RoleAssistant, artifact.Text{Content: "assistant"})
 
 	baseTurns := base.Turns()
 	require.Len(t, baseTurns, 2)
-	assert.Equal(t, state.RoleAssistant, baseTurns[1].Role)
+	assert.Equal(t, ledger.RoleAssistant, baseTurns[1].Role)
 
 	turns := result.Turns()
 	require.Len(t, turns, 3)
-	assert.Equal(t, state.RoleUser, turns[0].Role)
-	assert.Equal(t, state.RoleUser, turns[1].Role)
-	assert.Equal(t, state.RoleAssistant, turns[2].Role)
+	assert.Equal(t, ledger.RoleUser, turns[0].Role)
+	assert.Equal(t, ledger.RoleUser, turns[1].Role)
+	assert.Equal(t, ledger.RoleAssistant, turns[2].Role)
 }
 
 func TestRules(t *testing.T) {

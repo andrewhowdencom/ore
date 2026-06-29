@@ -5,14 +5,14 @@ import (
 	"strconv"
 
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 )
 
 // Transform is a loop.Transform that projects the buffer through the
-// latest compaction boundary recorded in state.Meta.
+// latest compaction boundary recorded in ledger.Meta.
 //
 // On every LLM call, the transform reads the boundary index from
-// state.Meta under [MetaKeyBoundaryIndex]. When present, it returns a
+// ledger.Meta under [MetaKeyBoundaryIndex]. When present, it returns a
 // state that exposes only the compaction turn and the turns that follow
 // it. Pre-compaction turns remain in the canonical buffer (so analytics,
 // audit, and replay still see them) but are invisible to the provider —
@@ -47,7 +47,7 @@ func NewTransform() loop.Transform { return &Transform{} }
 
 // Transform implements loop.Transform. See the type-level doc for
 // the projection semantics.
-func (t *Transform) Transform(_ context.Context, st state.State) (state.State, error) {
+func (t *Transform) Transform(_ context.Context, st ledger.State) (ledger.State, error) {
 	if st == nil {
 		return nil, nil
 	}
@@ -64,13 +64,13 @@ func (t *Transform) Transform(_ context.Context, st state.State) (state.State, e
 	// accumulated virtual turns are re-prepended in outermost-first
 	// order on top of the projected view.
 	var (
-		base    state.State = st
-		virtual []state.Turn
+		base    ledger.State = st
+		virtual []ledger.Turn
 	)
 	for {
 		pc, ok := base.(interface {
-			BaseState() state.State
-			VirtualTurns() []state.Turn
+			BaseState() ledger.State
+			VirtualTurns() []ledger.Turn
 		})
 		if !ok {
 			break
@@ -86,19 +86,19 @@ func (t *Transform) Transform(_ context.Context, st state.State) (state.State, e
 		// The boundary was set against a different buffer shape
 		// (e.g. an out-of-range index after a partial reset).
 		// Treat as no boundary; the caller can re-MarkBoundary
-		// against the new state.
+		// against the new ledger.
 		return st, nil
 	}
 
-	projected := append([]state.Turn(nil), baseTurns[idx:]...)
-	return state.Prepend(state.NewView(base, projected), virtual), nil
+	projected := append([]ledger.Turn(nil), baseTurns[idx:]...)
+	return ledger.Prepend(ledger.NewView(base, projected), virtual), nil
 }
 
 // readBoundaryIndex pulls the boundary index from the state's metadata
 // channel. The "ok" return distinguishes "no boundary set" (false,
 // empty string) from "boundary set to a non-integer" (false, malformed
 // value); both fall through to the identity path in Transform.
-func readBoundaryIndex(st state.State) (int, bool) {
+func readBoundaryIndex(st ledger.State) (int, bool) {
 	raw, ok := st.Meta().Get(MetaKeyBoundaryIndex)
 	if !ok {
 		return 0, false

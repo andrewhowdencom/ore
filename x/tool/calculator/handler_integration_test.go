@@ -6,17 +6,17 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/tool"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// testEmitter wraps a state.Buffer and implements loop.Emitter so that
-// TurnCompleteEvents emitted by the handler are persisted into state.
+// testEmitter wraps a ledger.Buffer and implements loop.Emitter so that
+// TurnCompleteEvents emitted by the handler are persisted into ledger.
 type testEmitter struct {
-	buf *state.Buffer
+	buf *ledger.Buffer
 }
 
 func (e *testEmitter) Emit(ctx context.Context, event loop.OutputEvent) {
@@ -30,8 +30,8 @@ func TestHandler_Add(t *testing.T) {
 	require.NoError(t, registry.Register(AddTool, Add))
 	handler := xtool.NewHandler(registry)
 
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "What is 2 + 3?"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "What is 2 + 3?"})
 
 	err := handler.Handle(context.Background(), artifact.ToolCall{
 		ID:        "call_1",
@@ -42,7 +42,7 @@ func TestHandler_Add(t *testing.T) {
 
 	turns := mem.Turns()
 	require.Len(t, turns, 2)
-	assert.Equal(t, state.RoleTool, turns[1].Role)
+	assert.Equal(t, ledger.RoleTool, turns[1].Role)
 	require.Len(t, turns[1].Artifacts, 1)
 
 	tr, ok := turns[1].Artifacts[0].(artifact.ToolResult)
@@ -57,8 +57,8 @@ func TestHandler_Multiply(t *testing.T) {
 	require.NoError(t, registry.Register(MultiplyTool, Multiply))
 	handler := xtool.NewHandler(registry)
 
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "What is 4 * 5?"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "What is 4 * 5?"})
 
 	err := handler.Handle(context.Background(), artifact.ToolCall{
 		ID:        "call_2",
@@ -69,7 +69,7 @@ func TestHandler_Multiply(t *testing.T) {
 
 	turns := mem.Turns()
 	require.Len(t, turns, 2)
-	assert.Equal(t, state.RoleTool, turns[1].Role)
+	assert.Equal(t, ledger.RoleTool, turns[1].Role)
 	require.Len(t, turns[1].Artifacts, 1)
 
 	tr, ok := turns[1].Artifacts[0].(artifact.ToolResult)
@@ -84,8 +84,8 @@ func TestHandler_UnknownTool(t *testing.T) {
 	require.NoError(t, registry.Register(AddTool, Add))
 	handler := xtool.NewHandler(registry)
 
-	mem := &state.Buffer{}
-	mem.Append(state.RoleUser, artifact.Text{Content: "What is 10 / 2?"})
+	mem := &ledger.Buffer{}
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "What is 10 / 2?"})
 
 	err := handler.Handle(context.Background(), artifact.ToolCall{
 		ID:        "call_3",
@@ -96,7 +96,7 @@ func TestHandler_UnknownTool(t *testing.T) {
 
 	turns := mem.Turns()
 	require.Len(t, turns, 2)
-	assert.Equal(t, state.RoleTool, turns[1].Role)
+	assert.Equal(t, ledger.RoleTool, turns[1].Role)
 	require.Len(t, turns[1].Artifacts, 1)
 
 	tr, ok := turns[1].Artifacts[0].(artifact.ToolResult)

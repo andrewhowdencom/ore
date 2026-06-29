@@ -16,7 +16,7 @@ import (
 	"github.com/andrewhowdencom/ore/agent"
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/tool"
 )
 
@@ -39,7 +39,7 @@ var promptSchema = map[string]any{
 // many), and the produced assistant turn is returned as the tool's
 // string result.
 //
-// The sub-agent runs against a fresh state.Buffer seeded with the
+// The sub-agent runs against a fresh ledger.Buffer seeded with the
 // prompt as a RoleUser turn. The sub-agent's configured transforms,
 // handlers, and pattern apply to that fresh buffer. State does not
 // persist between sub-agent invocations.
@@ -63,8 +63,8 @@ func AsTool(a *agent.Agent, name, description string) (tool.Tool, tool.ToolFunc)
 			return nil, fmt.Errorf("subagent %s: prompt is required", name)
 		}
 
-		buf := &state.Buffer{}
-		buf.Append(state.RoleUser, artifact.Text{Content: prompt})
+		buf := &ledger.Buffer{}
+		buf.Append(ledger.RoleUser, artifact.Text{Content: prompt})
 
 		// Subscribe to the agent's turn_complete event before
 		// running the agent. The subscriber goroutine reads the
@@ -72,7 +72,7 @@ func AsTool(a *agent.Agent, name, description string) (tool.Tool, tool.ToolFunc)
 		// local channel, and exits. The EventBus's Emit blocks
 		// until delivery, so by the time agent.Run returns, the
 		// event is already queued on this subscriber's channel.
-		type captured struct{ turn state.Turn }
+		type captured struct{ turn ledger.Turn }
 		capturedCh := make(chan captured, 1)
 		events := a.Subscribe("turn_complete")
 		go func() {
@@ -91,7 +91,7 @@ func AsTool(a *agent.Agent, name, description string) (tool.Tool, tool.ToolFunc)
 			return nil, fmt.Errorf("subagent %s: %w", name, err)
 		}
 
-		var produced state.Turn
+		var produced ledger.Turn
 		select {
 		case c := <-capturedCh:
 			produced = c.turn
@@ -113,7 +113,7 @@ func AsTool(a *agent.Agent, name, description string) (tool.Tool, tool.ToolFunc)
 // assistant turn into a single string. Other artifact kinds
 // (Reasoning, ToolCall, Usage, etc.) are ignored; the tool result is
 // the model's user-facing text.
-func assistantText(turn state.Turn) string {
+func assistantText(turn ledger.Turn) string {
 	var s string
 	for _, a := range turn.Artifacts {
 		switch v := a.(type) {

@@ -16,7 +16,7 @@
 //	    "Search the codebase and answer the prompt.")
 //	_ = registry.Register(subT, subFn)
 //
-// The sub-agent runs against a fresh state.Buffer seeded with the
+// The sub-agent runs against a fresh ledger.Buffer seeded with the
 // prompt as a RoleUser turn. The sub-agent's configured transforms,
 // handlers, and pattern apply to that fresh buffer. State does not
 // persist between sub-agent invocations.

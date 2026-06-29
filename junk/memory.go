@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 )
 
 // MemoryStore is an in-memory Store implementation.
@@ -33,7 +33,7 @@ func (s *MemoryStore) Create() (*Thread, error) {
 
 	thread := &Thread{
 		ID:        id,
-		State:     &state.Buffer{},
+		State:     &ledger.Buffer{},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Metadata:  make(map[string]string),

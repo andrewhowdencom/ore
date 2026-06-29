@@ -2,7 +2,7 @@
 // prompt into the inference context without mutating the persistent
 // conversation buffer.
 //
-// The transform prepends a single state.RoleSystem turn containing an
+// The transform prepends a single ledger.RoleSystem turn containing an
 // artifact.Text artifact whose content is evaluated lazily on each
 // Transform call. This enables dynamic system prompts that can change
 // between turns — for example, by reading from stream metadata that a

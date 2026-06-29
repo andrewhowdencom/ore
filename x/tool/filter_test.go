@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	toolpkg "github.com/andrewhowdencom/ore/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,7 +22,7 @@ func TestWithFilteredTools_NoFilter(t *testing.T) {
 	require.True(t, ok)
 
 	ctx := context.Background()
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 	tools := to.Tools(ctx, mem)
 
 	assert.Len(t, tools, 1)
@@ -38,7 +38,7 @@ func TestWithFilteredTools_WithFilter(t *testing.T) {
 		return nil, nil
 	}))
 
-	filter := func(ctx context.Context, st state.State, tools []toolpkg.Tool) []toolpkg.Tool {
+	filter := func(ctx context.Context, st ledger.State, tools []toolpkg.Tool) []toolpkg.Tool {
 		var result []toolpkg.Tool
 		for _, t := range tools {
 			if t.Name == "add" {
@@ -53,7 +53,7 @@ func TestWithFilteredTools_WithFilter(t *testing.T) {
 	require.True(t, ok)
 
 	ctx := context.Background()
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 	tools := to.Tools(ctx, mem)
 
 	assert.Len(t, tools, 1)
@@ -66,7 +66,7 @@ func TestWithFilteredTools_EmptyResult(t *testing.T) {
 		return nil, nil
 	}))
 
-	filter := func(ctx context.Context, st state.State, tools []toolpkg.Tool) []toolpkg.Tool {
+	filter := func(ctx context.Context, st ledger.State, tools []toolpkg.Tool) []toolpkg.Tool {
 		return nil
 	}
 
@@ -75,7 +75,7 @@ func TestWithFilteredTools_EmptyResult(t *testing.T) {
 	require.True(t, ok)
 
 	ctx := context.Background()
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 	tools := to.Tools(ctx, mem)
 
 	assert.Empty(t, tools)
@@ -95,7 +95,7 @@ func TestWithFilteredTools_MutatesSlice(t *testing.T) {
 	var inputOrder []string
 
 	// Filter that reorders without mutating the original.
-	filter := func(ctx context.Context, st state.State, tools []toolpkg.Tool) []toolpkg.Tool {
+	filter := func(ctx context.Context, st ledger.State, tools []toolpkg.Tool) []toolpkg.Tool {
 		inputOrder = make([]string, len(tools))
 		for i, t := range tools {
 			inputOrder[i] = t.Name
@@ -112,7 +112,7 @@ func TestWithFilteredTools_MutatesSlice(t *testing.T) {
 	require.True(t, ok)
 
 	ctx := context.Background()
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 	tools := to.Tools(ctx, mem)
 
 	require.Len(t, tools, 2)
@@ -128,7 +128,7 @@ func TestWithFilteredTools_Superset(t *testing.T) {
 	}))
 
 	// Filter that adds a tool not present in the registry.
-	filter := func(ctx context.Context, st state.State, tools []toolpkg.Tool) []toolpkg.Tool {
+	filter := func(ctx context.Context, st ledger.State, tools []toolpkg.Tool) []toolpkg.Tool {
 		return append(tools, toolpkg.Tool{
 			Name:        "injected",
 			Description: "Injected tool",
@@ -141,7 +141,7 @@ func TestWithFilteredTools_Superset(t *testing.T) {
 	require.True(t, ok)
 
 	ctx := context.Background()
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 	tools := to.Tools(ctx, mem)
 
 	assert.Len(t, tools, 2)
@@ -155,7 +155,7 @@ func TestWithFilteredTools_Panic(t *testing.T) {
 		return nil, nil
 	}))
 
-	filter := func(ctx context.Context, st state.State, tools []toolpkg.Tool) []toolpkg.Tool {
+	filter := func(ctx context.Context, st ledger.State, tools []toolpkg.Tool) []toolpkg.Tool {
 		panic("filter panic")
 	}
 
@@ -164,7 +164,7 @@ func TestWithFilteredTools_Panic(t *testing.T) {
 	require.True(t, ok)
 
 	ctx := context.Background()
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 
 	assert.Panics(t, func() {
 		to.Tools(ctx, mem)

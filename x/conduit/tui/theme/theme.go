@@ -16,7 +16,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	glamouransi "github.com/charmbracelet/glamour/ansi"
 )
 
@@ -94,15 +94,15 @@ func (t *Theme) Gap(n int) string {
 // role. The mapping is a theme concern, not a renderer concern: a custom
 // theme may emphasise different roles (e.g. a high-contrast theme may
 // colour user text more prominently).
-func (t *Theme) StyleForRole(role state.Role) lipgloss.Style {
+func (t *Theme) StyleForRole(role ledger.Role) lipgloss.Style {
 	switch role {
-	case state.RoleAssistant:
+	case ledger.RoleAssistant:
 		return t.AssistantStyle
-	case state.RoleUser:
+	case ledger.RoleUser:
 		return t.UserStyle
-	case state.RoleTool:
+	case ledger.RoleTool:
 		return t.ToolResultStyle
-	case state.RoleSystem:
+	case ledger.RoleSystem:
 		return t.SystemStyle
 	default:
 		// Unknown roles fall back to the assistant style so unrecognised

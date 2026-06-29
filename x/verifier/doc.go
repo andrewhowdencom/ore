@@ -5,7 +5,7 @@
 //
 // The core abstraction is the Verifier interface:
 //
-//	Verify(ctx, state.State) → (VerificationResult, error)
+//	Verify(ctx, ledger.State) → (VerificationResult, error)
 //
 // Concrete implementations include:
 //

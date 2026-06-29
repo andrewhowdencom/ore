@@ -1,4 +1,4 @@
-package state
+package ledger
 
 import (
 	"encoding/json"

@@ -9,7 +9,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	toolpkg "github.com/andrewhowdencom/ore/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,7 +47,7 @@ func TestHandler_UnknownTool(t *testing.T) {
 	require.Len(t, emitter.events, 1)
 	tc, ok := emitter.events[0].(loop.TurnCompleteEvent)
 	require.True(t, ok)
-	assert.Equal(t, state.RoleTool, tc.Turn.Role)
+	assert.Equal(t, ledger.RoleTool, tc.Turn.Role)
 	require.Len(t, tc.Turn.Artifacts, 1)
 	tr, ok := tc.Turn.Artifacts[0].(artifact.ToolResult)
 	require.True(t, ok)
@@ -76,7 +76,7 @@ func TestHandler_ExecutesRegisteredTool(t *testing.T) {
 	require.Len(t, emitter.events, 1)
 	tc, ok := emitter.events[0].(loop.TurnCompleteEvent)
 	require.True(t, ok)
-	assert.Equal(t, state.RoleTool, tc.Turn.Role)
+	assert.Equal(t, ledger.RoleTool, tc.Turn.Role)
 	require.Len(t, tc.Turn.Artifacts, 1)
 	tr, ok := tc.Turn.Artifacts[0].(artifact.ToolResult)
 	require.True(t, ok)
@@ -463,7 +463,7 @@ func TestHandler_NamespacedTool(t *testing.T) {
 	require.Len(t, emitter.events, 1)
 	tc, ok := emitter.events[0].(loop.TurnCompleteEvent)
 	require.True(t, ok)
-	assert.Equal(t, state.RoleTool, tc.Turn.Role)
+	assert.Equal(t, ledger.RoleTool, tc.Turn.Role)
 	require.Len(t, tc.Turn.Artifacts, 1)
 	tr, ok := tc.Turn.Artifacts[0].(artifact.ToolResult)
 	require.True(t, ok)

@@ -11,7 +11,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"go.opentelemetry.io/otel/propagation"
 )
 
@@ -32,7 +32,7 @@ type artifactJSON struct {
 	URL              string `json:"url,omitempty"`
 }
 
-// turnJSON is the JSON representation of a state.Turn.
+// turnJSON is the JSON representation of a ledger.Turn.
 type turnJSON struct {
 	Role      string         `json:"role"`
 	Artifacts []artifactJSON `json:"artifacts"`
@@ -227,25 +227,25 @@ func UnmarshalOutputEvent(data []byte) (loop.OutputEvent, error) {
 	}
 }
 
-// turnFromJSON converts a turnJSON DTO to a state.Turn.
+// turnFromJSON converts a turnJSON DTO to a ledger.Turn.
 // Returns an error if any artifact in the turn has an unsupported kind.
-func turnFromJSON(dto turnJSON) (state.Turn, error) {
+func turnFromJSON(dto turnJSON) (ledger.Turn, error) {
 	artifacts := make([]artifact.Artifact, len(dto.Artifacts))
 	for i, artDTO := range dto.Artifacts {
 		art, err := artifactFromJSON(artDTO)
 		if err != nil {
-			return state.Turn{}, fmt.Errorf("artifact at index %d: %w", i, err)
+			return ledger.Turn{}, fmt.Errorf("artifact at index %d: %w", i, err)
 		}
 		artifacts[i] = art
 	}
-	turn := state.Turn{
-		Role:      state.Role(dto.Role),
+	turn := ledger.Turn{
+		Role:      ledger.Role(dto.Role),
 		Artifacts: artifacts,
 	}
 	if dto.Timestamp != "" {
 		ts, err := time.Parse(time.RFC3339Nano, dto.Timestamp)
 		if err != nil {
-			return state.Turn{}, fmt.Errorf("parse turn timestamp: %w", err)
+			return ledger.Turn{}, fmt.Errorf("parse turn timestamp: %w", err)
 		}
 		turn.Timestamp = ts
 	}

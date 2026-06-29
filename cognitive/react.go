@@ -8,13 +8,13 @@ import (
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
 // Pattern is a cognitive pattern that can run a multi-turn inference loop
-// starting from a given state. Implementations decide when to stop based on
+// starting from a given ledger. Implementations decide when to stop based on
 // the conversation state (e.g., when no pending tool calls remain).
 //
 // Name returns a stable, lowercase identifier for the pattern (e.g.
@@ -22,7 +22,7 @@ import (
 // and observability. It is part of the Pattern contract: any new pattern
 // must implement it.
 type Pattern interface {
-	Run(ctx context.Context, st state.State) (state.State, error)
+	Run(ctx context.Context, st ledger.State) (ledger.State, error)
 	Name() string
 }
 
@@ -57,10 +57,10 @@ func (r *ReAct) SetRuntime(step loop.TurnRunner, provider provider.Provider, spe
 // tracing the agent.run span. Stable across versions.
 func (r *ReAct) Name() string { return "react" }
 
-// Run executes the ReAct feedback loop starting from the given state.
+// Run executes the ReAct feedback loop starting from the given ledger.
 // It returns when the last turn is from the assistant (no pending tool
 // calls) or when the context is cancelled.
-func (r *ReAct) Run(ctx context.Context, st state.State) (state.State, error) {
+func (r *ReAct) Run(ctx context.Context, st ledger.State) (ledger.State, error) {
 	if r.tracer != nil {
 		var span trace.Span
 		ctx, span = r.tracer.Start(ctx, "react.run", trace.WithSpanKind(trace.SpanKindInternal))
@@ -82,7 +82,7 @@ func (r *ReAct) Run(ctx context.Context, st state.State) (state.State, error) {
 		}
 
 		last := turns[len(turns)-1]
-		if last.Role == state.RoleAssistant {
+		if last.Role == ledger.RoleAssistant {
 			return result, nil
 		}
 
@@ -94,7 +94,7 @@ func (r *ReAct) Run(ctx context.Context, st state.State) (state.State, error) {
 // Pattern factory for each turn. The factory receives the session's
 // loop.Step and provider so it can construct stateful Patterns like ReAct.
 func NewTurnProcessor(factory func(loop.TurnExecutor, provider.Provider, trace.Tracer) Pattern, tracer trace.Tracer) junk.TurnProcessor {
-	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, spec models.Spec) (state.State, error) {
+	return func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, spec models.Spec) (ledger.State, error) {
 		pattern := factory(step, prov, tracer)
 		_ = pattern
 		_ = spec

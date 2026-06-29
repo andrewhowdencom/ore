@@ -9,7 +9,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/slack-go/slack"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,8 +43,8 @@ func TestDeliverTurnComplete_TextArtifact(t *testing.T) {
 	client, receivedForm, _ := newTestSlackClient(t)
 
 	event := loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role: state.RoleAssistant,
+		Turn: ledger.Turn{
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "Hello world"},
 			},
@@ -63,8 +63,8 @@ func TestDeliverTurnComplete_DM(t *testing.T) {
 	client, receivedForm, _ := newTestSlackClient(t)
 
 	event := loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role: state.RoleAssistant,
+		Turn: ledger.Turn{
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "DM reply"},
 			},
@@ -91,8 +91,8 @@ func TestDeliverTurnComplete_NoTextArtifacts(t *testing.T) {
 	client := slack.New("test-token", slack.OptionAPIURL(server.URL+"/"))
 
 	event := loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role: state.RoleAssistant,
+		Turn: ledger.Turn{
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.Image{URL: "http://example.com/image.png"},
 			},
@@ -117,8 +117,8 @@ func TestDeliverTurnComplete_NonAssistantRole(t *testing.T) {
 	client := slack.New("test-token", slack.OptionAPIURL(server.URL+"/"))
 
 	event := loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role: state.RoleUser,
+		Turn: ledger.Turn{
+			Role: ledger.RoleUser,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "User message"},
 			},
@@ -135,8 +135,8 @@ func TestDeliverTurnComplete_MultipleTextArtifacts(t *testing.T) {
 	client, receivedForm, _ := newTestSlackClient(t)
 
 	event := loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role: state.RoleAssistant,
+		Turn: ledger.Turn{
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "First paragraph"},
 				artifact.Text{Content: "Second paragraph"},
@@ -161,8 +161,8 @@ func TestDeliverTurnComplete_Error(t *testing.T) {
 	client := slack.New("test-token", slack.OptionAPIURL(server.URL+"/"))
 
 	event := loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role: state.RoleAssistant,
+		Turn: ledger.Turn{
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "Hello"},
 			},

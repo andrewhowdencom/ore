@@ -8,7 +8,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -104,8 +104,8 @@ func TestNew_NilMeter_IsNoOp(t *testing.T) {
 
 	assert.NotPanics(t, func() {
 		cb(context.Background(), loop.TurnCompleteEvent{
-			Turn: state.Turn{
-				Role:      state.RoleAssistant,
+			Turn: ledger.Turn{
+				Role:      ledger.RoleAssistant,
 				Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}},
 				Timestamp: time.Now(),
 			},
@@ -119,8 +119,8 @@ func TestOnEmit_SentCounter_UserRole(t *testing.T) {
 	ctx := context.Background()
 
 	cb(ctx, loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role: state.RoleUser,
+		Turn: ledger.Turn{
+			Role: ledger.RoleUser,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "hello"},
 			},
@@ -148,8 +148,8 @@ func TestOnEmit_SentCounter_SystemRole(t *testing.T) {
 	ctx := context.Background()
 
 	cb(ctx, loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role: state.RoleSystem,
+		Turn: ledger.Turn{
+			Role: ledger.RoleSystem,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "sys"},
 			},
@@ -174,8 +174,8 @@ func TestOnEmit_SentCounter_ToolRole(t *testing.T) {
 	ctx := context.Background()
 
 	cb(ctx, loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role: state.RoleTool,
+		Turn: ledger.Turn{
+			Role: ledger.RoleTool,
 			Artifacts: []artifact.Artifact{
 				artifact.ToolResult{ToolCallID: "1", Content: "res"},
 			},
@@ -202,8 +202,8 @@ func TestOnEmit_ReceivedCounter_AssistantRole(t *testing.T) {
 	ctx := context.Background()
 
 	cb(ctx, loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role: state.RoleAssistant,
+		Turn: ledger.Turn{
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "world"},
 				artifact.Reasoning{Content: "think"},
@@ -252,8 +252,8 @@ func TestOnEmit_ZeroChars_Skipped(t *testing.T) {
 	ctx := context.Background()
 
 	cb(ctx, loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role: state.RoleAssistant,
+		Turn: ledger.Turn{
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.Usage{PromptTokens: 10},
 			},
@@ -272,8 +272,8 @@ func TestOnEmit_MultipleArtifacts_MultipleDataPoints(t *testing.T) {
 	ctx := context.Background()
 
 	cb(ctx, loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role: state.RoleUser,
+		Turn: ledger.Turn{
+			Role: ledger.RoleUser,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "hello"},
 				artifact.Image{URL: "http://x.y"},
@@ -307,8 +307,8 @@ func TestOnEmit_NilCounter_NoCrash(t *testing.T) {
 	// Assistant role with no received counter should not crash
 	assert.NotPanics(t, func() {
 		cb(ctx, loop.TurnCompleteEvent{
-			Turn: state.Turn{
-				Role:      state.RoleAssistant,
+			Turn: ledger.Turn{
+				Role:      ledger.RoleAssistant,
 				Artifacts: []artifact.Artifact{artifact.Text{Content: "test"}},
 				Timestamp: time.Now(),
 			},
@@ -323,8 +323,8 @@ func TestOnEmit_IntegrationWithMockMeter(t *testing.T) {
 	ctx := context.Background()
 
 	cb(ctx, loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role: state.RoleUser,
+		Turn: ledger.Turn{
+			Role: ledger.RoleUser,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "hi"},
 			},
@@ -350,15 +350,15 @@ func TestOnEmit_DifferentTurns_SameCounter(t *testing.T) {
 
 	// Two user turns
 	cb(ctx, loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role:      state.RoleUser,
+		Turn: ledger.Turn{
+			Role:      ledger.RoleUser,
 			Artifacts: []artifact.Artifact{artifact.Text{Content: "a"}},
 			Timestamp: time.Now(),
 		},
 	})
 	cb(ctx, loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role:      state.RoleUser,
+		Turn: ledger.Turn{
+			Role:      ledger.RoleUser,
 			Artifacts: []artifact.Artifact{artifact.Text{Content: "bb"}},
 			Timestamp: time.Now(),
 		},
@@ -377,8 +377,8 @@ func TestOnEmit_AssistantTurnWithToolCall(t *testing.T) {
 	ctx := context.Background()
 
 	cb(ctx, loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role: state.RoleAssistant,
+		Turn: ledger.Turn{
+			Role: ledger.RoleAssistant,
 			Artifacts: []artifact.Artifact{
 				artifact.Text{Content: "answer"},
 				artifact.ToolCall{ID: "1", Name: "calc", Arguments: `{"a":1}`},
@@ -415,8 +415,8 @@ func TestOnEmit_ToolResultWithLLMStringValue(t *testing.T) {
 	ctx := context.Background()
 
 	cb(ctx, loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role: state.RoleTool,
+		Turn: ledger.Turn{
+			Role: ledger.RoleTool,
 			Artifacts: []artifact.Artifact{
 				artifact.ToolResult{
 					ToolCallID: "1",
@@ -449,8 +449,8 @@ func TestOnEmit_UnknownArtifactType(t *testing.T) {
 	ctx := context.Background()
 
 	cb(ctx, loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role:      state.RoleUser,
+		Turn: ledger.Turn{
+			Role:      ledger.RoleUser,
 			Artifacts: []artifact.Artifact{customArtifact{KindVal: "custom", Content: "hello"}},
 			Timestamp: time.Now(),
 		},
@@ -474,8 +474,8 @@ func TestOnEmit_EmptyArtifacts_NoMetrics(t *testing.T) {
 	ctx := context.Background()
 
 	cb(ctx, loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role:      state.RoleUser,
+		Turn: ledger.Turn{
+			Role:      ledger.RoleUser,
 			Artifacts: []artifact.Artifact{},
 			Timestamp: time.Now(),
 		},
@@ -492,8 +492,8 @@ func TestOnEmit_MixedArtifactsWithZeroAndNonZero(t *testing.T) {
 	ctx := context.Background()
 
 	cb(ctx, loop.TurnCompleteEvent{
-		Turn: state.Turn{
-			Role: state.RoleUser,
+		Turn: ledger.Turn{
+			Role: ledger.RoleUser,
 			Artifacts: []artifact.Artifact{
 				artifact.Usage{PromptTokens: 10},
 				artifact.Text{Content: "hi"},

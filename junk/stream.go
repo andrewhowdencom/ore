@@ -12,7 +12,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 )
 
 // Compaction boundary metadata keys. The session package defines these
@@ -205,7 +205,7 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 		eventCtx = e.Context()
 		s.step.SetEventContext(e.Context())
 		defer s.step.SetEventContext(context.Background())
-		_, runErr = s.step.Submit(turnCtx, s.thread.State, state.RoleUser, artifact.Text{Content: e.Content})
+		_, runErr = s.step.Submit(turnCtx, s.thread.State, ledger.RoleUser, artifact.Text{Content: e.Content})
 		if runErr == nil {
 			// Derive the per-turn Spec from session metadata. The
 			// step's configured default is used when no
@@ -364,13 +364,13 @@ func (s *Stream) ID() string { return s.id }
 // Turns returns a defensive (shallow) copy of the thread's turn history.
 // The slice of Turns is copied, but each Turn's Artifacts slice is shared.
 // Callers should treat the returned artifacts as immutable.
-func (s *Stream) Turns() []state.Turn {
+func (s *Stream) Turns() []ledger.Turn {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.thread.State.Turns()
 }
 
-// State returns the thread's mutable conversation state. The handle
+// State returns the thread's mutable conversation ledger. The handle
 // is the same State the loop pipeline uses (via loop.WithState); reads
 // observe the current turn history, and writes through the returned
 // Meta propagate to subsequent reads.
@@ -379,7 +379,7 @@ func (s *Stream) Turns() []state.Turn {
 // safe for concurrent use; the stream serializes access to its own
 // turns and metadata, but the State object itself shares the
 // Buffer's "serial pipeline only" contract.
-func (s *Stream) State() state.State {
+func (s *Stream) State() ledger.State {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.thread.State
@@ -387,7 +387,7 @@ func (s *Stream) State() state.State {
 
 // LoadTurns replaces the thread's turn state with the provided slice.
 // It acquires the stream's mutex to ensure thread-safe state mutation.
-func (s *Stream) LoadTurns(turns []state.Turn) {
+func (s *Stream) LoadTurns(turns []ledger.Turn) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.thread.State.LoadTurns(turns)
@@ -416,7 +416,7 @@ func (s *Stream) LoadTurns(turns []state.Turn) {
 // Errors:
 //
 //   - "session %s is closed" if the stream has been closed.
-func (s *Stream) AppendTurn(ctx context.Context, role state.Role, artifacts ...artifact.Artifact) error {
+func (s *Stream) AppendTurn(ctx context.Context, role ledger.Role, artifacts ...artifact.Artifact) error {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -424,7 +424,7 @@ func (s *Stream) AppendTurn(ctx context.Context, role state.Role, artifacts ...a
 	}
 	s.mu.Unlock()
 
-	turn := state.Turn{
+	turn := ledger.Turn{
 		Role:      role,
 		Artifacts: artifacts,
 		Timestamp: time.Now(),
@@ -470,14 +470,14 @@ func (s *Stream) SetMetadata(key, value string) {
 }
 
 // MarkBoundary records a compaction boundary on the stream's
-// conversation state. idx is the index in state.Turns() of the
+// conversation ledger. idx is the index in ledger.Turns() of the
 // turn that marks the boundary (typically the index of the
 // just-appended compaction summary turn). info is the JSON-encoded
 // BoundaryInfo — the caller is expected to pass the result of
 // x/compaction.EncodeBoundaryInfo on the BoundaryInfo returned
 // by compaction.Summarize.
 //
-// The boundary index is written to state.Meta under
+// The boundary index is written to ledger.Meta under
 // "ore.compaction.boundary.index", and the encoded info under
 // "ore.compaction.boundary.info". Subsequent Transform calls see
 // the boundary and project the buffer from idx onward.
@@ -558,12 +558,12 @@ func (s *Stream) Spec() (models.Spec, bool) {
 }
 
 func (s *Stream) Save() error {
-	// Sync the compaction-boundary metadata from state.Meta to
+	// Sync the compaction-boundary metadata from ledger.Meta to
 	// thread.Metadata under the ore.compaction.boundary.* namespace.
 	// The boundary is the only state-level fact currently carried
-	// in state.Meta; persisting it under the existing Metadata
+	// in ledger.Meta; persisting it under the existing Metadata
 	// channel avoids introducing a new JSON field on Thread. Other
-	// state.Meta entries (none today) would require extending this
+	// ledger.Meta entries (none today) would require extending this
 	// sync path before they could be persisted.
 	s.mu.Lock()
 	s.syncBoundaryToMetadataLocked()
@@ -573,7 +573,7 @@ func (s *Stream) Save() error {
 }
 
 // syncBoundaryToMetadataLocked copies the compaction boundary from
-// state.Meta into thread.Metadata under the ore.compaction.boundary.*
+// ledger.Meta into thread.Metadata under the ore.compaction.boundary.*
 // keys. Must be called with s.mu held.
 func (s *Stream) syncBoundaryToMetadataLocked() {
 	if s.thread == nil || s.thread.State == nil {

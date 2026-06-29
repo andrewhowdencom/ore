@@ -12,7 +12,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/socketmode"
@@ -26,7 +26,7 @@ type mockProvider struct {
 	err       error
 }
 
-func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *mockProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	for _, art := range m.artifacts {
 		select {
 		case ch <- art:
@@ -39,7 +39,7 @@ func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec,
 
 // simpleProcessor runs a single Step.Turn with the mock provider.
 func simpleProcessor() junk.TurnProcessor {
-	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+	return func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
 		spec := models.Spec{Name: "test-model"}
 		return step.Turn(ctx, st, spec, prov)
 	}

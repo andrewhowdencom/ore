@@ -56,7 +56,7 @@ func (s Severity) String() string {
 // error reporting from non-inference code paths (slash commands, role
 // handoffs, system-level confirmations).
 //
-// See also: state.RoleSystem — a turn that the LLM *must* see (role handoffs,
+// See also: ledger.RoleSystem — a turn that the LLM *must* see (role handoffs,
 // compaction summaries). Notices are user-only; RoleSystem turns reach both
 // the user and the model.
 type Notice struct {
@@ -66,7 +66,7 @@ type Notice struct {
 
 // NoticeEvent is emitted when a Notice needs to flow to conduits. It is
 // excluded from state persistence by virtue of its type: the EventBus
-// only auto-appends TurnCompleteEvent to bound state.
+// only auto-appends TurnCompleteEvent to bound ledger.
 //
 // See also: loop.ErrorEvent, which carries inference-layer failures.
 // NoticeEvent carries slash-layer and other non-inference feedback; the

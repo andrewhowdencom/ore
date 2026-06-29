@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/provider/retry"
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/stretchr/testify/assert"
@@ -231,9 +231,9 @@ func TestProviderSerialize_ReplaysThinkingBlocks(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "what is 2+2?"})
-	mem.Append(state.RoleAssistant,
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "what is 2+2?"})
+	mem.Append(ledger.RoleAssistant,
 		artifact.Reasoning{Content: "Let me think step by step."},
 		artifact.ReasoningSignature{
 			Provider: "anthropic",
@@ -304,9 +304,9 @@ func TestProviderSerialize_ReplaysRedactedThinking(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "ok?"})
-	mem.Append(state.RoleAssistant,
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "ok?"})
+	mem.Append(ledger.RoleAssistant,
 		artifact.Reasoning{Content: "thinking text"},
 		artifact.ReasoningSignature{
 			Provider: "anthropic",
@@ -349,14 +349,14 @@ func TestProviderSerialize_ReplaysToolUseAndToolResult(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "what is the weather?"})
-	mem.Append(state.RoleAssistant, artifact.ToolCall{
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "what is the weather?"})
+	mem.Append(ledger.RoleAssistant, artifact.ToolCall{
 		ID:        "toolu_abc",
 		Name:      "get_weather",
 		Arguments: `{"location":"sf"}`,
 	})
-	mem.Append(state.RoleTool, artifact.ToolResult{
+	mem.Append(ledger.RoleTool, artifact.ToolResult{
 		ToolCallID: "toolu_abc",
 		Content:    "72F sunny",
 	})
@@ -425,14 +425,14 @@ func TestProviderSerialize_DisplayDoesNotAffectWireFormat(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "list things"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "list things"})
 	// Display is the kind of string label that the built-in filesystem
 	// tools produce from their DisplayHint. The previous implementation
 	// of parseToolArguments preferred Display over Arguments, so this
 	// string would have been sent as the input field and the request
 	// would have been rejected by the API.
-	mem.Append(state.RoleAssistant, artifact.ToolCall{
+	mem.Append(ledger.RoleAssistant, artifact.ToolCall{
 		ID:        "toolu_disp",
 		Name:      "list_directory",
 		Arguments: `{"path":"/home/../Development"}`,
@@ -477,9 +477,9 @@ func TestProviderSerialize_SystemCollapsedToSystemField(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleSystem, artifact.Text{Content: "be terse."})
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleSystem, artifact.Text{Content: "be terse."})
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	got := p.serializeMessages(mem)
 	require.Len(t, got.system, 1, "system text hoisted to system field")
@@ -502,9 +502,9 @@ func TestProviderSerialize_EmptySignatureOnStandaloneReasoning(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
-	mem.Append(state.RoleAssistant,
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
+	mem.Append(ledger.RoleAssistant,
 		artifact.Reasoning{Content: "thinking..."},
 		artifact.Text{Content: "answer"},
 	)
@@ -543,9 +543,9 @@ func TestProviderSerialize_StandaloneSignatureEmitsEmptyThinking(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
-	mem.Append(state.RoleAssistant,
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
+	mem.Append(ledger.RoleAssistant,
 		artifact.ReasoningSignature{
 			Provider: "anthropic",
 			SubKind:  "signature",
@@ -719,9 +719,9 @@ func TestProviderSerialize_ArgumentsParseAsDict(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "weather?"})
-	mem.Append(state.RoleAssistant, artifact.ToolCall{
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "weather?"})
+	mem.Append(ledger.RoleAssistant, artifact.ToolCall{
 		ID:        "toolu_xyz",
 		Name:      "get_weather",
 		Arguments: `{"location":"sf","unit":"f"}`,
@@ -753,14 +753,14 @@ func TestProviderSerialize_IsErrorTruePropagates(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "weather?"})
-	mem.Append(state.RoleAssistant, artifact.ToolCall{
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "weather?"})
+	mem.Append(ledger.RoleAssistant, artifact.ToolCall{
 		ID:        "toolu_err",
 		Name:      "get_weather",
 		Arguments: `{}`,
 	})
-	mem.Append(state.RoleTool, artifact.ToolResult{
+	mem.Append(ledger.RoleTool, artifact.ToolResult{
 		ToolCallID: "toolu_err",
 		Content:    "service unavailable",
 		IsError:    true,
@@ -792,9 +792,9 @@ func TestProviderSerialize_OrderPreservedWithinTurn(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "go"})
-	mem.Append(state.RoleAssistant,
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "go"})
+	mem.Append(ledger.RoleAssistant,
 		artifact.Text{Content: "First sentence. "},
 		artifact.Reasoning{Content: "I'm thinking about the second part."},
 		artifact.ReasoningSignature{Provider: "anthropic", SubKind: "signature", Data: "sig1"},
@@ -832,14 +832,14 @@ func TestProviderSerialize_RoleToolSkipsNonToolResultArtifacts(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "go"})
-	mem.Append(state.RoleAssistant, artifact.ToolCall{
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "go"})
+	mem.Append(ledger.RoleAssistant, artifact.ToolCall{
 		ID:        "toolu_only",
 		Name:      "noop",
 		Arguments: `{}`,
 	})
-	mem.Append(state.RoleTool,
+	mem.Append(ledger.RoleTool,
 		artifact.Text{Content: "stray text — should be ignored"},
 		artifact.ToolResult{ToolCallID: "toolu_only", Content: "result"},
 		artifact.Image{URL: "http://example.com/x.png"},
@@ -876,13 +876,13 @@ func TestProviderSerialize_DropsMixedSystemTurn(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
+	mem := ledger.NewBuffer()
 	// Mixed-content system turn: text + image. Should be dropped.
-	mem.Append(state.RoleSystem,
+	mem.Append(ledger.RoleSystem,
 		artifact.Text{Content: "you are terse"},
 		artifact.Image{URL: "http://example.com/logo.png"},
 	)
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	got := p.serializeMessages(mem)
 	assert.Empty(t, got.system, "mixed system turn must be dropped")
@@ -896,8 +896,8 @@ func TestProviderSerialize_DropsMixedSystemTurn(t *testing.T) {
 // post-compaction path: a RoleSystem turn carrying only a Text
 // artifact is hoisted onto the request-level `system` field. This
 // is the shape produced by x/compaction.Summarize for the
-// LLM-facing summary; the boundary marker now lives in state.Meta
-// (see state.Meta and x/compaction.BoundaryInfo) and does not
+// LLM-facing summary; the boundary marker now lives in ledger.Meta
+// (see ledger.Meta and x/compaction.BoundaryInfo) and does not
 // appear in the artifact stream.
 func TestProviderSerialize_HoistsTextOnlySystemTurn(t *testing.T) {
 	t.Parallel()
@@ -905,9 +905,9 @@ func TestProviderSerialize_HoistsTextOnlySystemTurn(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleSystem, artifact.Text{Content: "you are terse"})
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleSystem, artifact.Text{Content: "you are terse"})
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	got := p.serializeMessages(mem)
 	require.Len(t, got.system, 1, "text-only system turn must be hoisted to system field")
@@ -925,8 +925,8 @@ func TestProviderSerialize_ConcatTextSeparatesWithNewline(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser,
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser,
 		artifact.Text{Content: "first"},
 		artifact.Text{Content: "second"},
 		artifact.Text{Content: "third"},
@@ -951,9 +951,9 @@ func TestProviderSerialize_HandlesBadJSONArguments(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "go"})
-	mem.Append(state.RoleAssistant, artifact.ToolCall{
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "go"})
+	mem.Append(ledger.RoleAssistant, artifact.ToolCall{
 		ID:        "toolu_bad",
 		Name:      "no_op",
 		Arguments: "this is not json",
@@ -991,9 +991,9 @@ func TestProviderSerialize_EmptyAssistantTurnStillEmits(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
-	mem.Append(state.RoleAssistant) // no artifacts
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
+	mem.Append(ledger.RoleAssistant) // no artifacts
 
 	got := p.serializeMessages(mem)
 	require.Len(t, got.messages, 2)
@@ -1023,16 +1023,16 @@ func TestProviderSerialize_AppliesPreTasksFixesRegressions(t *testing.T) {
 	require.NoError(t, err)
 
 	// Single round-trip with every artifact type in play.
-	mem := state.NewBuffer()
-	mem.Append(state.RoleSystem, artifact.Text{Content: "be terse."})
-	mem.Append(state.RoleUser, artifact.Text{Content: "weather?"})
-	mem.Append(state.RoleAssistant,
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleSystem, artifact.Text{Content: "be terse."})
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "weather?"})
+	mem.Append(ledger.RoleAssistant,
 		artifact.Reasoning{Content: "thinking..."},
 		artifact.ReasoningSignature{Provider: "anthropic", SubKind: "signature", Data: "sig"},
 		artifact.ToolCall{ID: "toolu_1", Name: "get_weather", Arguments: `{"x":1}`},
 		artifact.Text{Content: "calling now"},
 	)
-	mem.Append(state.RoleTool, artifact.ToolResult{
+	mem.Append(ledger.RoleTool, artifact.ToolResult{
 		ToolCallID: "toolu_1",
 		Content:    "result",
 	})
@@ -1127,8 +1127,8 @@ func TestProviderInvoke_StreamsThinking(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -1185,8 +1185,8 @@ func TestProviderInvoke_StreamsMixedTextAndThinking(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -1239,8 +1239,8 @@ func TestProviderInvoke_StreamsRedactedThinkingForReplay(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -1281,8 +1281,8 @@ func TestProviderInvoke_PreservesUsageThinkingTokens(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -1339,8 +1339,8 @@ func TestProviderInvoke_NilThinkingTokensWhenAbsent(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -1385,8 +1385,8 @@ func TestProviderInvoke_ToolUseStreaming(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -1438,8 +1438,8 @@ func TestProviderInvoke_ContextCancellation(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -1476,8 +1476,8 @@ func TestProviderInvoke_HTTPError(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
 	err = p.Invoke(t.Context(), mem, spec, ch)
@@ -1503,8 +1503,8 @@ func TestProviderInvoke_TalksToOpenRouter(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -1548,8 +1548,8 @@ func TestProviderInvoke_EmitsStopReason_EndTurn(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -1588,8 +1588,8 @@ func TestProviderInvoke_EmitsStopReason_Length(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "summarize this"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "summarize this"})
 
 	ch := make(chan artifact.Artifact, 16)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -1626,8 +1626,8 @@ func TestProviderInvoke_EmitsStopReason_ToolUse(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "find something"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "find something"})
 
 	ch := make(chan artifact.Artifact, 16)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -1664,8 +1664,8 @@ func TestProviderInvoke_EmitsStopReason_Refusal(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "do something dangerous"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "do something dangerous"})
 
 	ch := make(chan artifact.Artifact, 16)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
@@ -1703,8 +1703,8 @@ func TestProviderInvoke_EmitsStopReason_StopSequenceMapsToOther(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := state.NewBuffer()
-	mem.Append(state.RoleUser, artifact.Text{Content: "hi"})
+	mem := ledger.NewBuffer()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
 	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))

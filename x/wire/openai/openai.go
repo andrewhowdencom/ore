@@ -16,7 +16,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/andrewhowdencom/ore/x/provider/retry"
 	"github.com/openai/openai-go"
@@ -350,20 +350,20 @@ type assistantReasoning struct {
 // from each assistant turn. It is consumed by applyReasoningReplay
 // after the messages slice has been marshaled. Order matches state
 // turn order, which matches read-side arrival order.
-func (p *Provider) serializeMessages(s state.State) ([]openai.ChatCompletionMessageParamUnion, []assistantReasoning) {
+func (p *Provider) serializeMessages(s ledger.State) ([]openai.ChatCompletionMessageParamUnion, []assistantReasoning) {
 	turns := s.Turns()
 	messages := make([]openai.ChatCompletionMessageParamUnion, 0, len(turns))
 	replayPerTurn := make([]assistantReasoning, 0, len(turns))
 
 	for _, turn := range turns {
 		switch turn.Role {
-		case state.RoleSystem:
+		case ledger.RoleSystem:
 			content := concatText(turn.Artifacts)
 			messages = append(messages, openai.SystemMessage(content))
-		case state.RoleUser:
+		case ledger.RoleUser:
 			content := concatText(turn.Artifacts)
 			messages = append(messages, openai.UserMessage(content))
-		case state.RoleAssistant:
+		case ledger.RoleAssistant:
 			var toolCalls []artifact.ToolCall
 			var textContent string
 			var reasonings []artifact.Reasoning
@@ -433,7 +433,7 @@ func (p *Provider) serializeMessages(s state.State) ([]openai.ChatCompletionMess
 			} else {
 				messages = append(messages, openai.AssistantMessage(textContent))
 			}
-		case state.RoleTool:
+		case ledger.RoleTool:
 			var toolMsgs []openai.ChatCompletionMessageParamUnion
 			for _, art := range turn.Artifacts {
 				if tr, ok := art.(artifact.ToolResult); ok {
@@ -482,7 +482,7 @@ func concatText(artifacts []artifact.Artifact) string {
 // temperature, spec.ThinkingLevel is mapped to reasoning_effort,
 // spec.MaxOutputTokens is mapped to max_tokens, and spec.StopSequences
 // to the stop field.
-func (p *Provider) Invoke(ctx context.Context, s state.State, spec models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (p *Provider) Invoke(ctx context.Context, s ledger.State, spec models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	var span trace.Span
 	if p.tracer != nil {
 		ctx, span = p.tracer.Start(ctx, "provider.invoke", trace.WithSpanKind(trace.SpanKindClient))
@@ -619,7 +619,7 @@ func (p *Provider) Invoke(ctx context.Context, s state.State, spec models.Spec, 
 	//   2. applyReasoningReplayToAny — attaches the host-specific
 	//      reasoning field (reasoning_content for OpenAI native,
 	//      reasoning_details[] for OpenRouter) to each assistant
-	//      message that carried reasoning artifacts in state.
+	//      message that carried reasoning artifacts in ledger.
 	//
 	// The two mutations compose by mutating in place: when both are
 	// needed, applyCacheControl produces the []any, and

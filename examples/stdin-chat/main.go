@@ -23,7 +23,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/models"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
 )
 
@@ -64,12 +64,12 @@ func run() error {
 	}
 
 	// Construct the agent: SingleShot pattern (one inference call per
-	// user message; no tools registered), bound state. The agent is
+	// user message; no tools registered), bound ledger. The agent is
 	// reused across many Run calls; the bound state accumulates the
 	// conversation across turns. The bound state's auto-append path
 	// emits the assistant's turn into mem after each Run; the user
 	// turn is appended manually before each call.
-	mem := &state.Buffer{}
+	mem := &ledger.Buffer{}
 	a := agent.New("stdin-chat",
 		agent.WithProvider(prov),
 		agent.WithSpec(models.Spec{Name: modelName}),
@@ -99,7 +99,7 @@ func run() error {
 		// The agent's internal step serializes mem (now containing the user
 		// turn) to the provider, then auto-appends the assistant turn back
 		// into mem via WithState.
-		mem.Append(state.RoleUser, artifact.Text{Content: line})
+		mem.Append(ledger.RoleUser, artifact.Text{Content: line})
 		result, err := a.Run(ctx, mem)
 		if err != nil {
 			return fmt.Errorf("agent run failed: %w", err)
@@ -113,7 +113,7 @@ func run() error {
 			continue
 		}
 		last := turns[len(turns)-1]
-		if last.Role != state.RoleAssistant {
+		if last.Role != ledger.RoleAssistant {
 			continue
 		}
 		for _, art := range last.Artifacts {

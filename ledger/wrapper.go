@@ -1,4 +1,4 @@
-package state
+package ledger
 
 import "github.com/andrewhowdencom/ore/artifact"
 
@@ -12,7 +12,7 @@ type View struct {
 }
 
 // NewView creates a state wrapper that returns the given turns from Turns()
-// and delegates Append() to the base state. If turns is empty or nil, it
+// and delegates Append() to the base ledger. If turns is empty or nil, it
 // returns the base state directly as an identity optimization.
 func NewView(base State, turns []Turn) State {
 	if len(turns) == 0 {
@@ -28,21 +28,21 @@ func (v *View) Turns() []Turn {
 	return result
 }
 
-// Append delegates to the underlying base state.
+// Append delegates to the underlying base ledger.
 func (v *View) Append(role Role, artifacts ...artifact.Artifact) {
 	v.base.Append(role, artifacts...)
 }
 
-// Meta delegates to the base state. Views do not own metadata; they
+// Meta delegates to the base ledger. Views do not own metadata; they
 // are projections of turns. Writes through a View's Meta are visible
-// on the base state.
+// on the base ledger.
 func (v *View) Meta() Meta {
 	return v.base.Meta()
 }
 
 // Prepend returns a State view that projects virtual turns before the base
 // state's current turns on every call to Turns(). Append() delegates to the
-// base state. If virtual is empty, it returns the base state directly as an
+// base ledger. If virtual is empty, it returns the base state directly as an
 // identity optimization.
 func Prepend(base State, virtual []Turn) State {
 	if len(virtual) == 0 {
@@ -68,8 +68,8 @@ func (p *prependView) Append(role Role, artifacts ...artifact.Artifact) {
 	p.base.Append(role, artifacts...)
 }
 
-// Meta delegates to the base state. As with View, writes through a
-// prependView's Meta are visible on the base state.
+// Meta delegates to the base ledger. As with View, writes through a
+// prependView's Meta are visible on the base ledger.
 func (p *prependView) Meta() Meta {
 	return p.base.Meta()
 }

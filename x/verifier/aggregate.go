@@ -7,14 +7,14 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 )
 
 // RunAll runs all verifiers in parallel against the given state and returns
 // a slice of VerificationResult. The order of results is sorted by name
 // for determinism. Each verifier runs in its own goroutine; the function
 // waits for all to complete before returning.
-func RunAll(ctx context.Context, verifiers []Verifier, st state.State) []VerificationResult {
+func RunAll(ctx context.Context, verifiers []Verifier, st ledger.State) []VerificationResult {
 	var wg sync.WaitGroup
 	results := make([]VerificationResult, len(verifiers))
 

@@ -6,7 +6,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -30,10 +30,10 @@ type SingleShot struct {
 var _ Pattern = (*SingleShot)(nil)
 
 // Run invokes the underlying step exactly once and returns the
-// resulting state. The pattern does no terminal-detection; the
+// resulting ledger. The pattern does no terminal-detection; the
 // caller's agent configuration (transforms, handlers) determines
 // what happens to the produced turn.
-func (s *SingleShot) Run(ctx context.Context, st state.State) (state.State, error) {
+func (s *SingleShot) Run(ctx context.Context, st ledger.State) (ledger.State, error) {
 	return s.Step.Turn(ctx, st, s.Spec, s.Provider)
 }
 

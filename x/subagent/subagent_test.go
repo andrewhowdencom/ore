@@ -10,7 +10,7 @@ import (
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,7 +25,7 @@ type stubProvider struct {
 
 var _ provider.Provider = (*stubProvider)(nil)
 
-func (s *stubProvider) Invoke(_ context.Context, _ state.State, _ models.Spec, ch chan<- artifact.Artifact, _ ...provider.InvokeOption) error {
+func (s *stubProvider) Invoke(_ context.Context, _ ledger.State, _ models.Spec, ch chan<- artifact.Artifact, _ ...provider.InvokeOption) error {
 	for _, a := range s.artifacts {
 		ch <- a
 	}
@@ -125,7 +125,7 @@ func TestAsTool_PropagatesAgentError(t *testing.T) {
 }
 
 func TestAsTool_SandboxIsIgnored(t *testing.T) {
-	// The sub-agent runs against a fresh state.Buffer seeded with the
+	// The sub-agent runs against a fresh ledger.Buffer seeded with the
 	// prompt; the Sandbox argument is unused. Passing a non-nil
 	// sandbox must not change the result.
 	a := newSubAgent(t, &stubProvider{

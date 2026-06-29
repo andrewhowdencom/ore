@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 )
 
 // makeThread builds a *junk.Thread with the given ID and UpdatedAt
@@ -19,7 +19,7 @@ import (
 func makeThread(id string, updatedAt time.Time) *junk.Thread {
 	return &junk.Thread{
 		ID:        id,
-		State:     &state.Buffer{},
+		State:     &ledger.Buffer{},
 		CreatedAt: updatedAt.Add(-time.Hour),
 		UpdatedAt: updatedAt,
 		Metadata:  map[string]string{},

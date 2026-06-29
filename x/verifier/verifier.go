@@ -3,7 +3,7 @@ package verifier
 import (
 	"context"
 
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 )
 
 // Status represents the outcome of a single verification.
@@ -39,5 +39,5 @@ type VerificationResult struct {
 // Verifier runs a quality gate against the conversation state or the
 // external environment (e.g., compilation, tests, lint).
 type Verifier interface {
-	Verify(ctx context.Context, st state.State) (VerificationResult, error)
+	Verify(ctx context.Context, st ledger.State) (VerificationResult, error)
 }

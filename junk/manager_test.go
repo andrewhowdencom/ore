@@ -11,7 +11,7 @@ import (
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -50,7 +50,7 @@ type mockProvider struct {
 	err       error
 }
 
-func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *mockProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	for _, art := range m.artifacts {
 		select {
 		case ch <- art:
@@ -63,7 +63,7 @@ func (m *mockProvider) Invoke(ctx context.Context, s state.State, _ models.Spec,
 
 // simpleProcessor runs a single Step.Turn with the mock provider.
 func simpleProcessor() TurnProcessor {
-	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+	return func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
 		spec := models.Spec{Name: "test-model"}
 		return step.Turn(ctx, st, spec, prov)
 	}
@@ -71,7 +71,7 @@ func simpleProcessor() TurnProcessor {
 
 // nopProcessor does nothing (used for submit-only tests).
 func nopProcessor() TurnProcessor {
-	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+	return func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
 		return st, nil
 	}
 }
@@ -79,7 +79,7 @@ func nopProcessor() TurnProcessor {
 // blockingProvider is a provider that blocks until the context is cancelled.
 type blockingProvider struct{}
 
-func (m *blockingProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (m *blockingProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	<-ctx.Done()
 	return ctx.Err()
 }
@@ -271,8 +271,8 @@ func TestManager_Process(t *testing.T) {
 	require.NoError(t, err)
 	turns := thr.State.Turns()
 	require.Len(t, turns, 2) // user + assistant
-	assert.Equal(t, state.RoleUser, turns[0].Role)
-	assert.Equal(t, state.RoleAssistant, turns[1].Role)
+	assert.Equal(t, ledger.RoleUser, turns[0].Role)
+	assert.Equal(t, ledger.RoleAssistant, turns[1].Role)
 }
 
 func TestStream_Process_Queued(t *testing.T) {
@@ -546,7 +546,7 @@ func TestManager_List(t *testing.T) {
 func TestStream_Process_Serial(t *testing.T) {
 	// Use a processor that sleeps briefly so we can observe serialization.
 	sleepyProcessor := func() TurnProcessor {
-		return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+		return func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
 			time.Sleep(50 * time.Millisecond)
 			return st, nil
 		}
@@ -571,7 +571,7 @@ func TestStream_Process_Serial(t *testing.T) {
 	}
 	wg.Wait()
 
-	// All 10 events should have been processed and appended to state.
+	// All 10 events should have been processed and appended to ledger.
 	turns := stream.thread.State.Turns()
 	// sleepyProcessor does not call step.Turn(), so each event produces
 	// exactly 1 user turn (from step.Submit()).
@@ -645,7 +645,7 @@ func TestStream_Process_ProviderError(t *testing.T) {
 }
 
 func boomProcessor() TurnProcessor {
-	return func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+	return func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
 		return st, fmt.Errorf("boom")
 	}
 }
@@ -1250,12 +1250,12 @@ func TestManager_Process_NoDuplicateTurns(t *testing.T) {
 	// Exactly 2 turns: user message + assistant response.
 	require.Len(t, turns, 2, "expected exactly one user turn and one assistant turn, got %d", len(turns))
 
-	roleCounts := make(map[state.Role]int)
+	roleCounts := make(map[ledger.Role]int)
 	for _, turn := range turns {
 		roleCounts[turn.Role]++
 	}
-	assert.Equal(t, 1, roleCounts[state.RoleUser], "user turn should appear exactly once")
-	assert.Equal(t, 1, roleCounts[state.RoleAssistant], "assistant turn should appear exactly once")
+	assert.Equal(t, 1, roleCounts[ledger.RoleUser], "user turn should appear exactly once")
+	assert.Equal(t, 1, roleCounts[ledger.RoleAssistant], "assistant turn should appear exactly once")
 }
 
 // toolLoopProvider returns a ToolCall on the first invocation and a text
@@ -1264,7 +1264,7 @@ type toolLoopProvider struct {
 	callCount int
 }
 
-func (p *toolLoopProvider) Invoke(ctx context.Context, s state.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
+func (p *toolLoopProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	p.callCount++
 	if p.callCount == 1 {
 		ch <- artifact.ToolCall{Name: "test_tool", Arguments: `{"query":"hello"}`}
@@ -1282,7 +1282,7 @@ func TestManager_Process_ToolLoop_NoDuplicateTurns(t *testing.T) {
 	// 1. Turn (assistant with tool call)
 	// 2. Emit tool result (simulating tool handler)
 	// 3. Turn (assistant with final answer)
-	toolProc := TurnProcessor(func(ctx context.Context, step *loop.Step, st state.State, prov provider.Provider, _ models.Spec) (state.State, error) {
+	toolProc := TurnProcessor(func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
 		// First assistant turn (tool call)
 		spec := models.Spec{Name: "test-model"}
 		st, err := step.Turn(ctx, st, spec, prov)
@@ -1293,8 +1293,8 @@ func TestManager_Process_ToolLoop_NoDuplicateTurns(t *testing.T) {
 		// Simulate tool handler emitting tool result
 		step.SetEventContext(ctx)
 		step.Emit(ctx, loop.TurnCompleteEvent{
-			Turn: state.Turn{
-				Role:      state.RoleTool,
+			Turn: ledger.Turn{
+				Role:      ledger.RoleTool,
 				Artifacts: []artifact.Artifact{artifact.ToolResult{Content: "tool result"}},
 			},
 			Ctx: ctx,
@@ -1322,20 +1322,20 @@ func TestManager_Process_ToolLoop_NoDuplicateTurns(t *testing.T) {
 	// Expected: user, assistant-tool-call, tool-result, assistant-final
 	require.Len(t, turns, 4, "expected 4 turns: user + assistant(tool) + tool + assistant(final)")
 
-	roles := make([]state.Role, len(turns))
+	roles := make([]ledger.Role, len(turns))
 	for i, turn := range turns {
 		roles[i] = turn.Role
 	}
-	assert.Equal(t, []state.Role{state.RoleUser, state.RoleAssistant, state.RoleTool, state.RoleAssistant}, roles)
+	assert.Equal(t, []ledger.Role{ledger.RoleUser, ledger.RoleAssistant, ledger.RoleTool, ledger.RoleAssistant}, roles)
 
 	// Verify no duplicates by checking each role appears the expected number of times
-	roleCounts := make(map[state.Role]int)
+	roleCounts := make(map[ledger.Role]int)
 	for _, turn := range turns {
 		roleCounts[turn.Role]++
 	}
-	assert.Equal(t, 1, roleCounts[state.RoleUser])
-	assert.Equal(t, 2, roleCounts[state.RoleAssistant])
-	assert.Equal(t, 1, roleCounts[state.RoleTool])
+	assert.Equal(t, 1, roleCounts[ledger.RoleUser])
+	assert.Equal(t, 2, roleCounts[ledger.RoleAssistant])
+	assert.Equal(t, 1, roleCounts[ledger.RoleTool])
 }
 
 func TestManager_WithInterceptor(t *testing.T) {

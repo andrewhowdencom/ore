@@ -9,22 +9,22 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 )
 
 // fixtureThread returns a thread containing at least one of each known
 // artifact type (excluding deltas, which are never persisted).
 func fixtureThread() *junk.Thread {
-	buf := &state.Buffer{}
+	buf := &ledger.Buffer{}
 
 	// System turn with reasoning.
-	buf.Append(state.RoleSystem, artifact.Text{Content: "You are a helpful assistant."})
+	buf.Append(ledger.RoleSystem, artifact.Text{Content: "You are a helpful assistant."})
 
 	// User turn with text.
-	buf.Append(state.RoleUser, artifact.Text{Content: "What is the capital of France?"})
+	buf.Append(ledger.RoleUser, artifact.Text{Content: "What is the capital of France?"})
 
 	// Assistant turn with reasoning, text, tool call, and usage.
-	buf.Append(state.RoleAssistant,
+	buf.Append(ledger.RoleAssistant,
 		artifact.Reasoning{Content: "The user is asking for the capital of France."},
 		artifact.Text{Content: "The capital of France is Paris."},
 		artifact.ToolCall{
@@ -36,13 +36,13 @@ func fixtureThread() *junk.Thread {
 	)
 
 	// Tool turn with result.
-	buf.Append(state.RoleTool, artifact.ToolResult{
+	buf.Append(ledger.RoleTool, artifact.ToolResult{
 		ToolCallID: "call-geo-1",
 		Content:    "Paris",
 	})
 
 	// Assistant turn with image.
-	buf.Append(state.RoleAssistant,
+	buf.Append(ledger.RoleAssistant,
 		artifact.Text{Content: "Here is a map."},
 		artifact.Image{URL: "https://example.com/map.png"},
 	)

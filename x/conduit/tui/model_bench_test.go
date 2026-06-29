@@ -74,7 +74,7 @@ import (
 
 	"charm.land/bubbles/v2/viewport"
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
 )
 
@@ -161,13 +161,13 @@ func makeHistoryTurns(m *model, n, blocksPerTurn int) []renderedTurn {
 					Content:    syntheticToolResult(2000),
 				}
 			}
-			block := m.renderArtifact(art, state.RoleAssistant)
+			block := m.renderArtifact(art, ledger.RoleAssistant)
 			if block.kind != "" {
 				blocks = append(blocks, block)
 			}
 		}
 		turns = append(turns, renderedTurn{
-			role:   state.RoleAssistant,
+			role:   ledger.RoleAssistant,
 			blocks: blocks,
 		})
 	}
@@ -179,14 +179,14 @@ func makeHistoryTurns(m *model, n, blocksPerTurn int) []renderedTurn {
 func makeToolCallBlocks(m *model, n int) []renderedBlock {
 	var blocks []renderedBlock
 	for i := 0; i < n; i++ {
-		tc := m.renderArtifact(syntheticToolCall(i), state.RoleAssistant)
+		tc := m.renderArtifact(syntheticToolCall(i), ledger.RoleAssistant)
 		if tc.kind != "" {
 			blocks = append(blocks, tc)
 		}
 		tr := m.renderArtifact(artifact.ToolResult{
 			ToolCallID: fmt.Sprintf("call_%04d", i),
 			Content:    syntheticToolResult(2000),
-		}, state.RoleAssistant)
+		}, ledger.RoleAssistant)
 		if tr.kind != "" {
 			blocks = append(blocks, tr)
 		}

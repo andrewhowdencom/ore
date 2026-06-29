@@ -3,7 +3,7 @@ package loop
 import (
 	"context"
 
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 )
 
 // EventBus owns the broadcast infrastructure: event channel, FanOut,
@@ -14,7 +14,7 @@ type EventBus struct {
 	events chan outputEventEnvelope
 	fanOut *FanOut
 	onEmit []OnEmit
-	state  state.State
+	bound  ledger.State
 }
 
 // newEventBus creates an EventBus with a fresh channel and FanOut.
@@ -32,8 +32,8 @@ func newEventBus() *EventBus {
 // automatically appended to that state before OnEmit callbacks run. Other
 // event types are passed through unchanged.
 func (eb *EventBus) Emit(ctx context.Context, event OutputEvent) {
-	if tc, ok := event.(TurnCompleteEvent); ok && eb.state != nil {
-		eb.state.Append(tc.Turn.Role, tc.Turn.Artifacts...)
+	if tc, ok := event.(TurnCompleteEvent); ok && eb.bound != nil {
+		eb.bound.Append(tc.Turn.Role, tc.Turn.Artifacts...)
 	}
 	for _, fn := range eb.onEmit {
 		fn(ctx, event)

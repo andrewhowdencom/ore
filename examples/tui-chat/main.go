@@ -181,7 +181,7 @@ func run() error {
 	slashReg.Bind("model", "Set the model for this session", set_model.Slash())
 	slashReg.Bind("analytics", "Show per-(kind, source) byte and count breakdown for this thread",
 		func(ctx context.Context, emitter loop.Emitter, cmd slash.Command) (slash.Result, error) {
-			// Read-only handler: never invokes the LLM, never mutates state.
+			// Read-only handler: never invokes the LLM, never mutates ledger.
 			// /analytics is slash-only by design — the model must not be
 			// able to spend context budget calling it.
 			//

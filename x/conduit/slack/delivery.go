@@ -6,14 +6,14 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/state"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/slack-go/slack"
 )
 
 // deliverTurnComplete extracts assistant text artifacts from a turn_complete
 // event and posts them back to the originating Slack channel or DM.
 func (c *SlackConduit) deliverTurnComplete(event loop.TurnCompleteEvent, channelID string, threadTS string, client slackPoster) error {
-	if event.Turn.Role != state.RoleAssistant {
+	if event.Turn.Role != ledger.RoleAssistant {
 		return nil
 	}
 

@@ -1,4 +1,4 @@
-package state
+package ledger
 
 import (
 	"testing"
@@ -98,7 +98,7 @@ func TestBuffer_TurnsDefensiveCopy(t *testing.T) {
 	turns := m.Turns()
 	require.Len(t, turns, 1)
 
-	// Mutate the returned slice — should not affect internal state.
+	// Mutate the returned slice — should not affect internal ledger.
 	_ = append(turns, Turn{Role: RoleAssistant})
 	assert.Len(t, m.Turns(), 1, "modifying returned slice affected internal state")
 }

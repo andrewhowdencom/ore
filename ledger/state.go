@@ -1,6 +1,6 @@
 // Package state defines the State interface and supporting types for ore's
 // conversation history model.
-package state
+package ledger
 
 import (
 	"encoding/json"
@@ -46,10 +46,10 @@ type State interface {
 	// Turns returns a defensive copy of the turn history.
 	Turns() []Turn
 
-	// Append adds a new turn to the state. It mutates in place.
+	// Append adds a new turn to the ledger. It mutates in place.
 	Append(role Role, artifacts ...artifact.Artifact)
 
-	// Meta returns the metadata context for this state. The handle
+	// Meta returns the metadata context for this ledger. The handle
 	// is live — writes propagate to the underlying state and are
 	// visible to subsequent reads. See the [Meta] contract for
 	// the serialization format and concurrency expectations.
@@ -81,6 +81,6 @@ type Meta interface {
 	Set(key, value string)
 
 	// All returns a defensive copy of the metadata map. Mutating
-	// the returned map does not affect the underlying state.
+	// the returned map does not affect the underlying ledger.
 	All() map[string]string
 }
