@@ -592,6 +592,95 @@ func TestEditFile_MarshalMarkdown(t *testing.T) {
 	}
 }
 
+func TestEditDisplay_MarshalMarkdown(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		d    editDisplay
+		want string
+	}{
+		{
+			name: "single-line special case renders as two bare lines",
+			d: editDisplay{
+				Old: "foo",
+				New: "bar",
+			},
+			want: "-foo\n+bar",
+		},
+		{
+			name: "single-line deletion renders with empty + line",
+			d: editDisplay{
+				Old: "foo",
+				New: "",
+			},
+			want: "-foo\n+",
+		},
+		{
+			name: "single-line insertion renders with empty - line",
+			d: editDisplay{
+				Old: "",
+				New: "foo",
+			},
+			want: "-\n+foo",
+		},
+		{
+			name: "single-line no-op edit still renders both lines",
+			d: editDisplay{
+				Old: "foo",
+				New: "foo",
+			},
+			want: "-foo\n+foo",
+		},
+		{
+			name: "multi-line edit renders as fenced diff block",
+			d: editDisplay{
+				Old: "line one\nline two\nline three",
+				New: "line one\nline TWO\nline three",
+			},
+			want: "```diff\n-line one\n-line two\n-line three\n+line one\n+line TWO\n+line three\n```",
+		},
+		{
+			name: "multi-line deletion (empty new) renders fenced block",
+			d: editDisplay{
+				Old: "line one\nline two",
+				New: "",
+			},
+			want: "```diff\n-line one\n-line two\n+\n```",
+		},
+		{
+			name: "trailing newlines do not produce spurious empty - lines",
+			d: editDisplay{
+				Old: "foo",
+				New: "bar\n",
+			},
+			// Split("foo","\n") = ["foo"]; Split("bar\n","\n") = ["bar", ""]
+			// → multi-line path; produces one "-" and two "+" lines.
+			want: "```diff\n-foo\n+bar\n+\n```",
+		},
+		{
+			name: "empty old + multi-line new renders fenced block",
+			d: editDisplay{
+				Old: "",
+				New: "line one\nline two",
+			},
+			want: "```diff\n-\n+line one\n+line two\n```",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			md := tt.d.MarshalMarkdown()
+			if md != tt.want {
+				t.Errorf("MarshalMarkdown() mismatch\nwant:\n%s\n\ngot:\n%s", tt.want, md)
+			}
+		})
+	}
+}
+
+// Compile-time assertion: *editDisplay implements MarkdownRenderer.
+var _ artifact.MarkdownRenderer = (*editDisplay)(nil)
+
 func TestListDirectory_MixedEntries(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -1186,4 +1275,125 @@ func TestReadFile_BinaryRejection(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot read binary file")
 	assert.Contains(t, err.Error(), p)
+}
+
+func TestLanguageForExtension(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		path string
+		want string
+	}{
+		{"/tmp/foo.go", "go"},
+		{"/tmp/foo.PY", "python"},
+		{"/tmp/foo.js", "javascript"},
+		{"/tmp/foo.mjs", "javascript"},
+		{"/tmp/foo.cjs", "javascript"},
+		{"/tmp/foo.ts", "typescript"},
+		{"/tmp/foo.tsx", "typescript"},
+		{"/tmp/foo.rs", "rust"},
+		{"/tmp/foo.md", "markdown"},
+		{"/tmp/foo.markdown", "markdown"},
+		{"/tmp/foo.yaml", "yaml"},
+		{"/tmp/foo.yml", "yaml"},
+		{"/tmp/foo.json", "json"},
+		{"/tmp/foo.sh", "bash"},
+		{"/tmp/foo.bash", "bash"},
+		{"/tmp/foo.html", "html"},
+		{"/tmp/foo.css", "css"},
+		{"/tmp/foo.sql", "sql"},
+		{"/tmp/foo.unknown", ""},
+		{"/tmp/foo", ""},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			assert.Equal(t, tt.want, languageForExtension(tt.path))
+		})
+	}
+}
+
+func TestWriteDisplay_MarshalMarkdown(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		d    writeDisplay
+		want string
+	}{
+		{
+			name: "go file with content",
+			d: writeDisplay{
+				Path:    "/tmp/foo.go",
+				Content: "package main\n",
+			},
+			want: "```go\npackage main\n```",
+		},
+		{
+			name: "go file content without trailing newline",
+			d: writeDisplay{
+				Path:    "/tmp/foo.go",
+				Content: "package main",
+			},
+			want: "```go\npackage main\n```",
+		},
+		{
+			name: "multi-line python file",
+			d: writeDisplay{
+				Path:    "/tmp/foo.py",
+				Content: "def hello():\n    print('hi')\n",
+			},
+			want: "```python\ndef hello():\n    print('hi')\n```",
+		},
+		{
+			name: "unknown extension falls back to bare fence",
+			d: writeDisplay{
+				Path:    "/tmp/foo.unknown",
+				Content: "raw text",
+			},
+			want: "```\nraw text\n```",
+		},
+		{
+			name: "no extension falls back to bare fence",
+			d: writeDisplay{
+				Path:    "/tmp/Makefile",
+				Content: "all: build",
+			},
+			want: "```\nall: build\n```",
+		},
+		{
+			name: "empty content produces empty fence pair",
+			d: writeDisplay{
+				Path:    "/tmp/foo.go",
+				Content: "",
+			},
+			want: "```go\n```",
+		},
+		{
+			name: "uppercase extension still resolves",
+			d: writeDisplay{
+				Path:    "/tmp/foo.GO",
+				Content: "package main",
+			},
+			want: "```go\npackage main\n```",
+		},
+		{
+			name: "path with no extension resolves to bare fence",
+			d: writeDisplay{
+				Path:    "/tmp/notes",
+				Content: "free-form text",
+			},
+			want: "```\nfree-form text\n```",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			md := tt.d.MarshalMarkdown()
+			if md != tt.want {
+				t.Errorf("MarshalMarkdown() mismatch\nwant:\n%q\n\ngot:\n%q", tt.want, md)
+			}
+		})
+	}
 }
