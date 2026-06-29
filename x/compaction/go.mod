@@ -3,8 +3,8 @@ module github.com/andrewhowdencom/ore/x/compaction
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.12.4
-	github.com/andrewhowdencom/ore/x/llmbytes v0.1.1
+	github.com/andrewhowdencom/ore v0.13.0
+	github.com/andrewhowdencom/ore/x/llmbytes v0.1.2
 	github.com/stretchr/testify v1.11.1
 )
 
