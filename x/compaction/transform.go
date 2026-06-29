@@ -13,21 +13,29 @@ import (
 //
 // On every LLM call, the transform reads the boundary index from
 // state.Meta under [MetaKeyBoundaryIndex]. When present, it returns a
-// state.View that exposes only the compaction turn and the turns that
-// follow it. Pre-compaction turns remain in the canonical buffer (so
-// analytics, audit, and replay still see them) but are invisible to
-// the provider — the summary stands in for everything older than
-// itself. This is the cumulative projection semantic: each compaction
-// absorbs everything that preceded it.
+// state that exposes only the compaction turn and the turns that follow
+// it. Pre-compaction turns remain in the canonical buffer (so analytics,
+// audit, and replay still see them) but are invisible to the provider —
+// the summary stands in for everything older than itself. This is the
+// cumulative projection semantic: each compaction absorbs everything that
+// preceded it.
+//
+// If the input state has a prepend chain on top of the buffer (e.g. from
+// x/systemprompt or x/guardrails), the transform preserves the chain on
+// top of the projected view. This is required for the persona/safety
+// rules to remain visible to the LLM after compaction; without it the
+// prepend would be silently dropped — see
+// https://github.com/andrewhowdencom/ore/issues/500.
 //
 // When no boundary is recorded, the transform returns the base state
 // unchanged (identity).
 //
 // The transform is stateless and goroutine-safe; a single instance
 // may be shared across many Step configurations. The cost of looking
-// up the boundary is O(1); the projection itself is a slice copy of
-// size O(N - idx). For typical conversation histories both are
-// negligible.
+// up the boundary is O(1); the prepend-peel is O(depth) where depth is
+// the number of nested prepend wrappers (1 in the realistic pipeline);
+// the projection itself is a slice copy of size O(N - idx). For typical
+// conversation histories all three are negligible.
 type Transform struct{}
 
 // NewTransform returns a configured Transform. No options are
@@ -44,14 +52,37 @@ func (t *Transform) Transform(_ context.Context, st state.State) (state.State, e
 		return nil, nil
 	}
 
-	turns := st.Turns()
 	idx, ok := readBoundaryIndex(st)
 	if !ok {
 		// No compaction in the buffer; the base state is already
 		// the full projection.
 		return st, nil
 	}
-	if idx < 0 || idx >= len(turns) {
+
+	// Peel any prepend chain so the boundary index (which is in the
+	// base's turn space) lines up with the slice we project. The
+	// accumulated virtual turns are re-prepended in outermost-first
+	// order on top of the projected view.
+	var (
+		base    state.State = st
+		virtual []state.Turn
+	)
+	for {
+		pc, ok := base.(interface {
+			BaseState() state.State
+			VirtualTurns() []state.Turn
+		})
+		if !ok {
+			break
+		}
+		// Outer prepend wraps the result; in the LLM-facing view,
+		// outer's virtual turns come first.
+		virtual = append(virtual, pc.VirtualTurns()...)
+		base = pc.BaseState()
+	}
+
+	baseTurns := base.Turns()
+	if idx < 0 || idx >= len(baseTurns) {
 		// The boundary was set against a different buffer shape
 		// (e.g. an out-of-range index after a partial reset).
 		// Treat as no boundary; the caller can re-MarkBoundary
@@ -59,9 +90,8 @@ func (t *Transform) Transform(_ context.Context, st state.State) (state.State, e
 		return st, nil
 	}
 
-	projected := make([]state.Turn, len(turns)-idx)
-	copy(projected, turns[idx:])
-	return state.NewView(st, projected), nil
+	projected := append([]state.Turn(nil), baseTurns[idx:]...)
+	return state.Prepend(state.NewView(base, projected), virtual), nil
 }
 
 // readBoundaryIndex pulls the boundary index from the state's metadata

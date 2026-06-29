@@ -263,6 +263,164 @@ func TestTransform_OutOfRangeBoundary_FallsBackToIdentity(t *testing.T) {
 	assert.Len(t, out.Turns(), 1)
 }
 
+// TestTransform_PrependedVirtualTurns_PreservedAfterProjection verifies that
+// when the buffer is wrapped in a state.Prepend (as x/systemprompt and
+// x/guardrails do), the virtual turns added by the prepend survive the
+// projection. This is a regression test for the bug reported in
+// https://github.com/andrewhowdencom/ore/issues/500 — without the fix,
+// the projection wraps the slice in state.NewView and the prepend's
+// virtual turns are silently dropped from the LLM-facing view.
+//
+// Reproduction shape:
+//
+//	buf:           [user, assistant, boundary, user]    (boundary marked via Meta)
+//	prependView:   [sysprompt_virtual, ...buf.Turns()]
+//	expected:      [sysprompt_virtual, boundary, user]
+//	buggy actual:  [boundary, user]
+func TestTransform_PrependedVirtualTurns_PreservedAfterProjection(t *testing.T) {
+	buf := &state.Buffer{}
+	buf.Append(state.RoleUser, artifact.Text{Content: "u0"})
+	buf.Append(state.RoleAssistant, artifact.Text{Content: "a0"})
+
+	// Append the boundary turn and record the index *before* the next
+	// append, so the projection slices from the summary turn onward.
+	boundaryIdx := len(buf.Turns())
+	buf.Append(state.RoleSystem, artifact.Text{Content: "compaction summary"})
+	buf.Append(state.RoleUser, artifact.Text{Content: "u3"})
+	markBoundary(t, buf, boundaryIdx)
+
+	// Wrap the buffer in state.Prepend — this is exactly what
+	// x/systemprompt.Transform and x/guardrails.Transform return.
+	prepended := state.Prepend(buf, []state.Turn{
+		{
+			Role: state.RoleSystem,
+			Artifacts: []artifact.Artifact{
+				artifact.Text{Content: "you are a helpful assistant"},
+			},
+		},
+	})
+
+	tr := NewTransform()
+	out, err := tr.Transform(context.Background(), prepended)
+	require.NoError(t, err)
+
+	got := out.Turns()
+	require.Len(t, got, 3, "system prompt virtual turn must survive the projection; got %d turns", len(got))
+
+	// First turn: the prepended system prompt.
+	assert.Equal(t, state.RoleSystem, got[0].Role)
+	gotSysprompt, ok := got[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok, "first turn must be a Text artifact")
+	assert.Equal(t, "you are a helpful assistant", gotSysprompt.Content)
+
+	// Second turn: the compaction summary.
+	assert.Equal(t, state.RoleSystem, got[1].Role)
+	gotSummary, ok := got[1].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "compaction summary", gotSummary.Content)
+
+	// Third turn: the post-compaction user turn.
+	assert.Equal(t, state.RoleUser, got[2].Role)
+	gotU3, ok := got[2].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Equal(t, "u3", gotU3.Content)
+}
+
+// TestTransform_RealisticPipeline_SystemPrompt_Compaction_Guardrails
+// mirrors the exact transform chain workshop wires
+// (../workshop/internal/app/app.go):
+//
+//	loop.WithTransforms(sp, compaction.NewTransform(), gr)
+//
+// x/systemprompt and x/guardrails both produce a state.Prepend; the
+// compaction transform sits between them. After compaction, the LLM
+// must still see both virtual prepend layers (persona + safety rules)
+// plus the compaction summary, in that order.
+func TestTransform_RealisticPipeline_SystemPrompt_Compaction_Guardrails(t *testing.T) {
+	buf := &state.Buffer{}
+	buf.Append(state.RoleUser, artifact.Text{Content: "u0"})
+	buf.Append(state.RoleAssistant, artifact.Text{Content: "a0"})
+	boundaryIdx := len(buf.Turns())
+	buf.Append(state.RoleSystem, artifact.Text{Content: "summary"})
+	buf.Append(state.RoleUser, artifact.Text{Content: "u1"})
+	markBoundary(t, buf, boundaryIdx)
+
+	// Mirror what x/systemprompt.Transform returns: a prependView
+	// over the buffer with the system persona as the virtual turn.
+	sp := state.Prepend(buf, []state.Turn{
+		{
+			Role:      state.RoleSystem,
+			Artifacts: []artifact.Artifact{artifact.Text{Content: "system-persona"}},
+		},
+	})
+
+	// Run the compaction transform — this is the line that, in the
+	// buggy version, wraps the projected slice in a static View and
+	// drops the prepend.
+	tr := NewTransform()
+	projected, err := tr.Transform(context.Background(), sp)
+	require.NoError(t, err)
+
+	// Mirror what x/guardrails.Transform returns: another prependView
+	// over the projection with safety rules as virtual turns.
+	withGuards := state.Prepend(projected, []state.Turn{
+		{
+			Role:      state.RoleUser,
+			Artifacts: []artifact.Artifact{artifact.Text{Content: "be terse"}},
+		},
+		{
+			Role:      state.RoleUser,
+			Artifacts: []artifact.Artifact{artifact.Text{Content: "no profanity"}},
+		},
+	})
+
+	got := withGuards.Turns()
+	require.Len(t, got, 5,
+		"guardrails (2) + system prompt (1) + summary (1) + post-turn (1) = 5; got %d", len(got))
+
+	// Layer 1: guardrails (prepended last by x/guardrails).
+	assert.Equal(t, "be terse", got[0].Artifacts[0].(artifact.Text).Content)
+	assert.Equal(t, "no profanity", got[1].Artifacts[0].(artifact.Text).Content)
+
+	// Layer 2: the system prompt — must survive the compaction transform.
+	assert.Equal(t, state.RoleSystem, got[2].Role)
+	assert.Equal(t, "system-persona", got[2].Artifacts[0].(artifact.Text).Content)
+
+	// Layer 3: the boundary.
+	assert.Equal(t, "summary", got[3].Artifacts[0].(artifact.Text).Content)
+
+	// Layer 4: the post-compaction user turn.
+	assert.Equal(t, "u1", got[4].Artifacts[0].(artifact.Text).Content)
+}
+
+// TestTransform_PrependedVirtualTurns_NoBoundary_Identity confirms the
+// non-buggy baseline: when there is no boundary, a prepend-wrapped
+// state passes through unchanged. This is the regression guard
+// against the fix accidentally re-introducing projection in the
+// identity path.
+func TestTransform_PrependedVirtualTurns_NoBoundary_Identity(t *testing.T) {
+	buf := &state.Buffer{}
+	buf.Append(state.RoleUser, artifact.Text{Content: "u0"})
+	buf.Append(state.RoleAssistant, artifact.Text{Content: "a0"})
+
+	prepended := state.Prepend(buf, []state.Turn{
+		{
+			Role:      state.RoleSystem,
+			Artifacts: []artifact.Artifact{artifact.Text{Content: "system-persona"}},
+		},
+	})
+
+	tr := NewTransform()
+	out, err := tr.Transform(context.Background(), prepended)
+	require.NoError(t, err)
+
+	got := out.Turns()
+	require.Len(t, got, 3)
+	assert.Equal(t, "system-persona", got[0].Artifacts[0].(artifact.Text).Content)
+	assert.Equal(t, "u0", got[1].Artifacts[0].(artifact.Text).Content)
+	assert.Equal(t, "a0", got[2].Artifacts[0].(artifact.Text).Content)
+}
+
 func TestReadBoundaryIndex(t *testing.T) {
 	tests := []struct {
 		name    string

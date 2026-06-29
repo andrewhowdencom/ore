@@ -5,6 +5,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPrepend_Turns_PrependsVirtual(t *testing.T) {
@@ -125,6 +126,44 @@ func TestPrepend_Turns_DynamicBase(t *testing.T) {
 	assert.Equal(t, RoleSystem, turns[0].Role)
 	assert.Equal(t, RoleUser, turns[1].Role)
 	assert.Equal(t, RoleAssistant, turns[2].Role)
+}
+
+// TestPrependView_BaseState_ReturnsBase verifies that the prependView
+// accessor exposed for cross-package prepend-aware composition (see
+// compaction.Transform) returns the original base state unchanged.
+func TestPrependView_BaseState_ReturnsBase(t *testing.T) {
+	base := &Buffer{}
+	base.Append(RoleUser, artifact.Text{Content: "user"})
+
+	pv := Prepend(base, []Turn{
+		{Role: RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "system"}}},
+	})
+
+	// Round-trip the accessor to reach the underlying *prependView.
+	pc, ok := pv.(interface{ BaseState() State })
+	require.True(t, ok, "prependView must expose BaseState for cross-package composition")
+
+	got := pc.BaseState()
+	assert.Same(t, State(base), got, "BaseState must return the original base, not a copy")
+}
+
+// TestPrependView_VirtualTurns_ReturnsVirtual verifies that the
+// prependView accessor exposed for cross-package prepend-aware
+// composition returns the original virtual slice.
+func TestPrependView_VirtualTurns_ReturnsVirtual(t *testing.T) {
+	virtual := []Turn{
+		{Role: RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "system"}}},
+	}
+	base := &Buffer{}
+
+	pv := Prepend(base, virtual)
+
+	pc, ok := pv.(interface{ VirtualTurns() []Turn })
+	require.True(t, ok, "prependView must expose VirtualTurns for cross-package composition")
+
+	got := pc.VirtualTurns()
+	assert.Len(t, got, 1)
+	assert.Equal(t, "system", got[0].Artifacts[0].(artifact.Text).Content)
 }
 
 func TestNewView_Turns_ReturnsProjected(t *testing.T) {
