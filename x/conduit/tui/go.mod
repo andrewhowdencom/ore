@@ -6,9 +6,9 @@ require (
 	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.6
 	charm.land/lipgloss/v2 v2.0.3
-	github.com/andrewhowdencom/ore v0.12.4
-	github.com/andrewhowdencom/ore/x/compaction v0.4.6
-	github.com/andrewhowdencom/ore/x/conduit v0.1.4
+	github.com/andrewhowdencom/ore v0.13.0
+	github.com/andrewhowdencom/ore/x/compaction v0.4.7
+	github.com/andrewhowdencom/ore/x/conduit v0.1.5
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/charmbracelet/x/cellbuf v0.0.15
@@ -20,7 +20,7 @@ require (
 
 require (
 	github.com/alecthomas/chroma/v2 v2.20.0 // indirect
-	github.com/andrewhowdencom/ore/x/llmbytes v0.1.1 // indirect
+	github.com/andrewhowdencom/ore/x/llmbytes v0.1.2 // indirect
 	github.com/andrewhowdencom/ore/x/verifier v0.1.1 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
