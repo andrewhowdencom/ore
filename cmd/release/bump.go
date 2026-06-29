@@ -55,6 +55,43 @@ func bumpType(msgs []string) Bump {
 	return b
 }
 
+// bumpForModule returns the highest semver bump needed for a module, combining
+// commit-message analysis (bumpType) with mechanical diff inspection
+// (bumpFromDiff).
+//
+// `dir` is the module's directory (e.g., "x/conduit" or "." for root).
+// `tag` is the module's last tag (e.g., "v0.12.6"); empty string means no
+// previous tag. `msgs` are the commit messages affecting the module since its
+// last tag. `excludeDirs` lists sibling module directories (used to scope the
+// root module's diff to its own files — see bumpFromDiff).
+//
+// The mechanical check fires Major for any non-test .go file deletion or
+// rename in `dir`, regardless of commit message. This guards against
+// `refactor:` (or any non-conventional) commits that quietly remove exported
+// API surface — the bug that prompted v0.12.6 (a breaking rename tagged as a
+// patch).
+func bumpForModule(root, dir, tag string, msgs []string, excludeDirs []string) (Bump, error) {
+	diffBump, err := bumpFromDiff(root, dir, tag, excludeDirs)
+	if err != nil {
+		return None, err
+	}
+	return maxBump(diffBump, bumpType(msgs)), nil
+}
+
+// siblingDirs returns the directories of every other module — i.e. everything
+// in `modules` except the one with the given path. Used by callers to scope
+// the root module's diff to its own files.
+func siblingDirs(modules []Module, path string) []string {
+	var out []string
+	for _, m := range modules {
+		if m.Path == path || m.Dir == "." {
+			continue
+		}
+		out = append(out, m.Dir)
+	}
+	return out
+}
+
 func maxBump(a, b Bump) Bump {
 	if b > a {
 		return b

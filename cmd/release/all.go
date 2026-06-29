@@ -77,7 +77,11 @@ func runAll(dryRun bool, args []string) error {
 		for _, c := range moduleCommits {
 			msgs = append(msgs, c.Message)
 		}
-		bump := bumpType(msgs)
+		exclude := siblingDirs(modules, m.Path)
+		bump, err := bumpForModule(root, m.Dir, tag, msgs, exclude)
+		if err != nil {
+			return err
+		}
 		version, err := nextVersion(allVersions[m.Path], bump)
 		if err != nil {
 			return err

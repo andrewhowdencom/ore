@@ -55,7 +55,11 @@ func runStatus(dryRun bool, args []string) error {
 		for _, c := range moduleCommits {
 			msgs = append(msgs, c.Message)
 		}
-		bump := bumpType(msgs)
+		exclude := siblingDirs(modules, m.Path)
+		bump, err := bumpForModule(root, m.Dir, tag, msgs, exclude)
+		if err != nil {
+			return fmt.Errorf("bump for %s: %w", m.Path, err)
+		}
 
 		var next string
 		if len(moduleCommits) > 0 {
