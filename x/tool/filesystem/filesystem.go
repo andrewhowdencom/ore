@@ -397,6 +397,84 @@ func WriteFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, 
 	}, nil
 }
 
+// writeDisplay renders the proposed write_file content as a fenced
+// code block in Markdown. It is attached to ToolCall.Display by
+// WriteFileTool.DisplayHint and read by display-layer conduits via
+// MarkdownRenderer. It is purely a display artifact — never sent to
+// the provider.
+type writeDisplay struct {
+	// Path is the file the write targets. Used to infer the fence
+	// language tag (e.g. ".go" → "go") so glamour's chroma
+	// highlighter can syntax-colour the content.
+	Path string
+	// Content is the proposed file body.
+	Content string
+}
+
+// MarshalMarkdown returns the Markdown representation of the proposed
+// write. The content is wrapped in a fenced code block with a language
+// tag inferred from the file extension. Unknown extensions fall back
+// to a bare fence (no language). When Content is empty, the rendered
+// output is just an empty fenced pair.
+func (d *writeDisplay) MarshalMarkdown() string {
+	lang := languageForExtension(d.Path)
+	var sb strings.Builder
+	if lang != "" {
+		sb.WriteString("```")
+		sb.WriteString(lang)
+		sb.WriteString("\n")
+	} else {
+		sb.WriteString("```\n")
+	}
+	sb.WriteString(d.Content)
+	// Ensure the closing fence starts on its own line.
+	if d.Content != "" && !strings.HasSuffix(d.Content, "\n") {
+		sb.WriteString("\n")
+	}
+	sb.WriteString("```")
+	return sb.String()
+}
+
+// languageForExtension maps a file-path extension to the chroma
+// language name glamour expects. Returns "" (bare fence) when the
+// extension is unknown or the path has no extension. The map is
+// intentionally short — extended lazily when a real call site
+// surfaces a missed language.
+func languageForExtension(path string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".go":
+		return "go"
+	case ".py":
+		return "python"
+	case ".js", ".mjs", ".cjs":
+		return "javascript"
+	case ".ts", ".tsx":
+		return "typescript"
+	case ".rs":
+		return "rust"
+	case ".md", ".markdown":
+		return "markdown"
+	case ".yaml", ".yml":
+		return "yaml"
+	case ".json":
+		return "json"
+	case ".sh", ".bash":
+		return "bash"
+	case ".html":
+		return "html"
+	case ".css":
+		return "css"
+	case ".sql":
+		return "sql"
+	}
+	return ""
+}
+
+// Compile-time assertion: *writeDisplay implements MarkdownRenderer
+// so the framework's display pipeline picks up the rich rendering.
+var _ artifact.MarkdownRenderer = (*writeDisplay)(nil)
+
 // WriteFileTool is the tool.Tool descriptor for WriteFile.
 var WriteFileTool = tool.Tool{
 	Name:        "write_file",
@@ -416,7 +494,10 @@ var WriteFileTool = tool.Tool{
 		"required": []string{"path", "content"},
 	},
 	DisplayHint: func(args map[string]any) any {
-		return fmt.Sprintf("📝 write_file(%s)", toString(args["path"]))
+		return &writeDisplay{
+			Path:    toString(args["path"]),
+			Content: toString(args["content"]),
+		}
 	},
 }
 

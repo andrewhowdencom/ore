@@ -1276,3 +1276,124 @@ func TestReadFile_BinaryRejection(t *testing.T) {
 	assert.Contains(t, err.Error(), "cannot read binary file")
 	assert.Contains(t, err.Error(), p)
 }
+
+func TestLanguageForExtension(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		path string
+		want string
+	}{
+		{"/tmp/foo.go", "go"},
+		{"/tmp/foo.PY", "python"},
+		{"/tmp/foo.js", "javascript"},
+		{"/tmp/foo.mjs", "javascript"},
+		{"/tmp/foo.cjs", "javascript"},
+		{"/tmp/foo.ts", "typescript"},
+		{"/tmp/foo.tsx", "typescript"},
+		{"/tmp/foo.rs", "rust"},
+		{"/tmp/foo.md", "markdown"},
+		{"/tmp/foo.markdown", "markdown"},
+		{"/tmp/foo.yaml", "yaml"},
+		{"/tmp/foo.yml", "yaml"},
+		{"/tmp/foo.json", "json"},
+		{"/tmp/foo.sh", "bash"},
+		{"/tmp/foo.bash", "bash"},
+		{"/tmp/foo.html", "html"},
+		{"/tmp/foo.css", "css"},
+		{"/tmp/foo.sql", "sql"},
+		{"/tmp/foo.unknown", ""},
+		{"/tmp/foo", ""},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			assert.Equal(t, tt.want, languageForExtension(tt.path))
+		})
+	}
+}
+
+func TestWriteDisplay_MarshalMarkdown(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		d    writeDisplay
+		want string
+	}{
+		{
+			name: "go file with content",
+			d: writeDisplay{
+				Path:    "/tmp/foo.go",
+				Content: "package main\n",
+			},
+			want: "```go\npackage main\n```",
+		},
+		{
+			name: "go file content without trailing newline",
+			d: writeDisplay{
+				Path:    "/tmp/foo.go",
+				Content: "package main",
+			},
+			want: "```go\npackage main\n```",
+		},
+		{
+			name: "multi-line python file",
+			d: writeDisplay{
+				Path:    "/tmp/foo.py",
+				Content: "def hello():\n    print('hi')\n",
+			},
+			want: "```python\ndef hello():\n    print('hi')\n```",
+		},
+		{
+			name: "unknown extension falls back to bare fence",
+			d: writeDisplay{
+				Path:    "/tmp/foo.unknown",
+				Content: "raw text",
+			},
+			want: "```\nraw text\n```",
+		},
+		{
+			name: "no extension falls back to bare fence",
+			d: writeDisplay{
+				Path:    "/tmp/Makefile",
+				Content: "all: build",
+			},
+			want: "```\nall: build\n```",
+		},
+		{
+			name: "empty content produces empty fence pair",
+			d: writeDisplay{
+				Path:    "/tmp/foo.go",
+				Content: "",
+			},
+			want: "```go\n```",
+		},
+		{
+			name: "uppercase extension still resolves",
+			d: writeDisplay{
+				Path:    "/tmp/foo.GO",
+				Content: "package main",
+			},
+			want: "```go\npackage main\n```",
+		},
+		{
+			name: "path with no extension resolves to bare fence",
+			d: writeDisplay{
+				Path:    "/tmp/notes",
+				Content: "free-form text",
+			},
+			want: "```\nfree-form text\n```",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			md := tt.d.MarshalMarkdown()
+			if md != tt.want {
+				t.Errorf("MarshalMarkdown() mismatch\nwant:\n%q\n\ngot:\n%q", tt.want, md)
+			}
+		})
+	}
+}
