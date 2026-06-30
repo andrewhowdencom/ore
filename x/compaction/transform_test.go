@@ -2,7 +2,6 @@ package compaction
 
 import (
 	"context"
-	"strconv"
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
@@ -11,62 +10,34 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// markBoundaryAtEnd sets the boundary index on a buffer to point at its
-// last turn. It is the helper used to seed test buffers without
-// invoking the summarization LLM call.
-func markBoundaryAtEnd(t *testing.T, buf *ledger.Buffer) {
-	t.Helper()
-	turns := buf.Turns()
-	require.NotEmpty(t, turns, "cannot mark a boundary on an empty buffer")
-	buf.Meta().Set(MetaKeyBoundaryIndex, strconv.Itoa(len(turns)-1))
-}
-
-// markBoundary sets the boundary index on a buffer to the given index.
-func markBoundary(t *testing.T, buf *ledger.Buffer, idx int) {
-	t.Helper()
-	turns := buf.Turns()
-	require.GreaterOrEqual(t, idx, 0)
-	require.Less(t, idx, len(turns))
-	buf.Meta().Set(MetaKeyBoundaryIndex, strconv.Itoa(idx))
-}
-
-// textTurnForTransform returns a ledger.Turn of the given role with a single
-// artifact.Text — a stand-in for any non-compaction turn.
-func textTurnForTransform(role ledger.Role, content string) ledger.Turn {
-	return ledger.Turn{
-		Role:      role,
-		Artifacts: []artifact.Artifact{artifact.Text{Content: content}},
-	}
-}
-
+// TestTransform_NoBoundary_Identity verifies that without any
+// ControlStop, the transform is the identity and the walk returns
+// the full active path.
 func TestTransform_NoBoundary_Identity(t *testing.T) {
-	buf := &ledger.Buffer{}
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
-	buf.Append(ledger.RoleAssistant, artifact.Text{Content: "hi"})
+	th := ledger.NewThread()
+	th.Append(ledger.RoleUser, artifact.Text{Content: "u1"})
+	th.Append(ledger.RoleAssistant, artifact.Text{Content: "a1"})
 
 	tr := NewTransform()
-	out, err := tr.Transform(context.Background(), buf)
+	out, err := tr.Transform(context.Background(), th)
 	require.NoError(t, err)
-
-	// Identity: the returned state is the base.
-	assert.Same(t, ledger.State(buf), out)
 
 	got := out.Turns()
 	require.Len(t, got, 2)
-	assert.Equal(t, "hello", got[0].Artifacts[0].(artifact.Text).Content)
-	assert.Equal(t, "hi", got[1].Artifacts[0].(artifact.Text).Content)
+	assert.Equal(t, "u1", got[0].Artifacts[0].(artifact.Text).Content)
+	assert.Equal(t, "a1", got[1].Artifacts[0].(artifact.Text).Content)
 }
 
+// TestTransform_EmptyBuffer_Identity verifies the empty case.
 func TestTransform_EmptyBuffer_Identity(t *testing.T) {
-	buf := &ledger.Buffer{}
-
+	th := ledger.NewThread()
 	tr := NewTransform()
-	out, err := tr.Transform(context.Background(), buf)
+	out, err := tr.Transform(context.Background(), th)
 	require.NoError(t, err)
-	assert.Same(t, ledger.State(buf), out)
 	assert.Empty(t, out.Turns())
 }
 
+// TestTransform_NilState_NilReturned verifies nil input.
 func TestTransform_NilState_NilReturned(t *testing.T) {
 	tr := NewTransform()
 	out, err := tr.Transform(context.Background(), nil)
@@ -74,379 +45,195 @@ func TestTransform_NilState_NilReturned(t *testing.T) {
 	assert.Nil(t, out)
 }
 
-func TestTransform_BoundaryAtEnd_Identity(t *testing.T) {
-	buf := &ledger.Buffer{}
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
-	buf.Append(ledger.RoleAssistant, artifact.Text{Content: "hi"})
-	// Append a system turn that will be the boundary.
-	buf.Append(ledger.RoleSystem, artifact.Text{Content: "summary"})
-	markBoundaryAtEnd(t, buf)
+// TestTransform_ControlStopAtEnd_ReturnsSummaryPlusAfter confirms
+// that a ControlStop on the summary turn causes the walk to stop
+// there; subsequent turns are still included.
+func TestTransform_ControlStopAtEnd_ReturnsSummaryPlusAfter(t *testing.T) {
+	// Build: u1 → a1 → u2 → summary (Stop) → u3 → a3
+	th := ledger.NewThread()
+	th.Append(ledger.RoleUser, artifact.Text{Content: "u1"})
+	u1ID := th.CurrentTip
+	th.Append(ledger.RoleAssistant, artifact.Text{Content: "a1"})
+	th.Append(ledger.RoleUser, artifact.Text{Content: "u2"})
+	u2ID := th.CurrentTip
+
+	summary := &ledger.Turn{
+		ID:        "summary-1",
+		ParentID:  u2ID,
+		Role:      ledger.RoleAssistant,
+		Artifacts: []artifact.Artifact{artifact.Text{Content: "summary"}},
+		Metadata:  ledger.Metadata{Control: ledger.ControlStop},
+	}
+	th.SaveTurn(summary)
+	th.SetCurrentTip(summary.ID)
+	th.Append(ledger.RoleUser, artifact.Text{Content: "u3"})
+	u3ID := th.CurrentTip
+	th.Append(ledger.RoleAssistant, artifact.Text{Content: "a3"})
+	a3ID := th.CurrentTip
+	// CurrentTip is now a3; the walk goes a3 → u3 → summary (Stop, terminate).
 
 	tr := NewTransform()
-	out, err := tr.Transform(context.Background(), buf)
+	out, err := tr.Transform(context.Background(), th)
 	require.NoError(t, err)
 
-	// Boundary is the latest turn; projecting from that index
-	// returns the boundary turn alone. The result is a view,
-	// not the base ledger.
-	assert.NotSame(t, ledger.State(buf), out)
+	got := out.Turns()
+	require.Len(t, got, 3, "walk stops at summary; u3 and a3 are still in path")
+	assert.Equal(t, "summary-1", got[0].ID)
+	assert.Equal(t, u3ID, got[1].ID)
+	assert.Equal(t, a3ID, got[2].ID)
+
+	// u1, a1, u2 are still in the tree but invisible to the LLM.
+	allTurns := th.AllTurns()
+	found := false
+	for _, t := range allTurns {
+		if t.ID == u1ID {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "u1 must still be in the underlying tree")
+}
+
+// TestTransform_ControlStopInMiddle_HidesEverythingBefore verifies
+// the compaction semantic: a ControlStop on a summary turn hides
+// everything before it from the LLM-facing view.
+func TestTransform_ControlStopInMiddle_HidesEverythingBefore(t *testing.T) {
+	th := ledger.NewThread()
+	th.Append(ledger.RoleUser, artifact.Text{Content: "u1"})
+	th.Append(ledger.RoleAssistant, artifact.Text{Content: "a1"})
+	th.Append(ledger.RoleUser, artifact.Text{Content: "u2"})
+	u2ID := th.CurrentTip
+
+	summary := &ledger.Turn{
+		ID:        "summary-1",
+		ParentID:  u2ID,
+		Role:      ledger.RoleAssistant,
+		Artifacts: []artifact.Artifact{artifact.Text{Content: "summary"}},
+		Metadata:  ledger.Metadata{Control: ledger.ControlStop},
+	}
+	th.SaveTurn(summary)
+	th.SetCurrentTip(summary.ID)
+
+	tr := NewTransform()
+	out, err := tr.Transform(context.Background(), th)
+	require.NoError(t, err)
+
 	got := out.Turns()
 	require.Len(t, got, 1)
-	text, ok := got[0].Artifacts[0].(artifact.Text)
-	assert.True(t, ok)
-	assert.Equal(t, "summary", text.Content)
+	assert.Equal(t, "summary-1", got[0].ID)
 }
 
-func TestTransform_BoundaryInMiddle_ProjectsOnward(t *testing.T) {
-	// Buffer: [user0, assistant0, user1, assistant1, boundary, user2, assistant2]
-	buf := &ledger.Buffer{}
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u0"})
-	buf.Append(ledger.RoleAssistant, artifact.Text{Content: "a0"})
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u1"})
-	buf.Append(ledger.RoleAssistant, artifact.Text{Content: "a1"})
-	boundaryIdx := len(buf.Turns())
-	buf.Append(ledger.RoleSystem, artifact.Text{Content: "summary"})
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u2"})
-	buf.Append(ledger.RoleAssistant, artifact.Text{Content: "a2"})
-	markBoundary(t, buf, boundaryIdx)
+// TestTransform_NoControlStop_PassesThroughEntireChain confirms that
+// without ControlStop, the walk traverses the whole chain.
+func TestTransform_NoControlStop_PassesThroughEntireChain(t *testing.T) {
+	th := ledger.NewThread()
+	for i := 0; i < 5; i++ {
+		th.Append(ledger.RoleUser, artifact.Text{Content: "msg"})
+	}
 
 	tr := NewTransform()
-	out, err := tr.Transform(context.Background(), buf)
+	out, err := tr.Transform(context.Background(), th)
 	require.NoError(t, err)
-
-	got := out.Turns()
-	require.Len(t, got, 3)
-
-	// First visible turn is the boundary itself.
-	assert.Equal(t, "summary", got[0].Artifacts[0].(artifact.Text).Content)
-
-	// Subsequent turns are preserved verbatim.
-	assert.Equal(t, "u2", got[1].Artifacts[0].(artifact.Text).Content)
-	assert.Equal(t, "a2", got[2].Artifacts[0].(artifact.Text).Content)
-
-	// Canonical buffer is untouched.
-	assert.Len(t, buf.Turns(), 7)
+	assert.Len(t, out.Turns(), 5)
 }
 
-func TestTransform_MultipleBoundaries_LatestWins(t *testing.T) {
-	// Two boundary markers: the latest one absorbs everything older.
-	buf := &ledger.Buffer{}
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u0"})
-	firstIdx := len(buf.Turns())
-	buf.Append(ledger.RoleSystem, artifact.Text{Content: "first summary"})
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u1"})
-	buf.Append(ledger.RoleAssistant, artifact.Text{Content: "a1"})
-	secondIdx := len(buf.Turns())
-	buf.Append(ledger.RoleSystem, artifact.Text{Content: "second summary"})
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u2"})
-
-	// Set the latest boundary (secondIdx is greater than firstIdx).
-	markBoundary(t, buf, secondIdx)
-
-	tr := NewTransform()
-	out, err := tr.Transform(context.Background(), buf)
-	require.NoError(t, err)
-
-	got := out.Turns()
-	require.Len(t, got, 2)
-
-	// Only the latest boundary is visible.
-	assert.Equal(t, "second summary", got[0].Artifacts[0].(artifact.Text).Content)
-
-	// And only the turn after the latest boundary is exposed.
-	assert.Equal(t, "u2", got[1].Artifacts[0].(artifact.Text).Content)
-
-	// Confirm: writing the *first* boundary would project to a wider slice.
-	markBoundary(t, buf, firstIdx)
-	out2, err := tr.Transform(context.Background(), buf)
-	require.NoError(t, err)
-	got2 := out2.Turns()
-	assert.Equal(t, "first summary", got2[0].Artifacts[0].(artifact.Text).Content)
-}
-
+// TestTransform_DefensiveCopy verifies the returned turns are a
+// defensive copy; mutating them doesn't affect the underlying
+// thread.
 func TestTransform_DefensiveCopy(t *testing.T) {
-	buf := &ledger.Buffer{}
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u0"})
-	boundaryIdx := len(buf.Turns())
-	buf.Append(ledger.RoleSystem, artifact.Text{Content: "summary"})
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u1"})
-	markBoundary(t, buf, boundaryIdx)
+	th := ledger.NewThread()
+	th.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	tr := NewTransform()
-	out, err := tr.Transform(context.Background(), buf)
+	out, err := tr.Transform(context.Background(), th)
 	require.NoError(t, err)
 
-	first := out.Turns()
-	second := out.Turns()
-
-	// Mutating one returned slice must not affect the next call.
-	first[0].Role = ledger.RoleAssistant
-	assert.Equal(t, ledger.RoleSystem, second[0].Role, "subsequent Turns() must not be affected by prior mutations")
-}
-
-func TestTransform_Append_DelegatesToBase(t *testing.T) {
-	buf := &ledger.Buffer{}
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u0"})
-	boundaryIdx := len(buf.Turns())
-	buf.Append(ledger.RoleSystem, artifact.Text{Content: "summary"})
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u1"})
-	markBoundary(t, buf, boundaryIdx)
-
-	tr := NewTransform()
-	out, err := tr.Transform(context.Background(), buf)
-	require.NoError(t, err)
-
-	// Append on the projected view delegates to the underlying
-	// base buffer. After appending, the base has 4 turns.
-	out.Append(ledger.RoleAssistant, artifact.Text{Content: "a1"})
-	assert.Len(t, buf.Turns(), 4)
-	assert.Equal(t, ledger.RoleAssistant, buf.Turns()[3].Role, "appended turn lands on the base buffer")
-
-	// The projection itself is a static snapshot of the buffer at
-	// Transform time — it does not retroactively pick up the new
-	// turn. That is the contract of ledger.NewView, which is what
-	// the transform uses; the transform is re-run on each LLM call,
-	// so the next call gets a fresh projection that includes the
-	// appended turn.
 	got := out.Turns()
-	require.Len(t, got, 2)
-	assert.Equal(t, "summary", got[0].Artifacts[0].(artifact.Text).Content)
-	assert.Equal(t, "u1", got[1].Artifacts[0].(artifact.Text).Content)
+	require.Len(t, got, 1)
+	_ = append(got, ledger.Turn{Role: ledger.RoleAssistant})
+	assert.Len(t, th.Turns(), 1, "mutating returned slice must not affect thread")
 }
 
-func TestTransform_NonCompactionSystemTurn_NotTreatedAsBoundary(t *testing.T) {
-	// A RoleSystem turn without a boundary metadata key should not
-	// trigger the projection — even when there is text content.
-	buf := &ledger.Buffer{}
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u0"})
-	buf.Append(ledger.RoleSystem, artifact.Text{Content: "you are a helpful assistant"})
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u1"})
+// TestTransform_NonStopTurn_Continues confirms that a turn without
+// ControlStop (e.g., a normal system prompt at the chain start)
+// doesn't terminate the walk.
+func TestTransform_NonStopTurn_Continues(t *testing.T) {
+	th := ledger.NewThread()
+	th.Append(ledger.RoleSystem, artifact.Text{Content: "system prompt"})
+	th.Append(ledger.RoleUser, artifact.Text{Content: "u1"})
 
 	tr := NewTransform()
-	out, err := tr.Transform(context.Background(), buf)
-	require.NoError(t, err)
-
-	// Identity: the projection is the full buffer.
-	assert.Same(t, ledger.State(buf), out)
-	assert.Len(t, out.Turns(), 3)
-}
-
-func TestTransform_MalformedBoundary_FallsBackToIdentity(t *testing.T) {
-	// A non-integer boundary value must not panic or produce a
-	// corrupt projection; the transform falls back to identity.
-	buf := &ledger.Buffer{}
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u0"})
-	buf.Append(ledger.RoleAssistant, artifact.Text{Content: "a0"})
-	buf.Meta().Set(MetaKeyBoundaryIndex, "not-a-number")
-
-	tr := NewTransform()
-	out, err := tr.Transform(context.Background(), buf)
-	require.NoError(t, err)
-
-	assert.Same(t, ledger.State(buf), out)
-	assert.Len(t, out.Turns(), 2)
-}
-
-func TestTransform_OutOfRangeBoundary_FallsBackToIdentity(t *testing.T) {
-	// A boundary index that points past the buffer (e.g. after a
-	// LoadTurns that truncated the buffer) must not panic. The
-	// transform falls back to identity.
-	buf := &ledger.Buffer{}
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u0"})
-	buf.Meta().Set(MetaKeyBoundaryIndex, "999")
-
-	tr := NewTransform()
-	out, err := tr.Transform(context.Background(), buf)
-	require.NoError(t, err)
-
-	assert.Same(t, ledger.State(buf), out)
-	assert.Len(t, out.Turns(), 1)
-}
-
-// TestTransform_PrependedVirtualTurns_PreservedAfterProjection verifies that
-// when the buffer is wrapped in a ledger.Prepend (as x/systemprompt and
-// x/guardrails do), the virtual turns added by the prepend survive the
-// projection. This is a regression test for the bug reported in
-// https://github.com/andrewhowdencom/ore/issues/500 — without the fix,
-// the projection wraps the slice in ledger.NewView and the prepend's
-// virtual turns are silently dropped from the LLM-facing view.
-//
-// Reproduction shape:
-//
-//	buf:           [user, assistant, boundary, user]    (boundary marked via Meta)
-//	prependView:   [sysprompt_virtual, ...buf.Turns()]
-//	expected:      [sysprompt_virtual, boundary, user]
-//	buggy actual:  [boundary, user]
-func TestTransform_PrependedVirtualTurns_PreservedAfterProjection(t *testing.T) {
-	buf := &ledger.Buffer{}
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u0"})
-	buf.Append(ledger.RoleAssistant, artifact.Text{Content: "a0"})
-
-	// Append the boundary turn and record the index *before* the next
-	// append, so the projection slices from the summary turn onward.
-	boundaryIdx := len(buf.Turns())
-	buf.Append(ledger.RoleSystem, artifact.Text{Content: "compaction summary"})
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u3"})
-	markBoundary(t, buf, boundaryIdx)
-
-	// Wrap the buffer in ledger.Prepend — this is exactly what
-	// x/systemprompt.Transform and x/guardrails.Transform return.
-	prepended := ledger.Prepend(buf, []ledger.Turn{
-		{
-			Role: ledger.RoleSystem,
-			Artifacts: []artifact.Artifact{
-				artifact.Text{Content: "you are a helpful assistant"},
-			},
-		},
-	})
-
-	tr := NewTransform()
-	out, err := tr.Transform(context.Background(), prepended)
+	out, err := tr.Transform(context.Background(), th)
 	require.NoError(t, err)
 
 	got := out.Turns()
-	require.Len(t, got, 3, "system prompt virtual turn must survive the projection; got %d turns", len(got))
-
-	// First turn: the prepended system prompt.
+	require.Len(t, got, 2)
 	assert.Equal(t, ledger.RoleSystem, got[0].Role)
-	gotSysprompt, ok := got[0].Artifacts[0].(artifact.Text)
-	require.True(t, ok, "first turn must be a Text artifact")
-	assert.Equal(t, "you are a helpful assistant", gotSysprompt.Content)
-
-	// Second turn: the compaction summary.
-	assert.Equal(t, ledger.RoleSystem, got[1].Role)
-	gotSummary, ok := got[1].Artifacts[0].(artifact.Text)
-	require.True(t, ok)
-	assert.Equal(t, "compaction summary", gotSummary.Content)
-
-	// Third turn: the post-compaction user turn.
-	assert.Equal(t, ledger.RoleUser, got[2].Role)
-	gotU3, ok := got[2].Artifacts[0].(artifact.Text)
-	require.True(t, ok)
-	assert.Equal(t, "u3", gotU3.Content)
+	assert.Equal(t, ledger.RoleUser, got[1].Role)
 }
 
-// TestTransform_RealisticPipeline_SystemPrompt_Compaction_Guardrails
-// mirrors the exact transform chain workshop wires
-// (../workshop/internal/app/app.go):
-//
-//	loop.WithTransforms(sp, compaction.NewTransform(), gr)
-//
-// x/systemprompt and x/guardrails both produce a ledger.Prepend; the
-// compaction transform sits between them. After compaction, the LLM
-// must still see both virtual prepend layers (persona + safety rules)
-// plus the compaction summary, in that order.
-func TestTransform_RealisticPipeline_SystemPrompt_Compaction_Guardrails(t *testing.T) {
-	buf := &ledger.Buffer{}
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u0"})
-	buf.Append(ledger.RoleAssistant, artifact.Text{Content: "a0"})
-	boundaryIdx := len(buf.Turns())
-	buf.Append(ledger.RoleSystem, artifact.Text{Content: "summary"})
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u1"})
-	markBoundary(t, buf, boundaryIdx)
-
-	// Mirror what x/systemprompt.Transform returns: a prependView
-	// over the buffer with the system persona as the virtual turn.
-	sp := ledger.Prepend(buf, []ledger.Turn{
-		{
-			Role:      ledger.RoleSystem,
-			Artifacts: []artifact.Artifact{artifact.Text{Content: "system-persona"}},
-		},
-	})
-
-	// Run the compaction transform — this is the line that, in the
-	// buggy version, wraps the projected slice in a static View and
-	// drops the prepend.
-	tr := NewTransform()
-	projected, err := tr.Transform(context.Background(), sp)
-	require.NoError(t, err)
-
-	// Mirror what x/guardrails.Transform returns: another prependView
-	// over the projection with safety rules as virtual turns.
-	withGuards := ledger.Prepend(projected, []ledger.Turn{
-		{
-			Role:      ledger.RoleUser,
-			Artifacts: []artifact.Artifact{artifact.Text{Content: "be terse"}},
-		},
-		{
-			Role:      ledger.RoleUser,
-			Artifacts: []artifact.Artifact{artifact.Text{Content: "no profanity"}},
-		},
-	})
-
-	got := withGuards.Turns()
-	require.Len(t, got, 5,
-		"guardrails (2) + system prompt (1) + summary (1) + post-turn (1) = 5; got %d", len(got))
-
-	// Layer 1: guardrails (prepended last by x/guardrails).
-	assert.Equal(t, "be terse", got[0].Artifacts[0].(artifact.Text).Content)
-	assert.Equal(t, "no profanity", got[1].Artifacts[0].(artifact.Text).Content)
-
-	// Layer 2: the system prompt — must survive the compaction transform.
-	assert.Equal(t, ledger.RoleSystem, got[2].Role)
-	assert.Equal(t, "system-persona", got[2].Artifacts[0].(artifact.Text).Content)
-
-	// Layer 3: the boundary.
-	assert.Equal(t, "summary", got[3].Artifacts[0].(artifact.Text).Content)
-
-	// Layer 4: the post-compaction user turn.
-	assert.Equal(t, "u1", got[4].Artifacts[0].(artifact.Text).Content)
-}
-
-// TestTransform_PrependedVirtualTurns_NoBoundary_Identity confirms the
-// non-buggy baseline: when there is no boundary, a prepend-wrapped
-// state passes through unchanged. This is the regression guard
-// against the fix accidentally re-introducing projection in the
-// identity path.
-func TestTransform_PrependedVirtualTurns_NoBoundary_Identity(t *testing.T) {
-	buf := &ledger.Buffer{}
-	buf.Append(ledger.RoleUser, artifact.Text{Content: "u0"})
-	buf.Append(ledger.RoleAssistant, artifact.Text{Content: "a0"})
-
-	prepended := ledger.Prepend(buf, []ledger.Turn{
-		{
-			Role:      ledger.RoleSystem,
-			Artifacts: []artifact.Artifact{artifact.Text{Content: "system-persona"}},
-		},
-	})
+// TestTransform_ControlSkip_ExcludesTurn verifies that ControlSkip
+// hides a turn while continuing the walk.
+func TestTransform_ControlSkip_ExcludesTurn(t *testing.T) {
+	th := ledger.NewThread()
+	th.Append(ledger.RoleUser, artifact.Text{Content: "u1"})
+	u1ID := th.CurrentTip
+	th.Append(ledger.RoleAssistant, artifact.Text{Content: "a1-skip"})
+	skipID := th.CurrentTip
+	th.SetControl(skipID, ledger.ControlSkip)
+	th.Append(ledger.RoleUser, artifact.Text{Content: "u2"})
+	u2ID := th.CurrentTip
+	th.SetCurrentTip(u2ID)
 
 	tr := NewTransform()
-	out, err := tr.Transform(context.Background(), prepended)
+	out, err := tr.Transform(context.Background(), th)
 	require.NoError(t, err)
 
 	got := out.Turns()
-	require.Len(t, got, 3)
-	assert.Equal(t, "system-persona", got[0].Artifacts[0].(artifact.Text).Content)
-	assert.Equal(t, "u0", got[1].Artifacts[0].(artifact.Text).Content)
-	assert.Equal(t, "a0", got[2].Artifacts[0].(artifact.Text).Content)
+	require.Len(t, got, 2, "skip turn must not appear in path")
+	assert.Equal(t, u1ID, got[0].ID)
+	assert.Equal(t, u2ID, got[1].ID)
 }
 
-func TestReadBoundaryIndex(t *testing.T) {
-	tests := []struct {
-		name    string
-		key     string
-		value   string
-		wantIdx int
-		wantOk  bool
-	}{
-		{"unset", MetaKeyBoundaryIndex, "", 0, false},
-		{"valid", MetaKeyBoundaryIndex, "5", 5, true},
-		{"zero", MetaKeyBoundaryIndex, "0", 0, true},
-		{"malformed", MetaKeyBoundaryIndex, "not-a-number", 0, false},
-		{"empty string", MetaKeyBoundaryIndex, "", 0, false},
-	}
+// TestTransform_StopThenSwitchTip confirms that switching CurrentTip
+// after a ControlStop is recorded re-evaluates the walk from the
+// new tip; if the new tip is on a different branch (no Stop), the
+// full chain of that branch is visible.
+func TestTransform_StopThenSwitchTip(t *testing.T) {
+	th := ledger.NewThread()
+	th.Append(ledger.RoleUser, artifact.Text{Content: "u1"})
+	u1ID := th.CurrentTip
+	th.Append(ledger.RoleAssistant, artifact.Text{Content: "a1"})
+	a1ID := th.CurrentTip
+	th.Append(ledger.RoleUser, artifact.Text{Content: "u2"})
+	u2ID := th.CurrentTip
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			buf := &ledger.Buffer{}
-			if tt.value != "" || tt.key != "" {
-				if tt.value != "" {
-					buf.Meta().Set(tt.key, tt.value)
-				}
-			}
-			gotIdx, gotOk := readBoundaryIndex(buf)
-			assert.Equal(t, tt.wantIdx, gotIdx)
-			assert.Equal(t, tt.wantOk, gotOk)
-		})
+	// Create a summary on a parallel branch (sibling under a1).
+	summary := &ledger.Turn{
+		ID:        "summary",
+		ParentID:  a1ID,
+		Role:      ledger.RoleAssistant,
+		Artifacts: []artifact.Artifact{artifact.Text{Content: "summary"}},
+		Metadata:  ledger.Metadata{Control: ledger.ControlStop},
 	}
+	th.SaveTurn(summary)
+
+	// Start on the u2 branch (no Stop).
+	th.SetCurrentTip(u2ID)
+	tr := NewTransform()
+	out, err := tr.Transform(context.Background(), th)
+	require.NoError(t, err)
+	got := out.Turns()
+	require.Len(t, got, 3, "u1, a1, u2 all visible when no Stop is reachable")
+	assert.Equal(t, u1ID, got[0].ID)
+	assert.Equal(t, a1ID, got[1].ID)
+	assert.Equal(t, u2ID, got[2].ID)
+
+	// Switch to summary; the walk stops there.
+	th.SetCurrentTip("summary")
+	out, err = tr.Transform(context.Background(), th)
+	require.NoError(t, err)
+	got = out.Turns()
+	require.Len(t, got, 1)
+	assert.Equal(t, "summary", got[0].ID)
 }

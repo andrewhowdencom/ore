@@ -488,34 +488,35 @@ func (s *Stream) SetMetadata(key, value string) {
 	})
 }
 
-// MarkBoundary records a compaction boundary on the stream's
-// conversation ledger. idx is the index in ledger.Turns() of the
-// turn that marks the boundary (typically the index of the
-// just-appended compaction summary turn). info is the JSON-encoded
-// BoundaryInfo — the caller is expected to pass the result of
-// x/compaction.EncodeBoundaryInfo on the BoundaryInfo returned
-// by compaction.Summarize.
+// MarkBoundary records a compaction boundary by stamping the summary
+// turn with [ledger.ControlStop]. The walk
+// ([ledger.Thread.ResolveActivePath]) then terminates at the summary,
+// hiding everything that came before it from the LLM-facing view.
 //
-// The boundary index is written to ledger.Meta under
-// "ore.compaction.boundary.index", and the encoded info under
-// "ore.compaction.boundary.info". Subsequent Transform calls see
-// the boundary and project the buffer from idx onward.
+// summaryTurnID is the ID of the summary turn (already appended to
+// the thread's state via AppendTurn or equivalent). info is the
+// JSON-encoded BoundaryInfo produced by [Summarize]; it is
+// persisted to [Thread.Metadata] under
+// "ore.compaction.boundary.info" so TUI/audit consumers can read it
+// without re-deriving from the LLM-facing summary text.
 //
 // MarkBoundary is the canonical way to record a compaction. The
 // caller is responsible for appending the summary turn (via
-// AppendTurn) before calling MarkBoundary; the function does not
-// mutate the turn list.
+// AppendTurn or [ledger.Thread.Append]) before calling MarkBoundary;
+// the function does not mutate the turn list.
 //
 // MarkBoundary holds the stream mutex for the duration of the
-// Meta writes. The Meta handles share the underlying State
-// implementation's "serial pipeline only" contract.
-func (s *Stream) MarkBoundary(idx int, info string) error {
+// metadata and control writes. The serial-pipeline-only contract
+// applies.
+func (s *Stream) MarkBoundary(summaryTurnID, info string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	st := s.thread.State
-	st.Meta().Set(boundaryKeyIndex, strconv.Itoa(idx))
-	st.Meta().Set(boundaryKeyInfo, info)
+	s.thread.State.SetControl(summaryTurnID, ledger.ControlStop)
+
+	if info != "" {
+		s.thread.Metadata[boundaryKeyInfo] = info
+	}
 	return nil
 }
 
