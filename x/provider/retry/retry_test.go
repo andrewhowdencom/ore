@@ -88,8 +88,8 @@ func fastOpts() []Option {
 	}
 }
 
-func newState() *ledger.Buffer {
-	s := &ledger.Buffer{}
+func newState() *ledger.Thread {
+	s := ledger.NewThread()
 	s.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 	return s
 }
