@@ -140,6 +140,21 @@ func (t *Thread) SaveTurn(turn *Turn) {
 	t.turns[turn.ID] = turn
 }
 
+// AllTurns returns a snapshot of every turn in the thread (not just
+// the active path). The slice order is unspecified. Use this for
+// serialization paths that need to preserve every branch; for the
+// LLM-facing view, use [Thread.Turns] (or [Thread.ResolveActivePath]).
+func (t *Thread) AllTurns() []Turn {
+	if len(t.turns) == 0 {
+		return nil
+	}
+	out := make([]Turn, 0, len(t.turns))
+	for _, turn := range t.turns {
+		out = append(out, *turn)
+	}
+	return out
+}
+
 // SetCurrentTip sets the active branch pointer. Use this after
 // hydrating, when forking to switch branches, or when re-anchoring
 // the walk after a re-parent.

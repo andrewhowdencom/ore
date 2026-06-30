@@ -33,7 +33,7 @@ func (s *MemoryStore) Create() (*Thread, error) {
 
 	thread := &Thread{
 		ID:        id,
-		State:     &ledger.Buffer{},
+		State:     ledger.NewThread(),
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Metadata:  make(map[string]string),

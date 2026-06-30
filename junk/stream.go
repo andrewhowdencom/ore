@@ -387,10 +387,29 @@ func (s *Stream) State() ledger.State {
 
 // LoadTurns replaces the thread's turn state with the provided slice.
 // It acquires the stream's mutex to ensure thread-safe state mutation.
+//
+// This is the legacy replacement path; the new Thread is tree-backed,
+// so callers migrating from a linear Buffer-backed state should
+// construct a fresh ledger.Thread with each turn's ParentID set
+// explicitly.
 func (s *Stream) LoadTurns(turns []ledger.Turn) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.thread.State.LoadTurns(turns)
+	// Build a fresh Thread from the linear slice. Each turn's
+	// ParentID is set to the previous turn's ID (or "" for the
+	// first), preserving the linear chain.
+	newThread := ledger.NewThread()
+	var prevID string
+	for i := range turns {
+		turn := turns[i]
+		turn.ParentID = prevID
+		newThread.SaveTurn(&turn)
+		prevID = turn.ID
+	}
+	if len(turns) > 0 {
+		newThread.SetCurrentTip(prevID)
+	}
+	s.thread.State = newThread
 }
 
 // AppendTurn records a turn into the thread state and broadcasts a

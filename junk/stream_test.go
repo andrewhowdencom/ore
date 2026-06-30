@@ -96,14 +96,16 @@ func TestStream_LoadTurns(t *testing.T) {
 	initialTurns := stream.Turns()
 	require.Len(t, initialTurns, 2)
 
-	// Replace the turns with a single synthetic turn.
+	// Replace the turns with a single synthetic turn. The tree-backed
+	// Thread requires every turn to have a non-empty ID.
 	replacement := []ledger.Turn{
-		{Role: ledger.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "replaced"}}},
+		{ID: "replacement-1", Role: ledger.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "replaced"}}},
 	}
 	stream.LoadTurns(replacement)
 
 	got := stream.Turns()
 	require.Len(t, got, 1)
+	assert.Equal(t, "replacement-1", got[0].ID)
 	assert.Equal(t, ledger.RoleUser, got[0].Role)
 	assert.Equal(t, "replaced", got[0].Artifacts[0].(artifact.Text).Content)
 
