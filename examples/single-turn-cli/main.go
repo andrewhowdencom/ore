@@ -77,7 +77,7 @@ func run() error {
 	baseURL := os.Getenv("ORE_BASE_URL")
 
 	// Build state with the user message.
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: message})
 
 	// Build provider.

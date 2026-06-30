@@ -97,7 +97,7 @@ func run() error {
 	}
 
 	// Build state with the user message.
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: message})
 
 	// Construct the agent: provider, model spec, ReAct pattern, tool

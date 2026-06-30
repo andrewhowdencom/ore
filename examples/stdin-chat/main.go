@@ -69,7 +69,7 @@ func run() error {
 	// conversation across turns. The bound state's auto-append path
 	// emits the assistant's turn into mem after each Run; the user
 	// turn is appended manually before each call.
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	a := agent.New("stdin-chat",
 		agent.WithProvider(prov),
 		agent.WithSpec(models.Spec{Name: modelName}),

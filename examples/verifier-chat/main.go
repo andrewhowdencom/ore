@@ -130,7 +130,7 @@ func run() error {
 	}
 
 	// Build state with a system prompt and the user message.
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleSystem, artifact.Text{Content: fmt.Sprintf(
 		"You are a Go coding agent. Write Go code to files in the current directory (%s). "+
 		"Make sure your code compiles with `go build ./...`, passes tests with `go test ./...`, "+
