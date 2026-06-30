@@ -30,7 +30,7 @@ func TestWithNameResolver_IdentityDefault(t *testing.T) {
 	assert.Equal(t, "gpt-test", p.nameResolver("gpt-test"),
 		"identity resolver must forward unchanged")
 
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 	ch := make(chan artifact.Artifact, 1)
 	require.NoError(t, p.Invoke(t.Context(), mem, models.Spec{Name: "gpt-test"}, ch))
@@ -64,7 +64,7 @@ func TestWithNameResolver_AppliesMapping(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 	ch := make(chan artifact.Artifact, 1)
 	require.NoError(t, p.Invoke(t.Context(), mem, models.Spec{Name: "gpt-test"}, ch))
@@ -95,7 +95,7 @@ func TestWithNameResolver_NotCalledForEmptyName(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 	ch := make(chan artifact.Artifact, 1)
 	err = p.Invoke(t.Context(), mem, models.Spec{Name: ""}, ch)

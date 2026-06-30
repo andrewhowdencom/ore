@@ -229,7 +229,7 @@ func TestProviderInvoke_Success(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -251,7 +251,7 @@ func TestProviderInvoke_HTTPError(t *testing.T) {
 	p, err := New(WithAPIKey("bad-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -267,7 +267,7 @@ func TestProviderInvoke_EmptyChoices(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -286,7 +286,7 @@ func TestProviderInvoke_UsageChunk(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -311,7 +311,7 @@ func TestProviderInvoke_MultipleTextArtifacts(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser,
 		artifact.Text{Content: "line1"},
 		artifact.Text{Content: "line2"},
@@ -336,7 +336,7 @@ func TestProviderInvoke_NonTextArtifactsSkipped(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser,
 		artifact.Text{Content: "hello"},
 		artifact.ToolCall{Name: "foo", Arguments: "{}"},
@@ -371,7 +371,7 @@ func TestProviderInvoke_EmptyState(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 
 	ch := make(chan artifact.Artifact, 10)
 	_ = p.Invoke(t.Context(), mem, spec, ch)
@@ -397,7 +397,7 @@ func TestProviderInvoke_MultipleChoices(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -420,7 +420,7 @@ func TestProviderInvoke_MalformedJSON(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -436,7 +436,7 @@ func TestProviderInvoke_ContextCancellation(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -457,7 +457,7 @@ func TestProviderInvoke_CustomClient(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -474,7 +474,7 @@ func TestProviderInvoke_WithReasoning(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "o3-mini"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -498,7 +498,7 @@ func TestProviderInvoke_EmptyReasoning(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "o3-mini"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -519,7 +519,7 @@ func TestProviderInvoke_ReasoningOnly(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "o3-mini"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -543,7 +543,7 @@ func TestProviderInvoke_RoleMapping(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleSystem, artifact.Text{Content: "sys"})
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "usr"})
 	mem.Append(ledger.RoleAssistant, artifact.Text{Content: "asst"})
@@ -580,7 +580,7 @@ func TestProviderInvoke_ConcurrentOptions(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(&http.Client{Transport: transport}))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	var wg sync.WaitGroup
@@ -607,7 +607,7 @@ func TestProviderInvoke_WithTemperature(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -631,7 +631,7 @@ func TestProviderInvoke_WithMaxTokens(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -655,7 +655,7 @@ func TestProviderInvoke_WithoutMaxTokens(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -702,7 +702,7 @@ func TestProviderInvoke_WithReasoningEffort(t *testing.T) {
 			p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 			spec := models.Spec{Name: "o3-mini"}
 			require.NoError(t, err)
-			mem := &ledger.Buffer{}
+			mem := ledger.NewThread()
 			mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 			ch := make(chan artifact.Artifact, 10)
@@ -812,7 +812,7 @@ func TestInvoke_ReasoningIncludeField(t *testing.T) {
 			p, err := New(opts...)
 			spec := models.Spec{Name: "deepseek/deepseek-r1"}
 			require.NoError(t, err)
-			mem := &ledger.Buffer{}
+			mem := ledger.NewThread()
 			mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 			ch := make(chan artifact.Artifact, 10)
@@ -845,7 +845,7 @@ func TestProviderInvoke_MixedAssistantTextAndToolCalls(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	// Manually append an assistant turn with both text and tool calls.
@@ -933,7 +933,7 @@ func TestProviderInvoke_ToolsWithDescription(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -980,7 +980,7 @@ func TestProviderInvoke_InterleavedTextReasoningChunks(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "o3-mini"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -1015,7 +1015,7 @@ func TestProviderInvoke_ToolResult_LLMRenderer(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	// Append an assistant turn with a tool call.
 	mem.Append(ledger.RoleAssistant, artifact.ToolCall{ID: "call_1", Name: "search", Arguments: `{}`})
@@ -1057,7 +1057,7 @@ func TestProviderInvoke_ToolResult_JSONFallback(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	mem.Append(ledger.RoleAssistant, artifact.ToolCall{ID: "call_1", Name: "search", Arguments: `{}`})
 	// Tool result with a simple string Value (no LLMRenderer).
@@ -1097,7 +1097,7 @@ func TestProviderInvoke_ToolResult_ContentFallback(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	mem.Append(ledger.RoleAssistant, artifact.ToolCall{ID: "call_1", Name: "search", Arguments: `{}`})
 	// Tool result with nil Value — should fall back to Content.
@@ -1139,7 +1139,7 @@ func TestProviderInvoke_ToolCallDeltaAccumulation(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -1177,7 +1177,7 @@ func TestProviderInvoke_EmptyToolsOmitted(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -1203,7 +1203,7 @@ func TestProviderInvoke_DynamicToolsOption(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	// Dynamic ToolsOption whose function inspects context and ledger.
@@ -1255,7 +1255,7 @@ func TestProviderInvoke_ToolsOptionPrecedence(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -1300,7 +1300,7 @@ func TestProviderInvoke_DynamicTools_EmptyResult(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -1330,7 +1330,7 @@ func TestProviderInvoke_DynamicTools_Concurrency(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(&http.Client{Transport: transport}))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	var wg sync.WaitGroup
@@ -1393,7 +1393,7 @@ func TestProviderInvoke_WithFilteredTools(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	registry := toolpkg.NewRegistry()
@@ -1445,7 +1445,7 @@ func TestProviderInvoke_WithUsage(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -1472,7 +1472,7 @@ func TestProviderInvoke_WithoutUsage(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -1493,7 +1493,7 @@ func TestProviderInvoke_IncludeUsageFlag(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -1528,7 +1528,7 @@ func TestProviderInvoke_PartialStreamError(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -1575,7 +1575,7 @@ func TestProviderInvoke_HTTPTraceContext(t *testing.T) {
 			spec := models.Spec{Name: "gpt-4"}
 			require.NoError(t, err)
 
-			mem := &ledger.Buffer{}
+			mem := ledger.NewThread()
 			mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 			ch := make(chan artifact.Artifact, 10)
@@ -1673,7 +1673,7 @@ func TestProviderInvoke_SpanLifecycle(t *testing.T) {
 			spec := models.Spec{Name: "gpt-4"}
 			require.NoError(t, err)
 
-			mem := &ledger.Buffer{}
+			mem := ledger.NewThread()
 			mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 			ch := make(chan artifact.Artifact, 10)
@@ -1710,7 +1710,7 @@ func TestProviderInvoke_HTTPTrace_Events(t *testing.T) {
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -1737,7 +1737,7 @@ func TestProviderInvoke_WithoutSubSpans(t *testing.T) {
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
 
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -1793,7 +1793,7 @@ func TestInvoke_WithSessionID(t *testing.T) {
 			spec := models.Spec{Name: "gpt-4"}
 			require.NoError(t, err)
 
-			mem := &ledger.Buffer{}
+			mem := ledger.NewThread()
 			mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 			ch := make(chan artifact.Artifact, 10)
@@ -1869,7 +1869,7 @@ func TestInvoke_WithCacheControl(t *testing.T) {
 			spec := models.Spec{Name: "gpt-4"}
 			require.NoError(t, err)
 
-			mem := &ledger.Buffer{}
+			mem := ledger.NewThread()
 			mem.Append(ledger.RoleSystem, artifact.Text{Content: "You are a helpful assistant."})
 			mem.Append(ledger.RoleUser, artifact.Text{Content: "first question"})
 			mem.Append(ledger.RoleAssistant, artifact.Text{Content: "first answer"})
@@ -1996,7 +1996,7 @@ func TestProviderInvoke_UsageChunkWithOpenAICache(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -2025,7 +2025,7 @@ func TestProviderInvoke_UsageChunkWithAnthropicCache(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -2055,7 +2055,7 @@ func TestProviderInvoke_UsageChunkNoCache(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -2112,7 +2112,7 @@ func TestProviderInvoke_EmitsStopReason_Stop(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -2141,7 +2141,7 @@ func TestProviderInvoke_EmitsStopReason_Length(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "summarize this"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -2180,7 +2180,7 @@ func TestProviderInvoke_EmitsStopReason_ToolCalls(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "find something"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -2208,7 +2208,7 @@ func TestProviderInvoke_EmitsStopReason_ContentFilter(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "do something dangerous"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -2243,7 +2243,7 @@ func TestProviderInvoke_StopReason_NotOverwrittenByNull(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "gpt-4"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -2298,7 +2298,7 @@ func TestProviderInvoke_StreamsReasoning_FlatField(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "deepseek/deepseek-r1"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -2322,7 +2322,7 @@ func TestProviderInvoke_StreamsReasoning_DetailsArray_Text(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "anthropic/claude-3.7-sonnet:thinking"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -2348,7 +2348,7 @@ func TestProviderInvoke_StreamsReasoning_DetailsArray_Encrypted(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"), WithHTTPClient(mockClient(transport)))
 	spec := models.Spec{Name: "anthropic/claude-3.7-sonnet:thinking"}
 	require.NoError(t, err)
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ch := make(chan artifact.Artifact, 10)
@@ -2391,7 +2391,7 @@ func TestProviderSerialize_ReplaysReasoning_OpenAINative(t *testing.T) {
 	// the resulting text. Also include an Anthropic-style
 	// ReasoningSignature in the same turn to assert that it is
 	// dropped on the native wire.
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "what is 2+2?"})
 	mem.Append(ledger.RoleAssistant,
 		artifact.Reasoning{Content: "Let me think..."},
@@ -2461,7 +2461,7 @@ func TestProviderSerialize_ReplaysReasoning_OpenRouter(t *testing.T) {
 	spec := models.Spec{Name: "anthropic/claude-3.7-sonnet:thinking"}
 	require.NoError(t, err)
 
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "what is 2+2?"})
 	mem.Append(ledger.RoleAssistant,
 		artifact.Reasoning{Content: "I am thinking"},
@@ -2544,7 +2544,7 @@ func TestProviderSerialize_ComposesWithCacheControl(t *testing.T) {
 	spec := models.Spec{Name: "anthropic/claude-3.7-sonnet:thinking"}
 	require.NoError(t, err)
 
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleSystem, artifact.Text{Content: "You are a helpful assistant."})
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "first question"})
 	mem.Append(ledger.RoleAssistant,
