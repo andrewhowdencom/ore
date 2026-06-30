@@ -28,7 +28,7 @@ func (m *mockEmitter) Emit(ctx context.Context, event OutputEvent) {
 func TestPipeline_Turn_AccumulatesDeltas(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
 	p := newPipeline()
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
@@ -70,7 +70,7 @@ func TestPipeline_Turn_AccumulatesDeltas(t *testing.T) {
 func TestPipeline_Turn_FlushesAccumulatorsOnNonDelta(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
 	p := newPipeline()
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
@@ -110,7 +110,7 @@ func TestPipeline_Turn_FlushesAccumulatorsOnNonDelta(t *testing.T) {
 func TestPipeline_Turn_ErrorPropagatesProviderError(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
 	p := newPipeline()
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	prov := &mockProvider{
@@ -158,7 +158,7 @@ func TestPipeline_Turn_TransformErrorAborts(t *testing.T) {
 		}},
 	}
 
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	prov := &mockProvider{}
 
@@ -190,7 +190,7 @@ func TestPipeline_Turn_TransformOrdering(t *testing.T) {
 		}},
 	}
 
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	prov := &mockProvider{artifacts: []artifact.Artifact{artifact.Text{Content: "response"}}}
 
@@ -279,7 +279,7 @@ func TestPipeline_Turn_ApplyDisplayHints(t *testing.T) {
 		},
 	}
 
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{
@@ -317,7 +317,7 @@ func TestPipeline_Turn_ApplyDisplayHints_NoMatchingHint(t *testing.T) {
 		},
 	}
 
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	prov := &mockProvider{
 		artifacts: []artifact.Artifact{

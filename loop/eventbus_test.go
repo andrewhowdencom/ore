@@ -16,7 +16,7 @@ import (
 // bound to the EventBus, TurnCompleteEvent is automatically appended to that
 // state before OnEmit callbacks run.
 func TestEventBus_Emit_AppendsToStateBeforeOnEmit(t *testing.T) {
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	eb := newEventBus()
 	eb.bound = mem
 
@@ -57,7 +57,7 @@ func TestEventBus_Emit_OnEmitOrdering(t *testing.T) {
 // TestEventBus_Emit_NonTurnCompleteEvent_DoesNotAppendToState verifies that
 // only TurnCompleteEvent triggers state auto-append.
 func TestEventBus_Emit_NonTurnCompleteEvent_DoesNotAppendToState(t *testing.T) {
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	eb := newEventBus()
 	eb.bound = mem
 

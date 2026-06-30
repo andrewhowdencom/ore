@@ -23,7 +23,7 @@ var (
 // concrete *Step.
 func TestInterfaces_TurnRunner_CallsThrough(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	step := New(WithState(mem))
@@ -37,7 +37,7 @@ func TestInterfaces_TurnRunner_CallsThrough(t *testing.T) {
 	require.NoError(t, err)
 
 	// Direct call should produce identical results.
-	mem2 := &ledger.Buffer{}
+	mem2 := ledger.NewThread()
 	mem2.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	step2 := New(WithState(mem2))
 	st2, err := step2.Turn(context.Background(), mem2, spec, prov)
@@ -55,7 +55,7 @@ func TestInterfaces_TurnRunner_CallsThrough(t *testing.T) {
 // the TurnSubmitter interface produces the same result as calling directly on
 // the concrete *Step.
 func TestInterfaces_TurnSubmitter_CallsThrough(t *testing.T) {
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	step := New(WithState(mem))
@@ -65,7 +65,7 @@ func TestInterfaces_TurnSubmitter_CallsThrough(t *testing.T) {
 	require.NoError(t, err)
 
 	// Direct call should produce identical results.
-	mem2 := &ledger.Buffer{}
+	mem2 := ledger.NewThread()
 	mem2.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	step2 := New(WithState(mem2))
 	st2, err := step2.Submit(context.Background(), mem2, ledger.RoleUser, artifact.Text{Content: "world"})
@@ -84,7 +84,7 @@ func TestInterfaces_TurnSubmitter_CallsThrough(t *testing.T) {
 // same results as direct calls.
 func TestInterfaces_TurnExecutor_CallsThrough(t *testing.T) {
 	spec := models.Spec{Name: "test-model"}
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	step := New(WithState(mem))
@@ -110,7 +110,7 @@ func TestInterfaces_TurnExecutor_CallsThrough(t *testing.T) {
 // TestInterfaces_TurnExecutor_Embedment verifies that a value of type
 // TurnExecutor can be used as both TurnRunner and TurnSubmitter.
 func TestInterfaces_TurnExecutor_Embedment(t *testing.T) {
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	step := New(WithState(mem))
