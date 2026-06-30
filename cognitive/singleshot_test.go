@@ -61,7 +61,7 @@ func TestSingleShot_Run(t *testing.T) {
 	}{
 		{
 			name:      "returns state from step",
-			ret:       &ledger.Buffer{},
+			ret:       ledger.NewThread(),
 			wantCalls: 1,
 		},
 		{
@@ -79,7 +79,7 @@ func TestSingleShot_Run(t *testing.T) {
 				Provider: &stubProvider{},
 				Spec:     models.Spec{Name: "test"},
 			}
-			st := &ledger.Buffer{}
+			st := ledger.NewThread()
 			result, err := pat.Run(context.Background(), st)
 			require.Equal(t, tt.wantCalls, atomic.LoadInt32(&mock.calls))
 			if tt.wantErr {
@@ -96,13 +96,13 @@ func TestSingleShot_Run(t *testing.T) {
 }
 
 func TestSingleShot_Run_ForwardsAllArgs(t *testing.T) {
-	mock := &mockTurnRunner{ret: &ledger.Buffer{}}
+	mock := &mockTurnRunner{ret: ledger.NewThread()}
 	pat := &SingleShot{
 		Step:     mock,
 		Provider: &stubProvider{},
 		Spec:     models.Spec{Name: "specific", Window: 100, MaxOutputTokens: 200},
 	}
-	st := &ledger.Buffer{}
+	st := ledger.NewThread()
 	_, err := pat.Run(context.Background(), st)
 	require.NoError(t, err)
 	assert.Equal(t, models.Spec{Name: "specific", Window: 100, MaxOutputTokens: 200}, mock.lastSpec)
