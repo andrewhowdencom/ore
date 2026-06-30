@@ -17,8 +17,12 @@ type realClock struct{}
 
 func (realClock) Now() time.Time { return time.Now() }
 
-// Buffer is a simple in-memory implementation of State.
-// It is not safe for concurrent use.
+// Buffer is a simple in-memory implementation of State that maintains
+// a linear chain of turns. Each appended turn's ParentID points at the
+// previous turn, producing a single-rooted linear tree.
+//
+// Buffer is not safe for concurrent use. It will be removed once all
+// consumers migrate to [Thread].
 type Buffer struct {
 	turns []Turn
 	clock Clock
@@ -52,9 +56,17 @@ func (m *Buffer) Turns() []Turn {
 }
 
 // Append adds a new turn to the in-memory state, recording the current
-// time from its configured Clock.
+// time from its configured Clock. The new turn's ParentID is set to
+// the previous turn's ID (or "" for the first turn), producing a
+// linear chain.
 func (m *Buffer) Append(role Role, artifacts ...artifact.Artifact) {
+	parentID := ""
+	if n := len(m.turns); n > 0 {
+		parentID = m.turns[n-1].ID
+	}
 	m.turns = append(m.turns, Turn{
+		ID:        generateTurnID(),
+		ParentID:  parentID,
 		Role:      role,
 		Artifacts: artifacts,
 		Timestamp: m.now(),
@@ -73,6 +85,10 @@ func (m *Buffer) now() time.Time {
 // LoadTurns replaces the internal turn slice with the provided turns.
 // It is intended for deserialization paths that must preserve timestamps
 // rather than re-Append them (which would overwrite timestamps).
+//
+// ParentIDs on the loaded turns are preserved as-is. If you need to
+// rebuild the linear chain, set ParentID explicitly on each turn
+// before calling LoadTurns.
 func (m *Buffer) LoadTurns(turns []Turn) {
 	m.turns = append([]Turn(nil), turns...)
 }

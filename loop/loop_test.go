@@ -1689,6 +1689,7 @@ func TestStep_WithState_And_OnEmit_BothAppend_DocumentsAntiPattern(t *testing.T)
 
 func TestTurnCompleteEvent_MarshalJSON(t *testing.T) {
 	turn := ledger.Turn{
+		ID:        "turn-event-1",
 		Role:      ledger.RoleUser,
 		Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}},
 		Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -1697,7 +1698,7 @@ func TestTurnCompleteEvent_MarshalJSON(t *testing.T) {
 	event := TurnCompleteEvent{Turn: turn, Ctx: ctx}
 	data, err := json.Marshal(event)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"kind":"turn_complete","turn":{"role":"user","artifacts":[{"kind":"text","content":"hello"}],"timestamp":"2024-01-01T00:00:00Z"},"context":{"provenance":"test"}}`, string(data))
+	assert.JSONEq(t, `{"kind":"turn_complete","turn":{"id":"turn-event-1","role":"user","artifacts":[{"kind":"text","content":"hello"}],"timestamp":"2024-01-01T00:00:00Z"},"context":{"provenance":"test"}}`, string(data))
 }
 
 func TestErrorEvent_MarshalJSON(t *testing.T) {
