@@ -3,9 +3,11 @@
 package ledger
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
@@ -74,7 +76,7 @@ type Turn struct {
 
 	// Artifacts is the polymorphic list of content blocks produced
 	// by the speaker. Wire adapters serialize per provider schema.
-	Artifacts []artifact.Artifact `json:"artifacts"`
+	Artifacts []artifact.Artifact `json:"-"` // overridden by custom UnmarshalJSON/MarshalJSON
 
 	// Timestamp is when the turn was appended. Set by the [Buffer]
 	// or [Thread] from a configured clock; serializable but omitted
@@ -87,53 +89,104 @@ type Turn struct {
 
 // MarshalJSON implements json.Marshaler, omitting the zero timestamp and
 // empty metadata. ID is always emitted because every persisted turn
-// must be addressable.
+// must be addressable. Artifacts are wrapped with their Kind tag for
+// round-trip via the artifact registry.
 func (t Turn) MarshalJSON() ([]byte, error) {
 	type alias Turn
+	artifactsJSON, err := marshalArtifacts(t.Artifacts)
+	if err != nil {
+		return nil, fmt.Errorf("marshal artifacts: %w", err)
+	}
 	if t.Timestamp.IsZero() && t.Metadata.Control == "" {
 		return json.Marshal(struct {
-			ID        string              `json:"id"`
-			ParentID  string              `json:"parent_id,omitempty"`
-			Role      Role                `json:"role"`
-			Artifacts []artifact.Artifact `json:"artifacts"`
+			ID        string          `json:"id"`
+			ParentID  string          `json:"parent_id,omitempty"`
+			Role      Role            `json:"role"`
+			Artifacts json.RawMessage `json:"artifacts"`
 		}{
 			ID:        t.ID,
 			ParentID:  t.ParentID,
 			Role:      t.Role,
-			Artifacts: t.Artifacts,
+			Artifacts: artifactsJSON,
 		})
 	}
 	if t.Timestamp.IsZero() {
 		return json.Marshal(struct {
-			ID        string              `json:"id"`
-			ParentID  string              `json:"parent_id,omitempty"`
-			Role      Role                `json:"role"`
-			Artifacts []artifact.Artifact `json:"artifacts"`
-			Metadata  Metadata            `json:"metadata,omitempty"`
+			ID        string          `json:"id"`
+			ParentID  string          `json:"parent_id,omitempty"`
+			Role      Role            `json:"role"`
+			Artifacts json.RawMessage `json:"artifacts"`
+			Metadata  Metadata        `json:"metadata,omitempty"`
 		}{
 			ID:        t.ID,
 			ParentID:  t.ParentID,
 			Role:      t.Role,
-			Artifacts: t.Artifacts,
+			Artifacts: artifactsJSON,
 			Metadata:  t.Metadata,
 		})
 	}
 	if t.Metadata.Control == "" {
 		return json.Marshal(struct {
-			ID        string              `json:"id"`
-			ParentID  string              `json:"parent_id,omitempty"`
-			Role      Role                `json:"role"`
-			Artifacts []artifact.Artifact `json:"artifacts"`
-			Timestamp time.Time           `json:"timestamp,omitempty"`
+			ID        string          `json:"id"`
+			ParentID  string          `json:"parent_id,omitempty"`
+			Role      Role            `json:"role"`
+			Artifacts json.RawMessage `json:"artifacts"`
+			Timestamp time.Time       `json:"timestamp,omitempty"`
 		}{
 			ID:        t.ID,
 			ParentID:  t.ParentID,
 			Role:      t.Role,
-			Artifacts: t.Artifacts,
+			Artifacts: artifactsJSON,
 			Timestamp: t.Timestamp,
 		})
 	}
-	return json.Marshal(alias(t))
+	out, err := json.Marshal(alias(t))
+	if err != nil {
+		return nil, err
+	}
+	return replaceArtifactsInJSON(out, artifactsJSON)
+}
+
+// UnmarshalJSON implements json.Unmarshaler. Artifacts are unwrapped
+// from their kind-tagged envelope via the artifact registry; the
+// rest of the fields follow the struct tags.
+func (t *Turn) UnmarshalJSON(data []byte) error {
+	type alias Turn
+	aux := struct {
+		Artifacts json.RawMessage `json:"artifacts"`
+		*alias
+	}{
+		alias: (*alias)(t),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if len(aux.Artifacts) > 0 {
+		artifacts, err := unmarshalArtifacts(aux.Artifacts)
+		if err != nil {
+			return fmt.Errorf("unmarshal artifacts: %w", err)
+		}
+		t.Artifacts = artifacts
+	}
+	return nil
+}
+
+// replaceArtifactsInJSON swaps the placeholder "artifacts":null
+// produced by the alias path with the wrapped envelope. The alias
+// emits "artifacts":null (because []artifact.Artifact is hidden by
+// `json:"-"` on the struct definition); we want the envelope on disk.
+func replaceArtifactsInJSON(in, artifactsJSON []byte) ([]byte, error) {
+	needle := []byte(`"artifacts":null`)
+	idx := bytes.Index(in, needle)
+	if idx < 0 {
+		return in, nil
+	}
+	out := make([]byte, 0, len(in)-len(needle)+len(artifactsJSON))
+	out = append(out, in[:idx]...)
+	out = append(out, []byte(`"artifacts":`)...)
+	out = append(out, artifactsJSON...)
+	out = append(out, in[idx+len(needle):]...)
+	return out, nil
 }
 
 // generateTurnID returns a 16-character hex string drawn from a

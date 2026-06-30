@@ -19,7 +19,7 @@ func TestTurn_MarshalJSON(t *testing.T) {
 	}
 	data, err := json.Marshal(turn)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"id":"turn-1","role":"user","artifacts":[{"kind":"text","content":"hello"}],"timestamp":"2024-01-01T00:00:00Z"}`, string(data))
+	assert.JSONEq(t, `{"id":"turn-1","role":"user","artifacts":[{"kind":"text","data":{"kind":"text","content":"hello"}}],"timestamp":"2024-01-01T00:00:00Z"}`, string(data))
 }
 
 func TestTurn_MarshalJSON_NoTimestamp(t *testing.T) {
@@ -42,7 +42,7 @@ func TestTurn_MarshalJSON_WithParentID(t *testing.T) {
 	}
 	data, err := json.Marshal(turn)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"id":"turn-3","parent_id":"turn-2","role":"assistant","artifacts":[{"kind":"text","content":"reply"}]}`, string(data))
+	assert.JSONEq(t, `{"id":"turn-3","parent_id":"turn-2","role":"assistant","artifacts":[{"kind":"text","data":{"kind":"text","content":"reply"}}]}`, string(data))
 }
 
 func TestTurn_MarshalJSON_WithControl(t *testing.T) {
@@ -54,7 +54,49 @@ func TestTurn_MarshalJSON_WithControl(t *testing.T) {
 	}
 	data, err := json.Marshal(turn)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"id":"summary-1","role":"assistant","artifacts":[{"kind":"text","content":"summary"}],"metadata":{"control":"stop"}}`, string(data))
+	assert.JSONEq(t, `{"id":"summary-1","role":"assistant","artifacts":[{"kind":"text","data":{"kind":"text","content":"summary"}}],"metadata":{"control":"stop"}}`, string(data))
+}
+
+func TestTurn_RoundTrip_WithArtifacts(t *testing.T) {
+	original := Turn{
+		ID:        "turn-rt",
+		Role:      RoleAssistant,
+		Artifacts: []artifact.Artifact{
+			artifact.Text{Content: "hello"},
+			artifact.ToolCall{ID: "tc-1", Name: "search", Arguments: `{"q":"ore"}`},
+		},
+	}
+	data, err := json.Marshal(original)
+	require.NoError(t, err)
+
+	var got Turn
+	require.NoError(t, json.Unmarshal(data, &got))
+	assert.Equal(t, original.ID, got.ID)
+	require.Len(t, got.Artifacts, 2)
+
+	text, ok := got.Artifacts[0].(artifact.Text)
+	require.True(t, ok, "first artifact must be Text after round-trip")
+	assert.Equal(t, "hello", text.Content)
+
+	tc, ok := got.Artifacts[1].(artifact.ToolCall)
+	require.True(t, ok, "second artifact must be ToolCall after round-trip")
+	assert.Equal(t, "tc-1", tc.ID)
+	assert.Equal(t, "search", tc.Name)
+}
+
+func TestTurn_RoundTrip_EmptyArtifacts(t *testing.T) {
+	original := Turn{
+		ID:        "turn-empty",
+		Role:      RoleUser,
+		Artifacts: nil,
+	}
+	data, err := json.Marshal(original)
+	require.NoError(t, err)
+
+	var got Turn
+	require.NoError(t, json.Unmarshal(data, &got))
+	assert.Equal(t, original.ID, got.ID)
+	assert.Empty(t, got.Artifacts)
 }
 
 func TestTurn_UnmarshalJSON(t *testing.T) {
