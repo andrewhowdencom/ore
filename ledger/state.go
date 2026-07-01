@@ -78,8 +78,8 @@ type Turn struct {
 	// by the speaker. Wire adapters serialize per provider schema.
 	Artifacts []artifact.Artifact `json:"-"` // overridden by custom UnmarshalJSON/MarshalJSON
 
-	// Timestamp is when the turn was appended. Set by the [Buffer]
-	// or [Thread] from a configured clock; serializable but omitted
+	// Timestamp is when the turn was appended. Set by the [Thread]
+	// from a configured clock; serializable but omitted
 	// from JSON when zero.
 	Timestamp time.Time `json:"timestamp,omitempty"`
 
@@ -189,10 +189,15 @@ func replaceArtifactsInJSON(in, artifactsJSON []byte) ([]byte, error) {
 	return out, nil
 }
 
-// generateTurnID returns a 16-character hex string drawn from a
+// GenerateTurnID returns a 16-character hex string drawn from a
 // cryptographically random source. Sufficient for uniqueness within
 // a single thread without depending on an external UUID library.
-func generateTurnID() string {
+//
+// Exported so packages that build ephemeral [Thread] instances from
+// raw [Turn] inputs (e.g. compaction) can assign IDs to turns that
+// arrive without one, preserving the order-preserving semantics of
+// the legacy [Buffer.LoadTurns].
+func GenerateTurnID() string {
 	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		// rand.Read on Linux/macOS does not fail in practice; fall
@@ -204,15 +209,12 @@ func generateTurnID() string {
 
 // State is a mutable conversation state that the core loop appends to.
 //
-// Two implementations exist:
-//   - [Buffer] — flat slice of turns, the legacy linear implementation.
-//   - [Thread] — tree-backed implementation with traversal directives.
-//
-// Both satisfy [State]; the consumer-facing API is identical.
+// [Thread] is the canonical implementation; a tree-backed type whose
+// active path is resolved by [Thread.ResolveActivePath].
 type State interface {
 	// Turns returns the active path through the conversation history
-	// (in chronological order). For [Buffer] this is the flat slice;
-	// for [Thread] it is the result of [Thread.ResolveActivePath].
+	// (in chronological order). For [Thread] this is the result of
+	// [Thread.ResolveActivePath].
 	Turns() []Turn
 
 	// Append adds a new turn to the ledger. It mutates in place.
@@ -236,12 +238,11 @@ type State interface {
 // same underlying storage, so writes made through one handle are
 // visible through any other handle for the same State.
 //
-// Concurrency: like [State] itself (and its in-memory implementations
-// [Buffer] and [Thread]), Meta is not safe for concurrent use. The
-// framework's serial pipeline — the loop worker goroutine, the
-// Transform chain, the session's worker — is the only contract;
-// concurrent access from outside that pipeline is a future middleware
-// concern.
+// Concurrency: like [State] itself (and its in-memory implementation
+// [Thread]), Meta is not safe for concurrent use. The framework's
+// serial pipeline — the loop worker goroutine, the Transform chain,
+// the session's worker — is the only contract; concurrent access from
+// outside that pipeline is a future middleware concern.
 type Meta interface {
 	// Get returns the value stored for key and a boolean indicating
 	// whether the key was present.

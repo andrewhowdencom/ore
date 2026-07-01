@@ -14,7 +14,7 @@ import (
 func TestTransform_PrependSystemPrompt(t *testing.T) {
 	tr, err := New(WithContentFunc(func() string { return "You are a helpful assistant." }))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -33,7 +33,7 @@ func TestTransform_PrependSystemPrompt(t *testing.T) {
 func TestTransform_EmptyContent(t *testing.T) {
 	tr, err := New()
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -51,7 +51,7 @@ func TestTransform_EmptyContent(t *testing.T) {
 func TestTransform_NilContentFunc(t *testing.T) {
 	tr, err := New(WithContentFunc(nil))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -69,7 +69,7 @@ func TestTransform_NilContentFunc(t *testing.T) {
 func TestTransform_DelegatesAppend(t *testing.T) {
 	tr, err := New(WithContentFunc(func() string { return "system" }))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "user"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -94,7 +94,7 @@ func TestTransform_DynamicContent(t *testing.T) {
 	var content string
 	tr, err := New(WithContentFunc(func() string { return content }))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	content = "first prompt"
@@ -122,7 +122,7 @@ func TestTransform_MultipleContentFuncs(t *testing.T) {
 		func() string { return "Second fragment." },
 	))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -143,7 +143,7 @@ func TestTransform_MultipleWithContentFuncCalls(t *testing.T) {
 		WithContentFunc(func() string { return "Second." }),
 	)
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -164,7 +164,7 @@ func TestTransform_EmptyFragmentSkipped(t *testing.T) {
 		func() string { return "" },
 	))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -184,7 +184,7 @@ func TestTransform_AllEmptyFragments(t *testing.T) {
 		func() string { return "" },
 	))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -205,7 +205,7 @@ func TestTransform_NilFuncSkipped(t *testing.T) {
 		func() string { return "After." },
 	))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -229,7 +229,7 @@ func TestTransform_MixedOptionOrder(t *testing.T) {
 		WithContentFunc(func() string { return "D" }),
 	)
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -246,7 +246,7 @@ func TestTransform_MixedOptionOrder(t *testing.T) {
 func TestTransform_ZeroArgWithContentFuncs(t *testing.T) {
 	tr, err := New(WithContentFuncs())
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -263,7 +263,7 @@ func TestTransform_ZeroArgWithContentFuncs(t *testing.T) {
 func TestTransform_ExistingSystemTurn(t *testing.T) {
 	tr, err := New(WithContentFunc(func() string { return "Injected prompt." }))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleSystem, artifact.Text{Content: "Existing system turn."})
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
@@ -291,7 +291,7 @@ func TestTransform_InternalNewlines(t *testing.T) {
 		func() string { return "Third line." },
 	))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -308,7 +308,7 @@ func TestTransform_InternalNewlines(t *testing.T) {
 func TestTransform_ContextContentFunc(t *testing.T) {
 	tr, err := New(WithContextContentFunc(func(ctx context.Context) string { return "Context-aware." }))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -330,7 +330,7 @@ func TestTransform_MixedRegularAndContextContentFuncs(t *testing.T) {
 		WithContentFunc(func() string { return "Another regular." }),
 	)
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -347,7 +347,7 @@ func TestTransform_MixedRegularAndContextContentFuncs(t *testing.T) {
 func TestTransform_NilContextContentFunc(t *testing.T) {
 	tr, err := New(WithContextContentFunc(nil))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -364,7 +364,7 @@ func TestTransform_NilContextContentFunc(t *testing.T) {
 func TestTransform_EmptyContextContentFunc(t *testing.T) {
 	tr, err := New(WithContextContentFunc(func(ctx context.Context) string { return "" }))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -388,7 +388,7 @@ func TestTransform_ContextContentFuncReceivesContext(t *testing.T) {
 		return val
 	}))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	ctx := context.WithValue(context.Background(), ctxKey{}, "test-value")
@@ -413,7 +413,7 @@ func TestTransform_MultipleContextContentFuncs_OrderAndSkipping(t *testing.T) {
 		WithContentFunc(func() string { return "Another regular." }),
 	)
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -457,7 +457,7 @@ func TestTransform_WithToolExamples(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -488,7 +488,7 @@ func TestTransform_WithToolExamples(t *testing.T) {
 func TestTransform_WithToolExamples_Empty(t *testing.T) {
 	tr, err := New(WithToolExamples([]tool.Tool{}))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -507,7 +507,7 @@ func TestTransform_WithToolExamples_NoExamples(t *testing.T) {
 		{Name: "no_examples", Description: "Has no examples"},
 	}))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)

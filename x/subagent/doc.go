@@ -13,7 +13,7 @@
 //  1. Calls the application-supplied factory to obtain a fresh
 //     *agent.Agent. The factory is the sole extension point: callers
 //     compose the agent's pattern, model, and tool subset.
-//  2. Seeds a fresh ledger.Buffer with the prompt and runs the
+//  2. Seeds a fresh ledger.Thread with the prompt and runs the
 //     agent. The agent's bound state (if any) is NOT used — the
 //     factory must omit agent.WithState to prevent the child from
 //     mutating parent state.

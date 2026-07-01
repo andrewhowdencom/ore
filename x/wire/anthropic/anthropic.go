@@ -242,7 +242,7 @@ func applyInvokeOptions(opts ...provider.InvokeOption) invokeOptions {
 			// list is static for the duration of the call;
 			// the framework supplies the live values at
 			// the call site, not here.
-			out.tools = o.Tools(context.Background(), ledger.NewBuffer())
+			out.tools = o.Tools(context.Background(), ledger.NewThread())
 			out.toolsSet = true
 		}
 	}

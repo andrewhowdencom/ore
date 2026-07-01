@@ -166,7 +166,7 @@ func TestAsTool_PropagatesAgentError(t *testing.T) {
 }
 
 func TestAsTool_SandboxIsIgnored(t *testing.T) {
-	// The sub-agent runs against a fresh ledger.Buffer seeded with
+	// The sub-agent runs against a fresh ledger.Thread seeded with
 	// the prompt; the Sandbox argument is unused. Passing a non-nil
 	// sandbox must not change the result.
 	factory := newSubAgent(t, &stubProvider{
@@ -361,7 +361,7 @@ func TestResultSystemPrompt(t *testing.T) {
 	// Smoke: applying the transform to a state injects a RoleSystem
 	// turn with the schema-rendering content. The transform must not
 	// mutate the existing turn (it is prepended, not appended).
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	out, err := tr.Transform(context.Background(), base)

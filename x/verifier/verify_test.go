@@ -167,8 +167,8 @@ func TestWithVerification_DefaultMaxRetries(t *testing.T) {
 }
 
 func TestWithVerification_Name(t *testing.T) {
-	mock := &mockPattern{returnState: &ledger.Buffer{}}
-	step := loop.New(loop.WithState(&ledger.Buffer{}))
+	mock := &mockPattern{returnState: ledger.NewThread()}
+	step := loop.New(loop.WithState(ledger.NewThread()))
 	pattern := WithVerification(mock, step)
 
 	assert.Equal(t, "verified", pattern.Name())

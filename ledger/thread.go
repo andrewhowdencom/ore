@@ -118,7 +118,7 @@ func (t *Thread) Append(role Role, artifacts ...artifact.Artifact) {
 	}
 
 	parentID := t.CurrentTip
-	id := generateTurnID()
+	id := GenerateTurnID()
 	t.turns[id] = &Turn{
 		ID:        id,
 		ParentID:  parentID,

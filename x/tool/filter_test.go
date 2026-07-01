@@ -22,7 +22,7 @@ func TestWithFilteredTools_NoFilter(t *testing.T) {
 	require.True(t, ok)
 
 	ctx := context.Background()
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	tools := to.Tools(ctx, mem)
 
 	assert.Len(t, tools, 1)
@@ -53,7 +53,7 @@ func TestWithFilteredTools_WithFilter(t *testing.T) {
 	require.True(t, ok)
 
 	ctx := context.Background()
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	tools := to.Tools(ctx, mem)
 
 	assert.Len(t, tools, 1)
@@ -75,7 +75,7 @@ func TestWithFilteredTools_EmptyResult(t *testing.T) {
 	require.True(t, ok)
 
 	ctx := context.Background()
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	tools := to.Tools(ctx, mem)
 
 	assert.Empty(t, tools)
@@ -112,7 +112,7 @@ func TestWithFilteredTools_MutatesSlice(t *testing.T) {
 	require.True(t, ok)
 
 	ctx := context.Background()
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	tools := to.Tools(ctx, mem)
 
 	require.Len(t, tools, 2)
@@ -141,7 +141,7 @@ func TestWithFilteredTools_Superset(t *testing.T) {
 	require.True(t, ok)
 
 	ctx := context.Background()
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	tools := to.Tools(ctx, mem)
 
 	assert.Len(t, tools, 2)
@@ -164,7 +164,7 @@ func TestWithFilteredTools_Panic(t *testing.T) {
 	require.True(t, ok)
 
 	ctx := context.Background()
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 
 	assert.Panics(t, func() {
 		to.Tools(ctx, mem)

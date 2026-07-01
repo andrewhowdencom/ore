@@ -126,7 +126,7 @@ func TestGenerateTurnID_Unique(t *testing.T) {
 	const n = 1000
 	seen := make(map[string]struct{}, n)
 	for i := 0; i < n; i++ {
-		id := generateTurnID()
+		id := GenerateTurnID()
 		assert.Len(t, id, 16, "ID should be 16 hex chars")
 		_, dup := seen[id]
 		assert.False(t, dup, "duplicate ID generated: %s", id)

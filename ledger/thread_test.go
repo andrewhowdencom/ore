@@ -343,7 +343,7 @@ func TestThread_TurnsDefensiveCopy(t *testing.T) {
 
 func TestThread_SaveTurn(t *testing.T) {
 	th := NewThread()
-	id := generateTurnID()
+	id := GenerateTurnID()
 	th.SaveTurn(&Turn{
 		ID:        id,
 		ParentID:  "",
