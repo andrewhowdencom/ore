@@ -1,20 +1,29 @@
-package cognitive
+package verifier
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/ledger"
-	"github.com/andrewhowdencom/ore/x/verifier"
+	"github.com/andrewhowdencom/ore/loop"
 )
 
-// VerificationOption configures the WithVerification wrapper.
-type VerificationOption func(*verifyingPattern)
+// Pattern is the shape of a runnable, retryable state transformer that
+// WithVerification accepts and produces. Anything implementing the two
+// methods below satisfies the contract — including *cognitive.ReAct and
+// *cognitive.SingleShot. The wrapper returned by WithVerification itself
+// also implements Pattern, so verifiers may be composed recursively.
+type Pattern interface {
+	Run(ctx context.Context, st ledger.State) (ledger.State, error)
+	Name() string
+}
+
+// Option configures the wrapper produced by WithVerification.
+type Option func(*verifyingPattern)
 
 // WithVerifiers sets the verifiers to run after the inner pattern completes.
-func WithVerifiers(v ...verifier.Verifier) VerificationOption {
+func WithVerifiers(v ...Verifier) Option {
 	return func(p *verifyingPattern) {
 		p.verifiers = append(p.verifiers, v...)
 	}
@@ -22,7 +31,7 @@ func WithVerifiers(v ...verifier.Verifier) VerificationOption {
 
 // WithMaxRetries sets the maximum number of retries on verification failure.
 // Default is 3.
-func WithMaxRetries(n int) VerificationOption {
+func WithMaxRetries(n int) Option {
 	return func(p *verifyingPattern) {
 		p.maxRetries = n
 	}
@@ -32,7 +41,7 @@ func WithMaxRetries(n int) VerificationOption {
 // If verifiers fail, it injects a system turn with the combined report and
 // retries the inner pattern up to maxRetries times. If any verifier returns
 // an Error status, the error is propagated immediately as a fatal error.
-func WithVerification(inner Pattern, step loop.TurnSubmitter, opts ...VerificationOption) Pattern {
+func WithVerification(inner Pattern, step loop.TurnSubmitter, opts ...Option) Pattern {
 	p := &verifyingPattern{
 		inner:      inner,
 		submitter:  step,
@@ -47,7 +56,7 @@ func WithVerification(inner Pattern, step loop.TurnSubmitter, opts ...Verificati
 type verifyingPattern struct {
 	inner      Pattern
 	submitter  loop.TurnSubmitter
-	verifiers  []verifier.Verifier
+	verifiers  []Verifier
 	maxRetries int
 }
 
@@ -58,22 +67,22 @@ func (p *verifyingPattern) Run(ctx context.Context, st ledger.State) (ledger.Sta
 			return result, err
 		}
 
-		results := verifier.RunAll(ctx, p.verifiers, result)
+		results := RunAll(ctx, p.verifiers, result)
 
 		hasError := false
 		hasFail := false
 		for _, r := range results {
-			if r.Status == verifier.VerificationError {
+			if r.Status == VerificationError {
 				hasError = true
 				break
 			}
-			if r.Status == verifier.VerificationFail {
+			if r.Status == VerificationFail {
 				hasFail = true
 			}
 		}
 
 		if hasError {
-			report := verifier.BuildReport(results)
+			report := BuildReport(results)
 			return result, fmt.Errorf("verification error: %s", report)
 		}
 
@@ -82,11 +91,11 @@ func (p *verifyingPattern) Run(ctx context.Context, st ledger.State) (ledger.Sta
 		}
 
 		if attempt >= p.maxRetries {
-			report := verifier.BuildReport(results)
+			report := BuildReport(results)
 			return result, fmt.Errorf("verification failed after %d retries: %s", p.maxRetries, report)
 		}
 
-		report := verifier.BuildReport(results)
+		report := BuildReport(results)
 		_, err = p.submitter.Submit(ctx, result, ledger.RoleSystem, artifact.Text{Content: report})
 		if err != nil {
 			return result, fmt.Errorf("failed to inject verification report: %w", err)
