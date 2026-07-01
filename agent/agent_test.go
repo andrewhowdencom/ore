@@ -151,7 +151,7 @@ func TestAgent_Run_DelegatesToPattern(t *testing.T) {
 	)
 	defer a.Close()
 
-	st := &ledger.Buffer{}
+	st := ledger.NewThread()
 	result, err := a.Run(context.Background(), st)
 	require.NoError(t, err)
 	assert.Same(t, st, result)
@@ -171,7 +171,7 @@ func TestAgent_Run_PatternErrorPropagates(t *testing.T) {
 	)
 	defer a.Close()
 
-	_, err := a.Run(context.Background(), &ledger.Buffer{})
+	_, err := a.Run(context.Background(), ledger.NewThread())
 	require.ErrorIs(t, err, want)
 }
 
@@ -185,7 +185,7 @@ func TestAgent_Run_RecordsAgentRunSpan(t *testing.T) {
 	)
 	defer a.Close()
 
-	_, err := a.Run(context.Background(), &ledger.Buffer{})
+	_, err := a.Run(context.Background(), ledger.NewThread())
 	require.NoError(t, err)
 
 	tracer.mu.Lock()
@@ -212,9 +212,9 @@ func TestAgent_Run_ReusesStep(t *testing.T) {
 	defer a.Close()
 
 	step1 := a.Step()
-	_, err := a.Run(context.Background(), &ledger.Buffer{})
+	_, err := a.Run(context.Background(), ledger.NewThread())
 	require.NoError(t, err)
-	_, err = a.Run(context.Background(), &ledger.Buffer{})
+	_, err = a.Run(context.Background(), ledger.NewThread())
 	require.NoError(t, err)
 	step2 := a.Step()
 	assert.Same(t, step1, step2, "step should be reused across Run calls")

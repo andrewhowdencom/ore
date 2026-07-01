@@ -21,7 +21,7 @@ func TestHTML(t *testing.T) {
 			name: "empty thread",
 			thread: &junk.Thread{
 				ID:        "thread-a",
-				State:     &ledger.Buffer{},
+				State:     ledger.NewThread(),
 				CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			},
 			wantSubstr: []string{
@@ -33,7 +33,7 @@ func TestHTML(t *testing.T) {
 		{
 			name: "text turn",
 			thread: func() *junk.Thread {
-				buf := &ledger.Buffer{}
+				buf := ledger.NewThread()
 				buf.Append(ledger.RoleUser, artifact.Text{Content: "Hello!"})
 				return &junk.Thread{
 					ID:    "thread-b",
@@ -49,7 +49,7 @@ func TestHTML(t *testing.T) {
 		{
 			name: "assistant with reasoning and text",
 			thread: func() *junk.Thread {
-				buf := &ledger.Buffer{}
+				buf := ledger.NewThread()
 				buf.Append(ledger.RoleAssistant,
 					artifact.Reasoning{Content: "Let me think..."},
 					artifact.Text{Content: "The answer is 42."},
@@ -68,7 +68,7 @@ func TestHTML(t *testing.T) {
 		{
 			name: "tool call and result",
 			thread: func() *junk.Thread {
-				buf := &ledger.Buffer{}
+				buf := ledger.NewThread()
 				buf.Append(ledger.RoleAssistant, artifact.ToolCall{
 					ID:        "call-1",
 					Name:      "calculator",
@@ -93,7 +93,7 @@ func TestHTML(t *testing.T) {
 		{
 			name: "usage and image",
 			thread: func() *junk.Thread {
-				buf := &ledger.Buffer{}
+				buf := ledger.NewThread()
 				buf.Append(ledger.RoleAssistant,
 					artifact.Text{Content: "Here is an image."},
 					artifact.Image{URL: "https://example.com/img.png"},
@@ -113,7 +113,7 @@ func TestHTML(t *testing.T) {
 			name: "metadata",
 			thread: &junk.Thread{
 				ID:        "thread-f",
-				State:     &ledger.Buffer{},
+				State:     ledger.NewThread(),
 				Metadata:  map[string]string{"key1": "val1"},
 				CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			},
@@ -124,7 +124,7 @@ func TestHTML(t *testing.T) {
 		{
 			name: "error tool result",
 			thread: func() *junk.Thread {
-				buf := &ledger.Buffer{}
+				buf := ledger.NewThread()
 				buf.Append(ledger.RoleTool, artifact.ToolResult{
 					ToolCallID: "call-err",
 					Content:    "something broke",

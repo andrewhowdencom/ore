@@ -158,7 +158,7 @@
 // # Threading
 //
 // Summarize and Transform are goroutine-safe. They do not share
-// mutable ledger. The ledger.Buffer itself is not goroutine-safe, as
+// mutable ledger. The ledger.Thread itself is not goroutine-safe, as
 // documented in package state; compaction must be called from the
 // same goroutine as the buffer's owner (typically the session's
 // worker goroutine).

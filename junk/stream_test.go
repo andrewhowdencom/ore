@@ -96,14 +96,16 @@ func TestStream_LoadTurns(t *testing.T) {
 	initialTurns := stream.Turns()
 	require.Len(t, initialTurns, 2)
 
-	// Replace the turns with a single synthetic turn.
+	// Replace the turns with a single synthetic turn. The tree-backed
+	// Thread requires every turn to have a non-empty ID.
 	replacement := []ledger.Turn{
-		{Role: ledger.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "replaced"}}},
+		{ID: "replacement-1", Role: ledger.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "replaced"}}},
 	}
 	stream.LoadTurns(replacement)
 
 	got := stream.Turns()
 	require.Len(t, got, 1)
+	assert.Equal(t, "replacement-1", got[0].ID)
 	assert.Equal(t, ledger.RoleUser, got[0].Role)
 	assert.Equal(t, "replaced", got[0].Artifacts[0].(artifact.Text).Content)
 
@@ -1350,10 +1352,9 @@ func TestStream_Interceptor_NonUserMessage(t *testing.T) {
 
 // TestStream_MarkBoundary_RoundTrip verifies that a boundary
 // recorded via MarkBoundary persists across Save/Load through the
-// in-memory store. The boundary index and the encoded info
-// round-trip through thread.Metadata under the
-// ore.compaction.boundary.* keys and are restored to ledger.Meta
-// on the loaded stream.
+// in-memory store. The summary turn is identified by ID; the
+// boundary's ControlStop is stamped onto that turn so the walk
+// naturally terminates there on the next load.
 func TestStream_MarkBoundary_RoundTrip(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
@@ -1365,12 +1366,12 @@ func TestStream_MarkBoundary_RoundTrip(t *testing.T) {
 	// Drive a turn so the buffer has at least one row.
 	require.NoError(t, stream.Process(context.Background(), UserMessageEvent{Content: "hi"}))
 	turnsBefore := stream.Turns()
+	require.NotEmpty(t, turnsBefore)
 
-	// Mark a boundary at the end of the buffer, mimicking a
-	// compaction that just appended its summary turn.
-	boundaryIdx := len(turnsBefore) - 1
+	// Mark the last turn as a boundary by its ID.
+	summaryTurnID := turnsBefore[len(turnsBefore)-1].ID
 	info := `{"strategy":"summarize","dropped_turn_count":1}`
-	require.NoError(t, stream.MarkBoundary(boundaryIdx, info))
+	require.NoError(t, stream.MarkBoundary(summaryTurnID, info))
 
 	// Save and load via the in-memory store.
 	require.NoError(t, stream.Save())
@@ -1383,18 +1384,25 @@ func TestStream_MarkBoundary_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	defer mgr2.Close(threadID)
 
-	// The loaded buffer should carry the boundary keys on ledger.Meta.
-	got, ok := stream2.State().Meta().Get("ore.compaction.boundary.index")
-	require.True(t, ok, "boundary index must round-trip via ledger.Meta")
-	assert.Equal(t, boundaryIdx, mustAtoi(t, got))
-	gotInfo, ok := stream2.State().Meta().Get("ore.compaction.boundary.info")
-	require.True(t, ok, "boundary info must round-trip via ledger.Meta")
+	// The loaded summary turn must carry ControlStop.
+	gotTurns := stream2.Turns()
+	require.NotEmpty(t, gotTurns)
+	for _, turn := range gotTurns {
+		if turn.ID == summaryTurnID {
+			assert.Equal(t, ledger.ControlStop, turn.Metadata.Control, "ControlStop must round-trip on the summary turn")
+		}
+	}
+
+	// The boundary info must round-trip via Thread.Metadata.
+	gotInfo, ok := stream2.GetMetadata(boundaryKeyInfo)
+	require.True(t, ok, "boundary info must round-trip via Thread.Metadata")
 	assert.Equal(t, info, gotInfo)
 }
 
-// mustAtoi parses a decimal integer and fails the test on error.
-// Used to read the boundary index from ledger.Meta.
-func mustAtoi(t *testing.T, s string) int {
+// mustAtoi is unused after the new boundary mechanism (the boundary
+// is no longer an integer index). Kept as a test helper for any future
+// compaction-related integer parsing that may arise.
+var _ = func(t *testing.T, s string) int {
 	t.Helper()
 	n, err := strconv.Atoi(s)
 	if err != nil {

@@ -231,7 +231,7 @@ func TestProviderSerialize_ReplaysThinkingBlocks(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "what is 2+2?"})
 	mem.Append(ledger.RoleAssistant,
 		artifact.Reasoning{Content: "Let me think step by step."},
@@ -304,7 +304,7 @@ func TestProviderSerialize_ReplaysRedactedThinking(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "ok?"})
 	mem.Append(ledger.RoleAssistant,
 		artifact.Reasoning{Content: "thinking text"},
@@ -349,7 +349,7 @@ func TestProviderSerialize_ReplaysToolUseAndToolResult(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "what is the weather?"})
 	mem.Append(ledger.RoleAssistant, artifact.ToolCall{
 		ID:        "toolu_abc",
@@ -425,7 +425,7 @@ func TestProviderSerialize_DisplayDoesNotAffectWireFormat(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "list things"})
 	// Display is the kind of string label that the built-in filesystem
 	// tools produce from their DisplayHint. The previous implementation
@@ -477,7 +477,7 @@ func TestProviderSerialize_SystemCollapsedToSystemField(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleSystem, artifact.Text{Content: "be terse."})
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
@@ -502,7 +502,7 @@ func TestProviderSerialize_EmptySignatureOnStandaloneReasoning(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 	mem.Append(ledger.RoleAssistant,
 		artifact.Reasoning{Content: "thinking..."},
@@ -543,7 +543,7 @@ func TestProviderSerialize_StandaloneSignatureEmitsEmptyThinking(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 	mem.Append(ledger.RoleAssistant,
 		artifact.ReasoningSignature{
@@ -719,7 +719,7 @@ func TestProviderSerialize_ArgumentsParseAsDict(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "weather?"})
 	mem.Append(ledger.RoleAssistant, artifact.ToolCall{
 		ID:        "toolu_xyz",
@@ -753,7 +753,7 @@ func TestProviderSerialize_IsErrorTruePropagates(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "weather?"})
 	mem.Append(ledger.RoleAssistant, artifact.ToolCall{
 		ID:        "toolu_err",
@@ -792,7 +792,7 @@ func TestProviderSerialize_OrderPreservedWithinTurn(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "go"})
 	mem.Append(ledger.RoleAssistant,
 		artifact.Text{Content: "First sentence. "},
@@ -832,7 +832,7 @@ func TestProviderSerialize_RoleToolSkipsNonToolResultArtifacts(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "go"})
 	mem.Append(ledger.RoleAssistant, artifact.ToolCall{
 		ID:        "toolu_only",
@@ -876,7 +876,7 @@ func TestProviderSerialize_DropsMixedSystemTurn(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	// Mixed-content system turn: text + image. Should be dropped.
 	mem.Append(ledger.RoleSystem,
 		artifact.Text{Content: "you are terse"},
@@ -905,7 +905,7 @@ func TestProviderSerialize_HoistsTextOnlySystemTurn(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleSystem, artifact.Text{Content: "you are terse"})
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
@@ -925,7 +925,7 @@ func TestProviderSerialize_ConcatTextSeparatesWithNewline(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser,
 		artifact.Text{Content: "first"},
 		artifact.Text{Content: "second"},
@@ -951,7 +951,7 @@ func TestProviderSerialize_HandlesBadJSONArguments(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "go"})
 	mem.Append(ledger.RoleAssistant, artifact.ToolCall{
 		ID:        "toolu_bad",
@@ -991,7 +991,7 @@ func TestProviderSerialize_EmptyAssistantTurnStillEmits(t *testing.T) {
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 	mem.Append(ledger.RoleAssistant) // no artifacts
 
@@ -1023,7 +1023,7 @@ func TestProviderSerialize_AppliesPreTasksFixesRegressions(t *testing.T) {
 	require.NoError(t, err)
 
 	// Single round-trip with every artifact type in play.
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleSystem, artifact.Text{Content: "be terse."})
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "weather?"})
 	mem.Append(ledger.RoleAssistant,
@@ -1127,7 +1127,7 @@ func TestProviderInvoke_StreamsThinking(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
@@ -1185,7 +1185,7 @@ func TestProviderInvoke_StreamsMixedTextAndThinking(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
@@ -1239,7 +1239,7 @@ func TestProviderInvoke_StreamsRedactedThinkingForReplay(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
@@ -1281,7 +1281,7 @@ func TestProviderInvoke_PreservesUsageThinkingTokens(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
@@ -1339,7 +1339,7 @@ func TestProviderInvoke_NilThinkingTokensWhenAbsent(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
@@ -1385,7 +1385,7 @@ func TestProviderInvoke_ToolUseStreaming(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
@@ -1438,7 +1438,7 @@ func TestProviderInvoke_ContextCancellation(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -1476,7 +1476,7 @@ func TestProviderInvoke_HTTPError(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
@@ -1503,7 +1503,7 @@ func TestProviderInvoke_TalksToOpenRouter(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
@@ -1548,7 +1548,7 @@ func TestProviderInvoke_EmitsStopReason_EndTurn(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)
@@ -1588,7 +1588,7 @@ func TestProviderInvoke_EmitsStopReason_Length(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "summarize this"})
 
 	ch := make(chan artifact.Artifact, 16)
@@ -1626,7 +1626,7 @@ func TestProviderInvoke_EmitsStopReason_ToolUse(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "find something"})
 
 	ch := make(chan artifact.Artifact, 16)
@@ -1664,7 +1664,7 @@ func TestProviderInvoke_EmitsStopReason_Refusal(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "do something dangerous"})
 
 	ch := make(chan artifact.Artifact, 16)
@@ -1703,7 +1703,7 @@ func TestProviderInvoke_EmitsStopReason_StopSequenceMapsToOther(t *testing.T) {
 	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 16)

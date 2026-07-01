@@ -328,7 +328,7 @@ func TestAnalyzeThread_Nil(t *testing.T) {
 }
 
 func TestAnalyzeThread_Empty(t *testing.T) {
-	th := &junk.Thread{State: &ledger.Buffer{}}
+	th := &junk.Thread{State: ledger.NewThread()}
 	got := analytics.AnalyzeThread(th)
 	if len(got) != 0 {
 		t.Fatalf("expected empty slice, got %d entries", len(got))
@@ -336,7 +336,7 @@ func TestAnalyzeThread_Empty(t *testing.T) {
 }
 
 func TestAnalyzeThread_WithTurns(t *testing.T) {
-	buf := &ledger.Buffer{}
+	buf := ledger.NewThread()
 	buf.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 	th := &junk.Thread{State: buf}
 
@@ -356,9 +356,9 @@ func TestAnalyzeThread_WithTurns(t *testing.T) {
 }
 
 func TestAnalyzeStore(t *testing.T) {
-	buf1 := &ledger.Buffer{}
+	buf1 := ledger.NewThread()
 	buf1.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
-	buf2 := &ledger.Buffer{}
+	buf2 := ledger.NewThread()
 	buf2.Append(ledger.RoleAssistant, artifact.Reasoning{Content: "think"})
 
 	store := &mockStore{
@@ -658,7 +658,7 @@ func TestAnalyzeStore_ToolResultOrphanPerThread(t *testing.T) {
 	// Thread A: a tool_call in the assistant turn and a matching
 	// tool_result in a separate role-tool turn. The result must
 	// resolve to "bash" via the whole-scope join within thread A.
-	bufA := &ledger.Buffer{}
+	bufA := ledger.NewThread()
 	bufA.Append(ledger.RoleAssistant,
 		artifact.ToolCall{ID: "1", Name: "bash", Arguments: `{"cmd":"ls"}`},
 	)
@@ -671,7 +671,7 @@ func TestAnalyzeStore_ToolResultOrphanPerThread(t *testing.T) {
 	// the local call ("2" vs "1"). Even though thread A has a call
 	// with the matching ID, the per-thread scope prevents it from
 	// rescuing thread B's result.
-	bufB := &ledger.Buffer{}
+	bufB := ledger.NewThread()
 	bufB.Append(ledger.RoleAssistant,
 		artifact.ToolCall{ID: "2", Name: "file_read", Arguments: `{"path":"/tmp/x"}`},
 	)
@@ -850,7 +850,7 @@ func TestAnalyzeTurns_ParallelToolCalls(t *testing.T) {
 func TestAnalyzeStore_PerThreadIsolation_ToolCallInThreadAResolvesOnlyInThreadA(t *testing.T) {
 	// Thread A: a tool_call with ID "1" and a matching tool_result.
 	// Whole-scope join within thread A resolves the result to "bash".
-	bufA := &ledger.Buffer{}
+	bufA := ledger.NewThread()
 	bufA.Append(ledger.RoleAssistant,
 		artifact.ToolCall{ID: "1", Name: "bash", Arguments: `{"cmd":"ls"}`},
 	)
@@ -862,7 +862,7 @@ func TestAnalyzeStore_PerThreadIsolation_ToolCallInThreadAResolvesOnlyInThreadA(
 	// as thread A's call. Per-thread scope prevents thread A's call
 	// from resolving thread B's result. Thread B has no local call
 	// with ID "1" → orphan.
-	bufB := &ledger.Buffer{}
+	bufB := ledger.NewThread()
 	bufB.Append(ledger.RoleTool,
 		artifact.ToolResult{ToolCallID: "1", Content: "ok"},
 	)

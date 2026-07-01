@@ -160,9 +160,31 @@ func Summarize(ctx context.Context, a *agent.Agent, turns []ledger.Turn) (ledger
 		return ledger.Turn{}, BoundaryInfo{}, nil
 	}
 
-	// Build an ephemeral buffer with the input turns and the user prompt.
-	buf := &ledger.Buffer{}
-	buf.LoadTurns(turns)
+	// Build an ephemeral thread with the input turns and the user
+	// prompt. The legacy Buffer.LoadTurns accepted turns without IDs
+	// and preserved their order in the resulting active path; we
+	// preserve that contract here by assigning IDs (and a linear
+	// ParentID chain) to any input turn that arrived without one.
+	buf := ledger.NewThread()
+	parentID := ""
+	for i := range turns {
+		saved := turns[i]
+		if saved.ID == "" {
+			saved.ID = ledger.GenerateTurnID()
+			saved.ParentID = parentID
+			parentID = saved.ID
+		} else {
+			// Honour any non-empty ParentID carried by the caller;
+			// we only fall back to walking forward if the chain is
+			// not already consistent.
+			if saved.ParentID == "" {
+				saved.ParentID = parentID
+			}
+			parentID = saved.ID
+		}
+		buf.SaveTurn(&saved)
+	}
+	buf.SetCurrentTip(parentID)
 	buf.Append(ledger.RoleUser, artifact.Text{Content: defaultPrompt})
 
 	// Subscribe to the agent's turn_complete event before running the

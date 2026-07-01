@@ -68,9 +68,9 @@ var promptSchema = map[string]any{
 // the second call.
 //
 // State isolation: the sub-agent runs against a fresh
-// ledger.Buffer seeded with the prompt as a RoleUser turn. The
+// ledger.Thread seeded with the prompt as a RoleUser turn. The
 // sub-agent's configured transforms, handlers, and pattern apply
-// to that fresh buffer. The agent MUST NOT be constructed with
+// to that fresh thread. The agent MUST NOT be constructed with
 // agent.WithState (which would auto-append to the bound state on
 // every Emit); the factory's responsibility is to omit WithState
 // from the agent's options.
@@ -96,13 +96,13 @@ func AsTool(build func() (*agent.Agent, error), name, description string) (tool.
 			return nil, fmt.Errorf("subagent %s: prompt is required", name)
 		}
 
-		a, err := build()
+a, err := build()
 		if err != nil {
 			return nil, fmt.Errorf("subagent %s: %w", name, err)
 		}
 		defer func() { _ = a.Close() }()
 
-		buf := &ledger.Buffer{}
+		buf := ledger.NewThread()
 		buf.Append(ledger.RoleUser, artifact.Text{Content: prompt})
 
 		// Subscribe to the agent's turn_complete event before

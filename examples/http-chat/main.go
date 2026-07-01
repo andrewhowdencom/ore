@@ -270,13 +270,12 @@ func run() error {
 			}}, nil
 		}
 
-		// Record the boundary on ledger.Meta so the next Transform
-		// call projects the buffer from the compaction turn onward.
-		// The boundary index is the position of the just-appended
-		// summary turn (the last element). MarkBoundary takes a
-		// pre-encoded JSON string for the boundary info to keep the
-		// session package free of any x/compaction dependency.
-		boundaryIdx := len(stream.Turns()) - 1
+		// Stamp ControlStop on the summary turn so the walk terminates
+		// there. The summary turn is the last turn in the resolved
+		// path. MarkBoundary takes a pre-encoded JSON string for the
+		// boundary info to keep the session package free of any
+		// x/compaction dependency.
+		summaryTurn := stream.Turns()[len(stream.Turns())-1]
 		encoded, err := compaction.EncodeBoundaryInfo(info)
 		if err != nil {
 			return slash.Result{Notice: loop.Notice{
@@ -284,7 +283,7 @@ func run() error {
 				Severity: loop.SeverityError,
 			}}, nil
 		}
-		if err := stream.MarkBoundary(boundaryIdx, encoded); err != nil {
+		if err := stream.MarkBoundary(summaryTurn.ID, encoded); err != nil {
 			return slash.Result{Notice: loop.Notice{
 				Content:  fmt.Sprintf("marking boundary: %v", err),
 				Severity: loop.SeverityError,

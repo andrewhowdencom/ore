@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// testEmitter wraps a ledger.Buffer and implements loop.Emitter so that
+// testEmitter wraps a ledger.Thread and implements loop.Emitter so that
 // TurnCompleteEvents emitted by the handler are persisted into ledger.
 type testEmitter struct {
-	buf *ledger.Buffer
+	buf *ledger.Thread
 }
 
 func (e *testEmitter) Emit(ctx context.Context, event loop.OutputEvent) {
@@ -30,7 +30,7 @@ func TestHandler_Add(t *testing.T) {
 	require.NoError(t, registry.Register(AddTool, Add))
 	handler := xtool.NewHandler(registry)
 
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "What is 2 + 3?"})
 
 	err := handler.Handle(context.Background(), artifact.ToolCall{
@@ -57,7 +57,7 @@ func TestHandler_Multiply(t *testing.T) {
 	require.NoError(t, registry.Register(MultiplyTool, Multiply))
 	handler := xtool.NewHandler(registry)
 
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "What is 4 * 5?"})
 
 	err := handler.Handle(context.Background(), artifact.ToolCall{
@@ -84,7 +84,7 @@ func TestHandler_UnknownTool(t *testing.T) {
 	require.NoError(t, registry.Register(AddTool, Add))
 	handler := xtool.NewHandler(registry)
 
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "What is 10 / 2?"})
 
 	err := handler.Handle(context.Background(), artifact.ToolCall{

@@ -859,7 +859,7 @@ func seedThread(t *testing.T, store *junk.MemoryStore, id string, updatedAt time
 	t.Helper()
 	thr := &junk.Thread{
 		ID:        id,
-		State:     &ledger.Buffer{},
+		State:     ledger.NewThread(),
 		CreatedAt: updatedAt,
 		UpdatedAt: updatedAt,
 		Metadata:  map[string]string{},

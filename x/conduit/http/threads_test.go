@@ -19,7 +19,7 @@ import (
 func makeThread(id string, updatedAt time.Time) *junk.Thread {
 	return &junk.Thread{
 		ID:        id,
-		State:     &ledger.Buffer{},
+		State:     ledger.NewThread(),
 		CreatedAt: updatedAt.Add(-time.Hour),
 		UpdatedAt: updatedAt,
 		Metadata:  map[string]string{},

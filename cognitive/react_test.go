@@ -100,7 +100,7 @@ func (h *testHandler) Handle(ctx context.Context, art artifact.Artifact, e loop.
 var _ loop.Handler = (*testHandler)(nil)
 
 func TestReAct_SingleTurn(t *testing.T) {
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	s := loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
@@ -131,7 +131,7 @@ func TestReAct_SingleTurn(t *testing.T) {
 }
 
 func TestReAct_ToolLoop(t *testing.T) {
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "do something"})
 
 	toolHandler := &testHandler{
@@ -178,7 +178,7 @@ func TestReAct_ToolLoop(t *testing.T) {
 }
 
 func TestReAct_ProviderError(t *testing.T) {
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	s := loop.New(loop.WithOnEmit(func(ctx context.Context, event loop.OutputEvent) {
@@ -200,7 +200,7 @@ func TestReAct_ProviderError(t *testing.T) {
 }
 
 func TestReAct_HandlerError(t *testing.T) {
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "do something"})
 
 	wantErr := errors.New("handler failed")
@@ -239,7 +239,7 @@ func TestReAct_HandlerError(t *testing.T) {
 }
 
 func TestReAct_ContextCancellation(t *testing.T) {
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "do something"})
 
 	prov := &cancelCheckingProvider{}

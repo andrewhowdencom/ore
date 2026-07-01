@@ -21,7 +21,7 @@ func TestText(t *testing.T) {
 			name: "empty thread",
 			thread: &junk.Thread{
 				ID:        "thread-1",
-				State:     &ledger.Buffer{},
+				State:     ledger.NewThread(),
 				CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 				UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			},
@@ -30,7 +30,7 @@ func TestText(t *testing.T) {
 		{
 			name: "text turn",
 			thread: func() *junk.Thread {
-				buf := &ledger.Buffer{}
+				buf := ledger.NewThread()
 				buf.Append(ledger.RoleUser, artifact.Text{Content: "Hello!"})
 				return &junk.Thread{
 					ID:    "thread-2",
@@ -42,7 +42,7 @@ func TestText(t *testing.T) {
 		{
 			name: "assistant with reasoning and text",
 			thread: func() *junk.Thread {
-				buf := &ledger.Buffer{}
+				buf := ledger.NewThread()
 				buf.Append(ledger.RoleAssistant,
 					artifact.Reasoning{Content: "Let me think..."},
 					artifact.Text{Content: "The answer is 42."},
@@ -57,7 +57,7 @@ func TestText(t *testing.T) {
 		{
 			name: "tool call and result",
 			thread: func() *junk.Thread {
-				buf := &ledger.Buffer{}
+				buf := ledger.NewThread()
 				buf.Append(ledger.RoleAssistant, artifact.ToolCall{
 					ID:        "call-1",
 					Name:      "calculator",
@@ -77,7 +77,7 @@ func TestText(t *testing.T) {
 		{
 			name: "usage and image",
 			thread: func() *junk.Thread {
-				buf := &ledger.Buffer{}
+				buf := ledger.NewThread()
 				buf.Append(ledger.RoleAssistant,
 					artifact.Text{Content: "Here is an image."},
 					artifact.Image{URL: "https://example.com/img.png"},
@@ -94,7 +94,7 @@ func TestText(t *testing.T) {
 			name: "metadata",
 			thread: &junk.Thread{
 				ID:        "thread-6",
-				State:     &ledger.Buffer{},
+				State:     ledger.NewThread(),
 				Metadata:  map[string]string{"key1": "val1", "key2": "val2"},
 				CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			},

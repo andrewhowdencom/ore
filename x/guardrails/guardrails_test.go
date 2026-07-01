@@ -13,7 +13,7 @@ import (
 func TestTransform_PrependsGuardrails(t *testing.T) {
 	tr, err := New(WithRules("rule one", "rule two"))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -37,7 +37,7 @@ func TestTransform_PrependsGuardrails(t *testing.T) {
 func TestTransform_NoRules(t *testing.T) {
 	tr, err := New()
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 
 	result, err := tr.Transform(context.Background(), base)
@@ -53,7 +53,7 @@ func TestTransform_NoRules(t *testing.T) {
 func TestTransform_DelegatesAppend(t *testing.T) {
 	tr, err := New(WithRules("rule"))
 	require.NoError(t, err)
-	base := &ledger.Buffer{}
+	base := ledger.NewThread()
 	base.Append(ledger.RoleUser, artifact.Text{Content: "user"})
 
 	result, err := tr.Transform(context.Background(), base)

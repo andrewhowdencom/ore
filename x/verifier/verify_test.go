@@ -42,7 +42,7 @@ func (f *failOnceVerifier) Verify(ctx context.Context, st ledger.State) (Verific
 var _ Verifier = (*failOnceVerifier)(nil)
 
 func TestWithVerification_PassOnFirstTry(t *testing.T) {
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	mock := &mockPattern{returnState: mem}
@@ -63,7 +63,7 @@ func TestWithVerification_PassOnFirstTry(t *testing.T) {
 }
 
 func TestWithVerification_FailThenRetryThenPass(t *testing.T) {
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	mock := &mockPattern{returnState: mem}
@@ -86,7 +86,7 @@ func TestWithVerification_FailThenRetryThenPass(t *testing.T) {
 }
 
 func TestWithVerification_MaxRetriesExceeded(t *testing.T) {
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	mock := &mockPattern{returnState: mem}
@@ -102,7 +102,7 @@ func TestWithVerification_MaxRetriesExceeded(t *testing.T) {
 }
 
 func TestWithVerification_VerifierError(t *testing.T) {
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	mock := &mockPattern{returnState: mem}
@@ -118,7 +118,7 @@ func TestWithVerification_VerifierError(t *testing.T) {
 }
 
 func TestWithVerification_InnerPatternError(t *testing.T) {
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	wantErr := errors.New("inner failed")
@@ -134,7 +134,7 @@ func TestWithVerification_InnerPatternError(t *testing.T) {
 }
 
 func TestWithVerification_MultipleVerifiers(t *testing.T) {
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	mock := &mockPattern{returnState: mem}
@@ -151,7 +151,7 @@ func TestWithVerification_MultipleVerifiers(t *testing.T) {
 }
 
 func TestWithVerification_DefaultMaxRetries(t *testing.T) {
-	mem := &ledger.Buffer{}
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	mock := &mockPattern{returnState: mem}
@@ -167,8 +167,8 @@ func TestWithVerification_DefaultMaxRetries(t *testing.T) {
 }
 
 func TestWithVerification_Name(t *testing.T) {
-	mock := &mockPattern{returnState: &ledger.Buffer{}}
-	step := loop.New(loop.WithState(&ledger.Buffer{}))
+	mock := &mockPattern{returnState: ledger.NewThread()}
+	step := loop.New(loop.WithState(ledger.NewThread()))
 	pattern := WithVerification(mock, step)
 
 	assert.Equal(t, "verified", pattern.Name())

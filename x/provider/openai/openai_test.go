@@ -68,5 +68,5 @@ var (
 	_ = context.Background
 	_ = artifact.Text{}
 	_ = models.Spec{}
-	_ = ledger.NewBuffer()
+	_ = ledger.NewThread()
 )

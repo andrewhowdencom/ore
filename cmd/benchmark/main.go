@@ -182,7 +182,7 @@ func buildPattern(name string) cognitive.Pattern {
 func runCase(ctx context.Context, a *agent.Agent, c Case) Result {
 	start := time.Now()
 
-	buf := &ledger.Buffer{}
+	buf := ledger.NewThread()
 	buf.Append(ledger.RoleUser, artifact.Text{Content: c.Input})
 
 	type captured struct{ turn ledger.Turn }

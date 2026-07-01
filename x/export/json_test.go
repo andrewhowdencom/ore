@@ -13,7 +13,7 @@ import (
 )
 
 func TestJSON(t *testing.T) {
-	buf := &ledger.Buffer{}
+	buf := ledger.NewThread()
 	buf.Append(ledger.RoleUser, artifact.Text{Content: "Hello!"})
 	thread := &junk.Thread{
 		ID:        "thread-json-1",

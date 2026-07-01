@@ -81,7 +81,7 @@ func TestWithNameResolver_AppliesMapping(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	ch := make(chan artifact.Artifact, 1)
@@ -115,7 +115,7 @@ func TestWithNameResolver_NotCalledForEmptyName(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	mem := ledger.NewBuffer()
+	mem := ledger.NewThread()
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 	ch := make(chan artifact.Artifact, 1)
 	err = p.Invoke(t.Context(), mem, models.Spec{Name: ""}, ch)

@@ -15,7 +15,7 @@ import (
 // fixtureThread returns a thread containing at least one of each known
 // artifact type (excluding deltas, which are never persisted).
 func fixtureThread() *junk.Thread {
-	buf := &ledger.Buffer{}
+	buf := ledger.NewThread()
 
 	// System turn with reasoning.
 	buf.Append(ledger.RoleSystem, artifact.Text{Content: "You are a helpful assistant."})

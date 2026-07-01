@@ -119,8 +119,8 @@ func TestMarshalOutputEvent(t *testing.T) {
 	}{
 		{
 			name:  "turn_complete",
-			event: loop.TurnCompleteEvent{Turn: ledger.Turn{Role: ledger.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}}}},
-			want:  `{"kind":"turn_complete","turn":{"role":"assistant","artifacts":[{"kind":"text","content":"hi"}]}}`,
+			event: loop.TurnCompleteEvent{Turn: ledger.Turn{ID: "turn-1", Role: ledger.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}}}},
+			want:  `{"kind":"turn_complete","turn":{"id":"turn-1","role":"assistant","artifacts":[{"kind":"text","data":{"kind":"text","content":"hi"}}]}}`,
 		},
 		{
 			name:  "error",
@@ -182,8 +182,8 @@ func TestUnmarshalOutputEvent(t *testing.T) {
 	}{
 		{
 			name:  "turn_complete",
-			input: `{"kind":"turn_complete","turn":{"role":"assistant","artifacts":[{"kind":"text","content":"hi"}]}}`,
-			want:  loop.TurnCompleteEvent{Turn: ledger.Turn{Role: ledger.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}}}},
+			input: `{"kind":"turn_complete","turn":{"id":"turn-1","role":"assistant","artifacts":[{"kind":"text","data":{"kind":"text","content":"hi"}}]}}`,
+			want:  loop.TurnCompleteEvent{Turn: ledger.Turn{ID: "turn-1", Role: ledger.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hi"}}}},
 		},
 		{
 			name:  "error",
@@ -268,8 +268,8 @@ func TestMarshalOutputEvent_WithContext(t *testing.T) {
 	}{
 		{
 			name:  "turn_complete_with_context",
-			event: loop.TurnCompleteEvent{Turn: ledger.Turn{Role: ledger.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}, Ctx: loop.WithProvenance(context.Background(), "http")},
-			want:  `{"kind":"turn_complete","turn":{"role":"assistant","artifacts":[{"kind":"text","content":"hello"}]},"context":{"provenance":"http"}}`,
+			event: loop.TurnCompleteEvent{Turn: ledger.Turn{ID: "turn-1", Role: ledger.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}, Ctx: loop.WithProvenance(context.Background(), "http")},
+			want:  `{"kind":"turn_complete","turn":{"id":"turn-1","role":"assistant","artifacts":[{"kind":"text","data":{"kind":"text","content":"hello"}}]},"context":{"provenance":"http"}}`,
 		},
 		{
 			name:  "error_with_context",
@@ -314,8 +314,8 @@ func TestUnmarshalOutputEvent_WithContext(t *testing.T) {
 	}{
 		{
 			name:  "turn_complete_with_context",
-			input: `{"kind":"turn_complete","turn":{"role":"assistant","artifacts":[{"kind":"text","content":"hello"}]},"context":{"provenance":"http"}}`,
-			want:  loop.TurnCompleteEvent{Turn: ledger.Turn{Role: ledger.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}, Ctx: loop.WithProvenance(context.Background(), "http")},
+			input: `{"kind":"turn_complete","turn":{"id":"turn-1","role":"assistant","artifacts":[{"kind":"text","data":{"kind":"text","content":"hello"}}]},"context":{"provenance":"http"}}`,
+			want:  loop.TurnCompleteEvent{Turn: ledger.Turn{ID: "turn-1", Role: ledger.RoleAssistant, Artifacts: []artifact.Artifact{artifact.Text{Content: "hello"}}}, Ctx: loop.WithProvenance(context.Background(), "http")},
 		},
 		{
 			name:  "error_with_context",

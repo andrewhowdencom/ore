@@ -9,7 +9,7 @@ import (
 )
 
 func TestPrepend_Turns_PrependsVirtual(t *testing.T) {
-	base := &Buffer{}
+	base := NewThread()
 	base.Append(RoleUser, artifact.Text{Content: "user"})
 
 	v := Prepend(base, []Turn{
@@ -27,7 +27,7 @@ func TestPrepend_Turns_PrependsVirtual(t *testing.T) {
 }
 
 func TestPrepend_Turns_MultipleVirtual(t *testing.T) {
-	base := &Buffer{}
+	base := NewThread()
 	base.Append(RoleUser, artifact.Text{Content: "user"})
 
 	v := Prepend(base, []Turn{
@@ -43,7 +43,7 @@ func TestPrepend_Turns_MultipleVirtual(t *testing.T) {
 }
 
 func TestPrepend_Turns_EmptyVirtual(t *testing.T) {
-	base := &Buffer{}
+	base := NewThread()
 	base.Append(RoleUser, artifact.Text{Content: "user"})
 
 	v := Prepend(base, []Turn{})
@@ -57,7 +57,7 @@ func TestPrepend_Turns_EmptyVirtual(t *testing.T) {
 }
 
 func TestPrepend_Turns_DefensiveCopy(t *testing.T) {
-	base := &Buffer{}
+	base := NewThread()
 	base.Append(RoleUser, artifact.Text{Content: "user"})
 
 	virtual := []Turn{
@@ -74,7 +74,7 @@ func TestPrepend_Turns_DefensiveCopy(t *testing.T) {
 }
 
 func TestPrepend_Append_DelegatesToBase(t *testing.T) {
-	base := &Buffer{}
+	base := NewThread()
 	base.Append(RoleUser, artifact.Text{Content: "user"})
 
 	v := Prepend(base, []Turn{
@@ -98,7 +98,7 @@ func TestPrepend_Append_DelegatesToBase(t *testing.T) {
 }
 
 func TestPrepend_Turns_EmptyBase(t *testing.T) {
-	base := &Buffer{}
+	base := NewThread()
 
 	v := Prepend(base, []Turn{
 		{Role: RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "system"}}},
@@ -110,7 +110,7 @@ func TestPrepend_Turns_EmptyBase(t *testing.T) {
 }
 
 func TestPrepend_Turns_DynamicBase(t *testing.T) {
-	base := &Buffer{}
+	base := NewThread()
 	base.Append(RoleUser, artifact.Text{Content: "user"})
 
 	v := Prepend(base, []Turn{
@@ -132,7 +132,7 @@ func TestPrepend_Turns_DynamicBase(t *testing.T) {
 // accessor exposed for cross-package prepend-aware composition (see
 // compaction.Transform) returns the original base state unchanged.
 func TestPrependView_BaseState_ReturnsBase(t *testing.T) {
-	base := &Buffer{}
+	base := NewThread()
 	base.Append(RoleUser, artifact.Text{Content: "user"})
 
 	pv := Prepend(base, []Turn{
@@ -154,7 +154,7 @@ func TestPrependView_VirtualTurns_ReturnsVirtual(t *testing.T) {
 	virtual := []Turn{
 		{Role: RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "system"}}},
 	}
-	base := &Buffer{}
+	base := NewThread()
 
 	pv := Prepend(base, virtual)
 
@@ -167,7 +167,7 @@ func TestPrependView_VirtualTurns_ReturnsVirtual(t *testing.T) {
 }
 
 func TestNewView_Turns_ReturnsProjected(t *testing.T) {
-	base := &Buffer{}
+	base := NewThread()
 	base.Append(RoleUser, artifact.Text{Content: "user"})
 
 	projected := []Turn{
@@ -181,7 +181,7 @@ func TestNewView_Turns_ReturnsProjected(t *testing.T) {
 }
 
 func TestNewView_Turns_DefensiveCopy(t *testing.T) {
-	base := &Buffer{}
+	base := NewThread()
 	base.Append(RoleUser, artifact.Text{Content: "user"})
 
 	projected := []Turn{
@@ -197,7 +197,7 @@ func TestNewView_Turns_DefensiveCopy(t *testing.T) {
 }
 
 func TestNewView_Append_DelegatesToBase(t *testing.T) {
-	base := &Buffer{}
+	base := NewThread()
 	base.Append(RoleUser, artifact.Text{Content: "user"})
 
 	projected := []Turn{
@@ -220,7 +220,7 @@ func TestNewView_Append_DelegatesToBase(t *testing.T) {
 }
 
 func TestNewView_Turns_EmptyTurns(t *testing.T) {
-	base := &Buffer{}
+	base := NewThread()
 	base.Append(RoleUser, artifact.Text{Content: "user"})
 
 	v := NewView(base, []Turn{})
@@ -234,7 +234,7 @@ func TestNewView_Turns_EmptyTurns(t *testing.T) {
 }
 
 func TestNewView_Turns_Identity_NilTurns(t *testing.T) {
-	base := &Buffer{}
+	base := NewThread()
 	base.Append(RoleUser, artifact.Text{Content: "user"})
 
 	v := NewView(base, nil)
@@ -244,7 +244,7 @@ func TestNewView_Turns_Identity_NilTurns(t *testing.T) {
 }
 
 func TestNewView_Turns_Filtering(t *testing.T) {
-	base := &Buffer{}
+	base := NewThread()
 	base.Append(RoleSystem, artifact.Text{Content: "system"})
 	base.Append(RoleUser, artifact.Text{Content: "user"})
 	base.Append(RoleAssistant, artifact.Text{Content: "assistant"})
@@ -269,7 +269,7 @@ func TestNewView_Turns_Filtering(t *testing.T) {
 // the base's Meta, so writes through a view propagate to the underlying
 // buffer.
 func TestNewView_Meta_DelegatesToBase(t *testing.T) {
-	base := &Buffer{}
+	base := NewThread()
 	v := NewView(base, nil)
 
 	v.Meta().Set("alpha", "1")
@@ -282,7 +282,7 @@ func TestNewView_Meta_DelegatesToBase(t *testing.T) {
 // TestPrepend_Meta_DelegatesToBase verifies the same delegation through a
 // prependView wrapper.
 func TestPrepend_Meta_DelegatesToBase(t *testing.T) {
-	base := &Buffer{}
+	base := NewThread()
 	pv := Prepend(base, nil)
 
 	pv.Meta().Set("beta", "2")
@@ -292,12 +292,12 @@ func TestPrepend_Meta_DelegatesToBase(t *testing.T) {
 	assert.Equal(t, "2", got)
 }
 
-// TestBuffer_Meta_LazilyInitialized verifies that calling Meta() on a
-// Buffer with no prior writes does not allocate the underlying map
+// TestThread_Meta_LazilyInitialized verifies that calling Meta() on a
+// Thread with no prior writes does not allocate the underlying map
 // until a Set happens. Reads against an unset map return ok=false
 // cleanly.
-func TestBuffer_Meta_LazilyInitialized(t *testing.T) {
-	b := &Buffer{}
+func TestThread_Meta_LazilyInitialized(t *testing.T) {
+	b := NewThread()
 
 	v, ok := b.Meta().Get("never-set")
 	assert.False(t, ok, "unset key must return ok=false")
@@ -309,10 +309,10 @@ func TestBuffer_Meta_LazilyInitialized(t *testing.T) {
 	assert.Equal(t, "value", v)
 }
 
-// TestBuffer_Meta_All_DefensiveCopy verifies that mutations to the
-// map returned by All() do not affect the buffer's metadata.
-func TestBuffer_Meta_All_DefensiveCopy(t *testing.T) {
-	b := &Buffer{}
+// TestThread_Meta_All_DefensiveCopy verifies that mutations to the
+// map returned by All() do not affect the thread's metadata.
+func TestThread_Meta_All_DefensiveCopy(t *testing.T) {
+	b := NewThread()
 	b.Meta().Set("k", "v")
 
 	all := b.Meta().All()
