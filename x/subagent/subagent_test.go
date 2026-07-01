@@ -2,15 +2,16 @@ package subagent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/andrewhowdencom/ore/agent"
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -141,4 +142,56 @@ func TestAsTool_SandboxIsIgnored(t *testing.T) {
 	result, err := fn(context.Background(), nil, map[string]any{"prompt": "Hi."})
 	require.NoError(t, err)
 	assert.Equal(t, "OK", result)
+}
+
+func TestResultSystemPrompt(t *testing.T) {
+	tr, err := ResultSystemPrompt()
+	require.NoError(t, err)
+	require.NotNil(t, tr)
+
+	// Smoke: applying the transform to a state injects a RoleSystem
+	// turn with the schema-rendering content. The transform must not
+	// mutate the existing turn (it is prepended, not appended).
+	base := &ledger.Buffer{}
+	base.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
+
+	out, err := tr.Transform(context.Background(), base)
+	require.NoError(t, err)
+
+	turns := out.Turns()
+	require.Len(t, turns, 2)
+	assert.Equal(t, ledger.RoleSystem, turns[0].Role)
+	assert.Equal(t, ledger.RoleUser, turns[1].Role)
+
+	text, ok := turns[0].Artifacts[0].(artifact.Text)
+	require.True(t, ok)
+	assert.Contains(t, text.Content, `"status"`)
+	assert.Contains(t, text.Content, `"summary"`)
+	assert.Contains(t, text.Content, `"success"`)
+	assert.Contains(t, text.Content, `"partial"`)
+	assert.Contains(t, text.Content, `"failed"`)
+}
+
+func TestResultSchema_IsValidJSON(t *testing.T) {
+	// The schema must round-trip through encoding/json without loss.
+	b, err := json.Marshal(ResultSchema)
+	require.NoError(t, err)
+	var roundTripped map[string]any
+	require.NoError(t, json.Unmarshal(b, &roundTripped))
+
+	// Sanity: the schema declares the three Status values as the
+	// only legal values for the status field, and marks both
+	// "status" and "summary" as required.
+	props, ok := ResultSchema["properties"].(map[string]any)
+	require.True(t, ok)
+
+	status, ok := props["status"].(map[string]any)
+	require.True(t, ok)
+	enum, ok := status["enum"].([]string)
+	require.True(t, ok)
+	assert.Equal(t, []string{"success", "partial", "failed"}, enum)
+
+	required, ok := ResultSchema["required"].([]string)
+	require.True(t, ok)
+	assert.Equal(t, []string{"status", "summary"}, required)
 }
