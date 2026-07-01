@@ -32,22 +32,25 @@ func (s *stubProvider) Invoke(_ context.Context, _ ledger.State, _ models.Spec, 
 	return s.err
 }
 
-// newSubAgent builds a sub-agent for tests. The agent is closed when
-// the test ends.
-func newSubAgent(t *testing.T, p provider.Provider) *agent.Agent {
+// newSubAgent returns a factory that builds a fresh *agent.Agent per
+// invocation. Each agent has a SingleShot pattern with the supplied
+// provider and a zero-value model spec; the resulting *agent.Agent is
+// closed by the sub-agent closure body (via defer) at the end of each
+// tool invocation.
+func newSubAgent(t *testing.T, p provider.Provider) func() (*agent.Agent, error) {
 	t.Helper()
-	a := agent.New("test-subagent",
-		agent.WithProvider(p),
-		agent.WithSpec(models.Spec{}),
-		agent.WithPattern(&cognitive.SingleShot{}),
-	)
-	t.Cleanup(func() { _ = a.Close() })
-	return a
+	return func() (*agent.Agent, error) {
+		return agent.New("test-subagent",
+			agent.WithProvider(p),
+			agent.WithSpec(models.Spec{}),
+			agent.WithPattern(&cognitive.SingleShot{}),
+		), nil
+	}
 }
 
 func TestAsTool_DescriptorAndSchema(t *testing.T) {
-	a := newSubAgent(t, &stubProvider{})
-	desc, fn := AsTool(a, "echo", "An echo sub-agent.")
+	factory := newSubAgent(t, &stubProvider{})
+	desc, fn := AsTool(factory, "echo", "An echo sub-agent.")
 	require.NotNil(t, fn)
 
 	assert.Equal(t, "echo", desc.Name)
@@ -66,12 +69,12 @@ func TestAsTool_DescriptorAndSchema(t *testing.T) {
 }
 
 func TestAsTool_RunsAgentAndReturnsAssistantText(t *testing.T) {
-	a := newSubAgent(t, &stubProvider{
+	factory := newSubAgent(t, &stubProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "Hello from the sub-agent."},
 		},
 	})
-	_, fn := AsTool(a, "echo", "An echo sub-agent.")
+	_, fn := AsTool(factory, "echo", "An echo sub-agent.")
 
 	result, err := fn(context.Background(), nil, map[string]any{"prompt": "Hi."})
 	require.NoError(t, err)
@@ -79,13 +82,13 @@ func TestAsTool_RunsAgentAndReturnsAssistantText(t *testing.T) {
 }
 
 func TestAsTool_ConcatenatesTextAndTextDelta(t *testing.T) {
-	a := newSubAgent(t, &stubProvider{
+	factory := newSubAgent(t, &stubProvider{
 		artifacts: []artifact.Artifact{
 			artifact.TextDelta{Content: "Part A. "},
 			artifact.TextDelta{Content: "Part B."},
 		},
 	})
-	_, fn := AsTool(a, "echo", "An echo sub-agent.")
+	_, fn := AsTool(factory, "echo", "An echo sub-agent.")
 
 	result, err := fn(context.Background(), nil, map[string]any{"prompt": "Hi."})
 	require.NoError(t, err)
@@ -93,8 +96,8 @@ func TestAsTool_ConcatenatesTextAndTextDelta(t *testing.T) {
 }
 
 func TestAsTool_RequiresPrompt(t *testing.T) {
-	a := newSubAgent(t, &stubProvider{})
-	_, fn := AsTool(a, "echo", "An echo sub-agent.")
+	factory := newSubAgent(t, &stubProvider{})
+	_, fn := AsTool(factory, "echo", "An echo sub-agent.")
 
 	cases := []struct {
 		name string
@@ -115,8 +118,8 @@ func TestAsTool_RequiresPrompt(t *testing.T) {
 
 func TestAsTool_PropagatesAgentError(t *testing.T) {
 	want := errors.New("agent run failed")
-	a := newSubAgent(t, &stubProvider{err: want})
-	_, fn := AsTool(a, "echo", "An echo sub-agent.")
+	factory := newSubAgent(t, &stubProvider{err: want})
+	_, fn := AsTool(factory, "echo", "An echo sub-agent.")
 
 	_, err := fn(context.Background(), nil, map[string]any{"prompt": "Hi."})
 	require.Error(t, err)
@@ -128,12 +131,12 @@ func TestAsTool_SandboxIsIgnored(t *testing.T) {
 	// The sub-agent runs against a fresh ledger.Buffer seeded with the
 	// prompt; the Sandbox argument is unused. Passing a non-nil
 	// sandbox must not change the result.
-	a := newSubAgent(t, &stubProvider{
+	factory := newSubAgent(t, &stubProvider{
 		artifacts: []artifact.Artifact{
 			artifact.Text{Content: "OK"},
 		},
 	})
-	_, fn := AsTool(a, "echo", "An echo sub-agent.")
+	_, fn := AsTool(factory, "echo", "An echo sub-agent.")
 
 	result, err := fn(context.Background(), nil, map[string]any{"prompt": "Hi."})
 	require.NoError(t, err)

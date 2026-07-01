@@ -33,35 +33,60 @@ var promptSchema = map[string]any{
 	"required": []string{"prompt"},
 }
 
-// AsTool wraps an *agent.Agent as a tool.Tool. The tool's input is a
-// JSON object with a single "prompt" string field; the agent runs
-// once (its configured pattern decides whether that is one turn or
-// many), and the produced assistant turn is returned as the tool's
-// string result.
+// AsTool wraps an application-supplied factory as a tool.Tool. Each
+// invocation of the tool calls the factory to obtain a fresh
+// *agent.Agent, runs the agent against a one-shot ledger seeded
+// with the prompt, captures the produced turn from the agent's
+// "turn_complete" event stream, and closes the agent. The factory
+// is the sole extension point: callers compose the agent's pattern,
+// model, and tool subset, then hand the factory to AsTool.
 //
-// The sub-agent runs against a fresh ledger.Buffer seeded with the
-// prompt as a RoleUser turn. The sub-agent's configured transforms,
-// handlers, and pattern apply to that fresh buffer. State does not
-// persist between sub-agent invocations.
+// The tool's input is a JSON object with a single "prompt" string
+// field; the agent runs once (its configured pattern decides
+// whether that is one turn or many), and the produced assistant
+// turn is returned as the tool's string result.
 //
-// The tool captures the produced turn from the agent's
-// "turn_complete" event stream (the same mechanism the compactor
-// uses). The agent need not have a state binding; the ephemeral
-// buffer built here is used for inference context only.
+// Fresh-per-call contract: the factory MUST return a new
+// *agent.Agent per invocation. The closure calls defer Close()
+// on the returned agent; *agent.Agent.Close is idempotent (via
+// sync.Once) but a closed agent's step will reject subsequent
+// runs. A factory that returns the same agent twice will fail on
+// the second call.
+//
+// State isolation: the sub-agent runs against a fresh
+// ledger.Buffer seeded with the prompt as a RoleUser turn. The
+// sub-agent's configured transforms, handlers, and pattern apply
+// to that fresh buffer. The agent MUST NOT be constructed with
+// agent.WithState (which would auto-append to the bound state on
+// every Emit); the factory's responsibility is to omit WithState
+// from the agent's options.
 //
 // AsTool returns both the tool.Tool descriptor and its callable
 // ToolFunc. The caller is expected to register both with a
 // tool.Registry, e.g.:
 //
-//	subT, subFn := subagent.AsTool(sub, "researcher",
-//	    "Search the codebase and answer the prompt.")
+//	subT, subFn := subagent.AsTool(func() (*agent.Agent, error) {
+//	    sp, _ := subagent.ResultSystemPrompt()
+//	    return agent.New("researcher",
+//	        agent.WithProvider(prov),
+//	        agent.WithSpec(spec),
+//	        agent.WithPattern(&cognitive.SingleShot{}),
+//	        agent.WithTransforms(sp),
+//	    ), nil
+//	}, "researcher", "Search the codebase and answer the prompt.")
 //	_ = registry.Register(subT, subFn)
-func AsTool(a *agent.Agent, name, description string) (tool.Tool, tool.ToolFunc) {
+func AsTool(build func() (*agent.Agent, error), name, description string) (tool.Tool, tool.ToolFunc) {
 	fn := func(ctx context.Context, _ tool.Sandbox, args map[string]any) (any, error) {
 		prompt, _ := args["prompt"].(string)
 		if prompt == "" {
 			return nil, fmt.Errorf("subagent %s: prompt is required", name)
 		}
+
+		a, err := build()
+		if err != nil {
+			return nil, fmt.Errorf("subagent %s: %w", name, err)
+		}
+		defer func() { _ = a.Close() }()
 
 		buf := &ledger.Buffer{}
 		buf.Append(ledger.RoleUser, artifact.Text{Content: prompt})
