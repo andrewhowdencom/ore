@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/ledger"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/ledger"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -74,6 +75,12 @@ type options struct {
 	honorRetryAfter bool
 	classify        ClassifyFunc
 	tracer          trace.Tracer
+
+	// emitter is the loop.Emitter that receives loop.NoticeEvent
+	// notifications on each retry attempt transition. It is set
+	// via SetEmitter after construction; the zero value (nil) is
+	// valid and disables notice emission.
+	emitter loop.Emitter
 }
 
 // DefaultClassifier is the policy used when no classifier is supplied
@@ -358,6 +365,28 @@ func WithClassifier(c ClassifyFunc) Option {
 // unset, the decorator performs no tracing.
 func WithTracer(t trace.Tracer) Option {
 	return func(o *options) { o.tracer = t }
+}
+
+// SetEmitter attaches a loop.Emitter that receives loop.NoticeEvent
+// notifications on each retry attempt transition. The typical caller
+// is the loop.Step that drives this decorator:
+//
+//	retryDec := retry.New(inner)
+//	step := loop.NewStep(retryDec, ...)
+//	retryDec.SetEmitter(step)
+//
+// The setter is intended to be called once at startup; concurrent
+// calls are not safe (matching the convention of Step.SetEventContext
+// and OnEmit registration). Passing nil disables notice emission.
+//
+// The retry decorator emits a SeverityWarn notice with content
+// "Retrying (N/M): <error summary>" where N is the upcoming attempt
+// and M is the configured MaxAttempts. The streaming-backstop and
+// final-attempt paths do not emit a notice; the existing
+// loop.ErrorEvent from the step carries the final failure to the
+// user.
+func (p *Provider) SetEmitter(e loop.Emitter) {
+	p.opts.emitter = e
 }
 
 // Compile-time assertion that *Provider satisfies provider.Provider.
