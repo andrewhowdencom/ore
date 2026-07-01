@@ -3,8 +3,10 @@ package retry
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
@@ -106,6 +108,32 @@ func DefaultClassifier(err error) (Action, time.Duration) {
 		return ActionRetry, parseRetryAfter(he.Header())
 	}
 	return ActionFail, 0
+}
+
+// summarize returns a single-line, length-capped string suitable for
+// embedding in a user-facing notice. The first line of err.Error() is
+// kept; subsequent lines are dropped. Whitespace runs are collapsed
+// to single spaces. The result is capped at 80 runes; on overflow
+// the trailing bytes are replaced with the ellipsis "…" (one rune),
+// keeping the total length at 80 runes regardless of the original
+// payload. A nil error returns "".
+func summarize(err error) string {
+	if err == nil {
+		return ""
+	}
+	s := err.Error()
+	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
+		s = s[:i]
+	}
+	s = strings.Join(strings.Fields(s), " ")
+	const maxRunes = 80
+	runes := []rune(s)
+	if len(runes) > maxRunes {
+		runes = runes[:maxRunes-1]
+		runes = append(runes, '…')
+		s = string(runes)
+	}
+	return s
 }
 
 // parseRetryAfter reads the Retry-After header. The HTTP/1.1 spec
@@ -309,6 +337,24 @@ func (p *Provider) Invoke(ctx context.Context, s ledger.State, spec models.Spec,
 				attribute.Int64("retry.delay_ms", delay.Milliseconds()),
 				attribute.String("retry.action", "retry"),
 			))
+		}
+
+		// Surface the retry to the user as a SeverityWarn notice.
+		// The notice fires only on the retry path; the streaming
+		// backstop and the final-attempt path return early above
+		// without a notice, and the step's existing loop.ErrorEvent
+		// carries the final failure to the user.
+		if p.opts.emitter != nil {
+			p.opts.emitter.Emit(ctx, loop.NoticeEvent{
+				Notice: loop.Notice{
+					Severity: loop.SeverityWarn,
+					Content: fmt.Sprintf(
+						"Retrying (%d/%d): %s",
+						attempt+1, p.opts.maxAttempts, summarize(err),
+					),
+				},
+				Ctx: ctx,
+			})
 		}
 
 		// Sleep with cancellation. We always honour ctx
