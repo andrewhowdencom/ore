@@ -3,14 +3,17 @@ package retry
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/ledger"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/ledger"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -74,6 +77,12 @@ type options struct {
 	honorRetryAfter bool
 	classify        ClassifyFunc
 	tracer          trace.Tracer
+
+	// emitter is the loop.Emitter that receives loop.NoticeEvent
+	// notifications on each retry attempt transition. It is set
+	// via SetEmitter after construction; the zero value (nil) is
+	// valid and disables notice emission.
+	emitter loop.Emitter
 }
 
 // DefaultClassifier is the policy used when no classifier is supplied
@@ -99,6 +108,32 @@ func DefaultClassifier(err error) (Action, time.Duration) {
 		return ActionRetry, parseRetryAfter(he.Header())
 	}
 	return ActionFail, 0
+}
+
+// summarize returns a single-line, length-capped string suitable for
+// embedding in a user-facing notice. The first line of err.Error() is
+// kept; subsequent lines are dropped. Whitespace runs are collapsed
+// to single spaces. The result is capped at 80 runes; on overflow
+// the trailing bytes are replaced with the ellipsis "…" (one rune),
+// keeping the total length at 80 runes regardless of the original
+// payload. A nil error returns "".
+func summarize(err error) string {
+	if err == nil {
+		return ""
+	}
+	s := err.Error()
+	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
+		s = s[:i]
+	}
+	s = strings.Join(strings.Fields(s), " ")
+	const maxRunes = 80
+	runes := []rune(s)
+	if len(runes) > maxRunes {
+		runes = runes[:maxRunes-1]
+		runes = append(runes, '…')
+		s = string(runes)
+	}
+	return s
 }
 
 // parseRetryAfter reads the Retry-After header. The HTTP/1.1 spec
@@ -304,6 +339,24 @@ func (p *Provider) Invoke(ctx context.Context, s ledger.State, spec models.Spec,
 			))
 		}
 
+		// Surface the retry to the user as a SeverityWarn notice.
+		// The notice fires only on the retry path; the streaming
+		// backstop and the final-attempt path return early above
+		// without a notice, and the step's existing loop.ErrorEvent
+		// carries the final failure to the user.
+		if p.opts.emitter != nil {
+			p.opts.emitter.Emit(ctx, loop.NoticeEvent{
+				Notice: loop.Notice{
+					Severity: loop.SeverityWarn,
+					Content: fmt.Sprintf(
+						"Retrying (%d/%d): %s",
+						attempt+1, p.opts.maxAttempts, summarize(err),
+					),
+				},
+				Ctx: ctx,
+			})
+		}
+
 		// Sleep with cancellation. We always honour ctx
 		// during the backoff so a fast-cancel caller does
 		// not get stuck on a 30s delay.
@@ -358,6 +411,28 @@ func WithClassifier(c ClassifyFunc) Option {
 // unset, the decorator performs no tracing.
 func WithTracer(t trace.Tracer) Option {
 	return func(o *options) { o.tracer = t }
+}
+
+// SetEmitter attaches a loop.Emitter that receives loop.NoticeEvent
+// notifications on each retry attempt transition. The typical caller
+// is the loop.Step that drives this decorator:
+//
+//	retryDec := retry.New(inner)
+//	step := loop.NewStep(retryDec, ...)
+//	retryDec.SetEmitter(step)
+//
+// The setter is intended to be called once at startup; concurrent
+// calls are not safe (matching the convention of Step.SetEventContext
+// and OnEmit registration). Passing nil disables notice emission.
+//
+// The retry decorator emits a SeverityWarn notice with content
+// "Retrying (N/M): <error summary>" where N is the upcoming attempt
+// and M is the configured MaxAttempts. The streaming-backstop and
+// final-attempt paths do not emit a notice; the existing
+// loop.ErrorEvent from the step carries the final failure to the
+// user.
+func (p *Provider) SetEmitter(e loop.Emitter) {
+	p.opts.emitter = e
 }
 
 // Compile-time assertion that *Provider satisfies provider.Provider.

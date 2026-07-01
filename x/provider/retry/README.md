@@ -6,7 +6,10 @@ failures (HTTP 5xx, 429 with `Retry-After`) on long-running LLM sessions.
 ## Quick Start
 
 ```go
-import "github.com/andrewhowdencom/ore/x/provider/retry"
+import (
+    "github.com/andrewhowdencom/ore/loop"
+    "github.com/andrewhowdencom/ore/x/provider/retry"
+)
 
 // Wrap any provider.Provider with the default retry policy.
 decorated := retry.New(inner)
@@ -20,6 +23,14 @@ decorated := retry.New(inner,
     retry.WithClassifier(myClassifier),
     retry.WithTracer(tracer),
 )
+
+// To surface each retry attempt to the user as a SeverityWarn
+// loop.NoticeEvent (rendered by the TUI, HTTP, and stdio conduits
+// via the loop.NoticeEvent channel), attach the loop.Step that
+// drives this decorator:
+retryDec := retry.New(inner, /* ... */)
+step := loop.NewStep(retryDec /*, ... */)
+retryDec.SetEmitter(step)
 ```
 
 The decorated provider is a drop-in replacement for the inner one — same
@@ -60,6 +71,43 @@ between attempts).
 The classifier still runs on the failure, but its verdict is ignored once
 emission has started: the decorator returns the error verbatim so the
 caller sees the failure that produced the partial response.
+
+## User-Facing Notices
+
+When a `loop.Emitter` is attached via `SetEmitter`, each retry
+transition emits a `loop.NoticeEvent` to the configured emitter. The
+notice is rendered by the TUI, HTTP, and stdio conduits via the
+existing `loop.NoticeEvent` channel (see `loop/notice.go`); no
+conduit changes are required.
+
+- **Content**: `Retrying (N/M): <error summary>`, where N is the
+  upcoming attempt (1-based; first retry shows `2/3`), M is the
+  configured `MaxAttempts`, and `<error summary>` is the first line
+  of `err.Error()` collapsed to single spaces, capped at 80 runes,
+  with a `…` suffix on overflow.
+- **Severity**: `loop.SeverityWarn` — the user should know something
+  went wrong, but the situation is recoverable.
+- **No emit**: the streaming-backstop path (any emission on the
+  current attempt), the final-attempt path, and a context
+  cancellation during the backoff sleep do **not** emit a notice.
+  The existing `loop.ErrorEvent` from the step carries the final
+  failure to the user; the notice is purely "we're about to
+  retry".
+- **Default behavior**: when `SetEmitter` is not called, the retry
+  decorator performs no user-facing emission. This is the zero
+  value of `options.emitter` and matches the existing convention
+  that optional integrations are off by default.
+
+```go
+retryDec := retry.New(inner)
+step := loop.NewStep(retryDec /* , ... */)
+retryDec.SetEmitter(step)
+```
+
+`SetEmitter` is intended to be called once at startup, after
+`loop.NewStep` is constructed. Concurrent calls are not safe
+(matching the convention of `Step.SetEventContext` and
+`OnEmit` registration).
 
 ## HTTPError Interface
 

@@ -5,15 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/ledger"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/ledger"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -71,7 +73,7 @@ func (e *httpErr) Error() string {
 	return fmt.Sprintf("http %d: %s", e.status, e.message)
 }
 
-func (e *httpErr) StatusCode() int      { return e.status }
+func (e *httpErr) StatusCode() int     { return e.status }
 func (e *httpErr) Header() http.Header { return e.header }
 func (e *httpErr) Unwrap() error       { return nil }
 
@@ -112,6 +114,7 @@ func TestProvider_5xx_ThenSuccess(t *testing.T) {
 	p := New(inner, fastOpts()...)
 	ch := make(chan artifact.Artifact, 8)
 	require.NoError(t, p.Invoke(t.Context(), newState(), models.Spec{Name: "x"}, ch))
+	close(ch)
 
 	var out []artifact.Artifact
 	for a := range ch {
@@ -153,6 +156,7 @@ func TestProvider_429_WithRetryAfter(t *testing.T) {
 	p := New(inner, WithBaseDelay(1*time.Millisecond), WithMaxDelay(1*time.Millisecond))
 	ch := make(chan artifact.Artifact, 8)
 	require.NoError(t, p.Invoke(t.Context(), newState(), models.Spec{Name: "x"}, ch))
+	close(ch)
 
 	for range ch {
 	}
@@ -232,6 +236,7 @@ func TestProvider_EmissionThenFailure(t *testing.T) {
 	p := New(inner, fastOpts()...)
 	ch := make(chan artifact.Artifact, 8)
 	err := p.Invoke(t.Context(), newState(), models.Spec{Name: "x"}, ch)
+	close(ch)
 	require.Error(t, err)
 	assert.Equal(t, int32(1), atomic.LoadInt32(&inner.calls), "must not retry after emission")
 
@@ -269,6 +274,7 @@ func TestProvider_CustomClassifier(t *testing.T) {
 	p := New(inner, append(fastOpts(), WithClassifier(classifier))...)
 	ch := make(chan artifact.Artifact, 8)
 	require.NoError(t, p.Invoke(t.Context(), newState(), models.Spec{Name: "x"}, ch))
+	close(ch)
 
 	for range ch {
 	}
@@ -330,6 +336,7 @@ func TestProvider_WithHonorRetryAfterFalse(t *testing.T) {
 	)
 	ch := make(chan artifact.Artifact, 8)
 	require.NoError(t, p.Invoke(t.Context(), newState(), models.Spec{Name: "x"}, ch))
+	close(ch)
 	for range ch {
 	}
 	assert.Equal(t, int32(2), atomic.LoadInt32(&inner.calls))
@@ -359,6 +366,7 @@ func TestProvider_Tracing(t *testing.T) {
 	p := New(inner, append(fastOpts(), WithTracer(tracer))...)
 	ch := make(chan artifact.Artifact, 8)
 	require.NoError(t, p.Invoke(t.Context(), newState(), models.Spec{Name: "x"}, ch))
+	close(ch)
 	for range ch {
 	}
 
@@ -465,6 +473,7 @@ func TestProvider_SuccessFirstAttempt(t *testing.T) {
 	p := New(inner, fastOpts()...)
 	ch := make(chan artifact.Artifact, 8)
 	require.NoError(t, p.Invoke(t.Context(), newState(), models.Spec{Name: "x"}, ch))
+	close(ch)
 
 	var out []artifact.Artifact
 	for a := range ch {
@@ -556,4 +565,197 @@ func TestDefaultClassifier_429_Delay(t *testing.T) {
 	}
 	_, dly := DefaultClassifier(err)
 	assert.GreaterOrEqual(t, dly, 2*time.Second)
+}
+
+// captureEmitter is a test-only loop.Emitter that records every
+// NoticeEvent it receives. The mutex costs nothing and keeps the
+// fixture reusable from t.Parallel()-driven tests; in practice Invoke
+// emits serially, so a plain slice would also work.
+type captureEmitter struct {
+	mu     sync.Mutex
+	events []loop.NoticeEvent
+}
+
+func (c *captureEmitter) Emit(_ context.Context, e loop.OutputEvent) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if ne, ok := e.(loop.NoticeEvent); ok {
+		c.events = append(c.events, ne)
+	}
+}
+
+func (c *captureEmitter) snapshot() []loop.NoticeEvent {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]loop.NoticeEvent, len(c.events))
+	copy(out, c.events)
+	return out
+}
+
+// TestProvider_NoticeOnRetry: a transient 503 is retried, and the
+// configured emitter receives exactly one SeverityWarn notice with
+// the expected content.
+func TestProvider_NoticeOnRetry(t *testing.T) {
+	t.Parallel()
+
+	inner := &scriptProvider{
+		plan: []func(chan<- artifact.Artifact) error{
+			func(_ chan<- artifact.Artifact) error {
+				return &httpErr{status: 503, message: "unavailable"}
+			},
+			func(ch chan<- artifact.Artifact) error {
+				ch <- artifact.TextDelta{Content: "ok"}
+				return nil
+			},
+		},
+	}
+
+	em := &captureEmitter{}
+	p := New(inner, fastOpts()...)
+	p.SetEmitter(em)
+	ch := make(chan artifact.Artifact, 8)
+	require.NoError(t, p.Invoke(t.Context(), newState(), models.Spec{Name: "x"}, ch))
+	close(ch)
+	for range ch {
+	}
+
+	events := em.snapshot()
+	require.Len(t, events, 1)
+	assert.Equal(t, loop.SeverityWarn, events[0].Notice.Severity)
+	assert.Equal(t, "Retrying (2/3): http 503: unavailable", events[0].Notice.Content)
+	assert.NotNil(t, events[0].Ctx, "the emitter must receive the caller's context")
+}
+
+// TestProvider_NoticeOnMultipleRetries: two transient 503s are
+// retried, and the configured emitter receives two notices in
+// order with the expected attempt counter.
+func TestProvider_NoticeOnMultipleRetries(t *testing.T) {
+	t.Parallel()
+
+	inner := &scriptProvider{
+		plan: []func(chan<- artifact.Artifact) error{
+			func(_ chan<- artifact.Artifact) error {
+				return &httpErr{status: 503, message: "first"}
+			},
+			func(_ chan<- artifact.Artifact) error {
+				return &httpErr{status: 503, message: "second"}
+			},
+			func(ch chan<- artifact.Artifact) error {
+				ch <- artifact.TextDelta{Content: "ok"}
+				return nil
+			},
+		},
+	}
+
+	em := &captureEmitter{}
+	p := New(inner, fastOpts()...)
+	p.SetEmitter(em)
+	ch := make(chan artifact.Artifact, 8)
+	require.NoError(t, p.Invoke(t.Context(), newState(), models.Spec{Name: "x"}, ch))
+	close(ch)
+	for range ch {
+	}
+
+	events := em.snapshot()
+	require.Len(t, events, 2)
+	assert.Equal(t, "Retrying (2/3): http 503: first", events[0].Notice.Content)
+	assert.Equal(t, "Retrying (3/3): http 503: second", events[1].Notice.Content)
+}
+
+// TestProvider_NoEmitter_NoPanic: a retry sequence without a
+// configured emitter succeeds and produces the expected artifact.
+// The notice path is a no-op when emitter is nil.
+func TestProvider_NoEmitter_NoPanic(t *testing.T) {
+	t.Parallel()
+
+	inner := &scriptProvider{
+		plan: []func(chan<- artifact.Artifact) error{
+			func(_ chan<- artifact.Artifact) error {
+				return &httpErr{status: 503, message: "unavailable"}
+			},
+			func(ch chan<- artifact.Artifact) error {
+				ch <- artifact.TextDelta{Content: "ok"}
+				return nil
+			},
+		},
+	}
+
+	p := New(inner, fastOpts()...)
+	// Note: no SetEmitter call.
+	ch := make(chan artifact.Artifact, 8)
+	require.NoError(t, p.Invoke(t.Context(), newState(), models.Spec{Name: "x"}, ch))
+	close(ch)
+
+	var out []artifact.Artifact
+	for a := range ch {
+		out = append(out, a)
+	}
+	require.Len(t, out, 1)
+	assert.Equal(t, "ok", out[0].(artifact.TextDelta).Content)
+}
+
+// TestProvider_NoticeNotEmittedOnFinalFailure: when all attempts
+// fail, the emitter receives one notice per retry transition but
+// no notice for the final (failing) attempt. The final failure
+// is surfaced via the existing loop.ErrorEvent, not the notice
+// channel.
+func TestProvider_NoticeNotEmittedOnFinalFailure(t *testing.T) {
+	t.Parallel()
+
+	inner := &scriptProvider{
+		plan: []func(chan<- artifact.Artifact) error{
+			func(_ chan<- artifact.Artifact) error {
+				return &httpErr{status: 503, message: "first"}
+			},
+			func(_ chan<- artifact.Artifact) error {
+				return &httpErr{status: 503, message: "second"}
+			},
+			func(_ chan<- artifact.Artifact) error {
+				return &httpErr{status: 503, message: "third"}
+			},
+		},
+	}
+
+	em := &captureEmitter{}
+	p := New(inner, fastOpts()...)
+	p.SetEmitter(em)
+	ch := make(chan artifact.Artifact, 8)
+	err := p.Invoke(t.Context(), newState(), models.Spec{Name: "x"}, ch)
+	close(ch)
+	for range ch {
+	}
+	require.Error(t, err)
+
+	// Two retry transitions (1->2 and 2->3) emit two notices.
+	// The final attempt (3) is the last attempt and does not emit
+	// a notice; it is surfaced via the existing loop.ErrorEvent.
+	events := em.snapshot()
+	require.Len(t, events, 2, "exactly one notice per retry transition; the final attempt emits none")
+	assert.Equal(t, "Retrying (2/3): http 503: first", events[0].Notice.Content)
+	assert.Equal(t, "Retrying (3/3): http 503: second", events[1].Notice.Content)
+}
+
+// TestSummarize: the unexported summarize helper turns a multi-line
+// error into a single-line, length-capped summary suitable for the
+// user-facing notice content.
+func TestSummarize(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		in   error
+		want string
+	}{
+		{"nil", nil, ""},
+		{"short", errors.New("connection refused"), "connection refused"},
+		{"multiline", errors.New("first line\nsecond line"), "first line"},
+		{"whitespace", errors.New("  spaced   out  \n next  "), "spaced out"},
+		{"truncation", errors.New(strings.Repeat("a", 200)), strings.Repeat("a", 79) + "…"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, c.want, summarize(c.in))
+		})
+	}
 }
