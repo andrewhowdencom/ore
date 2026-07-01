@@ -24,8 +24,10 @@ provider/      ← depends on state/, artifact/, models/
 loop/          ← depends on artifact/, state/, provider/, models/
 x/wire/...     ← wire-format adapters (e.g. x/wire/anthropic/, x/wire/openai/);
                   depend only on provider/, models/, state/, artifact/
-x/provider/... ← first-party, third-party, and gateway provider packages;
-                  depend on x/wire/... and models/; never import loop/
+x/provider/{openai,anthropic,minimax,openrouter,vercel}/  ← first-party, third-party, and gateway provider packages
+                                                                (vendor wrappers); depend on x/wire/... and models/; never import loop/
+x/provider/retry/                                          ← framework-level provider decorator; may import loop/
+                                                                 to emit cross-cutting user-facing events (notices, errors, telemetry)
 x/catalog/...  ← generated model catalogs (e.g. x/catalog/models/);
                   depend only on root models/
 cmd/modelsdev-gen/  ← generator binary; stdlib-only; produces x/catalog/models/
@@ -38,7 +40,7 @@ cmd/modelsdev-gen/  ← generator binary; stdlib-only; produces x/catalog/models
   - **First-party** (`x/provider/anthropic/`, `x/provider/openai/`): identity resolution, no base URL, no auth overrides. The canonical entry point for direct vendor calls.
   - **Third-party** (`x/provider/minimax/`): identity resolution, fixed base URL targeting a vendor's API mirror, two constructors (`NewAnthropic`, `NewOpenAI`) for the two wire surfaces the mirror accepts.
   - **Gateway** (`x/provider/openrouter/`, `x/provider/vercel/`): identity resolution with a generated lookup table, fixed base URL targeting the gateway host.
-  Provider packages implement `provider.Provider` (via composition with a wire) but never import `loop/`.
+  Provider packages implement `provider.Provider` (via composition with a wire) but never import `loop/`. Framework-level decorators under `x/provider/` — currently `x/provider/retry/` — are an exception: they participate in the event stream and may import `loop/` to emit notices and errors.
 - **Catalog packages** live under `x/catalog/...` (currently `x/catalog/models/`) and contain generated `models.Spec` values keyed by canonical `Name`. The package exposes one var per upstream model (e.g. `ClaudeOpus45`, `GPT4o`); only the root `models` package is imported. The generator at `cmd/modelsdev-gen/` is the only producer; its output is committed and regenerated via `task generate`.
 - **Generator binaries** live under `cmd/<name>/` (currently `cmd/modelsdev-gen/`). They are stdlib-only CLIs that produce committed artifacts. Re-running them is part of `task generate`.
 - **Example/reference applications** live under `examples/<name>/` (e.g., `examples/single-turn-cli/`). These validate the framework and demonstrate composition patterns.
