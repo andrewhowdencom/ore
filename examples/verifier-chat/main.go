@@ -174,11 +174,11 @@ func run() error {
 		Step:     step,
 		Provider: prov,
 	}
-	verified := cognitive.WithVerification(
+	verified := verifier.WithVerification(
 		react,
 		step,
-		cognitive.WithVerifiers(verifiers...),
-		cognitive.WithMaxRetries(3),
+		verifier.WithVerifiers(verifiers...),
+		verifier.WithMaxRetries(3),
 	)
 
 	result, err := verified.Run(ctx, mem)

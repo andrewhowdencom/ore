@@ -1,4 +1,4 @@
-package cognitive
+package verifier
 
 import (
 	"context"
@@ -6,9 +6,8 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/ledger"
-	"github.com/andrewhowdencom/ore/x/verifier"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,43 +27,26 @@ func (m *mockPattern) Name() string { return "mock" }
 
 var _ Pattern = (*mockPattern)(nil)
 
-type mockVerifier struct {
-	name   string
-	status verifier.Status
-	report string
-	err    error
-}
-
-func (m *mockVerifier) Verify(ctx context.Context, st ledger.State) (verifier.VerificationResult, error) {
-	return verifier.VerificationResult{
-		Name:   m.name,
-		Status: m.status,
-		Report: m.report,
-	}, m.err
-}
-
-var _ verifier.Verifier = (*mockVerifier)(nil)
-
 type failOnceVerifier struct {
 	called bool
 }
 
-func (f *failOnceVerifier) Verify(ctx context.Context, st ledger.State) (verifier.VerificationResult, error) {
+func (f *failOnceVerifier) Verify(ctx context.Context, st ledger.State) (VerificationResult, error) {
 	if !f.called {
 		f.called = true
-		return verifier.VerificationResult{Name: "fail-once", Status: verifier.VerificationFail, Report: "fail"}, nil
+		return VerificationResult{Name: "fail-once", Status: VerificationFail, Report: "fail"}, nil
 	}
-	return verifier.VerificationResult{Name: "fail-once", Status: verifier.VerificationPass, Report: "pass"}, nil
+	return VerificationResult{Name: "fail-once", Status: VerificationPass, Report: "pass"}, nil
 }
 
-var _ verifier.Verifier = (*failOnceVerifier)(nil)
+var _ Verifier = (*failOnceVerifier)(nil)
 
 func TestWithVerification_PassOnFirstTry(t *testing.T) {
 	mem := &ledger.Buffer{}
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	mock := &mockPattern{returnState: mem}
-	v := &mockVerifier{name: "pass", status: verifier.VerificationPass}
+	v := &mockVerifier{name: "pass", status: VerificationPass}
 
 	step := loop.New(loop.WithState(mem))
 	pattern := WithVerification(mock, step, WithVerifiers(v))
@@ -108,7 +90,7 @@ func TestWithVerification_MaxRetriesExceeded(t *testing.T) {
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	mock := &mockPattern{returnState: mem}
-	v := &mockVerifier{name: "always-fail", status: verifier.VerificationFail, report: "failed"}
+	v := &mockVerifier{name: "always-fail", status: VerificationFail, report: "failed"}
 
 	step := loop.New(loop.WithState(mem))
 	pattern := WithVerification(mock, step, WithVerifiers(v), WithMaxRetries(1))
@@ -124,7 +106,7 @@ func TestWithVerification_VerifierError(t *testing.T) {
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	mock := &mockPattern{returnState: mem}
-	v := &mockVerifier{name: "error", status: verifier.VerificationError, err: errors.New("boom")}
+	v := &mockVerifier{name: "error", status: VerificationError, err: errors.New("boom")}
 
 	step := loop.New(loop.WithState(mem))
 	pattern := WithVerification(mock, step, WithVerifiers(v))
@@ -141,7 +123,7 @@ func TestWithVerification_InnerPatternError(t *testing.T) {
 
 	wantErr := errors.New("inner failed")
 	mock := &mockPattern{returnState: mem, err: wantErr}
-	v := &mockVerifier{name: "pass", status: verifier.VerificationPass}
+	v := &mockVerifier{name: "pass", status: VerificationPass}
 
 	step := loop.New(loop.WithState(mem))
 	pattern := WithVerification(mock, step, WithVerifiers(v))
@@ -156,8 +138,8 @@ func TestWithVerification_MultipleVerifiers(t *testing.T) {
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	mock := &mockPattern{returnState: mem}
-	v1 := &mockVerifier{name: "pass", status: verifier.VerificationPass}
-	v2 := &mockVerifier{name: "fail", status: verifier.VerificationFail, report: "failing"}
+	v1 := &mockVerifier{name: "pass", status: VerificationPass}
+	v2 := &mockVerifier{name: "fail", status: VerificationFail, report: "failing"}
 
 	step := loop.New(loop.WithState(mem))
 	pattern := WithVerification(mock, step, WithVerifiers(v1, v2))
@@ -173,7 +155,7 @@ func TestWithVerification_DefaultMaxRetries(t *testing.T) {
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
 
 	mock := &mockPattern{returnState: mem}
-	v := &mockVerifier{name: "always-fail", status: verifier.VerificationFail}
+	v := &mockVerifier{name: "always-fail", status: VerificationFail}
 
 	step := loop.New(loop.WithState(mem))
 	pattern := WithVerification(mock, step, WithVerifiers(v))
@@ -182,4 +164,12 @@ func TestWithVerification_DefaultMaxRetries(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "verification failed after 3 retries")
 	assert.Equal(t, 4, mock.callCount) // initial + 3 retries
+}
+
+func TestWithVerification_Name(t *testing.T) {
+	mock := &mockPattern{returnState: &ledger.Buffer{}}
+	step := loop.New(loop.WithState(&ledger.Buffer{}))
+	pattern := WithVerification(mock, step)
+
+	assert.Equal(t, "verified", pattern.Name())
 }
