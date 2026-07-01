@@ -196,7 +196,7 @@ func replaceArtifactsInJSON(in, artifactsJSON []byte) ([]byte, error) {
 // Exported so packages that build ephemeral [Thread] instances from
 // raw [Turn] inputs (e.g. compaction) can assign IDs to turns that
 // arrive without one, preserving the order-preserving semantics of
-// the legacy [Buffer.LoadTurns].
+// loading a turn slice into a state implementation.
 func GenerateTurnID() string {
 	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
