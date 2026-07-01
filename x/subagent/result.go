@@ -44,13 +44,17 @@ const (
 // Findings is an opaque, optional bag for structured data the
 // sub-agent wants to convey beyond the prose summary. The protocol
 // does not constrain the shape of Findings; downstream consumers
-// are expected to type-assert or re-validate as appropriate. The
-// JSON schema permits Findings to be absent, present-and-null, or
-// present-and-an-object; anything else is invalid.
+// are expected to type-assert or re-validate as appropriate. When
+// Findings is nil, the field marshals as JSON null (matching the
+// schema's `"nullable": true` declaration).
+//
+// JSON tags align the wire format with ResultSchema's lowercase keys
+// so the LLM-facing serialization matches what the child was
+// instructed to produce.
 type Result struct {
-	Status   Status
-	Summary  string
-	Findings any
+	Status   Status `json:"status"`
+	Summary  string `json:"summary"`
+	Findings any    `json:"findings"`
 }
 
 // ResultSchema is the JSON Schema that a sub-agent's textual output

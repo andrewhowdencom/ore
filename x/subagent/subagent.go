@@ -1,16 +1,24 @@
-// Package subagent exposes an *agent.Agent as a tool.Tool, so a parent
-// agent can invoke a sub-agent's inference through the same tool-use
-// machinery as any other capability. The pattern of the wrapped agent
-// is opaque to the parent: a SingleShot agent is a one-shot helper; a
-// ReAct agent runs a tool-use loop; a Verified agent retries on quality
-// failures. The parent sees only the final assistant turn.
+// Package subagent exposes a *agent.Agent as a tool.Tool under a
+// strict stack-frame protocol: parent hands off a free-text prompt
+// to a freshly-constructed child agent, and the child returns a
+// structured Result validated against an enforced JSON schema. The
+// frame is discarded after each invocation, giving strict state
+// isolation between parent and child.
 //
-// The skeleton is deliberately minimal. Streaming, parallel fan-out,
-// and shared state are out of scope and tracked as follow-ups.
+// The pattern of the wrapped agent is opaque to the parent: a
+// SingleShot agent is a one-shot helper; a ReAct agent runs a
+// tool-use loop; a Verified agent retries on quality failures. The
+// parent sees only the structured Result, not the child's internal
+// turn structure.
+//
+// Out of scope for v1: streaming deltas, parallel fan-out, span
+// nesting under the parent, dynamic tool-set changes within a
+// single call.
 package subagent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/andrewhowdencom/ore/agent"
@@ -44,7 +52,13 @@ var promptSchema = map[string]any{
 // The tool's input is a JSON object with a single "prompt" string
 // field; the agent runs once (its configured pattern decides
 // whether that is one turn or many), and the produced assistant
-// turn is returned as the tool's string result.
+// turn is collected from the agent's "turn_complete" event stream
+// and returned as a structured Result (see result.go). The JSON
+// schema for the result is enforced: malformed output surfaces
+// as a tool error; schema-conformant-but-invalid payloads
+// (bad enum value, missing field) surface as a Result with
+// Status set to StatusFailed so the parent can branch on
+// outcome without losing the diagnostic text.
 //
 // Fresh-per-call contract: the factory MUST return a new
 // *agent.Agent per invocation. The closure calls defer Close()
@@ -124,7 +138,19 @@ func AsTool(build func() (*agent.Agent, error), name, description string) (tool.
 			return nil, ctx.Err()
 		}
 
-		return assistantText(produced), nil
+		// Collect the child's raw text, parse against the
+		// enforced schema, and return a structured Result.
+		// Empty text is a tool error (the child produced no
+		// output to validate); parse errors are tool errors;
+		// schema-conformant-but-invalid payloads (e.g., a bad
+		// status enum value or a missing summary field) are
+		// surfaced as Result{Status: StatusFailed, ...}.
+		raw := assistantText(produced)
+		result, err := parseResult(raw)
+		if err != nil {
+			return nil, fmt.Errorf("subagent %s: %w", name, err)
+		}
+		return result, nil
 	}
 
 	return tool.Tool{
@@ -137,7 +163,8 @@ func AsTool(build func() (*agent.Agent, error), name, description string) (tool.
 // assistantText concatenates the Text and TextDelta content of an
 // assistant turn into a single string. Other artifact kinds
 // (Reasoning, ToolCall, Usage, etc.) are ignored; the tool result is
-// the model's user-facing text.
+// the model's user-facing text. The string is then passed to
+// parseResult for validation against ResultSchema.
 func assistantText(turn ledger.Turn) string {
 	var s string
 	for _, a := range turn.Artifacts {
@@ -149,4 +176,62 @@ func assistantText(turn ledger.Turn) string {
 		}
 	}
 	return s
+}
+
+// parseResult validates raw against ResultSchema and returns the
+// structured Result. Behaviour:
+//
+//   - Empty input is a protocol violation: tool error.
+//   - Non-JSON input is a protocol violation: tool error (with the
+//     raw payload quoted for diagnosis).
+//   - JSON that parses but fails schema validation (bad enum
+//     value, missing required field) is surfaced as
+//     Result{Status: StatusFailed, Summary: raw} with nil error.
+//     The parent's ReAct loop can then branch on Status while the
+//     diagnostic text stays available for logging/retry logic.
+//
+// Validation logic is inline (the schema has one enum field and
+// two required strings; a full JSON Schema library is overkill for
+// this scope). The exported ResultSchema remains the source of truth
+// for downstream consumers and for any future constrained-decoding
+// integration.
+func parseResult(raw string) (Result, error) {
+	if raw == "" {
+		return Result{}, fmt.Errorf("child output is empty")
+	}
+
+	var r Result
+	if err := json.Unmarshal([]byte(raw), &r); err != nil {
+		return Result{}, fmt.Errorf("parse child output: %w (raw: %q)", err, raw)
+	}
+
+	if err := validateResult(r); err != nil {
+		return Result{
+			Status:  StatusFailed,
+			Summary: raw,
+		}, nil
+	}
+
+	return r, nil
+}
+
+// validateResult enforces the structural invariants of Result that
+// JSON Schema captures at runtime: Status must be one of the three
+// allowed values, and Summary must be non-empty. Findings is
+// accepted as any of nil, an object, or (a future extension) a
+// structured type; v1 does not constrain its shape beyond what the
+// child itself supplies.
+func validateResult(r Result) error {
+	switch r.Status {
+	case StatusSuccess, StatusPartial, StatusFailed:
+	case "":
+		return fmt.Errorf("status is required (got empty)")
+	default:
+		return fmt.Errorf("invalid status %q (must be one of %q, %q, %q)",
+			r.Status, StatusSuccess, StatusPartial, StatusFailed)
+	}
+	if r.Summary == "" {
+		return fmt.Errorf("summary is required (got empty)")
+	}
+	return nil
 }
