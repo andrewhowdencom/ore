@@ -112,6 +112,7 @@ func TestProvider_5xx_ThenSuccess(t *testing.T) {
 	p := New(inner, fastOpts()...)
 	ch := make(chan artifact.Artifact, 8)
 	require.NoError(t, p.Invoke(t.Context(), newState(), models.Spec{Name: "x"}, ch))
+	close(ch)
 
 	var out []artifact.Artifact
 	for a := range ch {
@@ -153,6 +154,7 @@ func TestProvider_429_WithRetryAfter(t *testing.T) {
 	p := New(inner, WithBaseDelay(1*time.Millisecond), WithMaxDelay(1*time.Millisecond))
 	ch := make(chan artifact.Artifact, 8)
 	require.NoError(t, p.Invoke(t.Context(), newState(), models.Spec{Name: "x"}, ch))
+	close(ch)
 
 	for range ch {
 	}
@@ -232,6 +234,7 @@ func TestProvider_EmissionThenFailure(t *testing.T) {
 	p := New(inner, fastOpts()...)
 	ch := make(chan artifact.Artifact, 8)
 	err := p.Invoke(t.Context(), newState(), models.Spec{Name: "x"}, ch)
+	close(ch)
 	require.Error(t, err)
 	assert.Equal(t, int32(1), atomic.LoadInt32(&inner.calls), "must not retry after emission")
 
@@ -269,6 +272,7 @@ func TestProvider_CustomClassifier(t *testing.T) {
 	p := New(inner, append(fastOpts(), WithClassifier(classifier))...)
 	ch := make(chan artifact.Artifact, 8)
 	require.NoError(t, p.Invoke(t.Context(), newState(), models.Spec{Name: "x"}, ch))
+	close(ch)
 
 	for range ch {
 	}
@@ -330,6 +334,7 @@ func TestProvider_WithHonorRetryAfterFalse(t *testing.T) {
 	)
 	ch := make(chan artifact.Artifact, 8)
 	require.NoError(t, p.Invoke(t.Context(), newState(), models.Spec{Name: "x"}, ch))
+	close(ch)
 	for range ch {
 	}
 	assert.Equal(t, int32(2), atomic.LoadInt32(&inner.calls))
@@ -359,6 +364,7 @@ func TestProvider_Tracing(t *testing.T) {
 	p := New(inner, append(fastOpts(), WithTracer(tracer))...)
 	ch := make(chan artifact.Artifact, 8)
 	require.NoError(t, p.Invoke(t.Context(), newState(), models.Spec{Name: "x"}, ch))
+	close(ch)
 	for range ch {
 	}
 
@@ -465,6 +471,7 @@ func TestProvider_SuccessFirstAttempt(t *testing.T) {
 	p := New(inner, fastOpts()...)
 	ch := make(chan artifact.Artifact, 8)
 	require.NoError(t, p.Invoke(t.Context(), newState(), models.Spec{Name: "x"}, ch))
+	close(ch)
 
 	var out []artifact.Artifact
 	for a := range ch {
