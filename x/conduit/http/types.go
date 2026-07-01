@@ -16,24 +16,77 @@ import (
 )
 
 // artifactJSON is the JSON representation of any artifact type.
+//
+// Artifacts come in two on-disk shapes (both supported for
+// backward compatibility; new code should use the wrapped form):
+//
+//  1. Wrapped: {"kind": "text", "data": {"kind":"text","content":"hi"}}.
+//     This is the canonical form for the journal / loop wire format;
+//     the registry on the artifact package dispatches via the inner
+//     kind to a concrete factory.
+//
+//  2. Inline: {"kind": "text", "content": "hi"}. Legacy artifactJSON
+//     shape that pre-dates the registry.
 type artifactJSON struct {
-	Kind             string `json:"kind"`
-	Content          string `json:"content,omitempty"`
-	ID               string `json:"id,omitempty"`
-	Name             string `json:"name,omitempty"`
-	Arguments        string `json:"arguments,omitempty"`
-	Display          string `json:"display,omitempty"`
-	ToolCallID       string `json:"tool_call_id,omitempty"`
-	IsError          bool   `json:"is_error,omitempty"`
-	PromptTokens     int    `json:"prompt_tokens,omitempty"`
-	CompletionTokens int    `json:"completion_tokens,omitempty"`
-	TotalTokens      int    `json:"total_tokens,omitempty"`
-	Index            int    `json:"index,omitempty"`
-	URL              string `json:"url,omitempty"`
+	Kind             string          `json:"kind"`
+	Data             json.RawMessage `json:"data,omitempty"`
+	Content          string          `json:"content,omitempty"`
+	ID               string          `json:"id,omitempty"`
+	Name             string          `json:"name,omitempty"`
+	Arguments        string          `json:"arguments,omitempty"`
+	Display          string          `json:"display,omitempty"`
+	ToolCallID       string          `json:"tool_call_id,omitempty"`
+	IsError          bool            `json:"is_error,omitempty"`
+	PromptTokens     int             `json:"prompt_tokens,omitempty"`
+	CompletionTokens int             `json:"completion_tokens,omitempty"`
+	TotalTokens      int             `json:"total_tokens,omitempty"`
+	Index            int             `json:"index,omitempty"`
+	URL              string          `json:"url,omitempty"`
+}
+
+// textArtifactJSON is the JSON representation of artifact.Text
+// (and TextDelta). Other artifacts use their own types below.
+type textArtifactJSON struct {
+	Kind    string `json:"kind"`
+	Content string `json:"content,omitempty"`
+}
+
+type reasoningArtifactJSON struct {
+	Kind    string `json:"kind"`
+	Content string `json:"content,omitempty"`
+}
+
+type toolCallArtifactJSON struct {
+	Kind      string `json:"kind"`
+	ID        string `json:"id,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+	Index     int    `json:"index,omitempty"`
+}
+
+type toolResultArtifactJSON struct {
+	Kind       string `json:"kind"`
+	ToolCallID string `json:"tool_call_id,omitempty"`
+	Content    string `json:"content,omitempty"`
+	IsError    bool   `json:"is_error,omitempty"`
+}
+
+type usageArtifactJSON struct {
+	Kind            string `json:"kind"`
+	PromptTokens    int    `json:"prompt_tokens,omitempty"`
+	CompletionTokens int   `json:"completion_tokens,omitempty"`
+	TotalTokens     int    `json:"total_tokens,omitempty"`
+}
+
+type imageArtifactJSON struct {
+	Kind string `json:"kind"`
+	URL  string `json:"url,omitempty"`
 }
 
 // turnJSON is the JSON representation of a ledger.Turn.
 type turnJSON struct {
+	ID        string         `json:"id,omitempty"`
+	ParentID  string         `json:"parent_id,omitempty"`
 	Role      string         `json:"role"`
 	Artifacts []artifactJSON `json:"artifacts"`
 	Timestamp string         `json:"timestamp,omitempty"`
@@ -138,7 +191,89 @@ func UnmarshalArtifact(data []byte) (artifact.Artifact, error) {
 
 // artifactFromJSON converts an artifactJSON DTO to a framework artifact.
 // Returns an error for unsupported kinds.
+//
+// The DTO accepts two on-disk shapes:
+//
+//  1. Wrapped: {"kind": "text", "data": {"kind":"text","content":"hi"}}.
+//     This is the canonical form for the journal / loop wire format;
+//     the registry on the artifact package dispatches via the inner
+//     kind to a concrete factory.
+//
+//  2. Inline: {"kind": "text", "content": "hi"}. This is the legacy
+//     artifactJSON shape that pre-dates the registry. New code should
+//     use the wrapped form, but we accept it for backward compatibility
+//     with fixtures and clients speaking older protocols.
 func artifactFromJSON(dto artifactJSON) (artifact.Artifact, error) {
+	// Wrapped form: dispatch on the inner kind via Data.
+	if len(dto.Data) > 0 && dto.Data[0] == '{' {
+		return dispatchWrappedArtifact(dto)
+	}
+	// Inline form: legacy fields are read directly.
+	return dispatchInlineArtifact(dto)
+}
+
+func dispatchWrappedArtifact(dto artifactJSON) (artifact.Artifact, error) {
+	switch dto.Kind {
+	case "text":
+		var t textArtifactJSON
+		if err := json.Unmarshal(dto.Data, &t); err != nil {
+			return nil, err
+		}
+		return artifact.Text{Content: t.Content}, nil
+	case "text_delta":
+		var t textArtifactJSON
+		if err := json.Unmarshal(dto.Data, &t); err != nil {
+			return nil, err
+		}
+		return artifact.TextDelta{Content: t.Content}, nil
+	case "reasoning":
+		var t reasoningArtifactJSON
+		if err := json.Unmarshal(dto.Data, &t); err != nil {
+			return nil, err
+		}
+		return artifact.Reasoning{Content: t.Content}, nil
+	case "reasoning_delta":
+		var t reasoningArtifactJSON
+		if err := json.Unmarshal(dto.Data, &t); err != nil {
+			return nil, err
+		}
+		return artifact.ReasoningDelta{Content: t.Content}, nil
+	case "tool_call":
+		var t toolCallArtifactJSON
+		if err := json.Unmarshal(dto.Data, &t); err != nil {
+			return nil, err
+		}
+		return artifact.ToolCall{ID: t.ID, Name: t.Name, Arguments: t.Arguments}, nil
+	case "tool_call_delta":
+		var t toolCallArtifactJSON
+		if err := json.Unmarshal(dto.Data, &t); err != nil {
+			return nil, err
+		}
+		return artifact.ToolCallDelta{ID: t.ID, Name: t.Name, Arguments: t.Arguments, Index: t.Index}, nil
+	case "tool_result":
+		var t toolResultArtifactJSON
+		if err := json.Unmarshal(dto.Data, &t); err != nil {
+			return nil, err
+		}
+		return artifact.ToolResult{ToolCallID: t.ToolCallID, Content: t.Content, IsError: t.IsError}, nil
+	case "usage":
+		var t usageArtifactJSON
+		if err := json.Unmarshal(dto.Data, &t); err != nil {
+			return nil, err
+		}
+		return artifact.Usage{PromptTokens: t.PromptTokens, CompletionTokens: t.CompletionTokens, TotalTokens: t.TotalTokens}, nil
+	case "image":
+		var t imageArtifactJSON
+		if err := json.Unmarshal(dto.Data, &t); err != nil {
+			return nil, err
+		}
+		return artifact.Image{URL: t.URL}, nil
+	default:
+		return nil, fmt.Errorf("unsupported artifact kind: %s", dto.Kind)
+	}
+}
+
+func dispatchInlineArtifact(dto artifactJSON) (artifact.Artifact, error) {
 	switch dto.Kind {
 	case "text":
 		return artifact.Text{Content: dto.Content}, nil
@@ -239,6 +374,8 @@ func turnFromJSON(dto turnJSON) (ledger.Turn, error) {
 		artifacts[i] = art
 	}
 	turn := ledger.Turn{
+		ID:        dto.ID,
+		ParentID:  dto.ParentID,
 		Role:      ledger.Role(dto.Role),
 		Artifacts: artifacts,
 	}
