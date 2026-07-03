@@ -1,7 +1,5 @@
-github.com/andrewhowdencom/ore v0.13.0 h1:9lUbh643MLJh2TJ2qby8POs/HoZiuNJjoH1aafe4mKk=
-github.com/andrewhowdencom/ore v0.13.0/go.mod h1:wbcYBur2kowhMdpeD2U6101g1oent+NoOtpuWorsJis=
-github.com/andrewhowdencom/ore/x/llmbytes v0.1.1 h1:8aUIwGAjWVDpOH2P/SApzNYVkXWQem5FwFOltw/0bIM=
-github.com/andrewhowdencom/ore/x/llmbytes v0.1.1/go.mod h1:aYp7bLdMxkFpuXY1ABr4qfeoJkKVl1SIK5uMRQP/kq4=
+github.com/andrewhowdencom/ore/x/llmbytes v0.1.2 h1:Iextd0XUHRZOvhVWawJY2MMQj0o0mjniqTJbgvjAMBc=
+github.com/andrewhowdencom/ore/x/llmbytes v0.1.2/go.mod h1:JxGVBAMfkWklMOC4kUCF5gs1/epk4g1WMIYtl02ZwCY=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
