@@ -6,8 +6,7 @@
 //
 // The agent is reusable: many Run calls share the same internal step.
 // The agent is composable: any agent can be wrapped as a tool.Tool by
-// a parent agent (see x/subagent), or exercised by a benchmark harness
-// (see cmd/benchmark).
+// a parent agent (see x/subagent).
 //
 // Differences between agent kinds (ReAct, SingleShot, Verified) live in
 // the configured pattern, not in the agent type. All agents are

@@ -123,9 +123,8 @@ func (a *Agent) Close() error {
 func (a *Agent) Name() string { return a.name }
 
 // Step returns the agent's internal loop.Step. Exposed for advanced
-// wiring (sub-agents, benchmarks, custom handlers that need direct
-// access to the underlying emitter). Most callers should use
-// Run/Subscribe/Close.
+// wiring (sub-agents, custom handlers that need direct access to the
+// underlying emitter). Most callers should use Run/Subscribe/Close.
 func (a *Agent) Step() *loop.Step { return a.step }
 
 // Provider returns the agent's configured provider.
