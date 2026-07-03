@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/x/tool/bash
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.12.0
+	github.com/andrewhowdencom/ore v1.0.0
 	github.com/andrewhowdencom/ore/x/tool/truncate v0.1.0
 	github.com/stretchr/testify v1.11.1
 )
