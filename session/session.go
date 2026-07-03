@@ -138,6 +138,12 @@ func (s *Session) Subscribe(kinds ...string) <-chan loop.OutputEvent {
 	return s.step.Subscribe(kinds...)
 }
 
+// Emitter returns a loop.Emitter that publishes events through the
+// session's step. Interceptors (slash commands, etc.) receive this
+// in their Intercept call to publish events (e.g. PropertiesEvent)
+// during pre-LLM processing.
+func (s *Session) Emitter() loop.Emitter { return s.step }
+
 // processEvent is the worker's per-event handler. In Task 2 this is a
 // stub that emits LifecycleEvent{Phase: "done"} after the event has
 // been acknowledged. Future tasks will wire agent invocation here.
