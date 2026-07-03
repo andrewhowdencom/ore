@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/x/provider/retry
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.12.3
+	github.com/andrewhowdencom/ore v1.0.0
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.44.0
