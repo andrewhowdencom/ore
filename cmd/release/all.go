@@ -131,17 +131,29 @@ func runAll(dryRun bool, args []string) error {
 		allVersions[t.module.Path] = t.version
 	}
 
-	// Pre-flight: tidy go.mod with current (already-resolvable) versions.
+	// Pre-flight: tidy go.mod with target (about-to-be-published)
+// versions, temporarily redirecting in-this-run dependencies at
+// their local source so modules that depend on yet-to-be-published
+// versions (or on a rename of the dependency's source) can still
+// validate the module graph.
 	if !dryRun {
 		fmt.Println("Pre-flight: validating go mod tidy...")
+
+		targetPaths := make(map[string]bool, len(targets))
+		pathToMod := make(map[string]Module, len(targets))
+		for _, t := range targets {
+			targetPaths[t.module.Path] = true
+			pathToMod[t.module.Path] = t.module
+		}
+
+		seen := make(map[string]bool, len(sorted))
 		for _, m := range sorted {
-			fmt.Printf("  %s: updating dependencies to current versions...\n", m.Path)
-			if err := updateModuleDeps(root, m, currentVersions); err != nil {
-				return fmt.Errorf("pre-flight update deps for %s: %w", m.Path, err)
-			}
-			fmt.Printf("  %s: go mod tidy...\n", m.Path)
-			if err := runGoModTidy(root, m); err != nil {
-				return fmt.Errorf("pre-flight go mod tidy for %s: %w\nRun 'git checkout -- .' to revert changes.", m.Path, err)
+			deps := inThisRunDeps(m, targetPaths, pathToMod, seen, graph)
+			seen[m.Path] = true
+
+			fmt.Printf("  %s: go mod tidy (with %d local replace(s))...\n", m.Path, len(deps))
+			if err := tidyWithLocalSource(root, m, deps, allVersions); err != nil {
+				return fmt.Errorf("pre-flight for %s: %w\nRun 'git checkout -- .' to revert changes.", m.Path, err)
 			}
 		}
 		fmt.Println("Pre-flight passed.")
