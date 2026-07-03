@@ -3,14 +3,13 @@ module github.com/andrewhowdencom/ore/cmd/benchmark
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.12.3
-	github.com/andrewhowdencom/ore/x/provider/openai v0.6.2
+	github.com/andrewhowdencom/ore v1.0.0
+	github.com/andrewhowdencom/ore/x/provider/openai v0.6.3
 	github.com/stretchr/testify v1.11.1
 )
 
 require (
-	github.com/andrewhowdencom/ore/x/provider/retry v0.0.2 // indirect
-	github.com/andrewhowdencom/ore/x/verifier v0.1.1 // indirect
+	github.com/andrewhowdencom/ore/x/provider/retry v0.0.3 // indirect
 	github.com/andrewhowdencom/ore/x/wire/openai v0.5.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -31,8 +30,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace (
-	github.com/andrewhowdencom/ore => ../..
-	github.com/andrewhowdencom/ore/x/provider/openai => ../../x/provider/openai
-	github.com/andrewhowdencom/ore/x/wire/openai => ../../x/wire/openai
-)
+replace github.com/andrewhowdencom/ore => ../..
+
+replace github.com/andrewhowdencom/ore/x/provider/openai => ../../x/provider/openai
+
+replace github.com/andrewhowdencom/ore/x/wire/openai => ../../x/wire/openai

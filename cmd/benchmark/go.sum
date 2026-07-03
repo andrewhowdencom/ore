@@ -1,11 +1,3 @@
-github.com/andrewhowdencom/ore/x/provider/retry v0.0.1 h1:EzHH2kaaYCMy+yuUZA1Yf/yoOk/OILaNzeq90zEjqHE=
-github.com/andrewhowdencom/ore/x/provider/retry v0.0.1/go.mod h1:rOSReTP2vkmDXeaVsC2GpBnmkhU+szH0zpgfCupqsWo=
-github.com/andrewhowdencom/ore/x/tool v0.5.1 h1:KANIhPJo1JI9snGW30DrVtyTjxYeE0O8p8trx3H5+N4=
-github.com/andrewhowdencom/ore/x/tool v0.5.1/go.mod h1:7U4vzk9H/sd9+3pnFEg8uDMSWn6YHTKUK0SFPsdb04o=
-github.com/andrewhowdencom/ore/x/tool/truncate v0.1.0 h1:cumvWGc/PizBaMBq/hK4LTWSSwgPsgh/x4V4dO6d868=
-github.com/andrewhowdencom/ore/x/tool/truncate v0.1.0/go.mod h1:WLP3YCbkBk26ZY4K0GFQ5HNXglM1t05uYIr0IRQGrNQ=
-github.com/andrewhowdencom/ore/x/verifier v0.1.1 h1:RkRd3gFkX/Pd1pJuXmNpO23ZHVorgaqXEnKQuHzTN0M=
-github.com/andrewhowdencom/ore/x/verifier v0.1.1/go.mod h1:FCorXnOAQVtyY+4WcHLoGRpYg23eleOWYN8+KAtB5lw=
 github.com/cenkalti/backoff/v5 v5.0.3 h1:ZN+IMa753KfX5hd8vVaMixjnqRZ3y8CuJKRKj1xcsSM=
 github.com/cenkalti/backoff/v5 v5.0.3/go.mod h1:rkhZdG3JZukswDf7f0cwqPNk4K0sa+F97BxZthm/crw=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
