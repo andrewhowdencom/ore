@@ -3,16 +3,16 @@ module github.com/andrewhowdencom/ore/examples/verifier-chat
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.12.0
-	github.com/andrewhowdencom/ore/x/provider/openai v0.6.2
-	github.com/andrewhowdencom/ore/x/tool v0.5.1
-	github.com/andrewhowdencom/ore/x/tool/filesystem v0.5.1
-	github.com/andrewhowdencom/ore/x/verifier v0.1.1
+	github.com/andrewhowdencom/ore v1.0.0
+	github.com/andrewhowdencom/ore/x/provider/openai v0.6.3
+	github.com/andrewhowdencom/ore/x/tool v0.6.0
+	github.com/andrewhowdencom/ore/x/tool/filesystem v0.5.2
+	github.com/andrewhowdencom/ore/x/verifier v0.2.0
 )
 
 require (
-	github.com/andrewhowdencom/ore/x/provider/retry v0.0.1 // indirect
-	github.com/andrewhowdencom/ore/x/tool/truncate v0.1.0 // indirect
+	github.com/andrewhowdencom/ore/x/provider/retry v0.0.3 // indirect
+	github.com/andrewhowdencom/ore/x/tool/truncate v0.1.1 // indirect
 	github.com/andrewhowdencom/ore/x/wire/openai v0.5.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -30,11 +30,14 @@ require (
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 )
 
-replace (
-	github.com/andrewhowdencom/ore => ../..
-	github.com/andrewhowdencom/ore/x/provider/openai => ../../x/provider/openai
-	github.com/andrewhowdencom/ore/x/tool => ../../x/tool
-	github.com/andrewhowdencom/ore/x/tool/filesystem => ../../x/tool/filesystem
-	github.com/andrewhowdencom/ore/x/verifier => ../../x/verifier
-	github.com/andrewhowdencom/ore/x/wire/openai => ../../x/wire/openai
-)
+replace github.com/andrewhowdencom/ore => ../..
+
+replace github.com/andrewhowdencom/ore/x/provider/openai => ../../x/provider/openai
+
+replace github.com/andrewhowdencom/ore/x/tool => ../../x/tool
+
+replace github.com/andrewhowdencom/ore/x/tool/filesystem => ../../x/tool/filesystem
+
+replace github.com/andrewhowdencom/ore/x/verifier => ../../x/verifier
+
+replace github.com/andrewhowdencom/ore/x/wire/openai => ../../x/wire/openai
