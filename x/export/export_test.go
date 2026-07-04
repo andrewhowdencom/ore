@@ -23,22 +23,33 @@ func fixtureThread() *junk.Thread {
 	// User turn with text.
 	buf.Append(ledger.RoleUser, artifact.Text{Content: "What is the capital of France?"})
 
-	// Assistant turn with reasoning, text, tool call, and usage.
+	// Assistant turn with reasoning, text, and usage.
 	buf.Append(ledger.RoleAssistant,
 		artifact.Reasoning{Content: "The user is asking for the capital of France."},
-		artifact.Text{Content: "The capital of France is Paris."},
+		artifact.Text{Content: "The capital of France is **Paris**."},
+		artifact.Usage{PromptTokens: 20, CompletionTokens: 10, TotalTokens: 30},
+	)
+
+	// Tool call and its matching tool result in the SAME turn to
+	// exercise the paired collapsible rendering in HTML.
+	buf.Append(ledger.RoleAssistant,
 		artifact.ToolCall{
 			ID:        "call-geo-1",
 			Name:      "geography",
 			Arguments: `{"country":"France"}`,
 		},
-		artifact.Usage{PromptTokens: 20, CompletionTokens: 10, TotalTokens: 30},
+		artifact.ToolResult{
+			ToolCallID: "call-geo-1",
+			Content:    "Paris",
+		},
 	)
 
-	// Tool turn with result.
+	// Separate tool turn to cover the "tool" role across all
+	// formats. Its result is a follow-up call without a paired
+	// call in the same turn.
 	buf.Append(ledger.RoleTool, artifact.ToolResult{
-		ToolCallID: "call-geo-1",
-		Content:    "Paris",
+		ToolCallID: "call-geo-2",
+		Content:    "follow-up",
 	})
 
 	// Assistant turn with image.
@@ -76,13 +87,10 @@ func TestExportAllFormats(t *testing.T) {
 			"=== assistant",
 			"[Reasoning]",
 			"The user is asking for the capital of France.",
-			"The capital of France is Paris.",
+			"The capital of France is **Paris**.",
 			"[Tool Call: geography]",
 			`{"country":"France"}`,
 			"[Usage] prompt=20 completion=10 total=30",
-			"=== tool",
-			"[Tool Result: call-geo-1]",
-			"Paris",
 			"[Image: https://example.com/map.png]",
 		}
 		for _, want := range wantSubstrs {
@@ -108,14 +116,26 @@ func TestExportAllFormats(t *testing.T) {
 			"turn-user",
 			"What is the capital of France?",
 			"turn-assistant",
-			"<div class=\"reasoning\">The user is asking for the capital of France.</div>",
-			"The capital of France is Paris.",
-			"<div class=\"tool-call-name\">geography</div>",
-			"<div class=\"tool-result\">",
-			"Result for call-geo-1",
-			"Paris",
-			"<span class=\"usage\">Tokens: prompt=20 / completion=10 / total=30</span>",
-			"<img class=\"image\" src=\"https://example.com/map.png\" alt=\"Image\">",
+			// Reasoning collapses under <details>.
+			`<details class="reasoning-block">`,
+			`<summary>Reasoning</summary>`,
+			`<div class="reasoning-body">The user is asking for the capital of France.</div>`,
+			// Text is markdown-rendered: **Paris** becomes <strong>Paris</strong>.
+			`<div class="markdown">`,
+			`<strong>Paris</strong>`,
+			// ToolCall + ToolResult pair in same turn collapses under
+			// one <details>, summary = tool name.
+			`<details class="tool-block"><summary>geography</summary>`,
+			`<div class="tool-call-name">Call</div>`,
+			`<pre>{&#34;country&#34;:&#34;France&#34;}</pre>`,
+			`<div class="tool-result-id">Result for call-geo-1</div>`,
+			`>Paris<`,
+			// Usage badge.
+			`<span class="usage">Tokens: prompt=20 / completion=10 / total=30</span>`,
+			// Image.
+			`<img class="image" src="https://example.com/map.png" alt="Image">`,
+			// Layout widened.
+			`max-width: 960px`,
 		}
 		for _, want := range wantSubstrs {
 			if !strings.Contains(got, want) {
