@@ -1,8 +1,6 @@
 package ledger
 
 import (
-	"time"
-
 	"github.com/andrewhowdencom/ore/artifact"
 )
 
@@ -14,14 +12,15 @@ import (
 // current tip via [Turn.ParentID], applying each turn's
 // [Metadata.Control] directive.
 //
+// Thread identity (the address by which a conversation is found) is
+// not stored on the Thread. It is held by the Session that owns
+// the Thread and used as a key into the journal repository. See
+// [Repository] for the persistence contract.
+//
 // Thread is not safe for concurrent use. The framework's serial
 // pipeline — the loop worker goroutine, the Transform chain, the
 // session's worker — is the only contract.
 type Thread struct {
-	// ID is the unique identifier of this thread. Empty for in-memory
-	// ephemeral threads; populated when hydrated from the journal.
-	ID string
-
 	// turns is the addressable node pool. The walk traverses this
 	// map via [Turn.ParentID] links.
 	turns map[string]*Turn
@@ -240,7 +239,3 @@ func WithThreadClock(c Clock) func(*Thread) {
 
 // Compile-time check that [Thread] satisfies [State].
 var _ State = (*Thread)(nil)
-
-// Ensure unused-import lint doesn't trip on time. Some toolchains
-// flag unused imports when the only consumer is via reflection.
-var _ = time.Now

@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/andrewhowdencom/ore/ledger"
 )
@@ -44,11 +43,9 @@ func (s *JSONStore) Create() (*Thread, error) {
 	}
 
 	thread := &Thread{
-		ID:        id,
-		State:     ledger.NewThread(),
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-		Metadata:  make(map[string]string),
+		ID:       id,
+		State:    ledger.NewThread(),
+		Metadata: make(map[string]string),
 	}
 
 	if err := s.Save(thread); err != nil {
@@ -167,7 +164,6 @@ func (s *JSONStore) Save(thread *Thread) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	thread.UpdatedAt = time.Now()
 	s.cache[thread.ID] = thread
 	return nil
 }

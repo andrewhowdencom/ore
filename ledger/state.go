@@ -1,4 +1,4 @@
-// Package state defines the State interface and supporting types for ore's
+// Package ledger defines the State interface and supporting types for ore's
 // conversation history model.
 package ledger
 

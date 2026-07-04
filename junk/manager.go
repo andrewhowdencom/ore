@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
-	"time"
 
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
@@ -239,11 +238,9 @@ func (m *Manager) ListThreads() ([]*Thread, error) {
 // CreateWithID creates a new thread with the given ID and an active stream backed by it.
 func (m *Manager) CreateWithID(id string) (*Stream, error) {
 	thr := &Thread{
-		ID:        id,
-		State:     ledger.NewThread(),
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-		Metadata:  make(map[string]string),
+		ID:       id,
+		State:    ledger.NewThread(),
+		Metadata: make(map[string]string),
 	}
 	if err := m.store.Save(thr); err != nil {
 		return nil, fmt.Errorf("save thread: %w", err)

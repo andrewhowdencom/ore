@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/ledger"
@@ -126,16 +125,14 @@ func TestJSONStore_RestartRecoversThreads(t *testing.T) {
 	assert.Len(t, got2.State.Turns(), 1)
 }
 
-func TestJSONStore_CreatedAtPreserved(t *testing.T) {
+func TestJSONStore_RoundTripPreservesTurns(t *testing.T) {
 	dir := t.TempDir()
 	store1, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
 	thread, err := store1.Create()
 	require.NoError(t, err)
-	createdAt := thread.CreatedAt
 
-	time.Sleep(1 * time.Millisecond)
 	thread.State.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	require.NoError(t, store1.Save(thread))
 
@@ -144,8 +141,10 @@ func TestJSONStore_CreatedAtPreserved(t *testing.T) {
 
 	got, err := store2.Get(thread.ID)
 	require.NoError(t, err)
-	assert.True(t, createdAt.Equal(got.CreatedAt))
-	assert.True(t, got.UpdatedAt.After(createdAt))
+	assert.Equal(t, thread.ID, got.ID)
+	turns := got.State.Turns()
+	require.Len(t, turns, 1)
+	assert.Equal(t, "text", turns[0].Artifacts[0].Kind())
 }
 
 func TestJSONStore_List(t *testing.T) {
@@ -196,10 +195,8 @@ func TestJSONStore_CorruptedFile(t *testing.T) {
 
 	// Write a valid thread file.
 	valid := &Thread{
-		ID:        "good",
-		State:     ledger.NewThread(),
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:    "good",
+		State: ledger.NewThread(),
 	}
 	valid.State.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	data, err := json.Marshal(valid)
