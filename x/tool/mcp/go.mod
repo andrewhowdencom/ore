@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/x/tool/mcp
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v0.7.1
+	github.com/andrewhowdencom/ore v1.2.0
 	github.com/mark3labs/mcp-go v0.54.0
 	github.com/stretchr/testify v1.11.1
 )
