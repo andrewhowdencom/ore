@@ -113,9 +113,9 @@ func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error) {
 
 // threadItem holds the data for a single thread on the landing page.
 type threadItem struct {
-	ID        string
-	Preview   string
-	UpdatedAt time.Time
+	ID      string
+	Preview string
+	LastAt  time.Time
 }
 
 func (h *Handler) serveLanding(w stdhttp.ResponseWriter, r *stdhttp.Request) {
@@ -141,9 +141,9 @@ func (h *Handler) serveLanding(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	items := make([]threadItem, len(page))
 	for i, thr := range page {
 		items[i] = threadItem{
-			ID:        thr.ID,
-			Preview:   previewSnippet(thr, 120),
-			UpdatedAt: thr.UpdatedAt,
+			ID:      thr.ID,
+			Preview: previewSnippet(thr, 120),
+			LastAt:  lastActivity(thr),
 		}
 	}
 

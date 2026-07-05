@@ -9,21 +9,30 @@ import (
 	"testing"
 	"time"
 
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/ledger"
 )
 
-// makeThread builds a *junk.Thread with the given ID and UpdatedAt
-// for use in pagination tests. The State and Metadata are initialised
-// to non-nil empty values so the helper works in isolation.
-func makeThread(id string, updatedAt time.Time) *junk.Thread {
-	return &junk.Thread{
-		ID:        id,
-		State:     ledger.NewThread(),
-		CreatedAt: updatedAt.Add(-time.Hour),
-		UpdatedAt: updatedAt,
-		Metadata:  map[string]string{},
+// makeThread builds a *junk.Thread with the given ID and a single turn
+// timestamp for use in pagination tests. The "last activity" sort key
+// is the turn's timestamp. The State and Metadata are initialised to
+// non-nil empty values so the helper works in isolation.
+//
+// A custom Clock is used to stamp the appended turn's timestamp,
+// because Thread.AllTurns returns defensive copies; mutating the
+// returned slice does not affect the underlying thread.
+func makeThread(id string, lastAt time.Time) *junk.Thread {
+	th := &junk.Thread{
+		ID:       id,
+		State:    ledger.NewThread(),
+		Metadata: map[string]string{},
 	}
+	if !lastAt.IsZero() {
+		th.State = ledger.NewThread(ledger.WithThreadClock(ledger.ClockFunc(func() time.Time { return lastAt })))
+		th.State.Append(ledger.RoleUser, artifact.Text{Content: "x"})
+	}
+	return th
 }
 
 // idsOf extracts the IDs from a slice of threads in order, for assertions.
@@ -225,9 +234,9 @@ func TestPaginateAndSortThreads_CursorPastEndReturnsEmpty(t *testing.T) {
 	// Build a cursor pointing to "a" (the OLDEST thread). The next page
 	// should be empty.
 	c, err := (threadCursor{
-		Version:   threadCursorVersion,
-		UpdatedAt: threads[0].UpdatedAt,
-		ID:        threads[0].ID,
+		Version: threadCursorVersion,
+		LastAt:  lastActivity(threads[0]),
+		ID:      threads[0].ID,
 	}).encode()
 	if err != nil {
 		t.Fatalf("encode: %v", err)
@@ -347,7 +356,7 @@ func TestPaginateAndSortThreads_DoesNotMutateInputIDs(t *testing.T) {
 func TestCursor_RoundTrip(t *testing.T) {
 	original := threadCursor{
 		Version:   threadCursorVersion,
-		UpdatedAt: time.Date(2026, 6, 15, 12, 30, 45, 0, time.UTC),
+		LastAt: time.Date(2026, 6, 15, 12, 30, 45, 0, time.UTC),
 		ID:        "abc-123",
 	}
 
@@ -366,8 +375,8 @@ func TestCursor_RoundTrip(t *testing.T) {
 	if decoded.Version != original.Version {
 		t.Errorf("Version: got %d, want %d", decoded.Version, original.Version)
 	}
-	if !decoded.UpdatedAt.Equal(original.UpdatedAt) {
-		t.Errorf("UpdatedAt: got %v, want %v", decoded.UpdatedAt, original.UpdatedAt)
+	if !decoded.LastAt.Equal(original.LastAt) {
+		t.Errorf("LastAt: got %v, want %v", decoded.LastAt, original.LastAt)
 	}
 	if decoded.ID != original.ID {
 		t.Errorf("ID: got %q, want %q", decoded.ID, original.ID)
@@ -377,7 +386,7 @@ func TestCursor_RoundTrip(t *testing.T) {
 func TestCursor_StableEncoding(t *testing.T) {
 	c := threadCursor{
 		Version:   threadCursorVersion,
-		UpdatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		LastAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		ID:        "x",
 	}
 	first, err := c.encode()
@@ -418,7 +427,7 @@ func TestCursor_MalformedJSON(t *testing.T) {
 }
 
 func TestCursor_UnknownVersion(t *testing.T) {
-	unknown := threadCursor{Version: 999, UpdatedAt: time.Now(), ID: "x"}
+	unknown := threadCursor{Version: 999, LastAt: time.Now(), ID: "x"}
 	encoded, err := unknown.encode()
 	if err != nil {
 		t.Fatalf("encode: %v", err)
@@ -448,7 +457,7 @@ func TestCursor_EmptyString(t *testing.T) {
 func TestThreadsListResponseJSON_MarshalsToEnvelope(t *testing.T) {
 	resp := threadsListResponseJSON{
 		Threads: []threadSummaryJSON{
-			{ID: "a", CreatedAt: time.Unix(1, 0).UTC(), UpdatedAt: time.Unix(2, 0).UTC()},
+			{ID: "a", LastAt: time.Unix(2, 0).UTC().Format(time.RFC3339)},
 		},
 		NextCursor: "opaque",
 	}
@@ -493,7 +502,7 @@ func TestThreadsListResponseJSON_EmptyThreadsArray(t *testing.T) {
 // uses URL-safe base64 with no padding, so cursors survive in query
 // strings without further escaping.
 func TestEncodeProducesBase64URL(t *testing.T) {
-	c := threadCursor{Version: threadCursorVersion, UpdatedAt: time.Now(), ID: "x"}
+	c := threadCursor{Version: threadCursorVersion, LastAt: time.Now(), ID: "x"}
 	encoded, err := c.encode()
 	if err != nil {
 		t.Fatalf("encode: %v", err)
@@ -512,12 +521,15 @@ func TestEncodeProducesBase64URL(t *testing.T) {
 }
 
 // Ensure that the comparator used by slices.SortFunc is well-behaved
-// across edge cases (equal timestamps, equal IDs, etc.).
+// across edge cases (equal timestamps, equal IDs, etc.). The
+// comparator works on each thread's last-turn timestamp, so we
+// construct threads with a single turn whose timestamp is set
+// explicitly.
 func TestCompareThreads(t *testing.T) {
 	now := time.Now()
-	a := &junk.Thread{ID: "a", UpdatedAt: now}
-	b := &junk.Thread{ID: "b", UpdatedAt: now}
-	c := &junk.Thread{ID: "c", UpdatedAt: now.Add(time.Hour)}
+	a := makeThread("a", now)
+	b := makeThread("b", now)
+	c := makeThread("c", now.Add(time.Hour))
 
 	if compareThreads(a, b) >= 0 {
 		t.Error("a should sort before b (same ts, lower id)")
@@ -542,18 +554,18 @@ func TestThreadIsAfterCursor(t *testing.T) {
 	now := time.Now()
 	earlier := now.Add(-time.Hour)
 	later := now.Add(time.Hour)
-	c := threadCursor{Version: 1, UpdatedAt: now, ID: "m"}
+	c := threadCursor{Version: 1, LastAt: now, ID: "m"}
 
 	tests := []struct {
 		name string
 		thr  *junk.Thread
 		want bool
 	}{
-		{"strictly earlier ts", &junk.Thread{ID: "z", UpdatedAt: earlier}, true},
-		{"strictly later ts", &junk.Thread{ID: "a", UpdatedAt: later}, false},
-		{"same ts, lower id", &junk.Thread{ID: "a", UpdatedAt: now}, false},
-		{"same ts, higher id", &junk.Thread{ID: "z", UpdatedAt: now}, true},
-		{"same ts, same id", &junk.Thread{ID: "m", UpdatedAt: now}, false},
+		{"strictly earlier ts", makeThread("z", earlier), true},
+		{"strictly later ts", makeThread("a", later), false},
+		{"same ts, lower id", makeThread("a", now), false},
+		{"same ts, higher id", makeThread("z", now), true},
+		{"same ts, same id", makeThread("m", now), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

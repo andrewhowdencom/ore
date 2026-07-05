@@ -117,7 +117,7 @@
                 {{if .Preview}}
                 <div class="thread-preview">{{.Preview}}</div>
                 {{end}}
-                <div class="thread-meta">Updated {{.UpdatedAt.Format "Jan 2, 2006 3:04 PM"}}</div>
+                <div class="thread-meta">Updated {{.LastAt.Format "Jan 2, 2006 3:04 PM"}}</div>
             </a>
             {{end}}
         </div>
@@ -168,7 +168,7 @@
             return '<a href="/chat?thread=' + esc(t.id) + '" class="thread-card">' +
                 '<div class="thread-id">' + esc(t.id) + '</div>' +
                 preview +
-                '<div class="thread-meta">Updated ' + esc(formatDate(t.updated_at)) + '</div>' +
+                '<div class="thread-meta">Updated ' + esc(formatDate(t.last_at)) + '</div>' +
                 '</a>';
         }
 

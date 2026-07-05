@@ -847,25 +847,27 @@ func TestHandler_ListThreads_StoreError(t *testing.T) {
 	assert.Equal(t, 500, rr.Code)
 }
 
-// seedThread saves a thread with a controlled UpdatedAt timestamp. Used
+// seedThread saves a thread with a controlled LastAt timestamp. Used
 // by the listing tests below to construct predictable sort orders
 // without depending on real wall-clock time.
 //
-// MemoryStore.Save overrides UpdatedAt to time.Now() at save time. We
-// re-apply the requested timestamp after the save completes; since the
-// store retains the *Thread pointer, the modification is reflected in
-// the stored record.
-func seedThread(t *testing.T, store *junk.MemoryStore, id string, updatedAt time.Time) {
+// MemoryStore.Save overrides LastAt to time.Now() at save time. We
+// seedThread saves a thread whose most recent turn's timestamp is
+// the given lastAt. The thread is then discoverable through the
+// listing's last-activity sort key. A custom Clock is used so the
+// append produces a turn with the requested timestamp.
+func seedThread(t *testing.T, store *junk.MemoryStore, id string, lastAt time.Time) {
 	t.Helper()
 	thr := &junk.Thread{
-		ID:        id,
-		State:     ledger.NewThread(),
-		CreatedAt: updatedAt,
-		UpdatedAt: updatedAt,
-		Metadata:  map[string]string{},
+		ID:       id,
+		State:    ledger.NewThread(),
+		Metadata: map[string]string{},
+	}
+	if !lastAt.IsZero() {
+		thr.State = ledger.NewThread(ledger.WithThreadClock(ledger.ClockFunc(func() time.Time { return lastAt })))
+		thr.State.Append(ledger.RoleUser, artifact.Text{Content: "x"})
 	}
 	require.NoError(t, store.Save(thr))
-	thr.UpdatedAt = updatedAt
 }
 
 // threadIDsInPage extracts the IDs from a threads-list response payload.
@@ -1116,7 +1118,7 @@ func TestHandler_LandingPage_IncludesLoadMoreWhenMorePagesExist(t *testing.T) {
 	// The cursor must round-trip through the decoder.
 	decoded, err := decodeThreadCursor(cursor)
 	require.NoError(t, err)
-	assert.NotZero(t, decoded.UpdatedAt)
+	assert.NotZero(t, decoded.LastAt)
 	assert.NotEmpty(t, decoded.ID)
 
 	// The noscript fallback must be present.
@@ -1275,8 +1277,10 @@ func TestHandler_WithUI_LandingPage(t *testing.T) {
 	// Seed a thread with a user message so we can verify snippet extraction.
 	thr, err := store.Create()
 	require.NoError(t, err)
+	thr.State = ledger.NewThread(ledger.WithThreadClock(ledger.ClockFunc(func() time.Time {
+		return time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+	})))
 	thr.State.Append(ledger.RoleUser, artifact.Text{Content: "Hello world this is a test message for preview"})
-	thr.UpdatedAt = time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	require.NoError(t, store.Save(thr))
 
 	req := httptest.NewRequest("GET", "/", nil)
