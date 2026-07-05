@@ -3,8 +3,8 @@ module github.com/andrewhowdencom/ore/x/tool/skills
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.0.0
-	github.com/andrewhowdencom/ore/x/tool/truncate v0.1.0
+	github.com/andrewhowdencom/ore v1.2.0
+	github.com/andrewhowdencom/ore/x/tool/truncate v0.1.1
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -17,6 +17,6 @@ require (
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
 
-replace github.com/andrewhowdencom/ore => ../../..
-
 replace github.com/andrewhowdencom/ore/x/tool/truncate => ../truncate
+
+replace github.com/andrewhowdencom/ore => ../../..
