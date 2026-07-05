@@ -12,9 +12,6 @@ github.com/alecthomas/chroma/v2 v2.20.0 h1:sfIHpxPyR07/Oylvmcai3X/exDlE8+FA820NT
 github.com/alecthomas/chroma/v2 v2.20.0/go.mod h1:e7tViK0xh/Nf4BYHl00ycY6rV7b8iXBksI9E359yNmA=
 github.com/alecthomas/repr v0.5.1 h1:E3G4t2QbHTSNpPKBgMTln5KLkZHLOcU7r37J4pXBuIg=
 github.com/alecthomas/repr v0.5.1/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
-github.com/andrewhowdencom/ore v1.0.0 h1:aFdJb3H7FOewwhevpPbCbdwcSfEEORYS95Rr0nYZ0Ew=
-github.com/andrewhowdencom/ore/x/compaction v0.5.0 h1:TOMhsUNgSFjasIHzoPjWW9AM4gj/8hW2vXnHbMmavzo=
-github.com/andrewhowdencom/ore/x/compaction v0.5.0/go.mod h1:uhfz8OQmKye/VMtj6Z1pFPxmR2v3kDb2XlivQn2tXis=
 github.com/andrewhowdencom/ore/x/conduit v0.1.5 h1:92q2VFr+2Fb9GoeALh0YOIspy/jPZFLjl9CLyRsVo8I=
 github.com/andrewhowdencom/ore/x/conduit v0.1.5/go.mod h1:83aDeFABkaP1x98A9jxkqIr3zN4XsiprPnpAxHGpPFw=
 github.com/andrewhowdencom/ore/x/llmbytes v0.1.2 h1:Iextd0XUHRZOvhVWawJY2MMQj0o0mjniqTJbgvjAMBc=
