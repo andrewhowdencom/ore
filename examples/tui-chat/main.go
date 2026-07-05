@@ -60,6 +60,16 @@ func main() {
 	}
 }
 
+// lastActivity returns the timestamp of the most recent turn in the
+// thread. Empty threads return the zero time.
+func lastActivity(t *junk.Thread) time.Time {
+	turns := t.State.AllTurns()
+	if len(turns) == 0 {
+		return time.Time{}
+	}
+	return turns[len(turns)-1].Timestamp
+}
+
 func run() error {
 	// Parse command-line flags.
 	var threadID string
@@ -86,19 +96,25 @@ func run() error {
 			return fmt.Errorf("list threads: %w", err)
 		}
 
-		// Sort by UpdatedAt descending (most recently active first).
+		// Sort by last-activity descending (most recently active first).
 		sort.Slice(threads, func(i, j int) bool {
-			return threads[i].UpdatedAt.After(threads[j].UpdatedAt)
+			li := lastActivity(threads[i])
+			lj := lastActivity(threads[j])
+			if li.Equal(lj) {
+				return threads[i].ID < threads[j].ID
+			}
+			return li.After(lj)
 		})
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "ID\tCreatedAt\tUpdatedAt")
+		fmt.Fprintln(w, "ID\tLastActivity")
 		for _, t := range threads {
-			fmt.Fprintf(w, "%s\t%s\t%s\n",
-				t.ID,
-				t.CreatedAt.Format(time.RFC3339),
-				t.UpdatedAt.Format(time.RFC3339),
-			)
+			at := lastActivity(t)
+			ts := ""
+			if !at.IsZero() {
+				ts = at.Format(time.RFC3339)
+			}
+			fmt.Fprintf(w, "%s\t%s\n", t.ID, ts)
 		}
 		w.Flush()
 

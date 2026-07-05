@@ -26,8 +26,8 @@ type mockStore struct {
 }
 
 func (m *mockStore) Create() (*junk.Thread, error) { return nil, nil }
-func (m *mockStore) Get(id string) (*junk.Thread, bool) { return nil, false }
-func (m *mockStore) GetBy(key, value string) (*junk.Thread, bool) { return nil, false }
+func (m *mockStore) Get(id string) (*junk.Thread, error) { return nil, junk.ErrThreadNotFound }
+func (m *mockStore) GetBy(key, value string) (*junk.Thread, error) { return nil, junk.ErrThreadNotFound }
 func (m *mockStore) Save(thread *junk.Thread) error { return nil }
 func (m *mockStore) Delete(id string) bool { return false }
 func (m *mockStore) List() ([]*junk.Thread, error) {
@@ -328,7 +328,7 @@ func TestAnalyzeThread_Nil(t *testing.T) {
 }
 
 func TestAnalyzeThread_Empty(t *testing.T) {
-	th := &junk.Thread{State: ledger.NewThread()}
+	th := &junk.Thread{ID: "empty-id", State: ledger.NewThread()}
 	got := analytics.AnalyzeThread(th)
 	if len(got) != 0 {
 		t.Fatalf("expected empty slice, got %d entries", len(got))
@@ -471,9 +471,9 @@ func TestAnalyzeThread_AfterJSONRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reopen store: %v", err)
 	}
-	loaded, ok := reopened.Get(thr.ID)
-	if !ok {
-		t.Fatalf("Get(%q) returned not-found", thr.ID)
+	loaded, err := reopened.Get(thr.ID)
+	if err != nil {
+		t.Fatalf("Get(%q) returned error: %v", thr.ID, err)
 	}
 
 	// Every artifact loaded from disk is a value, not a pointer —
@@ -626,9 +626,9 @@ func TestAnalyzeThread_NoJSONEnvelopeLeak(t *testing.T) {
 	thr.State.Append(ledger.RoleUser, art)
 	_ = store.Save(thr)
 	reopened, _ := junk.NewJSONStore(dir)
-	loaded, ok := reopened.Get(thr.ID)
-	if !ok {
-		t.Fatal("expected to find the persisted thread")
+	loaded, err := reopened.Get(thr.ID)
+	if err != nil {
+		t.Fatalf("expected to find the persisted thread: %v", err)
 	}
 
 	got := analytics.AnalyzeThread(loaded)
