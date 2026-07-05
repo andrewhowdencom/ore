@@ -1,5 +1,3 @@
-github.com/andrewhowdencom/ore v1.0.0 h1:aFdJb3H7FOewwhevpPbCbdwcSfEEORYS95Rr0nYZ0Ew=
-github.com/andrewhowdencom/ore v1.0.0/go.mod h1:6oUPpgT2OSugdQJFnttnGApUzA8AnAyXtUFfRYWWndo=
 github.com/andrewhowdencom/ore/x/llmbytes v0.1.2 h1:Iextd0XUHRZOvhVWawJY2MMQj0o0mjniqTJbgvjAMBc=
 github.com/andrewhowdencom/ore/x/llmbytes v0.1.2/go.mod h1:JxGVBAMfkWklMOC4kUCF5gs1/epk4g1WMIYtl02ZwCY=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
