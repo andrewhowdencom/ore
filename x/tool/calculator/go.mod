@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/x/tool/calculator
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.0.0
+	github.com/andrewhowdencom/ore v1.2.0
 	github.com/andrewhowdencom/ore/x/tool v0.6.0
 	github.com/stretchr/testify v1.11.1
 )
