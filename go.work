@@ -13,6 +13,7 @@ use (
 	./x/conduit/stdio
 	./x/conduit/telegram
 	./x/conduit/tui
+	./x/export
 	./x/llmbytes
 	./x/provider/anthropic
 	./x/provider/minimax

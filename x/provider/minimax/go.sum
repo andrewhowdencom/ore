@@ -1,9 +1,6 @@
-github.com/andrewhowdencom/ore/x/provider/retry v0.0.1 h1:EzHH2kaaYCMy+yuUZA1Yf/yoOk/OILaNzeq90zEjqHE=
-github.com/andrewhowdencom/ore/x/provider/retry v0.0.1/go.mod h1:rOSReTP2vkmDXeaVsC2GpBnmkhU+szH0zpgfCupqsWo=
-github.com/andrewhowdencom/ore/x/tool v0.5.0 h1:OykMfHH5EomBE00VV4CgdHrv8XGRJCTYekh5N8pTRyg=
-github.com/andrewhowdencom/ore/x/tool v0.5.0/go.mod h1:1SG30HzmR193xwyt2vQZyLpASGw6zifIqtRjiYD3rok=
-github.com/andrewhowdencom/ore/x/tool/truncate v0.1.0 h1:cumvWGc/PizBaMBq/hK4LTWSSwgPsgh/x4V4dO6d868=
-github.com/andrewhowdencom/ore/x/tool/truncate v0.1.0/go.mod h1:WLP3YCbkBk26ZY4K0GFQ5HNXglM1t05uYIr0IRQGrNQ=
+github.com/andrewhowdencom/ore/x/provider/retry v0.0.3 h1:hSfSKo7jzYQrjvaEHiyivfod5U2FaOa5wOaJlPaWfUc=
+github.com/andrewhowdencom/ore/x/tool v0.6.0 h1:Fcmy2O1rAzdUye3KF/smOIb1eLNgr+ZV8Wl8uhwkxbE=
+github.com/andrewhowdencom/ore/x/tool/truncate v0.1.1 h1:40t59tIMtN2k1eZfhInSaS7kTKnRJVz5ONzV7eJjfxc=
 github.com/anthropics/anthropic-sdk-go v1.50.1 h1:XTd1RkdeHCPusPpzcBY5RIWj/WW6ZktjftxrHvQBJfU=
 github.com/anthropics/anthropic-sdk-go v1.50.1/go.mod h1:3EfIfmFqxH6rbiLcIP4tPFyXL/IHakx2wDG4OU+TIEI=
 github.com/bahlo/generic-list-go v0.2.0 h1:5sz/EEAK+ls5wF+NeqDpk5+iNdMDXrh3z3nPnH1Wvgk=
@@ -75,8 +72,7 @@ go.opentelemetry.io/otel/trace v1.44.0 h1:jxF5CsGYCe74MCRx2X4g7WsY/VBKRqqpNvXlX/
 go.opentelemetry.io/otel/trace v1.44.0/go.mod h1:oLl1jrMQAVo6v3GAggN+1VH9VIz9iUSvW53sW1Q8PIE=
 go.yaml.in/yaml/v4 v4.0.0-rc.2 h1:/FrI8D64VSr4HtGIlUtlFMGsm7H7pWTbj6vOLVZcA6s=
 go.yaml.in/yaml/v4 v4.0.0-rc.2/go.mod h1:aZqd9kCMsGL7AuUv/m/PvWLdg5sjJsZ4oHDEnfPPfY0=
-golang.org/x/sync v0.16.0 h1:ycBJEhp9p4vXvUZNszeOq0kGTPghopOL8q0fq3vstxw=
-golang.org/x/sync v0.16.0/go.mod h1:1dzgHSNfp02xaA81J2MS99Qcpr2w7fw1gpm99rleRqA=
+golang.org/x/sync v0.20.0 h1:e0PTpb7pjO8GAtTs2dQ6jYa5BWYlMuX047Dco/pItO4=
 golang.org/x/sys v0.45.0 h1:dO4czNzziLiiXplLQgBCEpCvXQ3dnkn0SdaZSYdQ+FY=
 golang.org/x/sys v0.45.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=

@@ -45,6 +45,9 @@ includes:
   x-conduit-tui:
     taskfile: Taskfile.lib.yml
     dir: x/conduit/tui
+  x-export:
+    taskfile: Taskfile.lib.yml
+    dir: x/export
   x-wire-anthropic:
     taskfile: Taskfile.lib.yml
     dir: x/wire/anthropic

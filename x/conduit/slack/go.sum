@@ -1,3 +1,4 @@
+github.com/andrewhowdencom/ore v1.0.0 h1:aFdJb3H7FOewwhevpPbCbdwcSfEEORYS95Rr0nYZ0Ew=
 github.com/andrewhowdencom/ore/x/conduit v0.1.5 h1:92q2VFr+2Fb9GoeALh0YOIspy/jPZFLjl9CLyRsVo8I=
 github.com/andrewhowdencom/ore/x/conduit v0.1.5/go.mod h1:83aDeFABkaP1x98A9jxkqIr3zN4XsiprPnpAxHGpPFw=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
