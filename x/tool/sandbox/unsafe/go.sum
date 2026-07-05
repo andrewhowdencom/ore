@@ -1,10 +1,7 @@
-github.com/andrewhowdencom/ore v0.12.0 h1:57NpXBE7+4uw0LQ65GTeav6ifxdlrsnjj9dAjtBRoRM=
-github.com/andrewhowdencom/ore v0.12.0/go.mod h1:z8ohVfj62/vsXqVsbpqftza2GTINPPqwxzZhJbclN4g=
-github.com/andrewhowdencom/ore/x/tool/bash v0.3.6 h1:MucfZacbYp6Nrz+XBR0MikNiXmV3S6pF52y8fFRk+/Q=
-github.com/andrewhowdencom/ore/x/tool/filesystem v0.5.1 h1:q8r//drAlkuUvRc9SZkSv6qi4BC+0R2SDpo9+XjemrI=
-github.com/andrewhowdencom/ore/x/tool/filesystem v0.5.1/go.mod h1:hpFq5ggjbiMl7Kny4OdoYHBBmAqxiVDqMRil9XbwLlM=
-github.com/andrewhowdencom/ore/x/tool/truncate v0.1.0 h1:cumvWGc/PizBaMBq/hK4LTWSSwgPsgh/x4V4dO6d868=
-github.com/andrewhowdencom/ore/x/tool/truncate v0.1.0/go.mod h1:WLP3YCbkBk26ZY4K0GFQ5HNXglM1t05uYIr0IRQGrNQ=
+github.com/andrewhowdencom/ore/x/tool/filesystem v0.5.2 h1:ClhSuFVs5qBjNNQidlaqDJMpjl7JDti2kkAbrvVBO1Q=
+github.com/andrewhowdencom/ore/x/tool/filesystem v0.5.2/go.mod h1:LdGauj8r7VkJShxsF1t03c5iONeXdCfvmbPQM48wsD4=
+github.com/andrewhowdencom/ore/x/tool/truncate v0.1.1 h1:40t59tIMtN2k1eZfhInSaS7kTKnRJVz5ONzV7eJjfxc=
+github.com/andrewhowdencom/ore/x/tool/truncate v0.1.1/go.mod h1:tvCpe1gms1UEPbAQtlIB3iy3Vk7mRRecLa0/riDXsMI=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
