@@ -18,7 +18,6 @@ func TestJSON(t *testing.T) {
 	thread := &junk.Thread{
 		ID:        "thread-json-1",
 		State:     buf,
-		CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 		Metadata:  map[string]string{"foo": "bar"},
 	}
 

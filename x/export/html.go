@@ -206,8 +206,6 @@ const htmlTemplate = `<!DOCTYPE html>
 <body>
 	<h1>Session {{ .Thread.ID }}</h1>
 	<div class="meta">
-		<span><strong>Created:</strong> {{ .Thread.CreatedAt.Format "2006-01-02 15:04:05 MST" }}</span>
-		{{ if not .Thread.UpdatedAt.IsZero }}<span><strong>Updated:</strong> {{ .Thread.UpdatedAt.Format "2006-01-02 15:04:05 MST" }}</span>{{ end }}
 		{{ range $k, $v := .Thread.Metadata }}<span><strong>{{ $k }}:</strong> {{ $v }}</span>{{ end }}
 	</div>
 	{{ range .Turns }}

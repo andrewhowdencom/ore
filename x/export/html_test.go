@@ -23,7 +23,6 @@ func TestHTML(t *testing.T) {
 			thread: &junk.Thread{
 				ID:        "thread-a",
 				State:     ledger.NewThread(),
-				CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			},
 			wantSubstr: []string{
 				"<!DOCTYPE html>",
@@ -200,7 +199,6 @@ func TestHTML(t *testing.T) {
 				ID:        "thread-f",
 				State:     ledger.NewThread(),
 				Metadata:  map[string]string{"key1": "val1"},
-				CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			},
 			wantSubstr: []string{
 				`<span><strong>key1:</strong> val1</span>`,

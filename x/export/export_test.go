@@ -61,8 +61,6 @@ func fixtureThread() *junk.Thread {
 	return &junk.Thread{
 		ID:        "fixture-thread",
 		State:     buf,
-		CreatedAt: time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC),
-		UpdatedAt: time.Date(2024, 6, 1, 12, 5, 0, 0, time.UTC),
 		Metadata:  map[string]string{"source": "integration-test"},
 	}
 }
