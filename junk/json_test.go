@@ -297,9 +297,12 @@ func TestJSONStore_GetBy_NotFound(t *testing.T) {
 func TestJSONStore_LegacyJSONNoMetadata(t *testing.T) {
 	dir := t.TempDir()
 
-	// Write a JSON file in the old format (no metadata field).
-	oldJSON := `{"id":"legacy-thread","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z","turns":[]}`
-	err := os.WriteFile(filepath.Join(dir, "legacy-thread.json"), []byte(oldJSON), 0644)
+	// Write a JSON file in a minimal form (no metadata field, no
+	// timestamps — the current wire format). The test confirms the
+	// Store initializes Metadata to a non-nil empty map when
+	// loading a thread without one.
+	minimalJSON := `{"id":"legacy-thread","turns":[]}`
+	err := os.WriteFile(filepath.Join(dir, "legacy-thread.json"), []byte(minimalJSON), 0644)
 	require.NoError(t, err)
 
 	store, err := NewJSONStore(dir)
