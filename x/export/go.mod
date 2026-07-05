@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/x/export
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.0.0
+	github.com/andrewhowdencom/ore v1.2.0
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/yuin/goldmark v1.7.13
 )
