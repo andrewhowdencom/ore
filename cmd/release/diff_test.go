@@ -105,6 +105,59 @@ func TestBumpFromDiff_DeletedGoFile(t *testing.T) {
 	}
 }
 
+// Deleting a binary under cmd/ (the Go convention for executable
+// entry points) must not trigger a major bump. The bumpFromDiff check
+// is meant to surface library surface-area changes (package renames,
+// removed exported files), not binary removals — a binary's removal
+// cannot break consumers that import the module as a library, and
+// promoting the version to vN+1 would force every downstream go.mod to
+// adopt a /vN path under Go's module rules.
+func TestBumpFromDiff_DeletedCmdBinary(t *testing.T) {
+	dir := setupTestRepo(t)
+	commitFile(t, dir, "init.go", "init")
+	// Pretend cmd/foo was an experimental CLI shipped with the
+	// library. It has its own main.go and a helper; both are package
+	// main because that's the cmd/ convention.
+	commitFile(t, dir, "cmd/foo/main.go", "package main\nfunc main(){}")
+	commitFile(t, dir, "cmd/foo/helper.go", "package main\n// helper")
+	commitFile(t, dir, "library.go", "library surface")
+	tagAt(t, dir, "v1.0.0")
+
+	removeFile(t, dir, "cmd/foo/main.go", "chore: retire experimental cli")
+	removeFile(t, dir, "cmd/foo/helper.go", "chore: retire experimental cli")
+
+	got, err := bumpFromDiff(dir, ".", "v1.0.0", nil)
+	if err != nil {
+		t.Fatalf("bumpFromDiff: %v", err)
+	}
+	// Library surface unchanged; removal of the cmd/ binary alone is
+	// not a breaking change to library consumers.
+	if got != None {
+		t.Errorf("bumpFromDiff() = %v, want None (cmd/ binary deletion is not a library breaking change)", got)
+	}
+}
+
+// Same rule for a nested module: deletions under that module's own
+// cmd/ must not register as library breaking changes either.
+func TestBumpFromDiff_DeletedCmdBinaryInSubmodule(t *testing.T) {
+	dir := setupTestRepo(t)
+	commitFile(t, dir, "init.go", "init")
+	makeSubmodule(t, dir, "x/foo")
+	commitFile(t, dir, "x/foo/library.go", "library surface")
+	commitFile(t, dir, "x/foo/cmd/xfoo/main.go", "package main\nfunc main(){}")
+	tagAt(t, dir, "v0.1.0")
+
+	removeFile(t, dir, "x/foo/cmd/xfoo/main.go", "chore: retire cli")
+
+	got, err := bumpFromDiff(dir, "x/foo", "v0.1.0", nil)
+	if err != nil {
+		t.Fatalf("bumpFromDiff: %v", err)
+	}
+	if got != None {
+		t.Errorf("bumpFromDiff() = %v, want None (cmd/ binary deletion is not a library breaking change)", got)
+	}
+}
+
 func TestBumpFromDiff_DeletedTestFileOnly(t *testing.T) {
 	dir := setupTestRepo(t)
 	commitFile(t, dir, "init.go", "init")

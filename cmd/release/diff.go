@@ -79,21 +79,59 @@ func bumpFromDiff(root, dir, tag string, excludeDirs []string) (Bump, error) {
 	return None, nil
 }
 
-// inModuleDir reports whether `path` belongs to the module rooted at `dir`.
-// For nested modules (`dir != "."`) the path must equal `dir` or start with
-// `dir + "/"`. For the root module (`dir == "."`) the path is accepted unless
-// it falls under any of the `excludeDirs` (sibling submodules).
+// inModuleDir reports whether `path` belongs to the LIBRARY surface of
+// the module rooted at `dir`. Two checks are applied in order:
+//   - The path must be within the module's directory.
+//   - Even within the module's directory, `cmd/...` paths are
+//     excluded: Go's `cmd/` convention reserves those paths for
+//     binary entry points (`cmd/<name>/main.go` and any internal
+//     helpers that may share the directory); removing a binary is
+//     not a breaking change to the module's library API surface.
+//
+// Without the cmd/ filter, deleting any `cmd/<binary>/main.go`
+// would falsely promote a patch release to major (e.g. retiring an
+// experimental CLI triggers a v1 → v2 jump, which downstream
+// consumers cannot adopt without a `/v2` path migration).
+//
+// For nested modules (`dir != "."`) the path must equal `dir` or
+// start with `dir + "/"`. For the root module (`dir == "."`) the
+// path is accepted unless it falls under any of the `excludeDirs`
+// (sibling submodules).
 func inModuleDir(path, dir string, excludeDirs []string) bool {
 	if path == "" {
 		return false
 	}
+
+	// Step 1: path must be within the module's directory.
+	inDir := true
 	if dir != "." {
-		return path == dir || strings.HasPrefix(path, dir+"/")
-	}
-	for _, ex := range excludeDirs {
-		if path == ex || strings.HasPrefix(path, ex+"/") {
-			return false
+		if !(path == dir || strings.HasPrefix(path, dir+"/")) {
+			inDir = false
+		}
+	} else {
+		for _, ex := range excludeDirs {
+			if path == ex || strings.HasPrefix(path, ex+"/") {
+				inDir = false
+				break
+			}
 		}
 	}
+	if !inDir {
+		return false
+	}
+
+	// Step 2: within the module's directory, cmd/<name> is a binary
+	// tree, not library surface. For root it's "cmd" or "cmd/..."; for
+	// a nested module it's "<dir>/cmd" or "<dir>/cmd/...".
+	var cmdSeg string
+	if dir == "." {
+		cmdSeg = "cmd"
+	} else {
+		cmdSeg = dir + "/cmd"
+	}
+	if path == cmdSeg || strings.HasPrefix(path, cmdSeg+"/") {
+		return false
+	}
+
 	return true
 }
