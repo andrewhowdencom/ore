@@ -3,11 +3,11 @@ module github.com/andrewhowdencom/ore/examples/verifier-chat
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.0.0
-	github.com/andrewhowdencom/ore/x/provider/openai v0.6.3
+	github.com/andrewhowdencom/ore v1.2.0
+	github.com/andrewhowdencom/ore/x/provider/openai v0.6.4
 	github.com/andrewhowdencom/ore/x/tool v0.6.0
 	github.com/andrewhowdencom/ore/x/tool/filesystem v0.5.2
-	github.com/andrewhowdencom/ore/x/verifier v0.2.0
+	github.com/andrewhowdencom/ore/x/verifier v0.2.1
 )
 
 require (
@@ -30,13 +30,13 @@ require (
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 )
 
-replace github.com/andrewhowdencom/ore => ../..
-
-replace github.com/andrewhowdencom/ore/x/provider/openai => ../../x/provider/openai
-
 replace github.com/andrewhowdencom/ore/x/tool => ../../x/tool
 
 replace github.com/andrewhowdencom/ore/x/tool/filesystem => ../../x/tool/filesystem
+
+replace github.com/andrewhowdencom/ore => ../..
+
+replace github.com/andrewhowdencom/ore/x/provider/openai => ../../x/provider/openai
 
 replace github.com/andrewhowdencom/ore/x/verifier => ../../x/verifier
 
