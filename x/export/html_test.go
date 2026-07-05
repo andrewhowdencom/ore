@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/junk"
@@ -23,12 +22,11 @@ func TestHTML(t *testing.T) {
 			thread: &junk.Thread{
 				ID:        "thread-a",
 				State:     ledger.NewThread(),
-				CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			},
 			wantSubstr: []string{
 				"<!DOCTYPE html>",
 				"<title>Session thread-a</title>",
-				"<span><strong>Created:</strong> 2024-01-01 00:00:00 UTC</span>",
+				"<title>Session thread-a</title>",
 				`max-width: 960px`,
 			},
 		},
@@ -200,7 +198,6 @@ func TestHTML(t *testing.T) {
 				ID:        "thread-f",
 				State:     ledger.NewThread(),
 				Metadata:  map[string]string{"key1": "val1"},
-				CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			},
 			wantSubstr: []string{
 				`<span><strong>key1:</strong> val1</span>`,

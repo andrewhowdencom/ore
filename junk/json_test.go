@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/ledger"
@@ -126,16 +125,14 @@ func TestJSONStore_RestartRecoversThreads(t *testing.T) {
 	assert.Len(t, got2.State.Turns(), 1)
 }
 
-func TestJSONStore_CreatedAtPreserved(t *testing.T) {
+func TestJSONStore_RoundTripPreservesTurns(t *testing.T) {
 	dir := t.TempDir()
 	store1, err := NewJSONStore(dir)
 	require.NoError(t, err)
 
 	thread, err := store1.Create()
 	require.NoError(t, err)
-	createdAt := thread.CreatedAt
 
-	time.Sleep(1 * time.Millisecond)
 	thread.State.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	require.NoError(t, store1.Save(thread))
 
@@ -144,8 +141,10 @@ func TestJSONStore_CreatedAtPreserved(t *testing.T) {
 
 	got, err := store2.Get(thread.ID)
 	require.NoError(t, err)
-	assert.True(t, createdAt.Equal(got.CreatedAt))
-	assert.True(t, got.UpdatedAt.After(createdAt))
+	assert.Equal(t, thread.ID, got.ID)
+	turns := got.State.Turns()
+	require.Len(t, turns, 1)
+	assert.Equal(t, "text", turns[0].Artifacts[0].Kind())
 }
 
 func TestJSONStore_List(t *testing.T) {
@@ -196,10 +195,8 @@ func TestJSONStore_CorruptedFile(t *testing.T) {
 
 	// Write a valid thread file.
 	valid := &Thread{
-		ID:        "good",
-		State:     ledger.NewThread(),
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:    "good",
+		State: ledger.NewThread(),
 	}
 	valid.State.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	data, err := json.Marshal(valid)
@@ -300,9 +297,12 @@ func TestJSONStore_GetBy_NotFound(t *testing.T) {
 func TestJSONStore_LegacyJSONNoMetadata(t *testing.T) {
 	dir := t.TempDir()
 
-	// Write a JSON file in the old format (no metadata field).
-	oldJSON := `{"id":"legacy-thread","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z","turns":[]}`
-	err := os.WriteFile(filepath.Join(dir, "legacy-thread.json"), []byte(oldJSON), 0644)
+	// Write a JSON file in a minimal form (no metadata field, no
+	// timestamps — the current wire format). The test confirms the
+	// Store initializes Metadata to a non-nil empty map when
+	// loading a thread without one.
+	minimalJSON := `{"id":"legacy-thread","turns":[]}`
+	err := os.WriteFile(filepath.Join(dir, "legacy-thread.json"), []byte(minimalJSON), 0644)
 	require.NoError(t, err)
 
 	store, err := NewJSONStore(dir)

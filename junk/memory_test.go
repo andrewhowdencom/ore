@@ -3,7 +3,6 @@ package junk
 import (
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/ledger"
@@ -17,8 +16,6 @@ func TestMemoryStore_Create(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, thread.ID)
 	assert.NotNil(t, thread.State)
-	assert.False(t, thread.CreatedAt.IsZero())
-	assert.False(t, thread.UpdatedAt.IsZero())
 
 	// Second creation should have a different ID.
 	thread2, err := store.Create()
@@ -44,17 +41,14 @@ func TestMemoryStore_Save(t *testing.T) {
 	thread, err := store.Create()
 	require.NoError(t, err)
 
-	originalUpdatedAt := thread.UpdatedAt
-	time.Sleep(1 * time.Millisecond) // ensure time advances
-
-	// Append a turn and save.
+	// Append a turn and save. CreatedAt/UpdatedAt are no longer
+	// tracked; the turn itself carries a timestamp.
 	thread.State.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	err = store.Save(thread)
 	require.NoError(t, err)
 
 	got, err := store.Get(thread.ID)
 	require.NoError(t, err)
-	assert.True(t, got.UpdatedAt.After(originalUpdatedAt), "UpdatedAt should advance after Save")
 	assert.Len(t, got.State.Turns(), 1)
 }
 

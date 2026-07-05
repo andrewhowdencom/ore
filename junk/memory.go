@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"sync"
-	"time"
 
 	"github.com/andrewhowdencom/ore/ledger"
 )
@@ -32,11 +31,9 @@ func (s *MemoryStore) Create() (*Thread, error) {
 	}
 
 	thread := &Thread{
-		ID:        id,
-		State:     ledger.NewThread(),
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-		Metadata:  make(map[string]string),
+		ID:       id,
+		State:    ledger.NewThread(),
+		Metadata: make(map[string]string),
 	}
 
 	s.mu.Lock()
@@ -87,7 +84,6 @@ func (s *MemoryStore) GetBy(key, value string) (*Thread, error) {
 func (s *MemoryStore) Save(thread *Thread) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	thread.UpdatedAt = time.Now()
 	s.threads[thread.ID] = thread
 	return nil
 }

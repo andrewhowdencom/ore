@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/junk"
@@ -18,7 +17,6 @@ func TestJSON(t *testing.T) {
 	thread := &junk.Thread{
 		ID:        "thread-json-1",
 		State:     buf,
-		CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 		Metadata:  map[string]string{"foo": "bar"},
 	}
 
@@ -43,7 +41,7 @@ func TestJSON(t *testing.T) {
 	// Should contain known fields.
 	wantSubstrs := []string{
 		`"id": "thread-json-1"`,
-		`"created_at": "2024-01-01T00:00:00Z"`,
+		// CreatedAt/UpdatedAt are no longer in the wire format.
 		`"foo": "bar"`,
 		`"role": "user"`,
 		`"Hello!"`,

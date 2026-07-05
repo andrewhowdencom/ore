@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/junk"
@@ -22,10 +21,8 @@ func TestText(t *testing.T) {
 			thread: &junk.Thread{
 				ID:        "thread-1",
 				State:     ledger.NewThread(),
-				CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-				UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			},
-			wantSubstr: []string{"Thread: thread-1", "Created: 2024-01-01T00:00:00Z"},
+			wantSubstr: []string{"Thread: thread-1"},
 		},
 		{
 			name: "text turn",
@@ -96,7 +93,6 @@ func TestText(t *testing.T) {
 				ID:        "thread-6",
 				State:     ledger.NewThread(),
 				Metadata:  map[string]string{"key1": "val1", "key2": "val2"},
-				CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			},
 			wantSubstr: []string{"key1: val1", "key2: val2"},
 		},

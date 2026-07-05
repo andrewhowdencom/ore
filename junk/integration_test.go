@@ -3,7 +3,6 @@ package junk
 import (
 	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/ledger"
@@ -20,7 +19,6 @@ func TestJSONStore_CrossConduitContinuity(t *testing.T) {
 
 	thread, err := store1.Create()
 	require.NoError(t, err)
-	createdAt := thread.CreatedAt
 
 	// Set metadata for conduit thread mapping.
 	thread.Metadata["slack.thread_ts"] = "1234567890.123456"
@@ -30,7 +28,8 @@ func TestJSONStore_CrossConduitContinuity(t *testing.T) {
 	thread.State.Append(ledger.RoleAssistant, artifact.Text{Content: "hi there"})
 
 	// Step 3: Save the thread.
-	time.Sleep(1 * time.Millisecond) // ensure time advances
+	// CreatedAt/UpdatedAt are no longer tracked; the conversation's
+	// temporal data lives in the turn history.
 	err = store1.Save(thread)
 	require.NoError(t, err)
 
@@ -56,20 +55,17 @@ func TestJSONStore_CrossConduitContinuity(t *testing.T) {
 	assert.Equal(t, "text", turns[1].Artifacts[0].Kind())
 	assert.Equal(t, artifact.Text{Content: "hi there"}, turns[1].Artifacts[0])
 
-	// Step 6: Verify timestamps and metadata.
-	assert.True(t, createdAt.Equal(got.CreatedAt), "CreatedAt should be preserved")
-	assert.True(t, got.UpdatedAt.After(createdAt), "UpdatedAt should reflect the save")
+	// Step 6: Verify metadata. CreatedAt/UpdatedAt are no longer
+	// persisted — turn timestamps carry the conversation's temporal data.
 	v := got.Metadata["slack.thread_ts"]
 	assert.Equal(t, "1234567890.123456", v)
 }
 
 func TestThread_MarshalJSON(t *testing.T) {
 	thread := &Thread{
-		ID:        "test-id",
-		State:     ledger.NewThread(),
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-		Metadata:  map[string]string{"channel_id": "123", "user_id": "abc"},
+		ID:       "test-id",
+		State:    ledger.NewThread(),
+		Metadata: map[string]string{"channel_id": "123", "user_id": "abc"},
 	}
 	thread.State.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	thread.State.Append(ledger.RoleAssistant, artifact.Text{Content: "hi there"})
@@ -82,8 +78,6 @@ func TestThread_MarshalJSON(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, thread.ID, got.ID)
-	assert.True(t, thread.CreatedAt.Equal(got.CreatedAt))
-	assert.True(t, thread.UpdatedAt.Equal(got.UpdatedAt))
 	assert.Equal(t, thread.Metadata, got.Metadata)
 	turns := got.State.Turns()
 	require.Len(t, turns, 2)

@@ -18,19 +18,19 @@ func Text(w io.Writer, thread *junk.Thread) error {
 		return fmt.Errorf("write thread header: %w", err)
 	}
 
-	if !thread.CreatedAt.IsZero() {
-		_, err = fmt.Fprintf(w, "Created: %s\n", thread.CreatedAt.Format(time.RFC3339))
+	if len(thread.Metadata) > 0 {
+		_, err = fmt.Fprintln(w, "Metadata:")
 		if err != nil {
-			return fmt.Errorf("write created at: %w", err)
+			return fmt.Errorf("write metadata header: %w", err)
+		}
+		for k, v := range thread.Metadata {
+			_, err = fmt.Fprintf(w, "  %s: %s\n", k, v)
+			if err != nil {
+				return fmt.Errorf("write metadata entry: %w", err)
+			}
 		}
 	}
-
-	if !thread.UpdatedAt.IsZero() {
-		_, err = fmt.Fprintf(w, "Updated: %s\n", thread.UpdatedAt.Format(time.RFC3339))
-		if err != nil {
-			return fmt.Errorf("write updated at: %w", err)
-		}
-	}
+	_ = err
 
 	if len(thread.Metadata) > 0 {
 		_, err = fmt.Fprintln(w, "Metadata:")
