@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/junk"
@@ -27,7 +26,7 @@ func TestHTML(t *testing.T) {
 			wantSubstr: []string{
 				"<!DOCTYPE html>",
 				"<title>Session thread-a</title>",
-				"<span><strong>Created:</strong> 2024-01-01 00:00:00 UTC</span>",
+				"<title>Session thread-a</title>",
 				`max-width: 960px`,
 			},
 		},

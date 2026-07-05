@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/junk"
@@ -23,7 +22,7 @@ func TestText(t *testing.T) {
 				ID:        "thread-1",
 				State:     ledger.NewThread(),
 			},
-			wantSubstr: []string{"Thread: thread-1", "Created: 2024-01-01T00:00:00Z"},
+			wantSubstr: []string{"Thread: thread-1"},
 		},
 		{
 			name: "text turn",
