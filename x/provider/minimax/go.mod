@@ -4,8 +4,8 @@ go 1.26.2
 
 require (
 	github.com/andrewhowdencom/ore v1.2.0
-	github.com/andrewhowdencom/ore/x/wire/anthropic v0.5.0
-	github.com/andrewhowdencom/ore/x/wire/openai v0.5.0
+	github.com/andrewhowdencom/ore/x/wire/anthropic v0.2.1
+	github.com/andrewhowdencom/ore/x/wire/openai v0.1.3
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -39,7 +39,3 @@ require (
 )
 
 replace github.com/andrewhowdencom/ore => ../../..
-
-replace github.com/andrewhowdencom/ore/x/wire/anthropic => ../../wire/anthropic
-
-replace github.com/andrewhowdencom/ore/x/wire/openai => ../../wire/openai
