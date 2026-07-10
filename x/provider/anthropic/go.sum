@@ -1,5 +1,7 @@
 github.com/andrewhowdencom/ore/x/provider/retry v0.0.3 h1:hSfSKo7jzYQrjvaEHiyivfod5U2FaOa5wOaJlPaWfUc=
 github.com/andrewhowdencom/ore/x/provider/retry v0.0.3/go.mod h1:2zgSUOf65hQ72u1GDMiy6V5Una18yWAvPJqzcMIGUfE=
+github.com/andrewhowdencom/ore/x/wire/anthropic v0.2.1 h1:EAd/oeZuD9zTTo8rpEZghe/Zl07KiZXjabFf6pcKIPU=
+github.com/andrewhowdencom/ore/x/wire/anthropic v0.2.1/go.mod h1:y2N7pSbyuesTrgtOk9dX1+UDz8q5vp8xpzdr6uhhSrc=
 github.com/anthropics/anthropic-sdk-go v1.50.1 h1:XTd1RkdeHCPusPpzcBY5RIWj/WW6ZktjftxrHvQBJfU=
 github.com/anthropics/anthropic-sdk-go v1.50.1/go.mod h1:3EfIfmFqxH6rbiLcIP4tPFyXL/IHakx2wDG4OU+TIEI=
 github.com/bahlo/generic-list-go v0.2.0 h1:5sz/EEAK+ls5wF+NeqDpk5+iNdMDXrh3z3nPnH1Wvgk=

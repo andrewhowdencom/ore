@@ -4,6 +4,10 @@ github.com/andrewhowdencom/ore/x/tool v0.6.0 h1:Fcmy2O1rAzdUye3KF/smOIb1eLNgr+ZV
 github.com/andrewhowdencom/ore/x/tool v0.6.0/go.mod h1:CaPSxjsl35WYuQauHjGkj3fYfKdsdqa2H01DnrGOpbk=
 github.com/andrewhowdencom/ore/x/tool/truncate v0.1.1 h1:40t59tIMtN2k1eZfhInSaS7kTKnRJVz5ONzV7eJjfxc=
 github.com/andrewhowdencom/ore/x/tool/truncate v0.1.1/go.mod h1:tvCpe1gms1UEPbAQtlIB3iy3Vk7mRRecLa0/riDXsMI=
+github.com/andrewhowdencom/ore/x/wire/anthropic v0.2.1 h1:EAd/oeZuD9zTTo8rpEZghe/Zl07KiZXjabFf6pcKIPU=
+github.com/andrewhowdencom/ore/x/wire/anthropic v0.2.1/go.mod h1:y2N7pSbyuesTrgtOk9dX1+UDz8q5vp8xpzdr6uhhSrc=
+github.com/andrewhowdencom/ore/x/wire/openai v0.1.3 h1:HKCc8kwOW9uCqHl1Oej1LUwcTlA28fN8hcKbmySPCSk=
+github.com/andrewhowdencom/ore/x/wire/openai v0.1.3/go.mod h1:VC7EMuz8MnfzFMEpZSVvIFHjkYoyCsttgWfEVTN0fZA=
 github.com/anthropics/anthropic-sdk-go v1.50.1 h1:XTd1RkdeHCPusPpzcBY5RIWj/WW6ZktjftxrHvQBJfU=
 github.com/anthropics/anthropic-sdk-go v1.50.1/go.mod h1:3EfIfmFqxH6rbiLcIP4tPFyXL/IHakx2wDG4OU+TIEI=
 github.com/bahlo/generic-list-go v0.2.0 h1:5sz/EEAK+ls5wF+NeqDpk5+iNdMDXrh3z3nPnH1Wvgk=

@@ -12,8 +12,12 @@ github.com/alecthomas/chroma/v2 v2.20.0 h1:sfIHpxPyR07/Oylvmcai3X/exDlE8+FA820NT
 github.com/alecthomas/chroma/v2 v2.20.0/go.mod h1:e7tViK0xh/Nf4BYHl00ycY6rV7b8iXBksI9E359yNmA=
 github.com/alecthomas/repr v0.5.1 h1:E3G4t2QbHTSNpPKBgMTln5KLkZHLOcU7r37J4pXBuIg=
 github.com/alecthomas/repr v0.5.1/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
+github.com/andrewhowdencom/ore/x/analytics v0.2.5 h1:4wkc10b1SdtN3G7JUgbFFKSBeHZ0KmJV0L1/OSMExHI=
+github.com/andrewhowdencom/ore/x/analytics v0.2.5/go.mod h1:DMlbyVProoTprw+77RTkd0/uvkrMRGyEyDJKLFVDBLY=
 github.com/andrewhowdencom/ore/x/provider/retry v0.0.3 h1:hSfSKo7jzYQrjvaEHiyivfod5U2FaOa5wOaJlPaWfUc=
 github.com/andrewhowdencom/ore/x/provider/retry v0.0.3/go.mod h1:2zgSUOf65hQ72u1GDMiy6V5Una18yWAvPJqzcMIGUfE=
+github.com/andrewhowdencom/ore/x/wire/openai v0.1.3 h1:HKCc8kwOW9uCqHl1Oej1LUwcTlA28fN8hcKbmySPCSk=
+github.com/andrewhowdencom/ore/x/wire/openai v0.1.3/go.mod h1:VC7EMuz8MnfzFMEpZSVvIFHjkYoyCsttgWfEVTN0fZA=
 github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
 github.com/atotto/clipboard v0.1.4/go.mod h1:ZY9tmq7sm5xIbd9bOK4onWV4S6X0u6GY7Vn0Yu86PYI=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=

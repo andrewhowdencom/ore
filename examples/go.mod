@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/examples
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.2.0
+	github.com/andrewhowdencom/ore v1.2.1
 	github.com/andrewhowdencom/ore/x/analytics v0.2.5
 	github.com/andrewhowdencom/ore/x/compaction v0.5.1
 	github.com/andrewhowdencom/ore/x/conduit/http v0.8.1
@@ -31,7 +31,7 @@ require (
 	github.com/andrewhowdencom/ore/x/llmbytes v0.1.2 // indirect
 	github.com/andrewhowdencom/ore/x/provider/retry v0.0.3 // indirect
 	github.com/andrewhowdencom/ore/x/tool/truncate v0.1.1 // indirect
-	github.com/andrewhowdencom/ore/x/wire/openai v0.5.0 // indirect
+	github.com/andrewhowdencom/ore/x/wire/openai v0.1.3 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
@@ -112,5 +112,3 @@ replace github.com/andrewhowdencom/ore/x/tool/set_model => ../x/tool/set_model
 replace github.com/andrewhowdencom/ore/x/tool/set_title => ../x/tool/set_title
 
 replace github.com/andrewhowdencom/ore/x/usage => ../x/usage
-
-replace github.com/andrewhowdencom/ore/x/wire/openai => ../x/wire/openai
