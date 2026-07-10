@@ -57,20 +57,21 @@ func TestStyleForRole_Mapping(t *testing.T) {
 
 func TestTheme_Gap(t *testing.T) {
 	// Gap encodes a blank-line amount as a string the renderer writes
-	// between structural elements. n == 0 returns ""; n > 0 returns
-	// n+1 newlines, which renders as n blank lines on a monospace
-	// terminal. n < 0 is treated as 0 (defensive: a future theme that
-	// misconfigures a gap should not produce a panic).
+	// between structural elements. n == 0 returns ""; n < 0 is treated
+	// as 0 (defensive: a future theme that misconfigures a gap should
+	// not produce a panic). n > 0 returns exactly n newlines, which —
+	// combined with the block's trailing newline — renders as n blank
+	// lines on a monospace terminal.
 	tests := []struct {
 		name string
 		n    int
 		want string
 	}{
 		{"zero produces empty string", 0, ""},
-		{"one blank line is two newlines", 1, "\n\n"},
-		{"two blank lines is three newlines", 2, "\n\n\n"},
+		{"one blank line is one newline", 1, "\n"},
+		{"two blank lines is two newlines", 2, "\n\n"},
 		{"negative is treated as zero", -1, ""},
-		{"large value is allowed", 100, strings.Repeat("\n", 101)},
+		{"large value is allowed", 100, strings.Repeat("\n", 100)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
