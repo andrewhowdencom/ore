@@ -4,7 +4,7 @@ go 1.26.2
 
 require (
 	github.com/andrewhowdencom/ore v1.2.0
-	github.com/andrewhowdencom/ore/x/wire/anthropic v0.5.0
+	github.com/andrewhowdencom/ore/x/wire/anthropic v0.2.1
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel/trace v1.44.0
 )
@@ -37,5 +37,3 @@ require (
 )
 
 replace github.com/andrewhowdencom/ore => ../../..
-
-replace github.com/andrewhowdencom/ore/x/wire/anthropic => ../../wire/anthropic
