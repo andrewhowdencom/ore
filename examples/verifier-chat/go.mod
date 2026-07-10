@@ -3,8 +3,8 @@ module github.com/andrewhowdencom/ore/examples/verifier-chat
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.2.0
-	github.com/andrewhowdencom/ore/x/provider/openai v0.6.4
+	github.com/andrewhowdencom/ore v1.2.1
+	github.com/andrewhowdencom/ore/x/provider/openai v0.6.5
 	github.com/andrewhowdencom/ore/x/tool v0.6.0
 	github.com/andrewhowdencom/ore/x/tool/filesystem v0.5.2
 	github.com/andrewhowdencom/ore/x/verifier v0.2.1
@@ -36,6 +36,6 @@ replace github.com/andrewhowdencom/ore/x/tool/filesystem => ../../x/tool/filesys
 
 replace github.com/andrewhowdencom/ore => ../..
 
-replace github.com/andrewhowdencom/ore/x/provider/openai => ../../x/provider/openai
-
 replace github.com/andrewhowdencom/ore/x/verifier => ../../x/verifier
+
+replace github.com/andrewhowdencom/ore/x/provider/openai => ../../x/provider/openai
