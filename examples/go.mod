@@ -7,8 +7,8 @@ require (
 	github.com/andrewhowdencom/ore/x/analytics v0.2.5
 	github.com/andrewhowdencom/ore/x/compaction v0.5.1
 	github.com/andrewhowdencom/ore/x/conduit/http v0.8.1
-	github.com/andrewhowdencom/ore/x/conduit/tui v0.12.7
-	github.com/andrewhowdencom/ore/x/provider/openai v0.6.4
+	github.com/andrewhowdencom/ore/x/conduit/tui v0.12.8
+	github.com/andrewhowdencom/ore/x/provider/openai v0.6.5
 	github.com/andrewhowdencom/ore/x/telemetry v0.1.4
 	github.com/andrewhowdencom/ore/x/tool v0.6.0
 	github.com/andrewhowdencom/ore/x/tool/calculator v0.4.1
@@ -101,8 +101,6 @@ replace github.com/andrewhowdencom/ore/x/conduit/http => ../x/conduit/http
 
 replace github.com/andrewhowdencom/ore/x/conduit/tui => ../x/conduit/tui
 
-replace github.com/andrewhowdencom/ore/x/provider/openai => ../x/provider/openai
-
 replace github.com/andrewhowdencom/ore/x/telemetry => ../x/telemetry
 
 replace github.com/andrewhowdencom/ore/x/tool/calculator => ../x/tool/calculator
@@ -112,3 +110,5 @@ replace github.com/andrewhowdencom/ore/x/tool/set_model => ../x/tool/set_model
 replace github.com/andrewhowdencom/ore/x/tool/set_title => ../x/tool/set_title
 
 replace github.com/andrewhowdencom/ore/x/usage => ../x/usage
+
+replace github.com/andrewhowdencom/ore/x/provider/openai => ../x/provider/openai
