@@ -379,8 +379,14 @@ func TestRenderBlockUnified_EmptyBody(t *testing.T) {
 	ts := time.Date(2024, 1, 1, 12, 30, 45, 0, time.UTC)
 	output := renderBlockUnified(block, ts, true, 80)
 	assert.Contains(t, output, "Assistant")
-	// Empty body early-returns the header alone — no trailing newline.
-	assert.NotContains(t, output, "\n", "empty body should produce header-only output")
+	// Even with an empty body the block must terminate with the single
+	// trailing newline required by the buildContent/Gap contract. The
+	// only newline in the output is that terminator — no header-to-body
+	// blank line is introduced (because there is no body).
+	assert.Equal(t, 1, strings.Count(output, "\n"),
+		"empty body should produce header + a single trailing newline; got %q", output)
+	assert.True(t, strings.HasSuffix(output, "\n"),
+		"empty body output must end with \"\\n\"; got %q", output)
 	// The header (with timestamp) and the zero-byte count are both present.
 	assert.Contains(t, output, "12:30:45 Assistant")
 	assert.Contains(t, output, "0 B")
@@ -1449,14 +1455,15 @@ func TestModel_View_ActivitySpinner(t *testing.T) {
 
 // TestBuildContent_InterMessageSpacing_OneBlankLine is a regression test
 // for the inter-message spacing bug. Glamour's default document style
-// emits a trailing "\n" on every rendered markdown body, and the previous
+// emits a trailing "\n" on every rendered markdown body, and a previous
 // buildContent separator added "\n\n" after every turn. With both
 // sources of newlines active, two consecutive assistant turns rendered
-// with two blank lines between them rather than one. The fix lives in
-// the theme: theme.Dark() and theme.Light() set Document.BlockSuffix to
-// "" so the buildContent separator is the sole authority for inter-turn
-// spacing. The defensive TrimLeft in renderBlockUnified was removed in
-// Task 7 once the theme owned the contract.
+// with two blank lines between them rather than one. The fix layered:
+// (a) the theme sets Document.BlockSuffix = "" so glamour no longer
+// adds a trailing newline, (b) renderBlockUnified now appends a
+// single trailing "\n" itself so the block owns its line terminator,
+// and (c) Theme.Gap(n) returns exactly n newlines so the boundary is
+// "1 (block-end) + 1 (gap)" = 2 newlines = 1 blank line.
 //
 // This test uses a real glamourMarkdownRenderer (not a mock) so it
 // exercises the full glamour pipeline and would catch a regression
@@ -1495,12 +1502,14 @@ func TestBuildContent_InterMessageSpacing_OneBlankLine(t *testing.T) {
 	// escape codes, so we count newlines in the segment rather than
 	// asserting on the exact string.
 	//
-	// The first turn's body is glamour's rendering of "hello", which
-	// for plain text is just "hello" (no trailing newline, because
-	// the theme sets Document.BlockSuffix = ""). Then buildContent
-	// appends "\n\n" after turn 1, then the header of turn 2 starts.
-	// So the segment between the end of "hello" and the start of the
-	// next header contains exactly two newlines.
+	// Under the new model: the first turn's body is glamour's
+	// rendering of "hello" (no trailing newline, because the theme
+	// sets Document.BlockSuffix = ""). renderBlockUnified appends
+	// exactly one "\n" so the block ends in "hello\n". Then
+	// buildContent appends Gap(InterTurnGap) = Gap(1) = "\n". So
+	// the segment between the end of "hello" and the start of the
+	// next header contains exactly two newlines: 1 (block-end) +
+	// 1 (gap).
 	idx1 := strings.Index(output, "hello")
 	idx2 := strings.Index(output, "12:00:05")
 	require.GreaterOrEqual(t, idx1, 0, "first body should be in output")
@@ -1511,4 +1520,171 @@ func TestBuildContent_InterMessageSpacing_OneBlankLine(t *testing.T) {
 	assert.Equal(t, 2, newlineCount,
 		"inter-message spacing should be exactly one blank line (2 newlines), got %d newlines in segment %q (full output:\n%s)",
 		newlineCount, segment, output)
+}
+
+// TestBuildContent_UniformSpacing_AllBoundaries locks in the
+// "every block ends in '\\n' + Gap(n) = n newlines" invariant by
+// walking three boundary types in a single buildContent output and
+// asserting each contains exactly two newlines (one blank line):
+// text→text within a turn, text→reasoning (compact) within a turn,
+// and text→text across turns.
+//
+// Each segment between an end token and a start token must contain
+// exactly two newlines; any value other than 2 signals a regression
+// in either renderBlockUnified's trailing-newline contract or in
+// Theme.Gap's blank-line count.
+func TestBuildContent_UniformSpacing_AllBoundaries(t *testing.T) {
+	m := newTestModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.expandAllDetails = false // keep reasoning compact so the "header-only" path is exercised
+
+	// Use unique marker tokens so the substring lookups don't collide
+	// across the three boundaries.
+	m.turns = []renderedTurn{
+		{
+			role:      ledger.RoleAssistant,
+			timestamp: time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+			blocks: []renderedBlock{
+				// (1) text → text within turn: end token "AAA", start token "BBB"
+				{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "AAA"},
+				{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "BBB"},
+			},
+		},
+		{
+			role:      ledger.RoleAssistant,
+			timestamp: time.Date(2024, 1, 1, 12, 0, 5, 0, time.UTC),
+			blocks: []renderedBlock{
+				// (2) text → reasoning (compact) within turn: end token "CCC", start token "Thinking"
+				{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "CCC"},
+				{title: "Thinking", style: m.theme.ThinkingStyle, expandedByDefault: false, kind: "reasoning", source: "DDD"},
+				// (no third block — keeps boundary (2) unambiguous)
+			},
+		},
+		{
+			role:      ledger.RoleAssistant,
+			timestamp: time.Date(2024, 1, 1, 12, 0, 10, 0, time.UTC),
+			blocks: []renderedBlock{
+				// (3) text → text across turn boundary: end token "EEE", start token "FFF"
+				{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "EEE"},
+			},
+		},
+		{
+			role:      ledger.RoleAssistant,
+			timestamp: time.Date(2024, 1, 1, 12, 0, 15, 0, time.UTC),
+			blocks: []renderedBlock{
+				{title: "Assistant", style: m.theme.AssistantStyle, expandedByDefault: true, kind: "text", source: "FFF"},
+			},
+		},
+	}
+
+	output := m.buildContent()
+
+	// Each boundary: take the substring between the end of the
+	// previous marker and the start of the next block's styled header
+	// and assert exactly two newlines (one blank line). The next
+	// block's styled header is identified by its timestamp; the
+	// timestamp is unique within the test data, so the lookup is
+	// unambiguous.
+	//
+	// Note that the styled header is preceded by an ANSI escape
+	// sequence (e.g. \x1b[38;2;...m), which contains no newlines
+	// and is therefore invisible to the count. The segment ends
+	// just before the timestamp of the next block's header.
+	type boundary struct {
+		name     string
+		endToken string
+		startTok string
+	}
+	boundaries := []boundary{
+		// Turn 1: AAA (block 1) → BBB (block 2). The next block's
+		// header is the second occurrence of "12:00:00" in the
+		// output; the first occurrence precedes "AAA" and is
+		// therefore not in the search range.
+		{"text→text within turn", "AAA", "12:00:00"},
+		// Turn 2: CCC (block 1) → reasoning (block 2). The next
+		// block's header is the second occurrence of "12:00:05".
+		{"text→reasoning (compact) within turn", "CCC", "12:00:05"},
+		// Turn 3 → turn 4: EEE → next turn's block. The next
+		// block's header is "12:00:15", which only appears once.
+		{"text→text across turn boundary", "EEE", "12:00:15"},
+	}
+
+	for _, b := range boundaries {
+		b := b
+		t.Run(b.name, func(t *testing.T) {
+			endIdx := strings.Index(output, b.endToken)
+			require.GreaterOrEqual(t, endIdx, 0, "end token %q should be in output", b.endToken)
+			startIdx := strings.Index(output[endIdx+len(b.endToken):], b.startTok)
+			require.GreaterOrEqual(t, startIdx, 0, "start token %q should be in output after %q", b.startTok, b.endToken)
+			absStart := endIdx + len(b.endToken) + startIdx
+			segment := output[endIdx+len(b.endToken) : absStart]
+			newlineCount := strings.Count(segment, "\n")
+			assert.Equal(t, 2, newlineCount,
+				"boundary %q should be exactly one blank line (2 newlines), got %d newlines in segment %q (full output:\n%s)",
+				b.name, newlineCount, segment, output)
+		})
+	}
+}
+
+// TestRenderBlockUnified_AlwaysEndsWithNewline locks in the block
+// terminator invariant: every configuration of renderBlockUnified
+// returns a string ending in exactly one "\n", regardless of body
+// content, expand/compact state, or block kind. The trailing newline
+// is the contract that lets Theme.Gap(n) produce n blank lines at
+// every boundary without leaking or doubling.
+func TestRenderBlockUnified_AlwaysEndsWithNewline(t *testing.T) {
+	ts := time.Date(2024, 1, 1, 12, 30, 45, 0, time.UTC)
+
+	cases := []struct {
+		name   string
+		block  renderedBlock
+		expand bool
+	}{
+		{
+			name:   "text with body, expanded",
+			block:  renderedBlock{kind: "text", source: "hello world", title: "Assistant", style: lipgloss.NewStyle(), expandedByDefault: true},
+			expand: true,
+		},
+		{
+			name:   "text with empty body, expanded",
+			block:  renderedBlock{kind: "text", source: "", title: "Assistant", style: lipgloss.NewStyle(), expandedByDefault: true},
+			expand: true,
+		},
+		{
+			name:   "reasoning, compact",
+			block:  renderedBlock{kind: "reasoning", source: "deep thought", title: "Thinking", style: lipgloss.NewStyle(), compact: "Thinking 12 B", expandedByDefault: false},
+			expand: false,
+		},
+		{
+			name:   "reasoning, expanded",
+			block:  renderedBlock{kind: "reasoning", source: "deep thought", title: "Thinking", style: lipgloss.NewStyle(), compact: "Thinking 12 B", expandedByDefault: false},
+			expand: true,
+		},
+		{
+			name:   "tool_call, compact",
+			block:  renderedBlock{kind: "tool_call", source: "{}", compact: "bash · command=\"test\"", title: "Assistant · Call bash", style: lipgloss.NewStyle(), expandedByDefault: false},
+			expand: false,
+		},
+		{
+			name:   "tool_result, compact",
+			block:  renderedBlock{kind: "tool_result", source: "out", compact: "result line 1", title: "Tool Result", style: lipgloss.NewStyle(), expandedByDefault: false},
+			expand: false,
+		},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			output := renderBlockUnified(c.block, ts, c.expand, 80)
+			require.NotEmpty(t, output, "renderBlockUnified must always return non-empty output")
+			assert.True(t, strings.HasSuffix(output, "\n"),
+				"output must end with \"\\n\"; got %q", output)
+			// The header-to-body join is a single "\n" — count consecutive
+			// newlines elsewhere in the output. A multi-line body might
+			// contain internal "\n\n" (e.g. a paragraph break in glamour
+			// output), so we only assert the trailing-newline invariant
+			// here; the header/body tightness is covered by
+			// TestRenderBlockUnified_NoBlankLineBetweenHeaderAndBody for
+			// the simple body case.
+		})
+	}
 }
