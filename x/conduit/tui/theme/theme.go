@@ -78,16 +78,22 @@ type Theme struct {
 
 // Gap encodes a blank-line amount as a string the renderer writes
 // between structural elements (blocks within a turn, turns within the
-// stream). n == 0 returns ""; n > 0 returns n+1 newlines, which
-// renders as n blank lines on a monospace terminal. The method is on
-// *Theme so the encoding lives next to the values it encodes; if a
+// stream). n == 0 returns ""; n < 0 is treated as 0 (defensive: a
+// future theme that misconfigures a gap should not produce a panic).
+// n > 0 returns exactly n newlines. The combined effect at a boundary
+// is "1 (block-end newline) + n (Gap)" newlines, which renders as n
+// blank lines on a monospace terminal — provided the block terminates
+// with a single trailing newline. Callers MUST produce content ending
+// in "\n" for Gap(n) to be applied as n blank lines; otherwise the
+// gap will be one newline short of the intended count. The method is
+// on *Theme so the encoding lives next to the values it encodes; if a
 // future renderer needs a different encoding (e.g. OSC sequences for
 // half-blank lines), the change is local to this package.
 func (t *Theme) Gap(n int) string {
 	if n <= 0 {
 		return ""
 	}
-	return strings.Repeat("\n", n+1)
+	return strings.Repeat("\n", n)
 }
 
 // StyleForRole returns the lipgloss style appropriate for a conversation

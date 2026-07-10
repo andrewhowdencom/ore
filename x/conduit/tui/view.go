@@ -69,7 +69,11 @@ func renderBlockUnified(block renderedBlock, ts time.Time, expanded bool, width 
 		switch block.kind {
 		case "reasoning":
 			// Header already conveys the count; no body needed in compact mode.
-			return styledHeader
+			// Return with the trailing newline so every block ends with "\n";
+			// the gap layer (theme.Gap) is then a pure blank-line count and
+			// every boundary — block-to-block, block-to-turn, turn-to-turn —
+			// renders as exactly InterBlockGap / InterTurnGap blank lines.
+			return styledHeader + "\n"
 		case "tool_call", "tool_result":
 			if block.compact != "" {
 				body = block.compact
@@ -82,12 +86,17 @@ func renderBlockUnified(block renderedBlock, ts time.Time, expanded bool, width 
 	}
 
 	if body == "" {
-		return styledHeader
+		// Same invariant as the compact-reasoning branch above: every
+		// block terminates with "\n" so theme.Gap(n) can be applied
+		// uniformly regardless of whether the body is empty.
+		return styledHeader + "\n"
 	}
-	// The theme (theme.Dark / theme.Light) sets Document.BlockPrefix to
-	// "" so the body never carries a leading newline; no defensive
-	// trim is required here. The header-to-body join is a single "\n".
-	return styledHeader + "\n" + body
+	// The theme (theme.Dark / theme.Light) sets Document.BlockPrefix and
+	// Document.BlockSuffix to "" so the body itself never carries a
+	// leading or trailing newline. The header-to-body join is one "\n";
+	// the trailing "\n" appended here is the block terminator that lets
+	// theme.Gap(n) produce n blank lines at the next boundary.
+	return styledHeader + "\n" + body + "\n"
 }
 
 // compactGeneric truncates content to at most two lines and maxWidth runes,
