@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -45,6 +46,10 @@ func (p *Pipeline) Turn(ctx context.Context, st ledger.State, spec models.Spec, 
 	provCh := make(chan artifact.Artifact, 100)
 	var accumulatedArtifacts []artifact.Artifact
 
+	allOpts := make([]provider.InvokeOption, 0, len(p.invokeOpts)+len(opts))
+	allOpts = append(allOpts, p.invokeOpts...)
+	allOpts = append(allOpts, opts...)
+
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -53,6 +58,13 @@ func (p *Pipeline) Turn(ctx context.Context, st ledger.State, spec models.Spec, 
 		var keys []string
 
 		for art := range provCh {
+			// Apply display hints per-artifact so every consumer of the
+			// ArtifactEvent stream (TUI, HTTP, exporters) sees a populated
+			// Display, not the legacy raw-Arguments fallback. The post-pass
+			// at the end of Turn remains as a safety net for any code path
+			// that bypasses the pipeline; it is idempotent because hintArtifact
+			// reapplies the same hint with the same input.
+			art = hintArtifact(ctx, art, allOpts)
 			if d, ok := art.(artifact.Accumulable); ok {
 				key := d.AccumulatorKey()
 				if _, exists := accumulators[key]; !exists {
@@ -89,10 +101,6 @@ func (p *Pipeline) Turn(ctx context.Context, st ledger.State, spec models.Spec, 
 		}
 	}()
 
-	allOpts := make([]provider.InvokeOption, 0, len(p.invokeOpts)+len(opts))
-	allOpts = append(allOpts, p.invokeOpts...)
-	allOpts = append(allOpts, opts...)
-
 	err = prov.Invoke(ctx, st, spec, provCh, allOpts...)
 	close(provCh)
 	wg.Wait()
@@ -118,4 +126,53 @@ func (p *Pipeline) RunHandlers(ctx context.Context, artifacts []artifact.Artifac
 		}
 	}
 	return nil
+}
+
+// hintForName returns the DisplayHint closure registered for the tool
+// of the given name, or nil if no such tool is registered or the tool
+// has no hint. The lookup walks every InvokeOption for a ToolsOption
+// and returns the first matching tool's DisplayHint. It is shared
+// between the per-artemit hint application in Pipeline.Turn and the
+// post-pass applyDisplayHints; both call sites produce identical
+// results because DisplayHint is a pure function.
+func hintForName(ctx context.Context, name string, opts []provider.InvokeOption) func(map[string]any) any {
+	for _, opt := range opts {
+		to, ok := opt.(provider.ToolsOption)
+		if !ok {
+			continue
+		}
+		for _, t := range to.Tools(ctx, nil) {
+			if t.Name == name && t.DisplayHint != nil {
+				return t.DisplayHint
+			}
+		}
+	}
+	return nil
+}
+
+// hintArtifact returns art with Display populated when art is a
+// ToolCall with a registered DisplayHint. It returns art unchanged
+// when art is not a ToolCall, no matching tool is registered, the
+// tool has no DisplayHint, the Arguments are not valid JSON, or the
+// hint returns nil. The function is idempotent: calling it on an
+// already-hinted ToolCall re-derives the same Display value (since
+// DisplayHint is documented as a pure function over its args).
+func hintArtifact(ctx context.Context, art artifact.Artifact, opts []provider.InvokeOption) artifact.Artifact {
+	tc, ok := art.(artifact.ToolCall)
+	if !ok {
+		return art
+	}
+	hint := hintForName(ctx, tc.Name, opts)
+	if hint == nil {
+		return art
+	}
+	var args map[string]any
+	if err := json.Unmarshal([]byte(tc.Arguments), &args); err != nil {
+		return art
+	}
+	if v := hint(args); v != nil {
+		tc.Display = v
+		return tc
+	}
+	return art
 }
