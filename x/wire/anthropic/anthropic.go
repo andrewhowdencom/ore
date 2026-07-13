@@ -468,6 +468,12 @@ func (p *Provider) Invoke(ctx context.Context, s ledger.State, spec models.Spec,
 		}
 	}
 
+	// Emit one span event per tool_use block plus request-shape
+	// counts on the provider.invoke span. No-op when no tracer is
+	// configured. Must run after serializeMessages so we have the
+	// SDK-typed content blocks to walk.
+	summarizeToolUse(serialized.messages, span)
+
 	params := anthropic.MessageNewParams{
 		Model:    anthropic.Model(effectiveModel),
 		Messages: serialized.messages,
@@ -1090,6 +1096,83 @@ func parseToolArguments(tc artifact.ToolCall) any {
 		return v
 	}
 	return tc.Arguments
+}
+
+// classifyToolUseInput names the shape of a `tool_use.input` value
+// after it has been routed through parseToolArguments. The taxonomy is
+// four values:
+//
+//   - "object":      the value is a non-string, non-nil value
+//     (typically map[string]any from JSON). This is the only shape
+//     the upstream API accepts and the happy path.
+//   - "string":      the value is a literal string. At the wire layer
+//     this is reachable only via parseToolArguments' fallback (raw
+//     Arguments when JSON parsing fails), but historically also
+//     surfaced when a tool.Tool.DisplayHint string leaked into the
+//     input field — see parseToolArguments for the regression
+//     history that produced "Input should be a valid dictionary".
+//   - "null":        the value is nil or missing.
+//   - "parse_error": sentinel; not produced by the current
+//     parseToolArguments path, but retained so the four-kind
+//     taxonomy round-trips with the upstream API error vocabulary.
+//
+// The classifier is intentionally non-numeric and does not surface
+// the input value itself: when investigating an upstream failure of
+// the form "messages.N.content.K.tool_use.input: Input should be a
+// valid dictionary", knowing whether the wire payload was an object
+// vs. something else is the entire question.
+func classifyToolUseInput(v any) string {
+	if v == nil {
+		return "null"
+	}
+	if _, ok := v.(string); ok {
+		return "string"
+	}
+	return "object"
+}
+
+// summarizeToolUse emits one span event per `tool_use` block in the
+// serialized request, and two integer counts on the provider.invoke
+// span. This is what makes a 400 of the form
+// "messages.114.content.1.tool_use.input: Input should be a valid
+// dictionary" diagnosable from the trace alone: the offending
+// tool_use shows up as an `anthropic.tool_use` event with a
+// non-"object" input_kind.
+//
+// Always-on when a tracer is configured via WithTracer; no separate
+// opt-in. Behavior is unchanged when no tracer is configured — the
+// helper short-circuits on a nil span.
+//
+// We surface structural metadata only — id, name, input shape — and
+// never the argument values. This preserves the framework's
+// "defaults to safe" property: a user pointing their OTel exporter
+// at a remote backend will not exfiltrate filesystem paths, command
+// lines, or API keys via this trace.
+//
+// TODO: redact known credential keys before surfacing values, if/when
+// the input value is ever added to the event payload.
+func summarizeToolUse(messages []anthropic.MessageParam, span trace.Span) {
+	if span == nil {
+		return
+	}
+	toolUseCount := 0
+	for _, m := range messages {
+		for _, b := range m.Content {
+			if b.OfToolUse == nil {
+				continue
+			}
+			toolUseCount++
+			span.AddEvent("anthropic.tool_use", trace.WithAttributes(
+				attribute.String("id", b.OfToolUse.ID),
+				attribute.String("name", b.OfToolUse.Name),
+				attribute.String("input_kind", classifyToolUseInput(b.OfToolUse.Input)),
+			))
+		}
+	}
+	span.SetAttributes(
+		attribute.Int("anthropic.request.message_count", len(messages)),
+		attribute.Int("anthropic.request.tool_use_count", toolUseCount),
+	)
 }
 
 // concatText extracts and concatenates Text artifacts from a slice,

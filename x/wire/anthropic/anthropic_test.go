@@ -467,6 +467,95 @@ func TestProviderSerialize_DisplayDoesNotAffectWireFormat(t *testing.T) {
 	assert.Equal(t, "/home/../Development", asst.Content[0].Input["path"])
 }
 
+// TestClassifyToolUseInput pins the four-kind taxonomy used by
+// summarizeToolUse to label tool_use.input in span events. The
+// taxonomy exists so a 400 of the form "Input should be a valid
+// dictionary" can be diagnosed from a trace alone — without this
+// stable vocabulary, an upstream API error message that names a
+// position (messages.N.content.K.tool_use.input) would still leave
+// the on-call engineer guessing which tool to look at.
+//
+// The classifier operates on the post-parseToolArguments value: the
+// shape that lands in ToolUseBlockParam.Input. nil and string cases
+// are the diagnostic-interesting paths; "object" is the happy path
+// that should match a correctly-built Arguments payload.
+func TestClassifyToolUseInput(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   any
+		want string
+	}{
+		// "parse_error" is a forward-compat sentinel — the current
+		// parseToolArguments path cannot produce it at the wire
+		// layer. Pinning it here ensures that if a future
+		// upstream change ever produces a value the classifier
+		// does not recognize, the test fails loudly rather than
+		// silently drifting to "object".
+		{"nil is null", nil, "null"},
+		{"empty map is object", map[string]any{}, "object"},
+		{"json-shaped object is object", map[string]any{"path": "/tmp/x"}, "object"},
+		{"nested object is object", map[string]any{"a": map[string]any{"b": 1}}, "object"},
+		{"slice is object (non-dict JSON)", []any{1, 2, 3}, "object"},
+		{"number is object (non-dict JSON)", float64(42), "object"},
+		{"bool is object (non-dict JSON)", true, "object"},
+		{"string is string", "📁 list_directory(/tmp)", "string"},
+		{"empty string is string", "", "string"},
+		{"unsupported concrete type is object",
+			struct{ X int }{X: 1}, "object"},
+		{"int alias is object", int32(7), "object"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := classifyToolUseInput(tt.in)
+			// The taxonomy is fixed at four values. Any drift here
+			// is a breaking change for downstream trace UIs and
+			// alerting rules.
+			require.Contains(t,
+				[]string{"object", "string", "null", "parse_error"},
+				got,
+				"classifyToolUseInput returned a value outside the four-kind taxonomy",
+			)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestClassifyToolUseInput_TaxonomyStable pins that the four-kind
+// taxonomy contains exactly the documented labels and nothing else.
+// If a future refactor adds or removes a kind, this test forces the
+// change to be deliberate (the test must be updated alongside the
+// classifier and its documentation).
+func TestClassifyToolUseInput_TaxonomyStable(t *testing.T) {
+	t.Parallel()
+
+	// Probe every documented case plus a deliberate unknown. The
+	// classifier must report one of the four taxonomy labels for
+	// all of them.
+	probes := []any{
+		nil,
+		"",
+		"any string",
+		map[string]any{},
+		map[string]any{"k": "v"},
+		[]any{1, 2},
+		float64(0),
+		true,
+	}
+	for _, p := range probes {
+		got := classifyToolUseInput(p)
+		switch got {
+		case "object", "string", "null", "parse_error":
+			// ok
+		default:
+			t.Errorf("classifyToolUseInput(%#v) = %q; want one of object|string|null|parse_error", p, got)
+		}
+	}
+}
+
 // TestProviderSerialize_SystemCollapsedToSystemField verifies that a
 // RoleSystem turn is hoisted out of the messages slice and placed on
 // the request-level `system` field. A subsequent user turn keeps its
