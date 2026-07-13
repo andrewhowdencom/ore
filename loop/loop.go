@@ -542,38 +542,15 @@ func (s *Step) Turn(ctx context.Context, st ledger.State, spec models.Spec, p pr
 // wire-format code path. The wire format is always derived from
 // ToolCall.Arguments, the JSON the model streamed. This separation is
 // load-bearing — see artifact.ToolCall for the rationale.
+//
+// This function is the post-pass safety net. Pipeline.Turn also calls
+// hintArtifact per-artemit so that per-artifact ArtifactEvent
+// consumers (TUI, HTTP, exporters) see a populated Display before this
+// post-pass runs; both call sites produce identical results, making
+// this loop a no-op when hints were already applied upstream.
 func applyDisplayHints(ctx context.Context, artifacts []artifact.Artifact, opts []provider.InvokeOption) {
-	hints := make(map[string]func(map[string]any) any)
-	for _, opt := range opts {
-		if to, ok := opt.(provider.ToolsOption); ok {
-			tools := to.Tools(ctx, nil)
-			for _, t := range tools {
-				if t.DisplayHint != nil {
-					hints[t.Name] = t.DisplayHint
-				}
-			}
-		}
-	}
-	if len(hints) == 0 {
-		return
-	}
 	for i, art := range artifacts {
-		tc, ok := art.(artifact.ToolCall)
-		if !ok {
-			continue
-		}
-		hint, ok := hints[tc.Name]
-		if !ok {
-			continue
-		}
-		var args map[string]any
-		if err := json.Unmarshal([]byte(tc.Arguments), &args); err != nil {
-			continue
-		}
-		if v := hint(args); v != nil {
-			tc.Display = v
-			artifacts[i] = tc
-		}
+		artifacts[i] = hintArtifact(ctx, art, opts)
 	}
 }
 

@@ -334,3 +334,51 @@ func TestPipeline_Turn_ApplyDisplayHints_NoMatchingHint(t *testing.T) {
 	assert.Nil(t, tc.Display)
 	assert.Equal(t, 1, len(st.Turns()))
 }
+
+// TestPipeline_Turn_HintsArtifactOnStream verifies that ToolCall
+// artifacts have Display populated at the moment onArtifact fires,
+// not just in accumulated[]. This is the per-artemit guarantee that
+// lets ArtifactEvent consumers (TUI, HTTP, exporters) render the
+// rich Display before the post-pass applyDisplayHints has had a
+// chance to run.
+func TestPipeline_Turn_HintsArtifactOnStream(t *testing.T) {
+	spec := models.Spec{Name: "test-model"}
+	p := newPipeline()
+	p.invokeOpts = []provider.InvokeOption{
+		provider.ToolsOption{
+			Tools: func(ctx context.Context, s ledger.State) []tool.Tool {
+				return []tool.Tool{
+					{
+						Name: "test",
+						DisplayHint: func(args map[string]any) any {
+							return "hint: " + args["query"].(string)
+						},
+					},
+				}
+			},
+		},
+	}
+
+	mem := ledger.NewThread()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
+	prov := &mockProvider{
+		artifacts: []artifact.Artifact{
+			artifact.ToolCall{Name: "test", Arguments: `{"query":"hello"}`},
+		},
+	}
+
+	var streamedToolCall artifact.Artifact
+	st, _, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {
+		if _, ok := art.(artifact.ToolCall); ok && streamedToolCall == nil {
+			streamedToolCall = art
+		}
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, len(st.Turns()))
+
+	require.NotNil(t, streamedToolCall, "onArtifact was not called for the ToolCall")
+	tc, ok := streamedToolCall.(artifact.ToolCall)
+	require.True(t, ok)
+	assert.Equal(t, "hint: hello", tc.Display,
+		"ToolCall.Display must be populated at streaming time so per-artemit consumers see rich renders")
+}
