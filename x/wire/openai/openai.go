@@ -457,6 +457,81 @@ func (p *Provider) serializeMessages(s ledger.State) ([]openai.ChatCompletionMes
 	return messages, replayPerTurn
 }
 
+// classifyToolUseArguments names the shape of a tool_call's
+// `function.arguments` field on the OpenAI wire. The taxonomy mirrors
+// the Anthropic `classifyToolUseInput` so cross-provider trace UIs
+// can use the same `input_kind` label without translation:
+//
+//   - "object":      arguments parses as JSON (the upstream only
+//     guarantees a JSON string; downstream tool executors are
+//     responsible for validating the schema). Includes objects,
+//     arrays, and primitives — anything that survives json.Unmarshal.
+//   - "null":        arguments is the empty string.
+//   - "parse_error": arguments is non-empty but unparseable as JSON.
+//     This is rare in practice; the model is expected to emit valid
+//     JSON, but the openai docs warn it may hallucinate schema.
+//   - "string":      defensive taxonomy member — unreachable in the
+//     current SDK type system (Arguments is always a string by
+//     contract). Retained so the four-kind label set round-trips
+//     with the Anthropic classifier and trace UIs can index a
+//     stable enumeration.
+//
+// The classifier is intentionally non-numeric and does not surface
+// the arguments value itself: when investigating a downstream
+// tool-validation failure, knowing whether the wire payload was
+// unparseable JSON is the entire question.
+func classifyToolUseArguments(s string) string {
+	if s == "" {
+		return "null"
+	}
+	var v any
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return "parse_error"
+	}
+	return "object"
+}
+
+// summarizeToolUse emits one span event per tool_call block in the
+// serialized request, and two integer counts on the provider.invoke
+// span. The shape mirrors the Anthropic summarizeToolUse so a trace
+// UI sees the same field names regardless of provider.
+//
+// Always-on when a tracer is configured via WithTracer; no separate
+// opt-in. Behavior is unchanged when no tracer is configured — the
+// helper short-circuits on a nil span.
+//
+// We surface structural metadata only — id, name, arguments shape —
+// and never the arguments value itself. This preserves the
+// framework's "defaults to safe" property: a user pointing their
+// OTel exporter at a remote backend will not exfiltrate
+// filesystem paths, command lines, or API keys via this trace.
+//
+// TODO: redact known credential keys before surfacing values, if/when
+// the arguments value is ever added to the event payload.
+func summarizeToolUse(messages []openai.ChatCompletionMessageParamUnion, span trace.Span) {
+	if span == nil {
+		return
+	}
+	toolUseCount := 0
+	for _, m := range messages {
+		if m.OfAssistant == nil {
+			continue
+		}
+		for _, tc := range m.OfAssistant.ToolCalls {
+			toolUseCount++
+			span.AddEvent("openai.tool_use", trace.WithAttributes(
+				attribute.String("id", tc.ID),
+				attribute.String("name", tc.Function.Name),
+				attribute.String("input_kind", classifyToolUseArguments(tc.Function.Arguments)),
+			))
+		}
+	}
+	span.SetAttributes(
+		attribute.Int("openai.request.message_count", len(messages)),
+		attribute.Int("openai.request.tool_use_count", toolUseCount),
+	)
+}
+
 // concatText extracts and concatenates Text artifacts from a slice.
 func concatText(artifacts []artifact.Artifact) string {
 	var content string
@@ -576,6 +651,15 @@ func (p *Provider) Invoke(ctx context.Context, s ledger.State, spec models.Spec,
 		if id, ok := loop.ThreadIDFrom(ctx); ok {
 			span.SetAttributes(attribute.String("thread_id", id))
 		}
+
+		// Emit one span event per tool_call block plus request-shape
+		// counts on the provider.invoke span. No-op when no tracer is
+		// configured. Must run after serializeMessages so we have the
+		// SDK-typed messages to walk. Mirrors the Anthropic wire's
+		// summarizeToolUse; the event name and request-shape attribute
+		// prefix differ by provider so a trace UI can disambiguate
+		// them.
+		summarizeToolUse(messages, span)
 	}
 
 	params := openai.ChatCompletionNewParams{
