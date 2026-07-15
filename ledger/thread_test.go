@@ -128,13 +128,9 @@ func TestThread_Walk_Branching(t *testing.T) {
 	_ = u1ID // keep linter happy
 }
 
-// u2Parent returns the ParentID of the turn with id u2ID.
-func u2Parent(t *testing.T, th *Thread, u2ID string) string {
-	t.Helper()
-	node, ok := th.turns[u2ID]
-	require.True(t, ok)
-	return node.ParentID
-}
+// TestThread_Walk_ControlStop verifies that the [Thread.Walk] traversal
+// honours control-stop signals: when a visitor returns Stop, the
+// remaining siblings are skipped but the parent's traversal continues.
 func TestThread_Walk_ControlStop(t *testing.T) {
 	// Build: u1 → a1 → u2 → summary (Stop) → u3 → a3
 	th := NewThread()

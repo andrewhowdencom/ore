@@ -15,7 +15,7 @@ import (
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/session"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 // stubProvider implements provider.Provider with a no-op Invoke. It
@@ -52,7 +52,7 @@ func (f *stubFactory) Build(sess *session.Session) (*agent.Agent, error) {
 	return agent.New(sess.ID(),
 		agent.WithProvider(stubProvider{}),
 		agent.WithPattern(f.pattern),
-		agent.WithTracer(trace.NewNoopTracerProvider().Tracer("test")),
+		agent.WithTracer(noop.NewTracerProvider().Tracer("test")),
 		agent.WithState(sess.Thread()),
 	), nil
 }
@@ -320,7 +320,7 @@ func TestFactory_SpecFromMetadata(t *testing.T) {
 	sess.SetMetadata("unrelated", "ignored")
 
 	pat := &stubPattern{}
-	tracer := trace.NewNoopTracerProvider().Tracer("test")
+	tracer := noop.NewTracerProvider().Tracer("test")
 	f := session.NewDefaultFactory(stubProvider{}, pat, tracer)
 	ag, err := f.Build(sess)
 	if err != nil {

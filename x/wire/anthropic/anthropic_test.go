@@ -1070,38 +1070,78 @@ func TestProviderSerialize_HandlesBadJSONArguments(t *testing.T) {
 	assert.Contains(t, string(asstBytes), "this is not json")
 }
 
-// TestProviderSerialize_EmptyAssistantTurnStillEmits verifies that
-// an assistente turn with zero artifacts still produces a valid
-// assistente message. The framework never emits such turns, but the
-// defensive contract is that the wire shape remains valid: the role
-// must always be set, even if the content array is empty or
-// marshaled as null. The Anthropic Messages API requires `role` to
-// be set; an empty content is acceptable because it preserves
-// conversational ordering.
-func TestProviderSerialize_EmptyAssistantTurnStillEmits(t *testing.T) {
+// TestProviderSerialize_EmptyAssistantTurnIsDropped is a regression
+// test for the bug where an assistant turn with zero artifacts was
+// serialized as `{"role":"assistant"}` (the SDK's `omitzero` JSON
+// tag drops the empty Content slice). Anthropic-compatible upstreams
+// reject this: Anthropic native returns 400 with
+// `messages.N.content: Input should be a valid non-empty array`; the
+// minimax mirror surfaces the same failure as error 2013, "invalid
+// params: Syntax error no sources available, the input json is
+// empty" (request_id example: 06a55f28794fcf05464da3919b02fc08).
+//
+// The fix is to drop the empty assistant turn from the wire at
+// serializeMessages time, leaving state untouched. An empty
+// assistant turn by definition has no tool_uses, so no downstream
+// tool_result depends on it; the drop is safe.
+//
+// Reproducer: a session that experienced a streaming disconnect
+// between `message_start` and the first `content_block_*` event
+// would accumulate a stop_reason+usage-only assistant turn in
+// state, then poison every subsequent request that replayed it.
+// This test pins the new contract: an empty assistant turn must
+// not reach the wire.
+func TestProviderSerialize_EmptyAssistantTurnIsDropped(t *testing.T) {
+	t.Parallel()
+
+	p, err := New(WithAPIKey("test-key"))
+	require.NoError(t, err)
+
+	// Three turns: a normal user, an empty assistant (the bug
+	// case), and a normal user follow-up. The wire must contain
+	// exactly the two user messages; the empty assistant turn is
+	// dropped.
+	mem := ledger.NewThread()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
+	mem.Append(ledger.RoleAssistant) // no artifacts
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "are you there?"})
+
+	got := p.serializeMessages(mem)
+	require.Len(t, got.messages, 2,
+		"empty assistant turn must be dropped from the wire (regression for minimax 2013 'input json is empty')")
+
+	// Both surviving messages must be user messages with text
+	// content; the assistant role must not appear at all.
+	for i, m := range got.messages {
+		assert.Equal(t, anthropic.MessageParamRoleUser, m.Role,
+			"message %d should be a user message after the empty assistant turn was dropped", i)
+		require.NotEmpty(t, m.Content, "message %d should have non-empty content", i)
+	}
+}
+
+// TestProviderSerialize_EmptyAssistantTurnInMiddleOfConversation
+// verifies the drop is safe even when an empty assistant turn sits
+// between two normal user/tool turns. The serializer must continue
+// walking the rest of the state, not bail at the first empty turn.
+func TestProviderSerialize_EmptyAssistantTurnInMiddleOfConversation(t *testing.T) {
 	t.Parallel()
 
 	p, err := New(WithAPIKey("test-key"))
 	require.NoError(t, err)
 
 	mem := ledger.NewThread()
-	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
-	mem.Append(ledger.RoleAssistant) // no artifacts
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "ask 1"})
+	mem.Append(ledger.RoleAssistant, artifact.Text{Content: "answer 1"})
+	// Streaming disconnect: stop_reason + usage, no content.
+	mem.Append(ledger.RoleAssistant)
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "ask 2"})
 
 	got := p.serializeMessages(mem)
-	require.Len(t, got.messages, 2)
-	asstBytes, err := json.Marshal(got.messages[1])
-	require.NoError(t, err)
+	require.Len(t, got.messages, 3,
+		"user + assistant + (empty assistant dropped) + user = 3 wire messages")
 
-	// The role must be "assistant" regardless of content shape.
-	// The content field is permitted to marshal as either an
-	// empty array or null; the SDK leaves that decision to the
-	// underlying encoder.
-	var asst struct {
-		Role string `json:"role"`
-	}
-	require.NoError(t, json.Unmarshal(asstBytes, &asst))
-	assert.Equal(t, "assistant", asst.Role)
+	// The middle message is the non-empty assistant turn.
+	assert.Equal(t, anthropic.MessageParamRoleAssistant, got.messages[1].Role)
 }
 
 // TestProviderSerialize_AppliesPreTasksFixesRegressions is a

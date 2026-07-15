@@ -26,7 +26,6 @@ type Session struct {
 
 	mu     sync.Mutex
 	closed bool
-	cancel context.CancelFunc
 }
 
 // Option configures a Session at construction.
