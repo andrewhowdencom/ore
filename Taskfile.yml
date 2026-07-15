@@ -18,6 +18,15 @@ includes:
   x-provider-minimax:
     taskfile: Taskfile.lib.yml
     dir: x/provider/minimax
+  x-provider-mock:
+    taskfile: Taskfile.lib.yml
+    dir: x/provider/mock
+  x-provider-mock-anthropic:
+    taskfile: Taskfile.lib.yml
+    dir: x/provider/mock/anthropic
+  x-provider-mock-openai:
+    taskfile: Taskfile.lib.yml
+    dir: x/provider/mock/openai
   x-provider-openai:
     taskfile: Taskfile.lib.yml
     dir: x/provider/openai
@@ -125,6 +134,9 @@ tasks:
       - task x-catalog-models:validate
       - task x-provider-anthropic:validate
       - task x-provider-minimax:validate
+      - task x-provider-mock:validate
+      - task x-provider-mock-anthropic:validate
+      - task x-provider-mock-openai:validate
       - task x-provider-openai:validate
       - task x-provider-openrouter:validate
       - task x-provider-vercel:validate
@@ -155,3 +167,13 @@ tasks:
     desc: Show pending module releases
     cmds:
       - go run ./cmd/release status
+
+  # ---------------------------------------------------------------------------
+  # Mock LLM server (used by the workshop and perf probes).
+  # ---------------------------------------------------------------------------
+  # Usage: task mock-server -- -vendor=openai -config=responses.json [-addr=:0]
+  # Pass-through args are supported via {{.CLI_ARGS}} (task 3.50+).
+  mock-server:
+    desc: Run the wire-compatible mock LLM server (passes args through)
+    cmds:
+      - 'go run ./cmd/mock-server {{.CLI_ARGS}}'

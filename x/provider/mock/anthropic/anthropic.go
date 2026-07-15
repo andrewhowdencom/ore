@@ -147,10 +147,9 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		idx = s.emitThinking(w, idx, resp.Reasoning, resp.Signature)
 	}
 
-	textIdx := idx
 	if resp.Text != "" {
-		textIdx = s.emitText(w, idx, resp.Text)
-		idx = textIdx + 1
+		s.emitText(w, idx, resp.Text)
+		idx++
 	}
 
 	for _, tc := range resp.ToolCalls {
