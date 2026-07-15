@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/x/tool
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.0.0
+	github.com/andrewhowdencom/ore v1.2.2
 	github.com/andrewhowdencom/ore/x/tool/truncate v0.1.1
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.44.0
@@ -24,6 +24,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/andrewhowdencom/ore => ../..
-
 replace github.com/andrewhowdencom/ore/x/tool/truncate => ../tool/truncate
+
+replace github.com/andrewhowdencom/ore => ../..
