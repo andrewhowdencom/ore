@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/x/conduit/http
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.2.0
+	github.com/andrewhowdencom/ore v1.2.2
 	github.com/andrewhowdencom/ore/x/conduit v0.1.5
 	github.com/getkin/kin-openapi v0.140.0
 	github.com/stretchr/testify v1.11.1
