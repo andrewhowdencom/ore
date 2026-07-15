@@ -490,6 +490,28 @@ func (s *Stream) SetMetadata(key, value string) {
 	})
 }
 
+// DeleteMetadata removes a metadata key from the underlying thread and
+// emits a PropertiesEvent carrying a single PropertyOpDelete operation.
+// Deleting a non-present key is a no-op for both the thread state
+// (Go's delete() on a missing key returns the zero value) and the
+// receiving state in conduits (they apply deletes via the same path
+// the TUI uses in Task 4).
+//
+// DeleteMetadata exists to fulfill issue #531: prior to this method,
+// callers could not represent key removal through the property event
+// protocol without collapsing "absent" onto "present-with-empty-value".
+func (s *Stream) DeleteMetadata(key string) {
+	s.mu.Lock()
+	delete(s.thread.Metadata, key)
+	s.mu.Unlock()
+	_ = s.Emit(context.Background(), loop.PropertiesEvent{
+		Operations: []loop.PropertyOperation{
+			{Op: loop.PropertyOpDelete, Key: key},
+		},
+		Ctx: loop.WithProvenance(context.Background(), "app"),
+	})
+}
+
 // MarkBoundary records a compaction boundary by stamping the summary
 // turn with [ledger.ControlStop]. The walk
 // ([ledger.Thread.ResolveActivePath]) then terminates at the summary,

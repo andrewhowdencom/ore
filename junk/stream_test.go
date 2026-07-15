@@ -280,6 +280,113 @@ func TestStream_AllMetadata(t *testing.T) {
 	})
 }
 
+// TestStream_DeleteMetadata_RemovesKey asserts that calling
+// DeleteMetadata on a previously set key makes GetMetadata return
+// ("", false), fulfilling the user-visible contract requested in
+// issue #531.
+func TestStream_DeleteMetadata_RemovesKey(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = stream.Close() })
+
+	stream.SetMetadata("k", "v")
+	if v, ok := stream.GetMetadata("k"); !ok || v != "v" {
+		t.Fatalf("setup: GetMetadata(\"k\") = (%q, %v); want (\"v\", true)", v, ok)
+	}
+
+	stream.DeleteMetadata("k")
+
+	got, ok := stream.GetMetadata("k")
+	assert.Equal(t, "", got)
+	assert.False(t, ok, "deleted key must not be present in metadata")
+}
+
+// TestStream_DeleteMetadata_LeavesSiblingsIntact asserts that
+// deleting one key does not affect other keys in the same metadata
+// map. This pins the contract that DeleteMetadata is a single-key
+// operation, not a bulk clear.
+func TestStream_DeleteMetadata_LeavesSiblingsIntact(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = stream.Close() })
+
+	stream.SetMetadata("a", "1")
+	stream.SetMetadata("b", "2")
+	stream.SetMetadata("c", "3")
+
+	stream.DeleteMetadata("b")
+
+	if a, ok := stream.GetMetadata("a"); !ok || a != "1" {
+		t.Errorf("GetMetadata(\"a\") = (%q, %v); want (\"1\", true)", a, ok)
+	}
+	if c, ok := stream.GetMetadata("c"); !ok || c != "3" {
+		t.Errorf("GetMetadata(\"c\") = (%q, %v); want (\"3\", true)", c, ok)
+	}
+	_, ok := stream.GetMetadata("b")
+	assert.False(t, ok, "deleted key must be absent")
+}
+
+// TestStream_DeleteMetadata_NoOpOnMissing asserts that deleting a
+// key that was never set is a no-op: it does not panic, does not
+// return an error, and does not modify the metadata map. This is
+// the contract the plan pins in requirement #3 (\"Deleting a
+// non-present key is a no-op\").
+func TestStream_DeleteMetadata_NoOpOnMissing(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = stream.Close() })
+
+	// Must not panic.
+	stream.DeleteMetadata("never-set")
+
+	// Metadata map remains empty.
+	meta := stream.AllMetadata()
+	assert.Empty(t, meta)
+}
+
+// TestStream_DeleteMetadata_EmitsDeleteOp asserts that
+// DeleteMetadata emits a PropertiesEvent carrying exactly one
+// PropertyOpDelete operation for the deleted key. The op is
+// observable by subscribers on the \"properties\" kind, completing
+// the end-to-end path required by issue #531.
+func TestStream_DeleteMetadata_EmitsDeleteOp(t *testing.T) {
+	store := NewMemoryStore()
+	prov := &mockProvider{}
+	mgr := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
+
+	stream, err := mgr.Create()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = stream.Close() })
+
+	ch := stream.Subscribe("properties")
+
+	stream.DeleteMetadata("k")
+
+	select {
+	case ev := <-ch:
+		pe, ok := ev.(loop.PropertiesEvent)
+		require.True(t, ok, "expected PropertiesEvent, got %T", ev)
+		require.Len(t, pe.Operations, 1)
+		assert.Equal(t, loop.PropertyOpDelete, pe.Operations[0].Op)
+		assert.Equal(t, "k", pe.Operations[0].Key)
+		assert.Equal(t, "", pe.Operations[0].Value, "delete op carries no value")
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for PropertiesEvent carrying delete op")
+	}
+}
+
 func TestStream_Process_ContextPropagation(t *testing.T) {
 	store := NewMemoryStore()
 	prov := &mockProvider{}
