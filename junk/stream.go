@@ -483,8 +483,10 @@ func (s *Stream) SetMetadata(key, value string) {
 	s.thread.Metadata[key] = value
 	s.mu.Unlock()
 	_ = s.Emit(context.Background(), loop.PropertiesEvent{
-		Properties: map[string]string{key: value},
-		Ctx:        loop.WithProvenance(context.Background(), "app"),
+		Operations: []loop.PropertyOperation{
+			{Op: loop.PropertyOpSet, Key: key, Value: value},
+		},
+		Ctx: loop.WithProvenance(context.Background(), "app"),
 	})
 }
 

@@ -67,11 +67,11 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 	h.mu.Unlock()
 
 	e.Emit(ctx, loop.PropertiesEvent{
-		Properties: map[string]string{
-			"sent":     strconv.Itoa(prompt),
-			"received": strconv.Itoa(completion),
-			"thinking": thinkingString(thinking),
-			"total":    strconv.Itoa(total),
+		Operations: []loop.PropertyOperation{
+			{Op: loop.PropertyOpSet, Key: "sent", Value: strconv.Itoa(prompt)},
+			{Op: loop.PropertyOpSet, Key: "received", Value: strconv.Itoa(completion)},
+			{Op: loop.PropertyOpSet, Key: "thinking", Value: thinkingString(thinking)},
+			{Op: loop.PropertyOpSet, Key: "total", Value: strconv.Itoa(total)},
 		},
 	})
 	return nil

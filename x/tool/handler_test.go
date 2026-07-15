@@ -768,7 +768,13 @@ func TestHandler_StatusContributorEmitsPropertiesEvent(t *testing.T) {
 	// Second event is the PropertiesEvent from StatusContributor.
 	pe, ok := emitter.events[1].(loop.PropertiesEvent)
 	require.True(t, ok)
-	assert.Equal(t, map[string]string{"foo": "bar"}, pe.Properties)
+	got := make(map[string]string)
+	for _, op := range pe.Operations {
+		if op.Op == loop.PropertyOpSet {
+			got[op.Key] = op.Value
+		}
+	}
+	assert.Equal(t, map[string]string{"foo": "bar"}, got)
 }
 
 
