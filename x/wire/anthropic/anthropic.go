@@ -908,7 +908,18 @@ func (p *Provider) serializeMessages(s ledger.State) serializeResult {
 				anthropic.NewTextBlock(txt),
 			))
 		case ledger.RoleAssistant:
-			out.messages = append(out.messages, serializeAssistantTurn(turn.Artifacts))
+			// An assistant turn with no content blocks is dropped
+			// from the wire entirely. See serializeAssistantTurn
+			// for the contract: an empty artifact slice produces
+			// a sentinel and the caller skips it, because the
+			// SDK's `omitzero` JSON tag would otherwise produce
+			// `{"role":"assistant"}` with no required content
+			// field — rejected by every Anthropic-compatible
+			// upstream (Anthropic native returns 400; minimax
+			// returns 2013 "input json is empty").
+			if msg, ok := serializeAssistantTurn(turn.Artifacts); ok {
+				out.messages = append(out.messages, msg)
+			}
 		case ledger.RoleTool:
 			// Tool results belong on the user side of an
 			// assistant turn, in tool_result content blocks.
@@ -953,10 +964,32 @@ func (p *Provider) serializeMessages(s ledger.State) serializeResult {
 // preceding thinking block (or to a fresh empty block if the signature
 // arrives first, which is the only legal Anthropic replay shape).
 //
-// The returned MessageParam always has the assistant role. An empty
-// artifact slice still produces a valid (if empty) assistant message
-// because callers always need to emit a message for the turn.
-func serializeAssistantTurn(artifacts []artifact.Artifact) anthropic.MessageParam {
+// The second return value is false when the artifact slice produces no
+// content blocks at all. The caller (serializeMessages) uses it to drop
+// the turn from the wire entirely.
+//
+// Why drop, not emit-as-empty: the Anthropic SDK's MessageParam.Content
+// is tagged `json:"content,omitzero" api:"required"`, so an empty
+// slice serializes as `{"role":"assistant"}` with no content field.
+// Anthropic-compatible upstreams reject this: Anthropic native returns
+// 400 with `messages.N.content: Input should be a valid non-empty
+// array`; the minimax mirror surfaces the same failure as error 2013,
+// "invalid params: Syntax error no sources available, the input json
+// is empty". Dropping is safe because an empty assistant turn by
+// definition has no tool_uses, so no downstream tool_result depends on
+// it. (The framework's earlier doc comment claimed an empty slice
+// produced "a valid (if empty) assistant message"; that was true before
+// the SDK adopted omitzero and is wrong now.)
+//
+// Empirically, this case arises when a stream ends after `message_start`
+// but before any `content_block_*` events have been observed — a
+// streaming disconnect, or a sub-process error after the envelope
+// landed but before any block arrived — leaving stop_reason and usage
+// on a turn with no content. Before this fix, the assistant message
+// was emitted as `{"role":"assistant"}` and the entire request was
+// rejected by the upstream. After this fix, the turn is dropped at the
+// wire boundary and state is unchanged.
+func serializeAssistantTurn(artifacts []artifact.Artifact) (anthropic.MessageParam, bool) {
 	var blocks []anthropic.ContentBlockParamUnion
 
 	// pendingThinking holds the most-recent thinking block whose
@@ -1050,7 +1083,10 @@ func serializeAssistantTurn(artifacts []artifact.Artifact) anthropic.MessagePara
 	// accepts this on replay and the framework will continue to
 	// collect signatures in subsequent turns if any arrive.
 
-	return anthropic.NewAssistantMessage(blocks...)
+	if len(blocks) == 0 {
+		return anthropic.MessageParam{}, false
+	}
+	return anthropic.NewAssistantMessage(blocks...), true
 }
 
 // parseToolArguments converts an artifact.ToolCall's argument payload
