@@ -17,6 +17,7 @@ use (
 	./x/llmbytes
 	./x/provider/anthropic
 	./x/provider/minimax
+	./x/provider/mock
 	./x/provider/openai
 	./x/provider/openrouter
 	./x/provider/retry
