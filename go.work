@@ -2,6 +2,7 @@ go 1.26.2
 
 use (
 	.
+	./cmd/mock-server
 	./examples
 	./examples/verifier-chat
 	./x/analytics
@@ -17,6 +18,9 @@ use (
 	./x/llmbytes
 	./x/provider/anthropic
 	./x/provider/minimax
+	./x/provider/mock
+	./x/provider/mock/anthropic
+	./x/provider/mock/openai
 	./x/provider/openai
 	./x/provider/openrouter
 	./x/provider/retry

@@ -35,3 +35,6 @@ go.work.sum
 # Forge-generated example binaries
 examples/forge/http/http-chat
 examples/forge/tui/tui-chat
+
+# Built mock-server binary (rebuild via `go build` or `go run ./cmd/mock-server`)
+cmd/mock-server/mock-server
