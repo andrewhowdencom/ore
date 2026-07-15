@@ -211,11 +211,55 @@ func (e ArtifactEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m)
 }
 
-// PropertiesEvent carries ambient, persistent metadata as a map of
-// key-value pairs. It is emitted by any producer holding a
-// *junk.Stream and flows through the per-session FanOut so all
+// PropertyOp identifies a single operation in a PropertiesEvent's
+// Operations stream. The protocol is operation-tagged rather than
+// map-shaped so consumers can represent key removal (issue #531)
+// without collapsing "absent" and "present-with-empty-value".
+type PropertyOp string
+
+const (
+	// PropertyOpSet writes Value to Key.
+	PropertyOpSet PropertyOp = "set"
+	// PropertyOpDelete removes Key from the receiving state. A
+	// delete of a non-present key is a no-op for consumers; the
+	// emitter does not require the key to exist.
+	PropertyOpDelete PropertyOp = "delete"
+)
+
+// PropertyOperation is one entry in a PropertiesEvent's Operations
+// stream. Value is only meaningful when Op == PropertyOpSet; clients
+// ignore it for delete ops. The wire shape is
+// {op: "set"|"delete", key: string, value?: string}.
+type PropertyOperation struct {
+	Op    PropertyOp `json:"op"`
+	Key   string     `json:"key"`
+	Value string     `json:"value,omitempty"`
+}
+
+// PropertiesEvent carries ambient, persistent metadata as an ordered
+// stream of PropertyOperations. It is emitted by any producer holding
+// a *junk.Stream and flows through the per-session FanOut so all
 // conduits receive it simultaneously.
+//
+// Operations replace the previous Properties map; the order of
+// operations within a single event is preserved when consumers apply
+// them in sequence.
+//
+// Properties is retained as a deprecated compatibility shim for the
+// transition window opened by Task 1. New emitters must use
+// Operations; legacy emitters constructed via Properties continue to
+// compile and the dual-shape MarshalJSON emits the same wire shape
+// regardless of which field was set. Properties is removed in Task 6.
 type PropertiesEvent struct {
+	// Operations is the operation-tagged representation. When non-empty,
+	// it takes precedence over Properties for serialization.
+	Operations []PropertyOperation
+
+	// Properties is deprecated; emit Operations instead. Constructors
+	// that still set this field are converted to Operations during
+	// MarshalJSON so the wire shape is identical.
+	//
+	// Deprecated: use Operations instead.
 	Properties map[string]string
 
 	// Ctx carries routing metadata for the event, such as provenance
@@ -229,16 +273,29 @@ func (e PropertiesEvent) Kind() string { return "properties" }
 // Context returns the event context.
 func (e PropertiesEvent) Context() context.Context { return e.Ctx }
 
-// MarshalJSON serializes the event to JSON.
+// MarshalJSON serializes the event to JSON. The wire shape is
+// `{kind: "properties", operations: [...], context?: {...}}`. A nil
+// or empty Operations slice serializes as `operations: null` so the
+// event still round-trips with a stable kind discriminator. If
+// Operations is empty but Properties is set (legacy callers), each
+// entry is converted to a PropertyOpSet operation so the wire shape
+// is stable across both construction styles.
 func (e PropertiesEvent) MarshalJSON() ([]byte, error) {
+	ops := e.Operations
+	if len(ops) == 0 && len(e.Properties) > 0 {
+		ops = make([]PropertyOperation, 0, len(e.Properties))
+		for k, v := range e.Properties {
+			ops = append(ops, PropertyOperation{Op: PropertyOpSet, Key: k, Value: v})
+		}
+	}
 	type output struct {
-		Kind       string                 `json:"kind"`
-		Properties map[string]string      `json:"properties"`
+		Kind       string               `json:"kind"`
+		Operations []PropertyOperation  `json:"operations"`
 		Context    map[string]interface{} `json:"context,omitempty"`
 	}
 	o := output{
 		Kind:       "properties",
-		Properties: e.Properties,
+		Operations: ops,
 	}
 	if ctx := marshalEventContext(e.Ctx); ctx != nil {
 		o.Context = ctx
