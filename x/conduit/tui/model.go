@@ -40,8 +40,12 @@ type turnMsg struct {
 
 // statusMsg is a Bubble Tea message that carries a status update into
 // the model.Update loop so it can update the transient status line.
+// status carries the set operations; deletions carries the keys that
+// should be removed. The two slices are applied in order by the
+// handler in model.Update.
 type statusMsg struct {
-	status map[string]string
+	status    map[string]string
+	deletions []string
 }
 
 // lifecycleMsg is a Bubble Tea message that carries a LifecycleEvent
@@ -728,6 +732,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		for k, v := range msg.status {
 			m.status[k] = v
+		}
+		for _, k := range msg.deletions {
+			delete(m.status, k)
 		}
 		m.recalcLayout()
 		m.syncViewport()
