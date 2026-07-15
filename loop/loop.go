@@ -211,12 +211,41 @@ func (e ArtifactEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m)
 }
 
-// PropertiesEvent carries ambient, persistent metadata as a map of
-// key-value pairs. It is emitted by any producer holding a
-// *junk.Stream and flows through the per-session FanOut so all
+// PropertyOp identifies a single operation in a PropertiesEvent's
+// Operations stream. The protocol is operation-tagged rather than
+// map-shaped so consumers can represent key removal (issue #531)
+// without collapsing "absent" and "present-with-empty-value".
+type PropertyOp string
+
+const (
+	// PropertyOpSet writes Value to Key.
+	PropertyOpSet PropertyOp = "set"
+	// PropertyOpDelete removes Key from the receiving state. A
+	// delete of a non-present key is a no-op for consumers; the
+	// emitter does not require the key to exist.
+	PropertyOpDelete PropertyOp = "delete"
+)
+
+// PropertyOperation is one entry in a PropertiesEvent's Operations
+// stream. Value is only meaningful when Op == PropertyOpSet; clients
+// ignore it for delete ops. The wire shape is
+// {op: "set"|"delete", key: string, value?: string}.
+type PropertyOperation struct {
+	Op    PropertyOp `json:"op"`
+	Key   string     `json:"key"`
+	Value string     `json:"value,omitempty"`
+}
+
+// PropertiesEvent carries ambient, persistent metadata as an ordered
+// stream of PropertyOperations. It is emitted by any producer holding
+// a *junk.Stream and flows through the per-session FanOut so all
 // conduits receive it simultaneously.
+//
+// Operations replace the previous Properties map; the order of
+// operations within a single event is preserved when consumers apply
+// them in sequence.
 type PropertiesEvent struct {
-	Properties map[string]string
+	Operations []PropertyOperation
 
 	// Ctx carries routing metadata for the event, such as provenance
 	// information for echo suppression.
@@ -229,16 +258,19 @@ func (e PropertiesEvent) Kind() string { return "properties" }
 // Context returns the event context.
 func (e PropertiesEvent) Context() context.Context { return e.Ctx }
 
-// MarshalJSON serializes the event to JSON.
+// MarshalJSON serializes the event to JSON. The wire shape is
+// `{kind: "properties", operations: [...], context?: {...}}`. A nil
+// Operations slice serializes as `operations: null` so the event still
+// round-trips with a stable kind discriminator.
 func (e PropertiesEvent) MarshalJSON() ([]byte, error) {
 	type output struct {
-		Kind       string                 `json:"kind"`
-		Properties map[string]string      `json:"properties"`
+		Kind       string               `json:"kind"`
+		Operations []PropertyOperation  `json:"operations"`
 		Context    map[string]interface{} `json:"context,omitempty"`
 	}
 	o := output{
 		Kind:       "properties",
-		Properties: e.Properties,
+		Operations: e.Operations,
 	}
 	if ctx := marshalEventContext(e.Ctx); ctx != nil {
 		o.Context = ctx

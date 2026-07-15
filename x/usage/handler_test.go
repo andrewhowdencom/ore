@@ -52,9 +52,9 @@ func TestHandler_AggregatesUsageAndEmitsProperties(t *testing.T) {
 	require.Len(t, e.events, 1)
 	pe, ok := e.events[0].(loop.PropertiesEvent)
 	require.True(t, ok)
-	assert.Equal(t, "100", pe.Properties["sent"])
-	assert.Equal(t, "50", pe.Properties["received"])
-	assert.Equal(t, "150", pe.Properties["total"])
+	assertOpsContain(t, pe.Operations, "sent", "100")
+	assertOpsContain(t, pe.Operations, "received", "50")
+	assertOpsContain(t, pe.Operations, "total", "150")
 }
 
 func TestHandler_TracksLastTurnValuesAndAccumulatesTotal(t *testing.T) {
@@ -83,7 +83,8 @@ func TestHandler_TracksLastTurnValuesAndAccumulatesTotal(t *testing.T) {
 	for i, exp := range expected {
 		pe, ok := e.events[i].(loop.PropertiesEvent)
 		require.True(t, ok)
-		assert.Equal(t, exp, pe.Properties)
+		got := opsToMap(pe.Operations)
+		assert.Equal(t, exp, got)
 	}
 }
 
@@ -97,9 +98,9 @@ func TestHandler_ZeroUsage(t *testing.T) {
 	require.Len(t, e.events, 1)
 	pe, ok := e.events[0].(loop.PropertiesEvent)
 	require.True(t, ok)
-	assert.Equal(t, "0", pe.Properties["sent"])
-	assert.Equal(t, "0", pe.Properties["received"])
-	assert.Equal(t, "0", pe.Properties["total"])
+	assertOpsContain(t, pe.Operations, "sent", "0")
+	assertOpsContain(t, pe.Operations, "received", "0")
+	assertOpsContain(t, pe.Operations, "total", "0")
 }
 
 func TestHandler_ConcurrentUpdates(t *testing.T) {
@@ -131,10 +132,11 @@ func TestHandler_ConcurrentUpdates(t *testing.T) {
 	require.Len(t, e.events, 1)
 
 	props := e.events[0].(loop.PropertiesEvent)
-	assert.Equal(t, "10", props.Properties["sent"])
-	assert.Equal(t, "5", props.Properties["received"])
+	got := opsToMap(props.Operations)
+	assert.Equal(t, "10", got["sent"])
+	assert.Equal(t, "5", got["received"])
 	// total accumulates: 100 * 2 + 15 = 215.
-	assert.Equal(t, "215", props.Properties["total"])
+	assert.Equal(t, "215", got["total"])
 }
 
 // TestHandler_EmitsThinkingTokensPerTurn asserts that ThinkingTokens follows
@@ -161,7 +163,7 @@ func TestHandler_EmitsThinkingTokensPerTurn(t *testing.T) {
 	for i, want := range []string{"10", "20", "30"} {
 		pe, ok := e.events[i].(loop.PropertiesEvent)
 		require.True(t, ok)
-		assert.Equal(t, want, pe.Properties["thinking"],
+		assertOpsContain(t, pe.Operations, "thinking", want,
 			"turn %d: thinking should be overwritten with the latest value", i)
 	}
 }
@@ -181,7 +183,8 @@ func TestHandler_EmitsZeroThinking(t *testing.T) {
 	require.Len(t, e.events, 1)
 	pe, ok := e.events[0].(loop.PropertiesEvent)
 	require.True(t, ok)
-	v, present := pe.Properties["thinking"]
+	got := opsToMap(pe.Operations)
+	v, present := got["thinking"]
 	assert.True(t, present, `"thinking" key must be present even when zero`)
 	assert.Equal(t, "0", v)
 }
@@ -202,9 +205,42 @@ func TestHandler_EmitsUnknownWhenNil(t *testing.T) {
 	require.Len(t, e.events, 1)
 	pe, ok := e.events[0].(loop.PropertiesEvent)
 	require.True(t, ok)
-	v, present := pe.Properties["thinking"]
+	got := opsToMap(pe.Operations)
+	v, present := got["thinking"]
 	assert.True(t, present, `"thinking" key must be present even when unknown`)
 	assert.Equal(t, "?", v)
+}
+
+// opsToMap folds an Operations stream into a key/value map for tests
+// that compare against the legacy map[string]string shape. Set ops
+// overwrite earlier values for the same key; delete ops remove the
+// key entirely.
+func opsToMap(ops []loop.PropertyOperation) map[string]string {
+	out := make(map[string]string, len(ops))
+	for _, op := range ops {
+		switch op.Op {
+		case loop.PropertyOpSet:
+			out[op.Key] = op.Value
+		case loop.PropertyOpDelete:
+			delete(out, op.Key)
+		}
+	}
+	return out
+}
+
+// assertOpsContain asserts that the Operations stream contains a set
+// op with the given key carrying the expected value. Fails the test
+// if the key is absent or the value differs.
+func assertOpsContain(t *testing.T, ops []loop.PropertyOperation, key, want string, msgAndArgs ...interface{}) {
+	t.Helper()
+	for _, op := range ops {
+		if op.Op != loop.PropertyOpSet || op.Key != key {
+			continue
+		}
+		assert.Equal(t, want, op.Value, msgAndArgs...)
+		return
+	}
+	t.Fatalf("key %q not present in operations", key)
 }
 
 // ptr returns a pointer to v. Test-only helper for building pointer-typed

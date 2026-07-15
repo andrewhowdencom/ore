@@ -1408,13 +1408,13 @@ func TestOnEmit_ErrorEvent_ContextPropagation(t *testing.T) {
 }
 
 func TestPropertiesEvent_Kind(t *testing.T) {
-	event := PropertiesEvent{Properties: map[string]string{"key": "val"}}
+	event := PropertiesEvent{Operations: []PropertyOperation{{Op: PropertyOpSet, Key: "key", Value: "val"}}}
 	assert.Equal(t, "properties", event.Kind())
 }
 
 func TestPropertiesEvent_Context(t *testing.T) {
 	event := PropertiesEvent{
-		Properties: map[string]string{"key": "val"},
+		Operations: []PropertyOperation{{Op: PropertyOpSet, Key: "key", Value: "val"}},
 		Ctx:        WithProvenance(context.Background(), "test"),
 	}
 	name, _ := ProvenanceFrom(event.Context())
@@ -1426,16 +1426,24 @@ func TestPropertiesEvent_EmitAndReceive(t *testing.T) {
 	ch := s.Subscribe("properties")
 
 	s.Emit(context.Background(), PropertiesEvent{
-		Properties: map[string]string{"thread_id": "abc-123", "state": "thinking..."},
-		Ctx:        WithProvenance(context.Background(), "test"),
+		Operations: []PropertyOperation{
+			{Op: PropertyOpSet, Key: "thread_id", Value: "abc-123"},
+			{Op: PropertyOpSet, Key: "state", Value: "thinking..."},
+		},
+		Ctx: WithProvenance(context.Background(), "test"),
 	})
 
 	events := collectEvents(ch, 100*time.Millisecond)
 	require.Len(t, events, 1)
 	status, ok := events[0].(PropertiesEvent)
 	require.True(t, ok)
-	assert.Equal(t, "abc-123", status.Properties["thread_id"])
-	assert.Equal(t, "thinking...", status.Properties["state"])
+
+	got := make(map[string]string)
+	for _, op := range status.Operations {
+		got[op.Key] = op.Value
+	}
+	assert.Equal(t, "abc-123", got["thread_id"])
+	assert.Equal(t, "thinking...", got["state"])
 	name, _ := ProvenanceFrom(status.Ctx)
 	assert.Equal(t, "test", name)
 }
@@ -1727,10 +1735,106 @@ func TestArtifactEvent_MarshalJSON(t *testing.T) {
 
 func TestPropertiesEvent_MarshalJSON(t *testing.T) {
 	ctx := WithProvenance(context.Background(), "test")
-	event := PropertiesEvent{Properties: map[string]string{"k": "v"}, Ctx: ctx}
+	event := PropertiesEvent{Operations: []PropertyOperation{{Op: PropertyOpSet, Key: "k", Value: "v"}}, Ctx: ctx}
 	data, err := json.Marshal(event)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"kind":"properties","properties":{"k":"v"},"context":{"provenance":"test"}}`, string(data))
+	assert.JSONEq(t, `{"kind":"properties","operations":[{"op":"set","key":"k","value":"v"}],"context":{"provenance":"test"}}`, string(data))
+}
+
+// TestPropertyOperation_JSON pins the wire shape of a single
+// PropertyOperation: op and key are required, value is omitted when
+// empty (e.g., for delete ops).
+func TestPropertyOperation_JSON(t *testing.T) {
+	tests := []struct {
+		name string
+		op   PropertyOperation
+		want string
+	}{
+		{
+			name: "set_with_value",
+			op:   PropertyOperation{Op: PropertyOpSet, Key: "title", Value: "Fix login"},
+			want: `{"op":"set","key":"title","value":"Fix login"}`,
+		},
+		{
+			name: "delete_omits_value",
+			op:   PropertyOperation{Op: PropertyOpDelete, Key: "title"},
+			want: `{"op":"delete","key":"title"}`,
+		},
+		{
+			// omitempty drops the "value" key for empty strings, matching
+			// the wire shape produced by the json:"value,omitempty" tag.
+			name: "set_with_empty_value",
+			op:   PropertyOperation{Op: PropertyOpSet, Key: "k", Value: ""},
+			want: `{"op":"set","key":"k"}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := json.Marshal(tt.op)
+			require.NoError(t, err)
+			assert.JSONEq(t, tt.want, string(data))
+		})
+	}
+}
+
+// TestPropertiesEvent_MarshalJSON_Operations pins the wire shape of
+// a PropertiesEvent constructed via the new Operations field,
+// including a mixed set/delete batch and the empty-operations case.
+func TestPropertiesEvent_MarshalJSON_Operations(t *testing.T) {
+	tests := []struct {
+		name  string
+		event PropertiesEvent
+		want  string
+	}{
+		{
+			name: "empty_operations",
+			event: PropertiesEvent{Operations: nil},
+			want:  `{"kind":"properties","operations":null}`,
+		},
+		{
+			name: "single_set",
+			event: PropertiesEvent{Operations: []PropertyOperation{
+				{Op: PropertyOpSet, Key: "k", Value: "v"},
+			}},
+			want: `{"kind":"properties","operations":[{"op":"set","key":"k","value":"v"}]}`,
+		},
+		{
+			name: "set_and_delete",
+			event: PropertiesEvent{Operations: []PropertyOperation{
+				{Op: PropertyOpSet, Key: "k", Value: "v"},
+				{Op: PropertyOpDelete, Key: "junk"},
+			}},
+			want: `{"kind":"properties","operations":[{"op":"set","key":"k","value":"v"},{"op":"delete","key":"junk"}]}`,
+		},
+		{
+			name: "with_context",
+			event: PropertiesEvent{
+				Operations: []PropertyOperation{{Op: PropertyOpSet, Key: "k", Value: "v"}},
+				Ctx:        WithProvenance(context.Background(), "http"),
+			},
+			want: `{"kind":"properties","operations":[{"op":"set","key":"k","value":"v"}],"context":{"provenance":"http"}}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := json.Marshal(tt.event)
+			require.NoError(t, err)
+			assert.JSONEq(t, tt.want, string(data))
+		})
+	}
+}
+
+// TestPropertiesEvent_MarshalJSON_EmptyOperations pins the wire shape
+// of an event constructed without any operations or context: the
+// operations field is serialized as null so the event still
+// round-trips with a stable kind discriminator. This is the failure
+// mode that takes the place of the legacy-fallback path after Task 6
+// removes the deprecated Properties field.
+func TestPropertiesEvent_MarshalJSON_EmptyOperations(t *testing.T) {
+	event := PropertiesEvent{}
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"properties","operations":null}`, string(data))
 }
 
 func TestTurnCompleteEvent_MarshalJSON_OmitEmptyContext(t *testing.T) {

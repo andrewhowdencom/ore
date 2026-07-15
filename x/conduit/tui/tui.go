@@ -320,7 +320,23 @@ func (t *TUI) Start(ctx context.Context) error {
 					_ = t.PlayDone(ctx)
 				}
 			case loop.PropertiesEvent:
-				t.program.Send(statusMsg{status: e.Properties})
+				// Convert the operation-tagged event into a statusMsg
+				// carrying both sets and deletes. Set ops are folded
+				// into the status map; delete ops populate the
+				// deletions slice. Order is preserved on the
+				// receiving side so a mixed batch in one event is
+				// applied in the same order it was emitted.
+				sets := make(map[string]string)
+				var dels []string
+				for _, op := range e.Operations {
+					switch op.Op {
+					case loop.PropertyOpSet:
+						sets[op.Key] = op.Value
+					case loop.PropertyOpDelete:
+						dels = append(dels, op.Key)
+					}
+				}
+				t.program.Send(statusMsg{status: sets, deletions: dels})
 			case loop.ActivityEvent:
 				t.program.Send(activityMsg{active: e.Active, description: e.Description})
 			case loop.NoticeEvent:

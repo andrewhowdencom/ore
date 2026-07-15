@@ -98,5 +98,5 @@
 //	turns := stream.Turns()
 //
 //	// Emit custom output events (e.g. status updates) into the stream's FanOut.
-//	_ = stream.Emit(ctx, loop.PropertiesEvent{Properties: map[string]string{"thread_id": stream.ID()}})
+//	_ = stream.Emit(ctx, loop.PropertiesEvent{Operations: []loop.PropertyOperation{{Op: loop.PropertyOpSet, Key: "thread_id", Value: stream.ID()}}})
 package junk

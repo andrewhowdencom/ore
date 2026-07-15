@@ -82,8 +82,19 @@ func TestSetMetadata_EmitsPropertiesEvent(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected PropertiesEvent, got %T", evt)
 		}
-		if pe.Properties["test.key"] != "test.value" {
-			t.Fatalf("expected property test.key=test.value, got %+v", pe.Properties)
+		var got string
+		var present bool
+		for _, op := range pe.Operations {
+			if op.Op == loop.PropertyOpSet && op.Key == "test.key" {
+				got, present = op.Value, true
+				break
+			}
+		}
+		if !present {
+			t.Fatalf("expected set op for test.key, got ops=%+v", pe.Operations)
+		}
+		if got != "test.value" {
+			t.Fatalf("expected property test.key=test.value, got %q", got)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for PropertiesEvent")

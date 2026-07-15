@@ -155,8 +155,15 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 
 	// Preserve the existing StatusContributor contract: tools that
 	// implement it broadcast ambient metadata to all subscribers.
+	// The Status() contract remains map[string]string; the framework
+	// converts each entry to a PropertyOpSet operation here.
 	if sc, ok := result.(artifact.StatusContributor); ok {
-		e.Emit(ctx, loop.PropertiesEvent{Properties: sc.Status()})
+		status := sc.Status()
+		ops := make([]loop.PropertyOperation, 0, len(status))
+		for k, v := range status {
+			ops = append(ops, loop.PropertyOperation{Op: loop.PropertyOpSet, Key: k, Value: v})
+		}
+		e.Emit(ctx, loop.PropertiesEvent{Operations: ops})
 	}
 	return nil
 }

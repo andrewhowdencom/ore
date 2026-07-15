@@ -105,8 +105,10 @@ func Slash() slash.Handler {
 			}, nil
 		}
 		emitter.Emit(ctx, loop.PropertiesEvent{
-			Properties: map[string]string{"title": title},
-			Ctx:        ctx,
+			Operations: []loop.PropertyOperation{
+				{Op: loop.PropertyOpSet, Key: "title", Value: title},
+			},
+			Ctx: ctx,
 		})
 		return slash.Result{}, nil
 	}

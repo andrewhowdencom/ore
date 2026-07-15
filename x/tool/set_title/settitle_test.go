@@ -123,7 +123,7 @@ func TestSlash_ValidInput_EmitsPropertiesEvent(t *testing.T) {
 	require.Len(t, emitter.events, 1)
 	pe, ok := emitter.last.(loop.PropertiesEvent)
 	require.True(t, ok, "expected loop.PropertiesEvent, got %T", emitter.last)
-	assert.Equal(t, "Fix login bug", pe.Properties["title"])
+	assertOpsContain(t, pe.Operations, "title", "Fix login bug")
 	assert.Equal(t, context.Background(), pe.Ctx)
 }
 
@@ -139,7 +139,21 @@ func TestSlash_TrimsInput(t *testing.T) {
 
 	require.Len(t, emitter.events, 1)
 	pe := emitter.last.(loop.PropertiesEvent)
-	assert.Equal(t, "spaced", pe.Properties["title"])
+	assertOpsContain(t, pe.Operations, "title", "spaced")
+}
+
+// assertOpsContain asserts that the Operations stream contains a set
+// op with the given key carrying the expected value.
+func assertOpsContain(t *testing.T, ops []loop.PropertyOperation, key, want string) {
+	t.Helper()
+	for _, op := range ops {
+		if op.Op != loop.PropertyOpSet || op.Key != key {
+			continue
+		}
+		assert.Equal(t, want, op.Value)
+		return
+	}
+	t.Fatalf("key %q not present in operations", key)
 }
 
 func TestSlash_ImplementsSlashHandler(t *testing.T) {

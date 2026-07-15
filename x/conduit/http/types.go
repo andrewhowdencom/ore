@@ -120,11 +120,20 @@ type artifactEventJSON struct {
 	Context *eventContextJSON `json:"context,omitempty"`
 }
 
+// propertyOperationJSON is the JSON representation of a single
+// PropertyOperation. Value is omitted when empty so delete ops and
+// empty-string set ops produce compact wire shapes.
+type propertyOperationJSON struct {
+	Op    loop.PropertyOp `json:"op"`
+	Key   string          `json:"key"`
+	Value string          `json:"value,omitempty"`
+}
+
 // propertiesEventJSON is the JSON representation of a PropertiesEvent.
 type propertiesEventJSON struct {
-	Kind       string            `json:"kind"`
-	Properties map[string]string `json:"properties"`
-	Context    *eventContextJSON `json:"context,omitempty"`
+	Kind       string                 `json:"kind"`
+	Operations []propertyOperationJSON `json:"operations"`
+	Context    *eventContextJSON      `json:"context,omitempty"`
 }
 
 // lifecycleEventJSON is the JSON representation of a LifecycleEvent.
@@ -332,7 +341,11 @@ func UnmarshalOutputEvent(data []byte) (loop.OutputEvent, error) {
 		if err := json.Unmarshal(data, &dto); err != nil {
 			return nil, err
 		}
-		return loop.PropertiesEvent{Properties: dto.Properties, Ctx: eventContextFromJSON(dto.Context)}, nil
+		ops := make([]loop.PropertyOperation, len(dto.Operations))
+		for i, op := range dto.Operations {
+			ops[i] = loop.PropertyOperation{Op: op.Op, Key: op.Key, Value: op.Value}
+		}
+		return loop.PropertiesEvent{Operations: ops, Ctx: eventContextFromJSON(dto.Context)}, nil
 	case "lifecycle":
 		var dto lifecycleEventJSON
 		if err := json.Unmarshal(data, &dto); err != nil {

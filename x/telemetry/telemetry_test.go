@@ -237,7 +237,7 @@ func TestOnEmit_NonTurnCompleteEvent_Ignored(t *testing.T) {
 	cb := telemetry.OnEmit()
 	ctx := context.Background()
 
-	cb(ctx, loop.PropertiesEvent{Properties: map[string]string{"key": "val"}})
+	cb(ctx, loop.PropertiesEvent{Operations: []loop.PropertyOperation{{Op: loop.PropertyOpSet, Key: "key", Value: "val"}}})
 
 	rm := collectMetrics(t, reader)
 	_, ok := findMetric(t, rm, "llm.bytes.sent")

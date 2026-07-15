@@ -78,11 +78,12 @@ func Slash() slash.Handler {
 		}
 
 		// SetMetadata is the canonical write path: it stores the value in
-		// Thread.Metadata and emits a loop.PropertiesEvent for subscribers
-		// (TUI status bar, HTTP web UI, etc.). The emitter argument is
-		// intentionally unused here because SetMetadata handles emission
-		// itself; we accept it to satisfy the slash.Handler signature and
-		// to keep the door open for future per-handler emissions.
+		// Thread.Metadata and emits a loop.PropertiesEvent carrying a
+		// single PropertyOpSet operation for subscribers (TUI status bar,
+		// HTTP web UI, etc.). The emitter argument is intentionally unused
+		// here because SetMetadata handles emission itself; we accept it
+		// to satisfy the slash.Handler signature and to keep the door
+		// open for future per-handler emissions.
 		_ = emitter
 		stream.SetMetadata(metadataKey, name)
 		return slash.Result{}, nil
