@@ -1824,30 +1824,17 @@ func TestPropertiesEvent_MarshalJSON_Operations(t *testing.T) {
 	}
 }
 
-// TestPropertiesEvent_MarshalJSON_LegacyFallback ensures that during
-// the transition window, an event constructed via the deprecated
-// Properties field still produces the same wire shape as an event
-// constructed via Operations. The fallback emits one PropertyOpSet
-// per map entry; map iteration order is not stable, so we compare
-// the deserialized shape rather than the literal JSON.
-func TestPropertiesEvent_MarshalJSON_LegacyFallback(t *testing.T) {
-	ctx := WithProvenance(context.Background(), "test")
-	event := PropertiesEvent{Properties: map[string]string{"k": "v"}, Ctx: ctx}
+// TestPropertiesEvent_MarshalJSON_EmptyOperations pins the wire shape
+// of an event constructed without any operations or context: the
+// operations field is serialized as null so the event still
+// round-trips with a stable kind discriminator. This is the failure
+// mode that takes the place of the legacy-fallback path after Task 6
+// removes the deprecated Properties field.
+func TestPropertiesEvent_MarshalJSON_EmptyOperations(t *testing.T) {
+	event := PropertiesEvent{}
 	data, err := json.Marshal(event)
 	require.NoError(t, err)
-
-	var got map[string]interface{}
-	require.NoError(t, json.Unmarshal(data, &got))
-	assert.Equal(t, "properties", got["kind"])
-
-	ops, ok := got["operations"].([]interface{})
-	require.True(t, ok, "operations must serialize as an array")
-	require.Len(t, ops, 1)
-
-	op := ops[0].(map[string]interface{})
-	assert.Equal(t, "set", op["op"])
-	assert.Equal(t, "k", op["key"])
-	assert.Equal(t, "v", op["value"])
+	assert.JSONEq(t, `{"kind":"properties","operations":null}`, string(data))
 }
 
 func TestTurnCompleteEvent_MarshalJSON_OmitEmptyContext(t *testing.T) {

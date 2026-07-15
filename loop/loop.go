@@ -244,23 +244,8 @@ type PropertyOperation struct {
 // Operations replace the previous Properties map; the order of
 // operations within a single event is preserved when consumers apply
 // them in sequence.
-//
-// Properties is retained as a deprecated compatibility shim for the
-// transition window opened by Task 1. New emitters must use
-// Operations; legacy emitters constructed via Properties continue to
-// compile and the dual-shape MarshalJSON emits the same wire shape
-// regardless of which field was set. Properties is removed in Task 6.
 type PropertiesEvent struct {
-	// Operations is the operation-tagged representation. When non-empty,
-	// it takes precedence over Properties for serialization.
 	Operations []PropertyOperation
-
-	// Properties is deprecated; emit Operations instead. Constructors
-	// that still set this field are converted to Operations during
-	// MarshalJSON so the wire shape is identical.
-	//
-	// Deprecated: use Operations instead.
-	Properties map[string]string
 
 	// Ctx carries routing metadata for the event, such as provenance
 	// information for echo suppression.
@@ -275,19 +260,9 @@ func (e PropertiesEvent) Context() context.Context { return e.Ctx }
 
 // MarshalJSON serializes the event to JSON. The wire shape is
 // `{kind: "properties", operations: [...], context?: {...}}`. A nil
-// or empty Operations slice serializes as `operations: null` so the
-// event still round-trips with a stable kind discriminator. If
-// Operations is empty but Properties is set (legacy callers), each
-// entry is converted to a PropertyOpSet operation so the wire shape
-// is stable across both construction styles.
+// Operations slice serializes as `operations: null` so the event still
+// round-trips with a stable kind discriminator.
 func (e PropertiesEvent) MarshalJSON() ([]byte, error) {
-	ops := e.Operations
-	if len(ops) == 0 && len(e.Properties) > 0 {
-		ops = make([]PropertyOperation, 0, len(e.Properties))
-		for k, v := range e.Properties {
-			ops = append(ops, PropertyOperation{Op: PropertyOpSet, Key: k, Value: v})
-		}
-	}
 	type output struct {
 		Kind       string               `json:"kind"`
 		Operations []PropertyOperation  `json:"operations"`
@@ -295,7 +270,7 @@ func (e PropertiesEvent) MarshalJSON() ([]byte, error) {
 	}
 	o := output{
 		Kind:       "properties",
-		Operations: ops,
+		Operations: e.Operations,
 	}
 	if ctx := marshalEventContext(e.Ctx); ctx != nil {
 		o.Context = ctx
