@@ -20,9 +20,3 @@ type ClockFunc func() time.Time
 
 // Now implements Clock.
 func (f ClockFunc) Now() time.Time { return f() }
-
-// clock is the unexported concrete clock used by [NewThread] when no
-// [WithThreadClock] option is supplied. Kept as a package-private alias
-// of [realClock] for symmetry with the buffer/thread internal fields
-// that pre-date the split.
-var clock = realClock{}
