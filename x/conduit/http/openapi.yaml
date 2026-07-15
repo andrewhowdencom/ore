@@ -626,18 +626,35 @@ components:
       type: object
       required:
         - kind
-        - properties
+        - operations
       properties:
         kind:
           type: string
           enum: [properties]
-        properties:
-          type: object
-          description: Key-value property map
-          additionalProperties:
-            type: string
+        operations:
+          type: array
+          description: Ordered list of property operations.
+          items:
+            $ref: '#/components/schemas/PropertyOperation'
         context:
           $ref: '#/components/schemas/EventContext'
+
+    PropertyOperation:
+      type: object
+      required:
+        - op
+        - key
+      properties:
+        op:
+          type: string
+          enum: [set, delete]
+          description: "Operation kind: set writes Value to Key; delete removes Key from the receiving state."
+        key:
+          type: string
+          description: Property key targeted by this operation.
+        value:
+          type: string
+          description: Value to set; only meaningful when op is set. Omitted when empty.
 
     LifecycleEvent:
       type: object

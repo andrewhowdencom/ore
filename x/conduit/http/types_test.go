@@ -149,8 +149,8 @@ func TestMarshalOutputEvent(t *testing.T) {
 		},
 		{
 			name:  "properties",
-			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}},
-			want:  `{"kind":"properties","properties":{"thread_id":"abc"}}`,
+			event: loop.PropertiesEvent{Operations: []loop.PropertyOperation{{Op: loop.PropertyOpSet, Key: "thread_id", Value: "abc"}}},
+			want:  `{"kind":"properties","operations":[{"op":"set","key":"thread_id","value":"abc"}]}`,
 		},
 		{
 			name:  "lifecycle",
@@ -202,8 +202,8 @@ func TestUnmarshalOutputEvent(t *testing.T) {
 		},
 		{
 			name:  "properties",
-			input: `{"kind":"properties","properties":{"thread_id":"abc"}}`,
-			want:  loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}},
+			input: `{"kind":"properties","operations":[{"op":"set","key":"thread_id","value":"abc"}]}`,
+			want:  loop.PropertiesEvent{Operations: []loop.PropertyOperation{{Op: loop.PropertyOpSet, Key: "thread_id", Value: "abc"}}},
 		},
 		{
 			name:  "lifecycle",
@@ -243,7 +243,7 @@ func TestRoundTrip_OutputEvent(t *testing.T) {
 		loop.ArtifactEvent{Artifact: artifact.Text{Content: "some text"}},
 		loop.ArtifactEvent{Artifact: artifact.TextDelta{Content: "so"}},
 		loop.ArtifactEvent{Artifact: artifact.ToolCall{ID: "1", Name: "calc", Arguments: `{"a":1}`}},
-		loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc", "state": "ready"}},
+		loop.PropertiesEvent{Operations: []loop.PropertyOperation{{Op: loop.PropertyOpSet, Key: "thread_id", Value: "abc"}, {Op: loop.PropertyOpSet, Key: "state", Value: "ready"}}},
 		loop.LifecycleEvent{Phase: "submitted"},
 		loop.LifecycleEvent{Phase: "done", Ctx: loop.WithProvenance(context.Background(), "http")},
 	}
@@ -288,8 +288,8 @@ func TestMarshalOutputEvent_WithContext(t *testing.T) {
 		},
 		{
 			name:  "status_with_context",
-			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}, Ctx: loop.WithProvenance(context.Background(), "http")},
-			want:  `{"kind":"properties","properties":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
+			event: loop.PropertiesEvent{Operations: []loop.PropertyOperation{{Op: loop.PropertyOpSet, Key: "thread_id", Value: "abc"}}, Ctx: loop.WithProvenance(context.Background(), "http")},
+			want:  `{"kind":"properties","operations":[{"op":"set","key":"thread_id","value":"abc"}],"context":{"provenance":"http"}}`,
 		},
 	}
 
@@ -334,8 +334,8 @@ func TestUnmarshalOutputEvent_WithContext(t *testing.T) {
 		},
 		{
 			name:  "status_with_context",
-			input: `{"kind":"properties","properties":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
-			want:  loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}, Ctx: loop.WithProvenance(context.Background(), "http")},
+			input: `{"kind":"properties","operations":[{"op":"set","key":"thread_id","value":"abc"}],"context":{"provenance":"http"}}`,
+			want:  loop.PropertiesEvent{Operations: []loop.PropertyOperation{{Op: loop.PropertyOpSet, Key: "thread_id", Value: "abc"}}, Ctx: loop.WithProvenance(context.Background(), "http")},
 		},
 	}
 
@@ -416,23 +416,23 @@ func TestRoundTrip_PropertiesEvent(t *testing.T) {
 	}{
 		{
 			name:  "empty_map",
-			event: loop.PropertiesEvent{Properties: map[string]string{}},
-			want:  `{"kind":"properties","properties":{}}`,
+			event: loop.PropertiesEvent{Operations: []loop.PropertyOperation{}},
+			want:  `{"kind":"properties","operations":[]}`,
 		},
 		{
 			name:  "single_key",
-			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc-123"}},
-			want:  `{"kind":"properties","properties":{"thread_id":"abc-123"}}`,
+			event: loop.PropertiesEvent{Operations: []loop.PropertyOperation{{Op: loop.PropertyOpSet, Key: "thread_id", Value: "abc-123"}}},
+			want:  `{"kind":"properties","operations":[{"op":"set","key":"thread_id","value":"abc-123"}]}`,
 		},
 		{
 			name:  "multiple_keys",
-			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc", "state": "thinking...", "model": "gpt-4o"}},
-			want:  `{"kind":"properties","properties":{"thread_id":"abc","state":"thinking...","model":"gpt-4o"}}`,
+			event: loop.PropertiesEvent{Operations: []loop.PropertyOperation{{Op: loop.PropertyOpSet, Key: "thread_id", Value: "abc"}, {Op: loop.PropertyOpSet, Key: "state", Value: "thinking..."}, {Op: loop.PropertyOpSet, Key: "model", Value: "gpt-4o"}}},
+			want:  `{"kind":"properties","operations":[{"op":"set","key":"thread_id","value":"abc"}, {"op":"set","key":"state","value":"thinking..."}, {"op":"set","key":"model","value":"gpt-4o"}]}`,
 		},
 		{
 			name:  "with_context",
-			event: loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}, Ctx: loop.WithProvenance(context.Background(), "http")},
-			want:  `{"kind":"properties","properties":{"thread_id":"abc"},"context":{"provenance":"http"}}`,
+			event: loop.PropertiesEvent{Operations: []loop.PropertyOperation{{Op: loop.PropertyOpSet, Key: "thread_id", Value: "abc"}}, Ctx: loop.WithProvenance(context.Background(), "http")},
+			want:  `{"kind":"properties","operations":[{"op":"set","key":"thread_id","value":"abc"}],"context":{"provenance":"http"}}`,
 		},
 	}
 
@@ -447,6 +447,45 @@ func TestRoundTrip_PropertiesEvent(t *testing.T) {
 			assert.Equal(t, tt.event, got)
 		})
 	}
+}
+
+// TestPropertiesEvent_RoundTrip_DeleteOp verifies that a delete
+// operation serializes to the compact wire shape (no "value" key) and
+// round-trips through UnmarshalOutputEvent back into a PropertiesEvent
+// with a PropertyOpDelete operation carrying the expected key.
+func TestPropertiesEvent_RoundTrip_DeleteOp(t *testing.T) {
+	event := loop.PropertiesEvent{
+		Operations: []loop.PropertyOperation{
+			{Op: loop.PropertyOpSet, Key: "k", Value: "v"},
+			{Op: loop.PropertyOpDelete, Key: "stale"},
+			{Op: loop.PropertyOpSet, Key: "other", Value: "kept"},
+		},
+	}
+
+	data, err := MarshalOutputEvent(event)
+	require.NoError(t, err)
+	assert.JSONEq(t,
+		`{"kind":"properties","operations":[{"op":"set","key":"k","value":"v"},{"op":"delete","key":"stale"},{"op":"set","key":"other","value":"kept"}]}`,
+		string(data),
+	)
+
+	got, err := UnmarshalOutputEvent(data)
+	require.NoError(t, err)
+
+	pe, ok := got.(loop.PropertiesEvent)
+	require.True(t, ok)
+	require.Len(t, pe.Operations, 3)
+
+	// Order is preserved on round-trip.
+	assert.Equal(t, loop.PropertyOpSet, pe.Operations[0].Op)
+	assert.Equal(t, "k", pe.Operations[0].Key)
+	assert.Equal(t, "v", pe.Operations[0].Value)
+	assert.Equal(t, loop.PropertyOpDelete, pe.Operations[1].Op)
+	assert.Equal(t, "stale", pe.Operations[1].Key)
+	assert.Equal(t, "", pe.Operations[1].Value, "delete op value is dropped on decode")
+	assert.Equal(t, loop.PropertyOpSet, pe.Operations[2].Op)
+	assert.Equal(t, "other", pe.Operations[2].Key)
+	assert.Equal(t, "kept", pe.Operations[2].Value)
 }
 
 func TestRoundTrip_LifecycleEvent(t *testing.T) {
@@ -558,7 +597,7 @@ func TestValidateEventSchemas(t *testing.T) {
 		},
 		{
 			name:       "properties",
-			event:      loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}},
+			event:      loop.PropertiesEvent{Operations: []loop.PropertyOperation{{Op: loop.PropertyOpSet, Key: "thread_id", Value: "abc"}}},
 			schemaName: "PropertiesEvent",
 		},
 		{
@@ -637,7 +676,7 @@ func TestValidateEventSchemas_WithContext(t *testing.T) {
 		},
 		{
 			name:       "properties_with_context",
-			event:      loop.PropertiesEvent{Properties: map[string]string{"thread_id": "abc"}, Ctx: ctx},
+			event:      loop.PropertiesEvent{Operations: []loop.PropertyOperation{{Op: loop.PropertyOpSet, Key: "thread_id", Value: "abc"}}, Ctx: ctx},
 			schemaName: "PropertiesEvent",
 		},
 		{
