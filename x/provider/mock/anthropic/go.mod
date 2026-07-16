@@ -3,15 +3,15 @@ module github.com/andrewhowdencom/ore/x/provider/mock/anthropic
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.2.1
+	github.com/andrewhowdencom/ore v1.2.3
 	github.com/andrewhowdencom/ore/x/provider/anthropic v0.2.5
-	github.com/andrewhowdencom/ore/x/provider/mock v0.0.0-00010101000000-000000000000
+	github.com/andrewhowdencom/ore/x/provider/mock v0.1.0
 	github.com/stretchr/testify v1.11.1
 )
 
 require (
 	github.com/andrewhowdencom/ore/x/provider/retry v0.0.3 // indirect
-	github.com/andrewhowdencom/ore/x/wire/anthropic v0.2.1 // indirect
+	github.com/andrewhowdencom/ore/x/wire/anthropic v0.2.2 // indirect
 	github.com/anthropics/anthropic-sdk-go v1.50.1 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
