@@ -6,36 +6,31 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/ledger"
 )
 
 func TestHTML(t *testing.T) {
 	tests := []struct {
 		name       string
-		thread     *junk.Thread
+		thread     Thread
 		wantSubstr []string
 		wantAbsent []string
 	}{
 		{
-			name: "empty thread",
-			thread: &junk.Thread{
-				ID:        "thread-a",
-				State:     ledger.NewThread(),
-			},
+			name:   "empty thread",
+			thread: Thread{ID: "thread-a"},
 			wantSubstr: []string{
 				"<!DOCTYPE html>",
-				"<title>Session thread-a</title>",
 				"<title>Session thread-a</title>",
 				`max-width: 960px`,
 			},
 		},
 		{
 			name: "text turn renders as markdown",
-			thread: func() *junk.Thread {
+			thread: func() Thread {
 				buf := ledger.NewThread()
 				buf.Append(ledger.RoleUser, artifact.Text{Content: "Hello!"})
-				return &junk.Thread{ID: "thread-b", State: buf}
+				return Thread{ID: "thread-b", Turns: buf.Turns()}
 			}(),
 			wantSubstr: []string{
 				"turn-user",
@@ -46,13 +41,13 @@ func TestHTML(t *testing.T) {
 		},
 		{
 			name: "assistant with reasoning and text",
-			thread: func() *junk.Thread {
+			thread: func() Thread {
 				buf := ledger.NewThread()
 				buf.Append(ledger.RoleAssistant,
 					artifact.Reasoning{Content: "Let me think..."},
 					artifact.Text{Content: "The answer is 42."},
 				)
-				return &junk.Thread{ID: "thread-c", State: buf}
+				return Thread{ID: "thread-c", Turns: buf.Turns()}
 			}(),
 			wantSubstr: []string{
 				"turn-assistant",
@@ -70,7 +65,7 @@ func TestHTML(t *testing.T) {
 			// own collapsible. The "<details>" sequence proves both
 			// are present and each has its own summary.
 			name: "tool call and result across separate turns",
-			thread: func() *junk.Thread {
+			thread: func() Thread {
 				buf := ledger.NewThread()
 				buf.Append(ledger.RoleAssistant, artifact.ToolCall{
 					ID:        "call-1",
@@ -81,7 +76,7 @@ func TestHTML(t *testing.T) {
 					ToolCallID: "call-1",
 					Content:    "2",
 				})
-				return &junk.Thread{ID: "thread-d", State: buf}
+				return Thread{ID: "thread-d", Turns: buf.Turns()}
 			}(),
 			wantSubstr: []string{
 				"turn-assistant",
@@ -97,7 +92,7 @@ func TestHTML(t *testing.T) {
 			// ToolResult in the same turn collapse under ONE
 			// <details> with the tool name as the summary.
 			name: "tool call and result paired in same turn",
-			thread: func() *junk.Thread {
+			thread: func() Thread {
 				buf := ledger.NewThread()
 				buf.Append(ledger.RoleAssistant,
 					artifact.ToolCall{
@@ -110,7 +105,7 @@ func TestHTML(t *testing.T) {
 						Content:    "alpha\n",
 					},
 				)
-				return &junk.Thread{ID: "thread-paired", State: buf}
+				return Thread{ID: "thread-paired", Turns: buf.Turns()}
 			}(),
 			wantSubstr: []string{
 				// Exactly one open <details> for the pair; the
@@ -128,12 +123,12 @@ func TestHTML(t *testing.T) {
 			// Markdown-rendered Text: **bold** becomes <strong>.
 			// Code fences become <pre><code>.
 			name: "markdown features render",
-			thread: func() *junk.Thread {
+			thread: func() Thread {
 				buf := ledger.NewThread()
 				buf.Append(ledger.RoleUser, artifact.Text{
 					Content: "Use **bold** and a code fence:\n\n```\nalpha\n```",
 				})
-				return &junk.Thread{ID: "thread-md", State: buf}
+				return Thread{ID: "thread-md", Turns: buf.Turns()}
 			}(),
 			wantSubstr: []string{
 				`<strong>bold</strong>`,
@@ -145,12 +140,12 @@ func TestHTML(t *testing.T) {
 			// bluemonday UGCPolicy strips <script> entirely. The
 			// literal "<script>" must not appear in the output.
 			name: "script injection is sanitized",
-			thread: func() *junk.Thread {
+			thread: func() Thread {
 				buf := ledger.NewThread()
 				buf.Append(ledger.RoleUser, artifact.Text{
 					Content: "hi <script>alert(1)</script> there",
 				})
-				return &junk.Thread{ID: "thread-xss", State: buf}
+				return Thread{ID: "thread-xss", Turns: buf.Turns()}
 			}(),
 			wantAbsent: []string{
 				`<script>alert(1)</script>`,
@@ -162,12 +157,12 @@ func TestHTML(t *testing.T) {
 			// the URL must be escaped so the <img> tag stays
 			// well-formed.
 			name: "image url is escaped",
-			thread: func() *junk.Thread {
+			thread: func() Thread {
 				buf := ledger.NewThread()
 				buf.Append(ledger.RoleAssistant, artifact.Image{
 					URL: `https://example.com/a.png" onerror="alert(1)`,
 				})
-				return &junk.Thread{ID: "thread-img", State: buf}
+				return Thread{ID: "thread-img", Turns: buf.Turns()}
 			}(),
 			wantSubstr: []string{
 				`<img class="image" src="https://example.com/a.png&#34; onerror=&#34;alert(1)" alt="Image">`,
@@ -178,14 +173,14 @@ func TestHTML(t *testing.T) {
 		},
 		{
 			name: "usage and image",
-			thread: func() *junk.Thread {
+			thread: func() Thread {
 				buf := ledger.NewThread()
 				buf.Append(ledger.RoleAssistant,
 					artifact.Text{Content: "Here is an image."},
 					artifact.Image{URL: "https://example.com/img.png"},
 					artifact.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15},
 				)
-				return &junk.Thread{ID: "thread-e", State: buf}
+				return Thread{ID: "thread-e", Turns: buf.Turns()}
 			}(),
 			wantSubstr: []string{
 				`<img class="image" src="https://example.com/img.png" alt="Image">`,
@@ -194,10 +189,9 @@ func TestHTML(t *testing.T) {
 		},
 		{
 			name: "metadata",
-			thread: &junk.Thread{
-				ID:        "thread-f",
-				State:     ledger.NewThread(),
-				Metadata:  map[string]string{"key1": "val1"},
+			thread: Thread{
+				ID:       "thread-f",
+				Metadata: map[string]string{"key1": "val1"},
 			},
 			wantSubstr: []string{
 				`<span><strong>key1:</strong> val1</span>`,
@@ -205,14 +199,14 @@ func TestHTML(t *testing.T) {
 		},
 		{
 			name: "error tool result",
-			thread: func() *junk.Thread {
+			thread: func() Thread {
 				buf := ledger.NewThread()
 				buf.Append(ledger.RoleTool, artifact.ToolResult{
 					ToolCallID: "call-err",
 					Content:    "something broke",
 					IsError:    true,
 				})
-				return &junk.Thread{ID: "thread-g", State: buf}
+				return Thread{ID: "thread-g", Turns: buf.Turns()}
 			}(),
 			wantSubstr: []string{
 				`tool-result-error`,
@@ -224,7 +218,7 @@ func TestHTML(t *testing.T) {
 			// "truncation-note" and contains the byte/line counts
 			// and the style.
 			name: "truncated tool result surfaces note",
-			thread: func() *junk.Thread {
+			thread: func() Thread {
 				buf := ledger.NewThread()
 				buf.Append(ledger.RoleTool, artifact.ToolResult{
 					ToolCallID: "call-trunc",
@@ -238,7 +232,7 @@ func TestHTML(t *testing.T) {
 						Style:         "tail",
 					},
 				})
-				return &junk.Thread{ID: "thread-trunc", State: buf}
+				return Thread{ID: "thread-trunc", Turns: buf.Turns()}
 			}(),
 			wantSubstr: []string{
 				`class="truncation-note"`,
@@ -249,7 +243,7 @@ func TestHTML(t *testing.T) {
 			// Truncation with empty Style: no parenthetical is
 			// appended.
 			name: "truncation with empty style omits parens",
-			thread: func() *junk.Thread {
+			thread: func() Thread {
 				buf := ledger.NewThread()
 				buf.Append(ledger.RoleTool, artifact.ToolResult{
 					ToolCallID: "call-trunc-empty",
@@ -262,7 +256,7 @@ func TestHTML(t *testing.T) {
 						Style:         "",
 					},
 				})
-				return &junk.Thread{ID: "thread-trunc-empty", State: buf}
+				return Thread{ID: "thread-trunc-empty", Turns: buf.Turns()}
 			}(),
 			wantSubstr: []string{
 				`class="truncation-note"`,
@@ -277,7 +271,7 @@ func TestHTML(t *testing.T) {
 			// truncation note even when Truncation is non-nil but
 			// not "truncated".
 			name: "untruncated tool result suppresses note",
-			thread: func() *junk.Thread {
+			thread: func() Thread {
 				buf := ledger.NewThread()
 				buf.Append(ledger.RoleTool, artifact.ToolResult{
 					ToolCallID: "call-untouched",
@@ -289,7 +283,7 @@ func TestHTML(t *testing.T) {
 						ShownLines:    1,
 					},
 				})
-				return &junk.Thread{ID: "thread-untouched", State: buf}
+				return Thread{ID: "thread-untouched", Turns: buf.Turns()}
 			}(),
 			wantAbsent: []string{
 				`Truncated: shown`,
