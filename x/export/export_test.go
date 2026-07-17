@@ -7,13 +7,12 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/ledger"
 )
 
-// fixtureThread returns a thread containing at least one of each known
-// artifact type (excluding deltas, which are never persisted).
-func fixtureThread() *junk.Thread {
+// fixtureThread returns a Thread containing at least one of each
+// known artifact type (excluding deltas, which are never persisted).
+func fixtureThread() Thread {
 	buf := ledger.NewThread()
 
 	// System turn with reasoning.
@@ -57,10 +56,10 @@ func fixtureThread() *junk.Thread {
 		artifact.Image{URL: "https://example.com/map.png"},
 	)
 
-	return &junk.Thread{
-		ID:        "fixture-thread",
-		State:     buf,
-		Metadata:  map[string]string{"source": "integration-test"},
+	return Thread{
+		ID:       "fixture-thread",
+		Metadata: map[string]string{"source": "integration-test"},
+		Turns:    buf.Turns(),
 	}
 }
 

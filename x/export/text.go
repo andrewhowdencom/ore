@@ -6,75 +6,52 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/junk"
 )
 
 // Text writes a plain-text transcript of the conversation thread to w.
 // Each turn is emitted with its role and timestamp, followed by every
 // artifact rendered in a human-readable form.
-func Text(w io.Writer, thread *junk.Thread) error {
-	_, err := fmt.Fprintf(w, "Thread: %s\n", thread.ID)
-	if err != nil {
+func Text(w io.Writer, t Thread) error {
+	if _, err := fmt.Fprintf(w, "Thread: %s\n", t.ID); err != nil {
 		return fmt.Errorf("write thread header: %w", err)
 	}
 
-	if len(thread.Metadata) > 0 {
-		_, err = fmt.Fprintln(w, "Metadata:")
-		if err != nil {
+	if len(t.Metadata) > 0 {
+		if _, err := fmt.Fprintln(w, "Metadata:"); err != nil {
 			return fmt.Errorf("write metadata header: %w", err)
 		}
-		for k, v := range thread.Metadata {
-			_, err = fmt.Fprintf(w, "  %s: %s\n", k, v)
-			if err != nil {
-				return fmt.Errorf("write metadata entry: %w", err)
-			}
-		}
-	}
-	_ = err
-
-	if len(thread.Metadata) > 0 {
-		_, err = fmt.Fprintln(w, "Metadata:")
-		if err != nil {
-			return fmt.Errorf("write metadata header: %w", err)
-		}
-		for k, v := range thread.Metadata {
-			_, err = fmt.Fprintf(w, "  %s: %s\n", k, v)
-			if err != nil {
+		for k, v := range t.Metadata {
+			if _, err := fmt.Fprintf(w, "  %s: %s\n", k, v); err != nil {
 				return fmt.Errorf("write metadata entry: %w", err)
 			}
 		}
 	}
 
-	_, err = fmt.Fprintln(w)
-	if err != nil {
+	if _, err := fmt.Fprintln(w); err != nil {
 		return fmt.Errorf("write blank line: %w", err)
 	}
 
-	for _, turn := range thread.State.Turns() {
+	for _, turn := range t.Turns {
 		ts := ""
 		if !turn.Timestamp.IsZero() {
 			ts = turn.Timestamp.Format(time.RFC3339)
 		}
 
-		_, err = fmt.Fprintf(w, "=== %s", turn.Role)
-		if err != nil {
+		if _, err := fmt.Fprintf(w, "=== %s", turn.Role); err != nil {
 			return fmt.Errorf("write turn role: %w", err)
 		}
 		if ts != "" {
-			_, err = fmt.Fprintf(w, " (%s)", ts)
-			if err != nil {
+			if _, err := fmt.Fprintf(w, " (%s)", ts); err != nil {
 				return fmt.Errorf("write turn timestamp: %w", err)
 			}
 		}
-		_, err = fmt.Fprintln(w, " ===")
-		if err != nil {
+		if _, err := fmt.Fprintln(w, " ==="); err != nil {
 			return fmt.Errorf("write turn separator: %w", err)
 		}
 
 		for i, art := range turn.Artifacts {
 			if i > 0 {
-				_, err = fmt.Fprintln(w)
-				if err != nil {
+				if _, err := fmt.Fprintln(w); err != nil {
 					return fmt.Errorf("write artifact separator: %w", err)
 				}
 			}
@@ -83,8 +60,7 @@ func Text(w io.Writer, thread *junk.Thread) error {
 			}
 		}
 
-		_, err = fmt.Fprintln(w)
-		if err != nil {
+		if _, err := fmt.Fprintln(w); err != nil {
 			return fmt.Errorf("write turn trailing blank: %w", err)
 		}
 	}

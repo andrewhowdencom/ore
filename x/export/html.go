@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark"
@@ -43,7 +42,7 @@ const htmlTemplate = `<!DOCTYPE html>
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Session {{ .Thread.ID }}</title>
+	<title>Session {{ .ID }}</title>
 	<style>
 		body {
 			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -204,9 +203,9 @@ const htmlTemplate = `<!DOCTYPE html>
 	</style>
 </head>
 <body>
-	<h1>Session {{ .Thread.ID }}</h1>
+	<h1>Session {{ .ID }}</h1>
 	<div class="meta">
-		{{ range $k, $v := .Thread.Metadata }}<span><strong>{{ $k }}:</strong> {{ $v }}</span>{{ end }}
+		{{ range $k, $v := .Metadata }}<span><strong>{{ $k }}:</strong> {{ $v }}</span>{{ end }}
 	</div>
 	{{ range .Turns }}
 	<div class="turn turn-{{ .RoleClass }}">
@@ -245,8 +244,9 @@ type htmlTurn struct {
 
 // htmlData is the top-level template payload.
 type htmlData struct {
-	Thread *junk.Thread
-	Turns  []htmlTurn
+	ID       string
+	Metadata map[string]string
+	Turns    []htmlTurn
 }
 
 // HTML writes a self-contained HTML document representing the
@@ -254,13 +254,14 @@ type htmlData struct {
 // <details>/<summary> collapsibles, and has no external
 // dependencies. Text artifacts are rendered as markdown and
 // sanitized by bluemonday.UGCPolicy before being embedded.
-func HTML(w io.Writer, thread *junk.Thread) error {
+func HTML(w io.Writer, t Thread) error {
 	data := htmlData{
-		Thread: thread,
-		Turns:  make([]htmlTurn, 0, len(thread.State.Turns())),
+		ID:       t.ID,
+		Metadata: t.Metadata,
+		Turns:    make([]htmlTurn, 0, len(t.Turns)),
 	}
 
-	for _, turn := range thread.State.Turns() {
+	for _, turn := range t.Turns {
 		ht := htmlTurn{
 			Role:      string(turn.Role),
 			RoleClass: roleClass(turn.Role),
