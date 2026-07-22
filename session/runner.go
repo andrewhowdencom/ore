@@ -131,8 +131,9 @@ func (r *Runner) Close() error {
 //
 // Run is synchronous from the caller's perspective: it returns once
 // the agent's Run has returned (or the event was consumed by an
-// interceptor). It does NOT use the session's work queue; events are
-// processed in the caller's goroutine.
+// interceptor). Events are processed in the caller's goroutine; the
+// session does not queue or buffer them. Callers that need async
+// submission own the goroutine and channel that calls Run.
 func (r *Runner) Run(ctx context.Context, sess *Session, evt Event) error {
 	if r.factory == nil {
 		return fmt.Errorf("session.Runner: no AgentFactory configured")

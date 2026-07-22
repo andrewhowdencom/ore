@@ -1,7 +1,6 @@
 package session_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -22,47 +21,6 @@ func TestNew_ConstructsAndRuns(t *testing.T) {
 	}
 	if s.Thread() != thread {
 		t.Fatal("Thread() did not return the thread passed to New")
-	}
-}
-
-func TestRun_EnqueuesAndEmitsLifecycleDone(t *testing.T) {
-	t.Parallel()
-
-	thread := ledger.NewThread()
-	s := session.New("test-id", thread)
-	defer s.Close()
-
-	events := s.Subscribe("lifecycle")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	if err := s.Run(ctx, session.UserMessageEvent{
-		Content: "hello",
-		Ctx:     ctx,
-	}); err != nil {
-		t.Fatalf("Run returned error: %v", err)
-	}
-
-	deadline := time.After(2 * time.Second)
-	got := 0
-	for got < 1 {
-		select {
-		case evt, ok := <-events:
-			if !ok {
-				t.Fatalf("event channel closed early; got %d events", got)
-			}
-			le, isLifecycle := evt.(loop.LifecycleEvent)
-			if !isLifecycle {
-				t.Fatalf("expected LifecycleEvent, got %T", evt)
-			}
-			if le.Phase != "done" {
-				t.Fatalf("expected Phase=done, got %q", le.Phase)
-			}
-			got++
-		case <-deadline:
-			t.Fatalf("timeout waiting for LifecycleEvent; got %d events", got)
-		}
 	}
 }
 
@@ -127,21 +85,6 @@ func TestGetMetadata_RoundTrips(t *testing.T) {
 	}
 }
 
-func TestRun_AfterCloseReturnsError(t *testing.T) {
-	t.Parallel()
-
-	thread := ledger.NewThread()
-	s := session.New("test-id", thread)
-	if err := s.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-
-	err := s.Run(context.Background(), session.UserMessageEvent{Content: "x"})
-	if err == nil {
-		t.Fatal("Run after Close returned nil; expected error")
-	}
-}
-
 func TestSubscribe_AfterCloseReturnsClosedChannel(t *testing.T) {
 	t.Parallel()
 
@@ -159,5 +102,19 @@ func TestSubscribe_AfterCloseReturnsClosedChannel(t *testing.T) {
 		}
 	case <-time.After(1 * time.Second):
 		t.Fatal("Subscribe after Close did not return a closed channel")
+	}
+}
+
+func TestClose_Idempotent(t *testing.T) {
+	t.Parallel()
+
+	thread := ledger.NewThread()
+	s := session.New("test-id", thread)
+
+	if err := s.Close(); err != nil {
+		t.Fatalf("first Close: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("second Close: %v", err)
 	}
 }
