@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/andrewhowdencom/ore/ledger"
@@ -10,35 +9,33 @@ import (
 )
 
 // Session is the per-conversation primitive. It owns the identity, the
-// ledger thread, the conduit-mapping metadata, the long-lived
-// loop.Step used for subscriber fanout, and the work queue that
-// serializes ingress events.
+// ledger thread, the conduit-mapping metadata, and the long-lived
+// loop.Step used for subscriber fanout.
 //
-// Session is not safe for concurrent closure. Submit, Subscribe,
-// metadata access, and close are all serialized via Session.mu. The
-// internal worker goroutine is the only reader of the work queue.
+// Session.mu serializes metadata access. Subscribe and Close delegate
+// to loop.Step, which manages its own concurrency. Event submission and
+// inference execution are the caller's responsibility; see
+// session.Runner for the canonical inference-driving path.
 type Session struct {
 	id       string
 	thread   *ledger.Thread
 	metadata map[string]string
 	step     *loop.Step
-	queue    *workQueue
 
-	mu     sync.Mutex
-	closed bool
+	mu sync.Mutex
 }
 
 // Option configures a Session at construction.
 type Option func(*Session)
 
 // New constructs a Session with the given identity and thread. The
-// thread must not be nil. The session is fully initialized: an internal
-// loop.Step is created for fanout, and a worker goroutine is started
-// to drain the work queue.
+// thread must not be nil. The session is fully initialized with an
+// internal loop.Step for subscriber fanout.
 //
-// Future tasks will wire agent invocation into the worker. For now,
-// the worker is a stub that emits a LifecycleEvent{Phase: "done"}
-// after processing each event.
+// Event submission and inference execution are the caller's
+// responsibility; see session.Runner for the canonical inference
+// path. The Option type is reserved for follow-up plans that wire
+// inference-governing metadata onto the session.
 func New(id string, thread *ledger.Thread, opts ...Option) *Session {
 	if thread == nil {
 		panic("session.New: thread must not be nil")
@@ -48,12 +45,10 @@ func New(id string, thread *ledger.Thread, opts ...Option) *Session {
 		thread:   thread,
 		metadata: make(map[string]string),
 		step:     loop.New(),
-		queue:    newWorkQueue(),
 	}
 	for _, opt := range opts {
 		opt(s)
 	}
-	go s.queue.runWorker(s.processEvent)
 	return s
 }
 
@@ -110,16 +105,6 @@ func (s *Session) AllMetadata() map[string]string {
 	return out
 }
 
-// Run enqueues an event for processing by the session's worker. It
-// returns immediately; processing happens asynchronously. If the
-// session is closed, Run returns errSessionClosed.
-func (s *Session) Run(ctx context.Context, evt Event) error {
-	if evt == nil {
-		return fmt.Errorf("session %s: nil event", s.id)
-	}
-	return s.queue.submit(ctx, evt)
-}
-
 // Subscribe returns a filtered output event channel from the session's
 // loop.Step FanOut. If no kinds are provided, the channel receives all
 // events regardless of kind. If the session is closed, the returned
@@ -128,14 +113,6 @@ func (s *Session) Run(ctx context.Context, evt Event) error {
 // Subscribe is live-only: it delivers events from the point of
 // subscription onward and does not replay historical events.
 func (s *Session) Subscribe(kinds ...string) <-chan loop.OutputEvent {
-	s.mu.Lock()
-	if s.closed {
-		s.mu.Unlock()
-		ch := make(chan loop.OutputEvent)
-		close(ch)
-		return ch
-	}
-	s.mu.Unlock()
 	return s.step.Subscribe(kinds...)
 }
 
@@ -145,27 +122,13 @@ func (s *Session) Subscribe(kinds ...string) <-chan loop.OutputEvent {
 // during pre-LLM processing.
 func (s *Session) Emitter() loop.Emitter { return s.step }
 
-// processEvent is the worker's per-event handler. In Task 2 this is a
-// stub that emits LifecycleEvent{Phase: "done"} after the event has
-// been acknowledged. Future tasks will wire agent invocation here.
-func (s *Session) processEvent(ctx context.Context, evt Event) error {
-	s.step.Emit(ctx, loop.LifecycleEvent{Phase: "done", Ctx: evt.Context()})
-	return nil
-}
-
-// Close closes the session's step, drains the worker, and marks the
-// session as closed. Subsequent calls to Run return errSessionClosed;
-// Subscribe returns an immediately-closed channel. Close is safe to
-// call multiple times.
+// Close closes the session's loop.Step. After Close returns, Subscribe
+// returns an immediately-closed channel (loop.Step's FanOut propagates
+// closure to subscribers). Close is safe to call multiple times: step
+// closure is sync.Once-guarded inside loop.FanOut.
 func (s *Session) Close() error {
 	s.mu.Lock()
-	if s.closed {
-		s.mu.Unlock()
-		return nil
-	}
-	s.closed = true
-	s.mu.Unlock()
-	s.queue.close()
+	defer s.mu.Unlock()
 	if s.step != nil {
 		_ = s.step.Close()
 	}
