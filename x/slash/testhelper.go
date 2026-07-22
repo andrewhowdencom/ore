@@ -1,13 +1,13 @@
 package slash
 
 import (
-	"github.com/andrewhowdencom/ore/junk"
+	"github.com/andrewhowdencom/ore/session"
 )
 
-// NewCommandForTest builds a slash.Command with a populated stream field.
+// NewCommandForTest builds a slash.Command with a populated session field.
 // It exists solely to let external test packages (e.g. x/tool/set_model)
-// exercise handlers that depend on Command.Stream() without forcing the
-// test to plumb a real junk.Manager through the registry's Intercept
+// exercise handlers that depend on Command.Session() without forcing the
+// test to plumb a real session.Session through the registry's Intercept
 // path.
 //
 // This function is not part of the public API. External test code that
@@ -16,11 +16,11 @@ import (
 // flag this.
 //
 // Production code must never call this — the registry's Intercept is
-// the only legitimate constructor of a non-nil Command.stream.
-func NewCommandForTest(name, input string, stream *junk.Stream) Command {
+// the only legitimate constructor of a non-nil Command.session.
+func NewCommandForTest(name, input string, sess *session.Session) Command {
 	return Command{
-		Name:   name,
-		Input:  input,
-		stream: stream,
+		Name:    name,
+		Input:   input,
+		session: sess,
 	}
 }

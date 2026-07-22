@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/junk"
+	"github.com/andrewhowdencom/ore/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +22,7 @@ func TestRegistry_BindAndMatch(t *testing.T) {
 		return Result{}, nil
 	})
 
-	event := junk.UserMessageEvent{Content: "/new"}
+	event := session.UserMessageEvent{Content: "/new"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -37,7 +37,7 @@ func TestRegistry_UnknownCommand(t *testing.T) {
 		return Result{}, nil
 	})
 
-	event := junk.UserMessageEvent{Content: "/other"}
+	event := session.UserMessageEvent{Content: "/other"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -55,7 +55,7 @@ func TestRegistry_HandlerError(t *testing.T) {
 		return Result{}, expectedErr
 	})
 
-	event := junk.UserMessageEvent{Content: "/fail"}
+	event := session.UserMessageEvent{Content: "/fail"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	// Error must be auto-converted into an error-severity notice and
@@ -82,7 +82,7 @@ func TestRegistry_HandlerErrorWithExplicitNotice(t *testing.T) {
 		}, expectedErr
 	})
 
-	event := junk.UserMessageEvent{Content: "/fail"}
+	event := session.UserMessageEvent{Content: "/fail"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -99,7 +99,7 @@ func TestRegistry_RawInputParsing(t *testing.T) {
 		return Result{}, nil
 	})
 
-	event := junk.UserMessageEvent{Content: "/include /path/with spaces"}
+	event := session.UserMessageEvent{Content: "/include /path/with spaces"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -124,7 +124,7 @@ func TestRegistry_Notice(t *testing.T) {
 		}, nil
 	})
 
-	event := junk.UserMessageEvent{Content: "/status"}
+	event := session.UserMessageEvent{Content: "/status"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -138,7 +138,7 @@ func TestRegistry_NoticeWithReplace(t *testing.T) {
 	r := NewRegistry()
 	r.Bind("switch", "Switch session", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		return Result{
-			Replace: junk.SessionSwitchEvent{SessionID: "new-session-123", Ctx: context.Background()},
+			Replace: session.SessionSwitchEvent{SessionID: "new-session-123", Ctx: context.Background()},
 			Notice: loop.Notice{
 				Content:  "Switched to session new-session-123",
 				Severity: loop.SeverityInfo,
@@ -146,7 +146,7 @@ func TestRegistry_NoticeWithReplace(t *testing.T) {
 		}, nil
 	})
 
-	event := junk.UserMessageEvent{Content: "/switch"}
+	event := session.UserMessageEvent{Content: "/switch"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -154,7 +154,7 @@ func TestRegistry_NoticeWithReplace(t *testing.T) {
 	assert.Len(t, result.Notice, 1)
 	assert.Equal(t, "Switched to session new-session-123", result.Notice[0].Content)
 
-	switchEvent, ok := result.Event.(junk.SessionSwitchEvent)
+	switchEvent, ok := result.Event.(session.SessionSwitchEvent)
 	require.True(t, ok, "expected SessionSwitchEvent")
 	assert.Equal(t, "new-session-123", switchEvent.SessionID)
 }
@@ -166,7 +166,7 @@ func TestRegistry_NonUserMessage(t *testing.T) {
 		return Result{}, nil
 	})
 
-	event := junk.InterruptEvent{Ctx: context.Background()}
+	event := session.InterruptEvent{Ctx: context.Background()}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -181,7 +181,7 @@ func TestRegistry_NoSlashPrefix(t *testing.T) {
 		return Result{}, nil
 	})
 
-	event := junk.UserMessageEvent{Content: "new"}
+	event := session.UserMessageEvent{Content: "new"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -196,7 +196,7 @@ func TestRegistry_EmptyContent(t *testing.T) {
 		return Result{}, nil
 	})
 
-	event := junk.UserMessageEvent{Content: ""}
+	event := session.UserMessageEvent{Content: ""}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -208,21 +208,21 @@ func TestRegistry_HandlerReturnsEvent(t *testing.T) {
 	r := NewRegistry()
 	r.Bind("new", "Create a new session", func(ctx context.Context, emitter loop.Emitter, cmd Command) (Result, error) {
 		return Result{
-			Replace: junk.SessionSwitchEvent{
+			Replace: session.SessionSwitchEvent{
 				SessionID: "new-session-123",
 				Ctx:       context.Background(),
 			},
 		}, nil
 	})
 
-	event := junk.UserMessageEvent{Content: "/new"}
+	event := session.UserMessageEvent{Content: "/new"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
 	require.NotNil(t, result.Event, "expected event to be replaced, not consumed")
 	assert.Empty(t, result.Notice)
 
-	switchEvent, ok := result.Event.(junk.SessionSwitchEvent)
+	switchEvent, ok := result.Event.(session.SessionSwitchEvent)
 	require.True(t, ok, "expected SessionSwitchEvent")
 	assert.Equal(t, "new-session-123", switchEvent.SessionID)
 }
@@ -236,7 +236,7 @@ func TestRegistry_Help(t *testing.T) {
 		return Result{}, nil
 	})
 
-	event := junk.UserMessageEvent{Content: "/help"}
+	event := session.UserMessageEvent{Content: "/help"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -258,7 +258,7 @@ func TestRegistry_HelpExcludesUnbound(t *testing.T) {
 	r := NewRegistry()
 	// Only /help is auto-registered; no other commands.
 
-	event := junk.UserMessageEvent{Content: "/help"}
+	event := session.UserMessageEvent{Content: "/help"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -273,8 +273,8 @@ func TestRegistry_HelpExcludesUnbound(t *testing.T) {
 }
 
 func TestRegistry_CompileTimeAssertion(t *testing.T) {
-	// Verify that the registry struct implements junk.Interceptor.
-	var _ junk.Interceptor = (*registry)(nil)
+	// Verify that the registry struct implements session.Interceptor.
+	var _ session.Interceptor = (*registry)(nil)
 }
 
 func TestRegistry_PostSlashWhitespace(t *testing.T) {
@@ -286,7 +286,7 @@ func TestRegistry_PostSlashWhitespace(t *testing.T) {
 	})
 
 	// Multiple spaces after the slash — command should be parsed correctly.
-	event := junk.UserMessageEvent{Content: "/   help"}
+	event := session.UserMessageEvent{Content: "/   help"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -304,7 +304,7 @@ func TestRegistry_PostSlashWhitespace_WithInput(t *testing.T) {
 	})
 
 	// Multiple spaces after slash and between command and input.
-	event := junk.UserMessageEvent{Content: "/   include   /path/with spaces"}
+	event := session.UserMessageEvent{Content: "/   include   /path/with spaces"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -329,7 +329,7 @@ func TestRegistry_DuplicateBind_Overwrites(t *testing.T) {
 		}, nil
 	})
 
-	event := junk.UserMessageEvent{Content: "/test"}
+	event := session.UserMessageEvent{Content: "/test"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -348,7 +348,7 @@ func TestRegistry_DuplicateBind_UpdatesDescription(t *testing.T) {
 	})
 
 	// Verify /help shows the updated description.
-	event := junk.UserMessageEvent{Content: "/help"}
+	event := session.UserMessageEvent{Content: "/help"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -365,7 +365,7 @@ func TestRegistry_MixedCase(t *testing.T) {
 		return Result{}, nil
 	})
 
-	event := junk.UserMessageEvent{Content: "/HeLp"}
+	event := session.UserMessageEvent{Content: "/HeLp"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -382,7 +382,7 @@ func TestRegistry_EmptyNotice(t *testing.T) {
 		}, nil
 	})
 
-	event := junk.UserMessageEvent{Content: "/silent"}
+	event := session.UserMessageEvent{Content: "/silent"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -406,7 +406,7 @@ func TestRegistry_Isolation(t *testing.T) {
 	// r2 is a fresh registry and should not have the "foo" command.
 	r2 := NewRegistry()
 
-	event := junk.UserMessageEvent{Content: "/foo"}
+	event := session.UserMessageEvent{Content: "/foo"}
 	result, err := r2.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -423,7 +423,7 @@ func TestRegistry_LeadingWhitespace(t *testing.T) {
 		return Result{}, nil
 	})
 
-	event := junk.UserMessageEvent{Content: "   /help"}
+	event := session.UserMessageEvent{Content: "   /help"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
@@ -439,7 +439,7 @@ func TestRegistry_CaseSensitive(t *testing.T) {
 	})
 
 	// Uppercase HELP should be treated as unknown command.
-	event := junk.UserMessageEvent{Content: "/HELP"}
+	event := session.UserMessageEvent{Content: "/HELP"}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)
