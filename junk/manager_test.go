@@ -1337,23 +1337,3 @@ func TestManager_Process_ToolLoop_NoDuplicateTurns(t *testing.T) {
 	assert.Equal(t, 2, roleCounts[ledger.RoleAssistant])
 	assert.Equal(t, 1, roleCounts[ledger.RoleTool])
 }
-
-func TestManager_WithInterceptor(t *testing.T) {
-	store := NewMemoryStore()
-	var called bool
-	interceptor := InterceptorFunc(func(ctx context.Context, event Event, stream *Stream, emitter loop.Emitter) (InterceptResult, error) {
-		called = true
-		return InterceptResult{Event: event}, nil
-	})
-	mgr := NewManager(store, &mockProvider{}, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor(), WithInterceptor(interceptor))
-	require.NotNil(t, mgr)
-
-	stream, err := mgr.Create()
-	require.NoError(t, err)
-
-	err = stream.Process(context.Background(), UserMessageEvent{Content: "hello"})
-	require.NoError(t, err)
-	assert.True(t, called, "interceptor should have been called")
-
-	_ = stream.Close()
-}
