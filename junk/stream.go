@@ -47,7 +47,6 @@ type Stream struct {
 	provider    provider.Provider
 	processor   TurnProcessor
 	store       Store
-	interceptor Interceptor
 	mu          sync.Mutex
 	cancel      context.CancelFunc
 	closed      bool
@@ -180,24 +179,6 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 	s.cancel = cancel
 	s.mu.Unlock()
 
-	// Run interceptor if configured (only for UserMessageEvent events).
-	if s.interceptor != nil {
-		if ume, ok := event.(UserMessageEvent); ok {
-			result, err := s.interceptor.Intercept(ctx, event, s, s.step)
-			if err != nil {
-				return fmt.Errorf("interceptor: %w", err)
-			}
-			// Emit severity-tagged notices to conduits without persisting.
-			for _, n := range result.Notice {
-				s.step.Emit(context.Background(), loop.NoticeEvent{Notice: n, Ctx: ume.Ctx})
-			}
-			if result.Event == nil {
-				return nil
-			}
-			event = result.Event
-		}
-	}
-
 	var runErr error
 	var eventCtx context.Context
 	switch e := event.(type) {
@@ -221,11 +202,6 @@ func (s *Stream) processOne(ctx context.Context, event Event) error {
 		s.step.SetEventContext(e.Context())
 		defer s.step.SetEventContext(context.Background())
 		cancel()
-	case SessionSwitchEvent:
-		// SessionSwitchEvent is a meta-event emitted by slash handlers to
-		// signal cross-session navigation. It does not trigger inference.
-		eventCtx = e.Context()
-		s.step.Emit(context.Background(), e)
 	default:
 		runErr = fmt.Errorf("unsupported event kind: %s", event.Kind())
 	}
@@ -339,9 +315,9 @@ func (s *Stream) Subscribe(kinds ...string) <-chan loop.OutputEvent {
 }
 
 // Emit injects a custom output event into the stream's FanOut, allowing
-// handlers, interceptors, and application logic to emit meta-events that
-// are delivered to all subscribers alongside standard artifact and
-// turn-complete events.
+// handlers and application logic to emit meta-events that are delivered
+// to all subscribers alongside standard artifact and turn-complete
+// events.
 //
 // The stream must not be closed.
 //
@@ -414,9 +390,9 @@ func (s *Stream) LoadTurns(turns []ledger.Turn) {
 
 // AppendTurn records a turn into the thread state and broadcasts a
 // TurnCompleteEvent to all subscribers of the stream. It is the
-// canonical entry point for external producers (slash handlers,
-// compaction, future tool-side producers) that need to inject turns
-// without going through step.Turn / step.Submit.
+// canonical entry point for external producers (compaction, future
+// tool-side producers) that need to inject turns without going through
+// step.Turn / step.Submit.
 //
 // Behavior:
 //
@@ -544,12 +520,11 @@ func (s *Stream) MarkBoundary(summaryTurnID, info string) error {
 	return nil
 }
 
-// Model metadata keys. These are the framework contract keys that
-// the slash command in x/tool/set_model (and any other session-level
-// model configurator) writes into Thread.Metadata. The session
-// package owns the canonical form; downstream tools import the
-// constants when they need to set a value, or write the literal
-// string. The "ore.model." prefix reserves the namespace for
+// Model metadata keys. These are the framework contract keys for
+// session-level model configuration written via SetMetadata. The
+// session package owns the canonical form (session.MetadataKeyModelName
+// et al.); downstream tools import those constants when they need to
+// set a value. The "ore.model." prefix reserves the namespace for
 // framework-level model configuration.
 const (
 	MetadataKeyModelName            = "ore.model.name"
@@ -572,9 +547,7 @@ const (
 //	"ore.model.temperature"       → Spec.Temperature (parsed float)
 //	"ore.model.max_output_tokens" → Spec.MaxOutputTokens (parsed int)
 //
-// Unknown keys are ignored. The slash command in x/tool/set_model
-// is the canonical writer; see MetadataKeyModelName for the
-// "set the model" entry point.
+// Unknown keys are ignored.
 func (s *Stream) Spec() (models.Spec, bool) {
 	name, hasName := s.GetMetadata(MetadataKeyModelName)
 	if !hasName || name == "" {

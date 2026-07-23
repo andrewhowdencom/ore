@@ -33,15 +33,6 @@ func WithDefaultMetadata(fn func(*Stream) map[string]string) ManagerOption {
 	}
 }
 
-// WithInterceptor sets an interceptor that processes UserMessageEvent events
-// before they enter the LLM inference pipeline for every stream managed by
-// this Manager.
-func WithInterceptor(interceptor Interceptor) ManagerOption {
-	return func(m *Manager) {
-		m.interceptor = interceptor
-	}
-}
-
 // SinkFunc receives OutputEvents from a specific stream, together with the
 // originating stream ID. It may be invoked concurrently for multiple streams.
 type SinkFunc func(streamID string, event loop.OutputEvent)
@@ -70,7 +61,6 @@ type Manager struct {
 	provider    provider.Provider
 	newStep     func(*Stream) ([]loop.Option, error)
 	processor   TurnProcessor
-	interceptor Interceptor
 	sessions    map[string]*Stream
 	mu          sync.RWMutex
 	sinks       []sink
@@ -103,12 +93,11 @@ func (m *Manager) Create() (*Stream, error) {
 		return nil, fmt.Errorf("create thread: %w", err)
 	}
 	stream := &Stream{
-		id:          thr.ID,
-		thread:      thr,
-		provider:    m.provider,
-		processor:   m.processor,
-		store:       m.store,
-		interceptor: m.interceptor,
+		id:        thr.ID,
+		thread:    thr,
+		provider:  m.provider,
+		processor: m.processor,
+		store:     m.store,
 	}
 	factoryOpts, err := m.newStep(stream)
 	if err != nil {
@@ -159,12 +148,11 @@ func (m *Manager) Attach(threadID string) (*Stream, error) {
 	}
 
 	stream = &Stream{
-		id:          threadID,
-		thread:      thr,
-		provider:    m.provider,
-		processor:   m.processor,
-		store:       m.store,
-		interceptor: m.interceptor,
+		id:        threadID,
+		thread:    thr,
+		provider:  m.provider,
+		processor: m.processor,
+		store:     m.store,
 	}
 	factoryOpts, err := m.newStep(stream)
 	if err != nil {
@@ -246,12 +234,11 @@ func (m *Manager) CreateWithID(id string) (*Stream, error) {
 		return nil, fmt.Errorf("save thread: %w", err)
 	}
 	stream := &Stream{
-		id:          thr.ID,
-		thread:      thr,
-		provider:    m.provider,
-		processor:   m.processor,
-		store:       m.store,
-		interceptor: m.interceptor,
+		id:        thr.ID,
+		thread:    thr,
+		provider:  m.provider,
+		processor: m.processor,
+		store:     m.store,
 	}
 	factoryOpts, err := m.newStep(stream)
 	if err != nil {
