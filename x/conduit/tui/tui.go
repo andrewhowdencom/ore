@@ -1,10 +1,22 @@
 // Package tui implements an opinionated terminal user interface conduit for
 // the ore framework using Bubble Tea.
 //
-// Use New(mgr, opts...) to create a TUI that composes with a junk.Manager.
-// The TUI creates or attaches to a session on Start, subscribes to the
-// session's output stream, and sends user events back through it.
-// Available options include WithThreadID to resume an existing thread.
+// Use New(sess, opts...) to create a TUI that wraps an already-attached
+// session.Session. The TUI subscribes to the session's output events and
+// routes them into the Bubble Tea program; outbound user actions (typed
+// messages, interrupts) are produced on a channel returned by Events() for
+// the application to consume via session.Runner.Run.
+//
+// The TUI is a dumb pipe: it does not invoke the provider, does not own the
+// session's lifecycle, and does not manage the turn loop. The application is
+// responsible for constructing the session, seeding any default metadata
+// before Start, and pumping Events() into a session.Runner.
+//
+// Cancellation is wired through WithCancelFunc: the registered cancel
+// function is invoked when the user presses Ctrl+C or Esc inside the TUI.
+// The application typically pairs this with a context.WithCancel whose
+// cancel func is shared with both Start(ctx) and runner.Run, so a single
+// signal unwinds the UI, any in-flight turn, and the runner pump.
 //
 // Streaming model:
 // The TUI subscribes to delta artifact events (text_delta, reasoning_delta,
@@ -14,7 +26,7 @@
 //
 // State refresh:
 // If the underlying conversation state is replaced (e.g. after compaction via
-// stream.LoadTurns), call ReloadHistory on the TUI to rebuild the conversation
+// thread.Replace), call ReloadHistory on the TUI to rebuild the conversation
 // view from the new turn slice. This must be done after Start has been called
 // so the Bubble Tea program is running.
 //
@@ -36,7 +48,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/junk"
+	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/compaction"
 	"github.com/andrewhowdencom/ore/x/conduit"
@@ -44,16 +56,16 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// readBoundaryFromStream fetches the current compaction BoundaryInfo
-// from the stream's ledger.Meta, returning the zero value if no
-// boundary has been recorded. The TUI uses this to render the
-// collapse marker at startup; the value is purely advisory
-// (the rendered marker has no semantic effect on the conversation).
-func readBoundaryFromStream(s *junk.Stream) compaction.BoundaryInfo {
-	if s == nil {
+// readBoundaryFromSession fetches the current compaction BoundaryInfo
+// from the session's metadata, returning the zero value if no boundary
+// has been recorded. The TUI uses this to render the collapse marker at
+// startup; the value is purely advisory (the rendered marker has no
+// semantic effect on the conversation).
+func readBoundaryFromSession(sess *session.Session) compaction.BoundaryInfo {
+	if sess == nil {
 		return compaction.BoundaryInfo{}
 	}
-	encoded, ok := s.State().Meta().Get(compaction.MetaKeyBoundaryInfo)
+	encoded, ok := sess.GetMetadata(compaction.MetaKeyBoundaryInfo)
 	if !ok {
 		return compaction.BoundaryInfo{}
 	}
@@ -69,9 +81,9 @@ func readBoundaryFromStream(s *junk.Stream) compaction.BoundaryInfo {
 // TUI is a terminal user interface conduit. It hides all Bubble Tea internals
 // from callers.
 type TUI struct {
-	mgr            *junk.Manager
-	threadID       string
-	eventsCh       chan junk.Event
+	sess           *session.Session
+	events         chan session.Event
+	cancelFunc     context.CancelFunc
 	program        *tea.Program
 	programOpts    []tea.ProgramOption
 	name           string
@@ -85,18 +97,21 @@ type TUI struct {
 // Option configures a TUI.
 type Option func(*TUI)
 
-// WithThreadID sets the thread ID to resume when starting the TUI.
-// An empty string means create a new junk.
-func WithThreadID(id string) Option {
-	return func(t *TUI) {
-		t.threadID = id
-	}
-}
-
 // WithName sets the application name displayed in the terminal window title.
 func WithName(name string) Option {
 	return func(t *TUI) {
 		t.name = name
+	}
+}
+
+// WithCancelFunc registers a context.CancelFunc to be invoked when the user
+// presses Ctrl+C or Esc inside the TUI. The application typically passes the
+// cancel func of a context.WithCancel whose parent ctx is also passed to
+// tui.Start and session.Runner.Run, so a single cancel unwinds the UI,
+// any in-flight turn, and the runner pump.
+func WithCancelFunc(cancel context.CancelFunc) Option {
+	return func(t *TUI) {
+		t.cancelFunc = cancel
 	}
 }
 
@@ -201,24 +216,49 @@ var Descriptor = conduit.Descriptor{
 // Compile-time assertion that *TUI implements conduit.AudioNotifier.
 var _ conduit.AudioNotifier = (*TUI)(nil)
 
-// New creates a new TUI conduit that implements conduit.Conduit.
-// The returned value must be started with Start(ctx) to run the interface.
-// Available options: WithThreadID(id) to resume an existing thread.
-func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error) {
-	if mgr == nil {
-		return nil, fmt.Errorf("session manager is required")
+// New creates a new TUI conduit that wraps the given session. The
+// returned value must be started with Start(ctx) to run the interface.
+// The session must not be nil; the TUI reads from it (turns, metadata,
+// Subscribe) but does not own its lifecycle. The application is
+// responsible for attaching or creating the session before calling New
+// and for pumping Events() into a session.Runner.
+//
+// Available options include WithName, WithCancelFunc, WithTracer,
+// WithTheme, WithStatusZones, WithStatusLabels, and WithProgramOptions.
+func New(sess *session.Session, opts ...Option) (conduit.Conduit, error) {
+	if sess == nil {
+		return nil, fmt.Errorf("session is required")
 	}
-	t := &TUI{mgr: mgr, name: "Ore"}
+	t := &TUI{sess: sess, name: "Ore"}
 	for _, opt := range opts {
 		opt(t)
 	}
 	return t, nil
 }
 
+// Events returns a buffered channel of user-initiated session events.
+// The application is expected to consume this channel and pass each event
+// to session.Runner.Run(ctx, sess, evt). The channel is created lazily on
+// the first call to Start and is closed when Start returns.
+//
+// Events produced on the channel include session.UserMessageEvent when
+// the user presses Enter and session.InterruptEvent when the user
+// presses Ctrl+C or Esc. Per-event provenance is attached via
+// loop.WithProvenance on the event's Ctx field.
+func (t *TUI) Events() <-chan session.Event {
+	return t.events
+}
+
 // initModel creates and initializes the Bubble Tea model for the TUI,
-// including pre-populating historical turns from the stream when resuming
-// an existing thread.
-func (t *TUI) initModel(eventsCh chan junk.Event, stream *junk.Stream) model {
+// including pre-populating historical turns from the session when resuming
+// an existing conversation.
+//
+// ctx is the runtime context attached to every emitted session.Event via
+// loop.WithProvenance. cancelFunc, if non-nil, is invoked by the model on
+// Ctrl+C and Esc after the corresponding session.InterruptEvent is emitted
+// on eventsCh; the application uses this to cancel its runner pump and
+// unwind any in-flight turn.
+func (t *TUI) initModel(ctx context.Context, eventsCh chan session.Event, sess *session.Session) model {
 	ta := textarea.New()
 	ta.ShowLineNumbers = false
 	ta.Prompt = "> "
@@ -229,6 +269,8 @@ func (t *TUI) initModel(eventsCh chan junk.Event, stream *junk.Stream) model {
 
 	m := model{
 		eventsCh:       eventsCh,
+		ctx:            ctx,
+		cancelFunc:     t.cancelFunc,
 		viewport:       viewport.New(),
 		textarea:       ta,
 		md:             newGlamourMarkdownRenderer(t.themeOrAuto()),
@@ -239,83 +281,79 @@ func (t *TUI) initModel(eventsCh chan junk.Event, stream *junk.Stream) model {
 		zonePriorities: t.zonePriorities,
 	}
 
-	// Pre-populate the model with historical turns when resuming a thread.
-	// The boundary info is read from ledger.Meta; loadHistory renders the
-	// collapse marker if one is present.
-	m.loadHistory(stream.Turns(), readBoundaryFromStream(stream))
+	// Pre-populate the model with historical turns from the session.
+	// The boundary info is read from session metadata; loadHistory
+	// renders the collapse marker if one is present.
+	m.loadHistory(sess.Turns(), readBoundaryFromSession(sess))
 
 	// Resolve the status-bar seed up front. It is delivered via Init()'s
 	// tea.Cmd (not via a direct Send) so the message reaches the
 	// statusMsg handler through the normal channel after the event loop
-	// has started. statusFromStream returns nil if there is no metadata,
-	// which Init() also treats as a no-op.
-	m.initStatusMsg = statusFromStream(stream)
+	// has started. statusFromSession returns nil if there is no
+	// metadata, which Init() also treats as a no-op.
+	m.initStatusMsg = statusFromSession(sess)
 	return m
 }
 
-// statusFromStream returns the statusMsg that should be sent to the program
-// on Start, seeded from the stream's current metadata. Returns nil if the
-// stream has no metadata, so the caller can skip a no-op Send.
+// statusFromSession returns the statusMsg that should be sent to the
+// program on Start, seeded from the session's current metadata. Returns
+// nil if the session has no metadata, so the caller can skip a no-op
+// Send.
 //
-// The bootstrap exists because Manager.applyDefaultMetadata emits a
-// PropertiesEvent per default-metadata key before the TUI calls
-// Subscribe. Since Subscribe is live-only (no replay), those events are
-// lost; without this seed the status bar would render empty on the
-// first frame. Sending a single statusMsg before the live-event
-// goroutine starts keeps status updates funneled through the existing
-// statusMsg handler (a merge, not a replace) so a concurrent live
-// PropertiesEvent for the same key is a no-op.
-func statusFromStream(stream *junk.Stream) tea.Msg {
-	if meta := stream.AllMetadata(); len(meta) > 0 {
+// The bootstrap exists because applications typically seed default
+// metadata (thread_id, cwd, git_branch, etc.) on the session before
+// constructing the TUI. Those writes do not produce a PropertiesEvent
+// that reaches the TUI's Subscribe stream (which is live-only), so the
+// status bar would otherwise render empty on the first frame. Sending
+// a single statusMsg before the live-event goroutine starts keeps
+// status updates funneled through the existing statusMsg handler (a
+// merge, not a replace) so a concurrent live PropertiesEvent for the
+// same key is a no-op.
+func statusFromSession(sess *session.Session) tea.Msg {
+	if meta := sess.AllMetadata(); len(meta) > 0 {
 		return statusMsg{status: meta}
 	}
 	return nil
 }
 
-// Start creates or attaches to a session, initializes the Bubble Tea program,
-// subscribes to the session output stream, and blocks until the user quits
-// (Ctrl+C) or ctx is cancelled. On context cancellation the program exits
-// gracefully.
+// Start initializes the Bubble Tea program, subscribes to the session
+// output stream, and blocks until the user quits (Ctrl+C) or ctx is
+// cancelled. On context cancellation the program exits gracefully and
+// the Events() channel is closed.
+//
+// Start is a no-op turn-loop driver: it neither invokes the provider
+// nor manages the inference pipeline. The application is expected to
+// range over Events() in a separate goroutine and pass each event to
+// session.Runner.Run.
 func (t *TUI) Start(ctx context.Context) error {
-	var stream *junk.Stream
-	var err error
-	if t.threadID != "" {
-		stream, err = t.mgr.Attach(t.threadID)
-		if err != nil {
-			return fmt.Errorf("attach to thread %q: %w", t.threadID, err)
-		}
-	} else {
-		stream, err = t.mgr.Create()
-		if err != nil {
-			return fmt.Errorf("create session: %w", err)
-		}
-		slog.Info("thread started", "id", stream.ID())
-	}
-
-	surfEventsCh := make(chan junk.Event, 10)
-	m := t.initModel(surfEventsCh, stream)
+	surfEventsCh := make(chan session.Event, 16)
+	m := t.initModel(ctx, surfEventsCh, t.sess)
 	p := tea.NewProgram(&m, t.programOpts...)
-	t.eventsCh = surfEventsCh
+	t.events = surfEventsCh
 	t.program = p
 
-	// Subscribe to the stream's output, including delta artifact kinds so
-	// the TUI can accumulate assistant content incrementally as each delta
-	// chunk arrives, rather than waiting for TurnCompleteEvent.
-	outputCh := stream.Subscribe("text_delta", "reasoning_delta", "tool_call", "tool_result", "turn_complete", "error", "properties", "lifecycle", "notice", "activity")
+	// Subscribe to the session's output, including delta artifact kinds
+	// so the TUI can accumulate assistant content incrementally as
+	// each delta chunk arrives, rather than waiting for
+	// TurnCompleteEvent.
+	outputCh := t.sess.Subscribe(
+		"text_delta", "reasoning_delta", "tool_call", "tool_result",
+		"turn_complete", "error", "properties", "lifecycle", "notice", "activity",
+	)
 
 	// Goroutine to stream output events into the Bubble Tea message loop.
 	go func() {
 		for event := range outputCh {
 			switch e := event.(type) {
 			case loop.ArtifactEvent:
-				t.program.Send(artifactMsg{artifact: e.Artifact})
+				p.Send(artifactMsg{artifact: e.Artifact})
 			case loop.TurnCompleteEvent:
-				t.program.Send(turnMsg{turn: e.Turn})
+				p.Send(turnMsg{turn: e.Turn})
 			case loop.ErrorEvent:
-				t.program.Send(errorMsg{err: e.Err})
+				p.Send(errorMsg{err: e.Err})
 				_ = t.PlayError(ctx)
 			case loop.LifecycleEvent:
-				t.program.Send(lifecycleMsg{phase: e.Phase})
+				p.Send(lifecycleMsg{phase: e.Phase})
 				if e.Phase == "done" {
 					_ = t.PlayDone(ctx)
 				}
@@ -336,39 +374,11 @@ func (t *TUI) Start(ctx context.Context) error {
 						dels = append(dels, op.Key)
 					}
 				}
-				t.program.Send(statusMsg{status: sets, deletions: dels})
+				p.Send(statusMsg{status: sets, deletions: dels})
 			case loop.ActivityEvent:
-				t.program.Send(activityMsg{active: e.Active, description: e.Description})
+				p.Send(activityMsg{active: e.Active, description: e.Description})
 			case loop.NoticeEvent:
-				t.program.Send(noticeMsg{notice: e.Notice})
-			}
-		}
-	}()
-
-	// Goroutine to process user events through the junk.
-	go func() {
-		for event := range t.eventsCh {
-			switch e := event.(type) {
-			case junk.UserMessageEvent:
-				ctx := context.Background()
-				var span trace.Span
-				if t.tracer != nil {
-					ctx, span = t.tracer.Start(ctx, "tui.turn", trace.WithSpanKind(trace.SpanKindServer))
-				}
-				msg := junk.UserMessageEvent{
-					Content: e.Content,
-					Ctx:     loop.WithProvenance(ctx, "tui"),
-				}
-				if err := stream.Submit(msg); err != nil {
-					slog.Error("submit failed", "err", err)
-				}
-				if span != nil {
-					span.End()
-				}
-			case junk.InterruptEvent:
-				if err := stream.Cancel(); err != nil {
-					slog.Error("cancel failed", "err", err)
-				}
+				p.Send(noticeMsg{notice: e.Notice})
 			}
 		}
 	}()
@@ -379,8 +389,11 @@ func (t *TUI) Start(ctx context.Context) error {
 		p.Quit()
 	}()
 
-	_, err = p.Run()
-	close(t.eventsCh)
+	_, err := p.Run()
+	close(t.events)
+	if err != nil {
+		slog.Debug("tui: program returned error", "err", err)
+	}
 	return err
 }
 
@@ -397,7 +410,7 @@ func (t *TUI) PlayDone(ctx context.Context) error {
 // PlayError forwards an audio notification to the Bubble Tea model so the
 // terminal bell is emitted on the UI goroutine. Because the terminal
 // bell (\a) cannot vary pitch, the TUI produces the same sound for
-// errors as for successful turns. A future richer backend could introduce
+// errors as for successful turns. A future richer audio backend could introduce
 // distinct error tones.
 func (t *TUI) PlayError(ctx context.Context) error {
 	t.program.Send(audioMsg{})
@@ -407,8 +420,8 @@ func (t *TUI) PlayError(ctx context.Context) error {
 // ReloadHistory discards the model's current conversation history and
 // rebuilds it from the supplied turn slice. This is the public hook that
 // downstream applications (e.g., a slash command handler or compaction
-// processor) call after replacing the stream's persistent state via
-// stream.LoadTurns so the TUI view stays synchronized with the backend.
+// processor) call after replacing the session's persistent state via
+// thread.Replace so the TUI view stays synchronized with the backend.
 //
 // boundary is the BoundaryInfo for the latest compaction, if any.
 // Pass the zero value when no compaction has occurred; the TUI
@@ -418,4 +431,14 @@ func (t *TUI) ReloadHistory(turns []ledger.Turn, boundary compaction.BoundaryInf
 		t.program.Send(reloadHistoryMsg{turns: turns, boundary: boundary})
 	}
 	return nil
+}
+
+// invokeCancelFunc invokes the registered WithCancelFunc function, if any.
+// Used by the model on Ctrl+C and Esc to ensure the cancel signal reaches
+// the application even if the Events() channel has not yet been read by
+// the runner pump.
+func (t *TUI) invokeCancelFunc() {
+	if t.cancelFunc != nil {
+		t.cancelFunc()
+	}
 }

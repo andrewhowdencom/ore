@@ -5,6 +5,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"hash/fnv"
 	"log/slog"
@@ -16,7 +17,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/junk"
+	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/compaction"
 	"github.com/andrewhowdencom/ore/x/conduit"
@@ -182,7 +183,20 @@ func isRerenderableKind(kind string) bool {
 // model implements tea.Model. All state mutation happens in Update,
 // which runs on Bubble Tea's single goroutine, so no locks are needed.
 type model struct {
-	eventsCh chan junk.Event
+	eventsCh chan session.Event
+
+	// ctx is the TUI's runtime context. It is propagated onto every
+	// emitted session.Event via loop.WithProvenance so downstream
+	// interceptors and tracing layers can attribute the event to the
+	// "tui" conduit. nil is treated as context.Background().
+	ctx context.Context
+
+	// cancelFunc is invoked on Ctrl+C and Esc after the corresponding
+	// session.InterruptEvent is emitted. nil means no cancel func was
+	// registered via tui.WithCancelFunc; in that case only the event
+	// is emitted and the application is responsible for any other
+	// cancellation strategy.
+	cancelFunc context.CancelFunc
 
 	// Conversation history.
 	turns []renderedTurn
@@ -207,7 +221,7 @@ type model struct {
 	status map[string]string
 
 	// initStatusMsg is a one-shot status seed produced by initModel from
-	// stream.AllMetadata(). It is yielded by Init() as a tea.Cmd so the
+	// session.AllMetadata(). It is yielded by Init() as a tea.Cmd so the
 	// existing statusMsg handler can merge it into m.status through the
 	// normal message channel — i.e., after the event loop has started.
 	// It is never read after Init() runs and can otherwise be ignored.
@@ -270,6 +284,52 @@ type renderedTurn struct {
 	role      ledger.Role
 	blocks    []renderedBlock
 	timestamp time.Time
+}
+
+// emitUserMessage sends a session.UserMessageEvent on the model's egress
+// channel with the model's runtime context wrapped in loop.WithProvenance.
+// The channel is buffered; if it is full, the message is dropped with a
+// warning rather than blocking the UI goroutine.
+func (m *model) emitUserMessage(content string) {
+	evt := session.UserMessageEvent{
+		Content: content,
+		Ctx:     loop.WithProvenance(m.contextOrBackground(), "tui"),
+	}
+	select {
+	case m.eventsCh <- evt:
+	default:
+		slog.Warn("event channel full, dropping user message")
+	}
+}
+
+// emitInterrupt sends a session.InterruptEvent on the model's egress
+// channel and invokes the registered cancelFunc, if any. Used by both
+// Ctrl+C and Esc keyboard handlers. The cancel call is made AFTER the
+// event send so that an application that consumes events can observe
+// the interrupt before the shared context is cancelled; the cancel
+// also fires if the channel is full, so the cancel signal is not
+// silently swallowed.
+func (m *model) emitInterrupt() {
+	evt := session.InterruptEvent{
+		Ctx: loop.WithProvenance(m.contextOrBackground(), "tui"),
+	}
+	select {
+	case m.eventsCh <- evt:
+	default:
+	}
+	if m.cancelFunc != nil {
+		m.cancelFunc()
+	}
+}
+
+// contextOrBackground returns the model's runtime context, or
+// context.Background() if nil. Used when wrapping emitted events with
+// loop.WithProvenance.
+func (m *model) contextOrBackground() context.Context {
+	if m.ctx == nil {
+		return context.Background()
+	}
+	return m.ctx
 }
 
 // hashToolCallID derives a 4-character truncated hex hash from a toolCallID.
@@ -867,11 +927,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					content := m.textarea.Value()
 					m.textarea.Reset()
 					m.recalcLayout()
-					select {
-					case m.eventsCh <- junk.UserMessageEvent{Content: content}:
-					default:
-						slog.Warn("event channel full, dropping user message")
-					}
+					m.emitUserMessage(content)
 					m.contentDirty = true
 					m.syncViewport()
 				}
@@ -886,19 +942,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.recalcLayout()
 			return m, cmd
 		case tea.KeyEscape:
-			select {
-			case m.eventsCh <- junk.InterruptEvent{}:
-			default:
-			}
+			m.emitInterrupt()
 			return m, nil
 		}
 
-		// Ctrl+C
+		// Ctrl+C — emit InterruptEvent, invoke cancelFunc (if any),
+		// and quit the program. The cancel signal reaches the
+		// application even if the runner pump is not yet reading the
+		// Events channel, so an in-flight turn is interrupted
+		// without waiting for the application to drain the queue.
 		if msg.Key().Code == 'c' && msg.Key().Mod.Contains(tea.ModCtrl) {
-			select {
-			case m.eventsCh <- junk.InterruptEvent{}:
-			default:
-			}
+			m.emitInterrupt()
 			return m, tea.Quit
 		}
 
