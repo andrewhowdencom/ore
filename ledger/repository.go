@@ -101,4 +101,15 @@ type Repository interface {
 	// reserved for hard failures (file not readable, permission
 	// denied, etc.).
 	HydrateThread(ctx context.Context, threadID string) (turns map[string]*Turn, currentTip string, err error)
+
+	// ListThreadIDs returns the IDs of every thread persisted by the
+	// repository, in no particular order. The empty result is
+	// returned (not an error) when the repository contains no threads.
+	//
+	// Implementations decide on the physical enumeration (e.g. directory
+	// scan for file-backed stores; map keys for in-memory stores).
+	// Concurrent writes during enumeration are tolerated: a thread
+	// added mid-scan may or may not appear in the result, but a thread
+	// listed will continue to be hydrate-able afterwards.
+	ListThreadIDs(ctx context.Context) ([]string, error)
 }

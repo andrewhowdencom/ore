@@ -238,3 +238,39 @@ func (r *FileRepository) HydrateThread(_ context.Context, threadID string) (map[
 	}
 	return turns, currentTip, nil
 }
+
+// ListThreadIDs enumerates every thread journal file in the
+// repository's directory and returns its thread ID. The original
+// thread ID is recovered by stripping the .jsonl suffix and
+// reversing the sanitizeThreadID transform (the file-system name
+// is the sanitized form).
+//
+// Listing is safe against concurrent Save/Update calls: those open
+// the file with O_APPEND, which is atomic on POSIX for small
+// writes; the directory entry is created before the file's first
+// write, so a thread seen in the listing is guaranteed to be at
+// least partially persisted. Order is unspecified.
+func (r *FileRepository) ListThreadIDs(_ context.Context) ([]string, error) {
+	entries, err := os.ReadDir(r.dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read repository directory %q: %w", r.dir, err)
+	}
+
+	ids := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		// Skip non-journal files that may live alongside the journals.
+		if !strings.HasSuffix(name, ".jsonl") {
+			continue
+		}
+		// Strip the extension; the basename is the sanitized thread ID.
+		ids = append(ids, strings.TrimSuffix(name, ".jsonl"))
+	}
+	return ids, nil
+}

@@ -214,3 +214,69 @@ func TestMemoryRepository_UpdateParentOnUnknownTurnIsNoop(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, turns)
 }
+
+func TestMemoryRepository_ListThreadIDs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// populate is called before ListThreadIDs. It uses the
+		// repository to record thread IDs as a side effect.
+		populate func(t *testing.T, r *MemoryRepository)
+		want     []string
+	}{
+		{
+			name: "empty",
+			populate: func(t *testing.T, r *MemoryRepository) {
+				// nothing
+			},
+			want: []string{},
+		},
+		{
+			name: "single",
+			populate: func(t *testing.T, r *MemoryRepository) {
+				require.NoError(t, r.SaveTurn(context.Background(), "only", &Turn{ID: "u1", Role: RoleUser}))
+			},
+			want: []string{"only"},
+		},
+		{
+			name: "many",
+			populate: func(t *testing.T, r *MemoryRepository) {
+				for _, id := range []string{"a", "b", "c", "d"} {
+					require.NoError(t, r.SaveTurn(context.Background(), id, &Turn{ID: "u-" + id, Role: RoleUser}))
+				}
+			},
+			want: []string{"a", "b", "c", "d"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := NewMemoryRepository()
+			tt.populate(t, r)
+
+			ids, err := r.ListThreadIDs(context.Background())
+			require.NoError(t, err)
+
+			// Order is unspecified; compare as sets.
+			assert.ElementsMatch(t, tt.want, ids)
+		})
+	}
+}
+
+func TestMemoryRepository_ListThreadIDs_DefensiveCopy(t *testing.T) {
+	r := NewMemoryRepository()
+	require.NoError(t, r.SaveTurn(context.Background(), "t1", &Turn{ID: "u", Role: RoleUser}))
+
+	ids, err := r.ListThreadIDs(context.Background())
+	require.NoError(t, err)
+	require.Len(t, ids, 1)
+
+	// Mutate the returned slice; the repository's internal state
+	// must remain unchanged.
+	ids[0] = "mutated"
+
+	again, err := r.ListThreadIDs(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"t1"}, again)
+}
