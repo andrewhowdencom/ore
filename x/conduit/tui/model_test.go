@@ -15,7 +15,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/junk"
+	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/compaction"
 	"github.com/andrewhowdencom/ore/x/conduit"
@@ -108,7 +108,7 @@ func TestModel_Update_LifecycleDone_ClearsPending(t *testing.T) {
 }
 
 func TestModel_Update_KeyEscape_SendsInterrupt(t *testing.T) {
-	eventsCh := make(chan junk.Event, 10)
+	eventsCh := make(chan session.Event, 10)
 	m := newTestModel()
 	m.eventsCh = eventsCh
 
@@ -207,7 +207,7 @@ func TestModel_Update_KeyBackspace_Empty(t *testing.T) {
 }
 
 func TestModel_Update_KeyEnter_WithInput(t *testing.T) {
-	eventsCh := make(chan junk.Event, 10)
+	eventsCh := make(chan session.Event, 10)
 	m := newTestModel()
 	m.eventsCh = eventsCh
 	m.textarea.SetValue("hello")
@@ -223,7 +223,7 @@ func TestModel_Update_KeyEnter_WithInput(t *testing.T) {
 	select {
 	case e := <-eventsCh:
 		require.Equal(t, "user_message", e.Kind())
-		ume, ok := e.(junk.UserMessageEvent)
+		ume, ok := e.(session.UserMessageEvent)
 		require.True(t, ok)
 		assert.Equal(t, "hello", ume.Content)
 	default:
@@ -232,7 +232,7 @@ func TestModel_Update_KeyEnter_WithInput(t *testing.T) {
 }
 
 func TestModel_Update_KeyEnter_EmptyInput(t *testing.T) {
-	eventsCh := make(chan junk.Event, 10)
+	eventsCh := make(chan session.Event, 10)
 	m := newTestModel()
 	m.eventsCh = eventsCh
 
@@ -266,7 +266,7 @@ func TestModel_Update_WindowSize_ResizesViewport(t *testing.T) {
 }
 
 func TestModel_Update_KeyCtrlC(t *testing.T) {
-	eventsCh := make(chan junk.Event, 10)
+	eventsCh := make(chan session.Event, 10)
 	m := newTestModel()
 	m.eventsCh = eventsCh
 
@@ -735,7 +735,7 @@ func TestModel_Update_ShiftEnter_InsertsNewline(t *testing.T) {
 }
 
 func TestModel_Update_Enter_SubmitsMultiLine(t *testing.T) {
-	eventsCh := make(chan junk.Event, 10)
+	eventsCh := make(chan session.Event, 10)
 	m := newTestModel()
 	m.eventsCh = eventsCh
 	m.textarea.SetValue("line1\nline2")
@@ -749,7 +749,7 @@ func TestModel_Update_Enter_SubmitsMultiLine(t *testing.T) {
 	select {
 	case e := <-eventsCh:
 		require.Equal(t, "user_message", e.Kind())
-		ume, ok := e.(junk.UserMessageEvent)
+		ume, ok := e.(session.UserMessageEvent)
 		require.True(t, ok)
 		assert.Equal(t, "line1\nline2", ume.Content)
 	default:
@@ -791,7 +791,7 @@ func TestModel_Update_Turn_Assistant_EmptyText(t *testing.T) {
 // --- Critical coverage gap tests (added per testing agent review) ---
 
 func TestModel_Update_ShiftEnter_DoesNotEmitEvent(t *testing.T) {
-	eventsCh := make(chan junk.Event, 10)
+	eventsCh := make(chan session.Event, 10)
 	m := newTestModel()
 	m.eventsCh = eventsCh
 	m.textarea.SetValue("hello")
@@ -821,7 +821,7 @@ func TestModel_Update_CtrlJ_InsertsNewline(t *testing.T) {
 }
 
 func TestModel_Update_CtrlJ_DoesNotEmitEvent(t *testing.T) {
-	eventsCh := make(chan junk.Event, 10)
+	eventsCh := make(chan session.Event, 10)
 	m := newTestModel()
 	m.eventsCh = eventsCh
 	m.textarea.SetValue("hello")
@@ -840,7 +840,7 @@ func TestModel_Update_CtrlJ_DoesNotEmitEvent(t *testing.T) {
 }
 
 func TestModel_Update_CtrlJ_EmptyTextarea(t *testing.T) {
-	eventsCh := make(chan junk.Event, 10)
+	eventsCh := make(chan session.Event, 10)
 	m := newTestModel()
 	m.eventsCh = eventsCh
 
@@ -898,7 +898,7 @@ func TestModel_View_SeparatorAdaptsToResize(t *testing.T) {
 }
 
 func TestModel_Update_ShiftEnter_EmptyTextarea(t *testing.T) {
-	eventsCh := make(chan junk.Event, 10)
+	eventsCh := make(chan session.Event, 10)
 	m := newTestModel()
 	m.eventsCh = eventsCh
 
@@ -1009,7 +1009,7 @@ func TestModel_Update_ClearPendingMsg(t *testing.T) {
 }
 
 func TestModel_Update_RapidSubmissions(t *testing.T) {
-	eventsCh := make(chan junk.Event, 10)
+	eventsCh := make(chan session.Event, 10)
 	m := newTestModel()
 	m.eventsCh = eventsCh
 	m.textarea.SetValue("first")
@@ -1028,7 +1028,7 @@ func TestModel_Update_RapidSubmissions(t *testing.T) {
 	// Both events should be on the channel
 	select {
 	case e := <-eventsCh:
-		ume, ok := e.(junk.UserMessageEvent)
+		ume, ok := e.(session.UserMessageEvent)
 		require.True(t, ok)
 		assert.Equal(t, "first", ume.Content)
 	default:
@@ -1036,7 +1036,7 @@ func TestModel_Update_RapidSubmissions(t *testing.T) {
 	}
 	select {
 	case e := <-eventsCh:
-		ume, ok := e.(junk.UserMessageEvent)
+		ume, ok := e.(session.UserMessageEvent)
 		require.True(t, ok)
 		assert.Equal(t, "second", ume.Content)
 	default:
@@ -1765,7 +1765,7 @@ func TestModel_Update_AutoScrollLock_PreservesBottom(t *testing.T) {
 
 	t.Run("KeyPressMsg Enter with input", func(t *testing.T) {
 		m := mkModel()
-		m.eventsCh = make(chan junk.Event, 10)
+		m.eventsCh = make(chan session.Event, 10)
 		m.textarea.SetValue("hello")
 		newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 		mm := newM.(*model)
