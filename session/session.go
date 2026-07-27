@@ -14,8 +14,8 @@ import (
 //
 // Session.mu serializes metadata access. Subscribe and Close delegate
 // to loop.Step, which manages its own concurrency. Event submission and
-// inference execution are the caller's responsibility; see
-// session.Runner for the canonical inference-driving path.
+// inference execution are the caller's responsibility; the engine
+// package owns the canonical inference-driving path.
 type Session struct {
 	id       string
 	thread   *ledger.Thread
@@ -33,7 +33,7 @@ type Option func(*Session)
 // internal loop.Step for subscriber fanout.
 //
 // Event submission and inference execution are the caller's
-// responsibility; see session.Runner for the canonical inference
+// responsibility; the engine package owns the canonical inference
 // path. The Option type is reserved for follow-up plans that wire
 // inference-governing metadata onto the session.
 func New(id string, thread *ledger.Thread, opts ...Option) *Session {
