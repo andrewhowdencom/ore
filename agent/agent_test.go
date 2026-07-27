@@ -6,9 +6,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/ledger"
@@ -264,4 +266,106 @@ func TestAgent_Accessors_PostClose(t *testing.T) {
 	assert.Equal(t, models.Spec{}, spec)
 	assert.NotNil(t, pat)
 	assert.NotNil(t, prov)
+}
+
+func TestAgent_WithStep_UsesProvidedStep(t *testing.T) {
+	t.Parallel()
+
+	providedStep := loop.New()
+	t.Cleanup(func() { _ = providedStep.Close() })
+
+	a := New("test",
+		WithProvider(&mockProvider{}),
+		WithPattern(&recordingPattern{name: "test"}),
+		WithStep(providedStep),
+	)
+	t.Cleanup(func() { _ = a.Close() })
+
+	// Agent's exposed step must be the provided step, not an
+	// internally constructed one.
+	assert.Same(t, providedStep, a.Step(), "WithStep should set the agent's step to the provided step")
+}
+
+func TestAgent_WithStep_SubscribeReadsFromProvidedStep(t *testing.T) {
+	t.Parallel()
+
+	providedStep := loop.New()
+	t.Cleanup(func() { _ = providedStep.Close() })
+
+	a := New("test",
+		WithProvider(&mockProvider{}),
+		WithPattern(&recordingPattern{name: "test"}),
+		WithStep(providedStep),
+	)
+	t.Cleanup(func() { _ = a.Close() })
+
+	// Subscribe on the agent returns the provided step's subscription
+	// channel. Anything emitted on the agent's step (via the pattern)
+	// must reach this channel.
+	ch := a.Subscribe("text")
+	require.NotNil(t, ch)
+
+	// Drive the agent via Run; the mock provider emits no artifacts,
+	// so this is a no-op for the wire — but the channel must remain
+	// open (Close on the agent must not close the provided step).
+	_, err := a.Run(context.Background(), ledger.NewThread())
+	require.NoError(t, err)
+
+	// Channel must still be open after Run completes; it is owned by
+	// the provided step, not the agent. Use a short timeout so the
+	// test cannot hang if the channel were (incorrectly) closed.
+	select {
+	case _, ok := <-ch:
+		if !ok {
+			t.Fatal("agent's Subscribe channel closed after Run; WithStep must not close the provided step")
+		}
+	case <-time.After(10 * time.Millisecond):
+		// Channel open; no event yet.
+	}
+
+	// Now Close the agent. The provided step must remain open.
+	require.NoError(t, a.Close())
+
+	// A new subscription on the agent's step (which is the
+	// caller-provided step) must still work after Close. Use a short
+	// timeout so the test cannot hang.
+	ch2 := a.Subscribe("text")
+	select {
+	case _, ok := <-ch2:
+		if !ok {
+			t.Fatal("After agent Close, the caller-provided step's subscription channel is closed — WithStep is closing the caller's step")
+		}
+	case <-time.After(10 * time.Millisecond):
+		// Channel open after agent Close.
+	}
+}
+
+func TestAgent_WithStep_DoesNotCloseProvidedStepOnAgentClose(t *testing.T) {
+	t.Parallel()
+
+	providedStep := loop.New()
+
+	a := New("test",
+		WithProvider(&mockProvider{}),
+		WithPattern(&recordingPattern{name: "test"}),
+		WithStep(providedStep),
+	)
+
+	// Close the agent. The provided step must remain usable.
+	require.NoError(t, a.Close())
+
+	// The provided step's subscription channel must still produce
+	// events (or block; not close).
+	ch := providedStep.Subscribe()
+	select {
+	case _, ok := <-ch:
+		if ok {
+			t.Fatal("provided step channel returned a value; expected it to remain open after agent Close")
+		}
+		// Closed: this would mean the agent's Close cascaded.
+		t.Fatal("provided step channel closed after agent Close; WithStep should not Close the caller's step")
+	case <-time.After(10 * time.Millisecond):
+		// Open: the provided step is still alive.
+	}
+	_ = providedStep.Close()
 }

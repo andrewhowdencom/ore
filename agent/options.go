@@ -66,3 +66,24 @@ func WithState(st ledger.State) Option {
 func WithInvokeOptions(opts ...provider.InvokeOption) Option {
 	return func(a *Agent) { a.invokeOpts = append(a.invokeOpts, opts...) }
 }
+
+// WithStep sets the agent's internal *loop.Step to a caller-provided
+// step. The agent uses the supplied step for subscription, span
+// attachment, and pattern runtime; it does not Close the supplied
+// step (Close is owned by the caller). This is the path the engine
+// uses to bind the session's step into the agent so that every
+// artifact the pattern emits reaches subscribers via
+// session.Subscribe.
+//
+// WithStep is incompatible with WithState in a meaningful way: when
+// the engine binds the session's step, the auto-append behavior
+// fires on the supplied step (because the engine also passes the
+// session's thread as state via WithState). The two options together
+// establish the session's step as the authoritative output stream.
+func WithStep(step *loop.Step) Option {
+	return func(a *Agent) {
+		a.step = step
+		// stepOwned remains false; the caller's step is not closed by
+		// the agent.
+	}
+}
