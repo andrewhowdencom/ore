@@ -1,10 +1,15 @@
 // Package main is a reference application demonstrating the
-// x/conduit/tui conduit wired together with the session.Runner and
-// agent.Agent primitives. It shows the canonical "dumb pipe" pattern:
-// the TUI accepts an already-attached *session.Session, exposes user
-// actions on an outbound channel via Events(), and emits
+// x/conduit/tui conduit wired together with the session.Session
+// and agent.Agent primitives. It shows the canonical "dumb pipe"
+// pattern: the TUI accepts an already-attached *session.Session,
+// exposes user actions on an outbound channel via Events(), and emits
 // session.UserMessageEvent / session.InterruptEvent values that the
-// application feeds into runner.Run.
+// application constructs agents from and runs against the session.
+//
+// Note: this reference predates the introduction of the engine
+// execution boundary (engine.Engine). It runs each turn by
+// constructing a fresh agent from the factory and calling Agent.Run
+// directly. The engine will replace this pump in a follow-up.
 //
 // Usage:
 //
@@ -26,6 +31,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/andrewhowdencom/ore/agent"
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/session"
@@ -48,8 +54,7 @@ func run() error {
 	defer cancel()
 
 	// 1. Build the provider from the environment. The agent factory
-	//    below uses this provider; the runner never touches it
-	//    directly — the agent does.
+	//    below uses this provider; the agent does, too.
 	apiKey := os.Getenv("ORE_API_KEY")
 	if apiKey == "" {
 		return fmt.Errorf("ORE_API_KEY not set")
@@ -68,20 +73,14 @@ func run() error {
 		return fmt.Errorf("create openai provider: %w", err)
 	}
 
-	// 2. Build a session factory. DefaultFactory derives a per-turn
+	// 2. Build the agent factory. DefaultFactory derives a per-turn
 	//    models.Spec from session metadata; absent metadata, the
-	//    agent's default Spec (set below via WithSpec) is used.
-	factory := session.NewDefaultFactory(prov, &cognitive.ReAct{}, nil)
+	//    agent's default Spec is used.
+	factory := agent.NewDefaultFactory(prov, &cognitive.ReAct{}, nil)
 
-	// 3. Build the runner. It owns the AgentFactory and drives
-	//    inference against sessions. Run is synchronous — events are
-	//    processed in the caller's goroutine.
-	runner := session.NewRunner(session.WithFactory(factory))
-
-	// 4. Construct (or attach to) a session. The thread ID may be
+	// 3. Construct (or attach to) a session. The thread ID may be
 	//    supplied via ORE_THREAD_ID to resume; otherwise we generate
-	//    a new one. The session is a pure-data primitive; the runner
-	//    does not know it exists until we Register it.
+	//    a new one.
 	threadID := os.Getenv("ORE_THREAD_ID")
 	if threadID == "" {
 		// Stdlib-only thread id: time-based nanos with a "tui-chat-"
@@ -89,10 +88,9 @@ func run() error {
 		threadID = "tui-chat-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	}
 	sess := session.New(threadID, ledger.NewThread())
-	runner.Register(sess)
 	defer sess.Close()
 
-	// 5. Seed default metadata on the session before constructing the
+	// 4. Seed default metadata on the session before constructing the
 	//    TUI. The TUI subscribes to live events only, so any
 	//    metadata seeded here is what the status bar shows on the
 	//    first frame.
@@ -102,11 +100,11 @@ func run() error {
 		sess.SetMetadata("cwd", cwd)
 	}
 
-	// 6. Construct the TUI conduit. Pass the cancel func so the TUI
+	// 5. Construct the TUI conduit. Pass the cancel func so the TUI
 	//    can unwind the shared context when the user presses Ctrl+C
 	//    or Esc. The same cancel func is held by the application
 	//    for SIGINT, so a single signal unwinds the UI, any
-	//    in-flight runner.Run, and the runner pump.
+	//    in-flight agent.Run, and the event pump.
 	tuiC, err := tui.New(sess,
 		tui.WithName("ore"),
 		tui.WithCancelFunc(cancel),
@@ -115,7 +113,7 @@ func run() error {
 		return fmt.Errorf("create tui conduit: %w", err)
 	}
 
-	// 7. Wire SIGINT to the shared cancel func. Bubble Tea already
+	// 6. Wire SIGINT to the shared cancel func. Bubble Tea already
 	//    handles Ctrl+C inside the UI, but OS-level SIGINT (e.g.
 	//    `kill -INT <pid>`) and terminal close signals also need a
 	//    path. This single cancel() call closes all three doors.
@@ -130,29 +128,44 @@ func run() error {
 		cancel()
 	}()
 
-	// 8. Run the runner pump. The TUI emits session.Event values on
-	//    its Events() channel; we submit each into runner.Run against
-	//    the shared context so a single cancel unwinds both the UI
-	//    loop and any in-flight inference.
+	// 7. Run the event pump. The TUI emits session.Event values on
+	//    its Events() channel; for each event, we construct a fresh
+	//    agent from the factory and call Agent.Run against the
+	//    session. This is a transitional pump; the engine will
+	//    replace it.
 	events := tuiC.(*tui.TUI).Events()
 	pumpDone := make(chan struct{})
 	go func() {
 		defer close(pumpDone)
 		for evt := range events {
-			if err := runner.Run(ctx, sess, evt); err != nil {
-				slog.Error("runner.Run failed", "err", err)
+			if _, ok := evt.(session.InterruptEvent); ok {
+				// Cancellation is signalled via the shared context,
+				// which the agent Run propagates through to its
+				// internal step. The interrupt event itself doesn't
+				// trigger a separate inference; it's a no-op for the
+				// agent pipeline.
+				continue
+			}
+			ag, err := factory.Build(sess)
+			if err != nil {
+				slog.Error("agent.Build failed", "err", err)
+				cancel()
+				return
+			}
+			if _, err := ag.Run(ctx, sess.Thread()); err != nil {
+				slog.Error("agent.Run failed", "err", err)
 				cancel()
 				return
 			}
 		}
 	}()
 
-	// 9. Start the TUI. Blocks until the user quits (Ctrl+C), the
+	// 8. Start the TUI. Blocks until the user quits (Ctrl+C), the
 	//    SIGINT handler cancels ctx, or a fatal error occurs.
 	startErr := tuiC.Start(ctx)
 
-	// 10. Cancel to unblock the runner pump if it is waiting on
-	//     runner.Run, then wait for it to drain.
+	// 9. Cancel to unblock the pump if it is waiting on agent.Run,
+	//    then wait for it to drain.
 	cancel()
 	<-pumpDone
 

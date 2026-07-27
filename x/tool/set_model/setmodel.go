@@ -5,7 +5,7 @@
 //
 // The model name is written to the session's metadata via
 // session.Session.SetMetadata, using the framework contract key
-// session.MetadataKeyModelName. The session's spec-derivation logic reads
+// agent.MetadataKeyModelName. The session's spec-derivation logic reads
 // that key (and other "ore.model.*" keys) to construct a models.Spec that
 // the loop uses for the next turn. SetMetadata also emits a
 // loop.PropertiesEvent so UI conduits can react to the change.
@@ -23,8 +23,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/andrewhowdencom/ore/agent"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/x/slash"
 )
 
@@ -80,7 +80,7 @@ func Slash() slash.Handler {
 		// to satisfy the slash.Handler signature and to keep the door
 		// open for future per-handler emissions.
 		_ = emitter
-		sess.SetMetadata(session.MetadataKeyModelName, name)
+		sess.SetMetadata(agent.MetadataKeyModelName, name)
 		return slash.Result{}, nil
 	}
 }
