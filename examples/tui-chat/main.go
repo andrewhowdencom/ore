@@ -1,15 +1,16 @@
 // Package main is a reference application demonstrating the
-// x/conduit/tui conduit wired together with the session.Session
-// and agent.Agent primitives. It shows the canonical "dumb pipe"
-// pattern: the TUI accepts an already-attached *session.Session,
-// exposes user actions on an outbound channel via Events(), and emits
-// session.UserMessageEvent / session.InterruptEvent values that the
-// application constructs agents from and runs against the session.
+// x/conduit/tui conduit wired together with the session primitives
+// and the engine execution boundary. The TUI accepts an already-attached
+// *session.Session, exposes user actions on an outbound channel via
+// Events(), and emits session.UserMessageEvent / session.InterruptEvent
+// values that the application feeds into engine.Submit.
 //
-// Note: this reference predates the introduction of the engine
-// execution boundary (engine.Engine). It runs each turn by
-// constructing a fresh agent from the factory and calling Agent.Run
-// directly. The engine will replace this pump in a follow-up.
+// The application owns the canonical inference-driven pump: it
+// registers the session in the engine's registry, constructs the
+// engine with the agent factory, and forwards every TUI event to
+// engine.Submit. The engine serializes events per session and runs
+// inference on its own goroutine; this application never invokes
+// the provider directly.
 //
 // Usage:
 //
@@ -33,6 +34,7 @@ import (
 
 	"github.com/andrewhowdencom/ore/agent"
 	"github.com/andrewhowdencom/ore/cognitive"
+	"github.com/andrewhowdencom/ore/engine"
 	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/x/conduit/tui"
@@ -54,7 +56,8 @@ func run() error {
 	defer cancel()
 
 	// 1. Build the provider from the environment. The agent factory
-	//    below uses this provider; the agent does, too.
+	//    below uses this provider; the engine itself never touches
+	//    it directly.
 	apiKey := os.Getenv("ORE_API_KEY")
 	if apiKey == "" {
 		return fmt.Errorf("ORE_API_KEY not set")
@@ -73,9 +76,9 @@ func run() error {
 		return fmt.Errorf("create openai provider: %w", err)
 	}
 
-	// 2. Build the agent factory. DefaultFactory derives a per-turn
+	// 2. Build a session factory. DefaultFactory derives a per-turn
 	//    models.Spec from session metadata; absent metadata, the
-	//    agent's default Spec is used.
+	//    agent's default Spec (set below via WithSpec) is used.
 	factory := agent.NewDefaultFactory(prov, &cognitive.ReAct{}, nil)
 
 	// 3. Construct (or attach to) a session. The thread ID may be
@@ -100,11 +103,28 @@ func run() error {
 		sess.SetMetadata("cwd", cwd)
 	}
 
-	// 5. Construct the TUI conduit. Pass the cancel func so the TUI
+	// 5. Register the session in a registry, then construct the
+	//    engine. The engine owns per-session execution; the
+	//    application only feeds it events.
+	registry := session.NewInMemoryRegistry()
+	if err := registry.Register(sess); err != nil {
+		return fmt.Errorf("register session: %w", err)
+	}
+	eng, err := engine.New(registry, factory)
+	if err != nil {
+		return fmt.Errorf("create engine: %w", err)
+	}
+	defer func() {
+		if err := eng.Close(context.Background()); err != nil {
+			slog.Warn("engine close", "err", err)
+		}
+	}()
+
+	// 6. Construct the TUI conduit. Pass the cancel func so the TUI
 	//    can unwind the shared context when the user presses Ctrl+C
 	//    or Esc. The same cancel func is held by the application
 	//    for SIGINT, so a single signal unwinds the UI, any
-	//    in-flight agent.Run, and the event pump.
+	//    in-flight engine.Submit, and the pump goroutine.
 	tuiC, err := tui.New(sess,
 		tui.WithName("ore"),
 		tui.WithCancelFunc(cancel),
@@ -113,7 +133,7 @@ func run() error {
 		return fmt.Errorf("create tui conduit: %w", err)
 	}
 
-	// 6. Wire SIGINT to the shared cancel func. Bubble Tea already
+	// 7. Wire SIGINT to the shared cancel func. Bubble Tea already
 	//    handles Ctrl+C inside the UI, but OS-level SIGINT (e.g.
 	//    `kill -INT <pid>`) and terminal close signals also need a
 	//    path. This single cancel() call closes all three doors.
@@ -128,44 +148,29 @@ func run() error {
 		cancel()
 	}()
 
-	// 7. Run the event pump. The TUI emits session.Event values on
-	//    its Events() channel; for each event, we construct a fresh
-	//    agent from the factory and call Agent.Run against the
-	//    session. This is a transitional pump; the engine will
-	//    replace it.
+	// 8. Run the engine pump. The TUI emits session.Event values on
+	//    its Events() channel; we submit each into engine.Submit
+	//    against the shared context so a single cancel unwinds both
+	//    the UI loop and any in-flight engine execution.
 	events := tuiC.(*tui.TUI).Events()
 	pumpDone := make(chan struct{})
 	go func() {
 		defer close(pumpDone)
 		for evt := range events {
-			if _, ok := evt.(session.InterruptEvent); ok {
-				// Cancellation is signalled via the shared context,
-				// which the agent Run propagates through to its
-				// internal step. The interrupt event itself doesn't
-				// trigger a separate inference; it's a no-op for the
-				// agent pipeline.
-				continue
-			}
-			ag, err := factory.Build(sess)
-			if err != nil {
-				slog.Error("agent.Build failed", "err", err)
-				cancel()
-				return
-			}
-			if _, err := ag.Run(ctx, sess.Thread()); err != nil {
-				slog.Error("agent.Run failed", "err", err)
+			if err := eng.Submit(ctx, sess.ID(), evt); err != nil {
+				slog.Error("engine.Submit failed", "err", err)
 				cancel()
 				return
 			}
 		}
 	}()
 
-	// 8. Start the TUI. Blocks until the user quits (Ctrl+C), the
+	// 9. Start the TUI. Blocks until the user quits (Ctrl+C), the
 	//    SIGINT handler cancels ctx, or a fatal error occurs.
 	startErr := tuiC.Start(ctx)
 
-	// 9. Cancel to unblock the pump if it is waiting on agent.Run,
-	//    then wait for it to drain.
+	// 10. Cancel to unblock the pump if it is waiting on
+	//     engine.Submit, then wait for it to drain.
 	cancel()
 	<-pumpDone
 
