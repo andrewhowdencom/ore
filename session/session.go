@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/loop"
 )
@@ -30,7 +31,11 @@ type Option func(*Session)
 
 // New constructs a Session with the given identity and thread. The
 // thread must not be nil. The session is fully initialized with an
-// internal loop.Step for subscriber fanout.
+// internal loop.Step for subscriber fanout; the step is bound to
+// the session's thread so that every turn emitted via Step.Submit
+// (or via the agent's pattern via Step.Turn) is auto-appended to
+// the thread, keeping the conversation's state in lockstep with the
+// observable event stream.
 //
 // Event submission and inference execution are the caller's
 // responsibility; the engine package owns the canonical inference
@@ -44,12 +49,27 @@ func New(id string, thread *ledger.Thread, opts ...Option) *Session {
 		id:       id,
 		thread:   thread,
 		metadata: make(map[string]string),
-		step:     loop.New(),
+		step:     loop.New(loop.WithState(thread)),
 	}
 	for _, opt := range opts {
 		opt(s)
 	}
 	return s
+}
+
+// Submit records a turn into the session's step. It is the canonical
+// mechanism for ingress events (user, tool, system) to enter the
+// same artifact stream as assistant responses from the agent's
+// pattern. The step emits a TurnCompleteEvent for the recorded turn
+// and (because the step is bound to the session's thread via
+// WithState) auto-appends the turn to the thread.
+//
+// Submit is exposed for callers (e.g. the engine) that need to add
+// a non-inference turn without invoking the agent. The agent's
+// pattern itself never calls Submit: it drives Step.Turn, which
+// produces a TurnCompleteEvent for the assistant turn.
+func (s *Session) Submit(ctx context.Context, role ledger.Role, artifacts ...artifact.Artifact) (ledger.State, error) {
+	return s.step.Submit(ctx, s.thread, role, artifacts...)
 }
 
 // ID returns the session's unique identifier.

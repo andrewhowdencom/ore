@@ -6,6 +6,9 @@ version: '3'
 includes:
   # When adding a new workspace module, add an entry here pointing to
   # Taskfile.lib.yml with dir: set to the module directory.
+  engine:
+    taskfile: Taskfile.lib.yml
+    dir: engine
   examples:
     taskfile: Taskfile.lib.yml
     dir: examples
@@ -131,6 +134,7 @@ tasks:
     deps: [lint, test, build]
     cmds:
       - task examples:validate
+      - task engine:validate
       - task x-catalog-models:validate
       - task x-provider-anthropic:validate
       - task x-provider-minimax:validate
