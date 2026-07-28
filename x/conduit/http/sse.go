@@ -36,3 +36,16 @@ func (sw *sseWriter) WriteEvent(kind string, data []byte) error {
 	sw.flusher.Flush()
 	return nil
 }
+
+// WriteComment writes a single SSE comment line (a line beginning
+// with ':' which clients ignore) and flushes the response buffer.
+// It is used to flush response headers before any events arrive,
+// which lets the client's Do() return promptly rather than blocking
+// on the first byte. It can also be used as a periodic keepalive.
+func (sw *sseWriter) WriteComment(text string) error {
+	if _, err := fmt.Fprintf(sw.w, ": %s\n\n", text); err != nil {
+		return err
+	}
+	sw.flusher.Flush()
+	return nil
+}

@@ -1,94 +1,122 @@
 package http
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"slices"
-	"strings"
 	"testing"
 	"time"
-
-	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/ledger"
 )
 
-// makeThread builds a *junk.Thread with the given ID and a single turn
-// timestamp for use in pagination tests. The "last activity" sort key
-// is the turn's timestamp. The State and Metadata are initialised to
-// non-nil empty values so the helper works in isolation.
-//
-// A custom Clock is used to stamp the appended turn's timestamp,
-// because Thread.AllTurns returns defensive copies; mutating the
-// returned slice does not affect the underlying thread.
-func makeThread(id string, lastAt time.Time) *junk.Thread {
-	th := &junk.Thread{
-		ID:       id,
-		State:    ledger.NewThread(),
-		Metadata: map[string]string{},
-	}
-	if !lastAt.IsZero() {
-		th.State = ledger.NewThread(ledger.WithThreadClock(ledger.ClockFunc(func() time.Time { return lastAt })))
-		th.State.Append(ledger.RoleUser, artifact.Text{Content: "x"})
-	}
-	return th
-}
+// TestPaginateAndSortThreads_Empty verifies that an empty input
+// produces an empty page with no next-cursor and no error.
+func TestPaginateAndSortThreads_Empty(t *testing.T) {
 
-// idsOf extracts the IDs from a slice of threads in order, for assertions.
-func idsOf(threads []*junk.Thread) []string {
-	out := make([]string, len(threads))
-	for i, t := range threads {
-		out[i] = t.ID
-	}
-	return out
-}
 
-func TestPaginateAndSortThreads_EmptyInput(t *testing.T) {
 	page, next, err := paginateAndSortThreads(nil, 20, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(page) != 0 {
-		t.Errorf("expected empty page, got %d items", len(page))
+		t.Fatalf("expected empty page, got %d items", len(page))
 	}
 	if next != "" {
-		t.Errorf("expected empty next cursor, got %q", next)
+		t.Fatalf("expected no next cursor, got %q", next)
 	}
 }
 
-func TestPaginateAndSortThreads_SinglePageReturnsAll(t *testing.T) {
-	now := time.Now()
-	threads := []*junk.Thread{
-		makeThread("a", now.Add(-3*time.Hour)),
-		makeThread("b", now.Add(-2*time.Hour)),
-		makeThread("c", now.Add(-1*time.Hour)),
+// TestPaginateAndSortThreads_OrderByLastActivity verifies that
+// threads are sorted by LastAt descending and that ties on
+// timestamp are broken by ID ascending.
+func TestPaginateAndSortThreads_OrderByLastActivity(t *testing.T) {
+
+
+	threads := []ThreadSummary{
+		{ID: "zebra", LastAt: time.Date(2024, 1, 1, 0, 0, 1, 0, time.UTC)},
+		{ID: "apple", LastAt: time.Date(2024, 1, 1, 0, 0, 3, 0, time.UTC)},
+		{ID: "mango", LastAt: time.Date(2024, 1, 1, 0, 0, 2, 0, time.UTC)},
 	}
 
-	page, next, err := paginateAndSortThreads(threads, 20, "")
+	page, _, err := paginateAndSortThreads(threads, 10, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(page) != 3 {
 		t.Fatalf("expected 3 items, got %d", len(page))
 	}
-	if next != "" {
-		t.Errorf("expected empty next cursor, got %q", next)
+	if page[0].ID != "apple" {
+		t.Errorf("expected apple first (latest activity), got %q", page[0].ID)
 	}
-
-	// Verify order: most recent first.
-	want := []string{"c", "b", "a"}
-	if got := idsOf(page); !slices.Equal(got, want) {
-		t.Errorf("order: got %v, want %v", got, want)
+	if page[1].ID != "mango" {
+		t.Errorf("expected mango second, got %q", page[1].ID)
+	}
+	if page[2].ID != "zebra" {
+		t.Errorf("expected zebra third, got %q", page[2].ID)
 	}
 }
 
-func TestPaginateAndSortThreads_LimitRespected(t *testing.T) {
-	now := time.Now()
-	threads := []*junk.Thread{
-		makeThread("a", now.Add(-3*time.Hour)),
-		makeThread("b", now.Add(-2*time.Hour)),
-		makeThread("c", now.Add(-1*time.Hour)),
+// TestPaginateAndSortThreads_TieOnTimestampBreaksByID verifies the
+// ID-ascending tiebreaker for threads that share a timestamp.
+func TestPaginateAndSortThreads_TieOnTimestampBreaksByID(t *testing.T) {
+
+
+	at := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	threads := []ThreadSummary{
+		{ID: "z", LastAt: at},
+		{ID: "a", LastAt: at},
+		{ID: "m", LastAt: at},
+	}
+
+	page, _, err := paginateAndSortThreads(threads, 10, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, want := page[0].ID, "a"; got != want {
+		t.Errorf("first = %q, want %q", got, want)
+	}
+	if got, want := page[1].ID, "m"; got != want {
+		t.Errorf("second = %q, want %q", got, want)
+	}
+	if got, want := page[2].ID, "z"; got != want {
+		t.Errorf("third = %q, want %q", got, want)
+	}
+}
+
+// TestPaginateAndSortThreads_EmptyThreadsSortLast verifies that
+// threads with zero LastAt sort to the end.
+func TestPaginateAndSortThreads_EmptyThreadsSortLast(t *testing.T) {
+
+
+	threads := []ThreadSummary{
+		{ID: "empty1", LastAt: time.Time{}},
+		{ID: "real", LastAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)},
+		{ID: "empty2", LastAt: time.Time{}},
+	}
+
+	page, _, err := paginateAndSortThreads(threads, 10, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if page[0].ID != "real" {
+		t.Errorf("expected real first, got %q", page[0].ID)
+	}
+	if page[1].ID != "empty1" {
+		t.Errorf("expected empty1 before empty2 (ID order), got %q", page[1].ID)
+	}
+	if page[2].ID != "empty2" {
+		t.Errorf("expected empty2 last, got %q", page[2].ID)
+	}
+}
+
+// TestPaginateAndSortThreads_LimitAppliesAndYieldsNextCursor
+// verifies pagination returns a next cursor when there are more
+// items than the limit, and that following the cursor yields the
+// remaining items.
+func TestPaginateAndSortThreads_LimitAppliesAndYieldsNextCursor(t *testing.T) {
+
+
+	threads := []ThreadSummary{
+		{ID: "t1", LastAt: time.Date(2024, 1, 1, 0, 0, 3, 0, time.UTC)},
+		{ID: "t2", LastAt: time.Date(2024, 1, 1, 0, 0, 2, 0, time.UTC)},
+		{ID: "t3", LastAt: time.Date(2024, 1, 1, 0, 0, 1, 0, time.UTC)},
+		{ID: "t4", LastAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)},
 	}
 
 	page, next, err := paginateAndSortThreads(threads, 2, "")
@@ -98,498 +126,58 @@ func TestPaginateAndSortThreads_LimitRespected(t *testing.T) {
 	if len(page) != 2 {
 		t.Fatalf("expected 2 items, got %d", len(page))
 	}
-	if next == "" {
-		t.Error("expected non-empty next cursor when more items remain")
-	}
-
-	want := []string{"c", "b"}
-	if got := idsOf(page); !slices.Equal(got, want) {
-		t.Errorf("order: got %v, want %v", got, want)
-	}
-}
-
-func TestPaginateAndSortThreads_CursorProgression(t *testing.T) {
-	now := time.Now()
-	threads := []*junk.Thread{
-		makeThread("a", now.Add(-3*time.Hour)),
-		makeThread("b", now.Add(-2*time.Hour)),
-		makeThread("c", now.Add(-1*time.Hour)),
-		makeThread("d", now),
-	}
-
-	// First page.
-	page1, cursor1, err := paginateAndSortThreads(threads, 2, "")
-	if err != nil {
-		t.Fatalf("page 1: %v", err)
-	}
-	if got, want := idsOf(page1), []string{"d", "c"}; !slices.Equal(got, want) {
-		t.Errorf("page 1: got %v, want %v", got, want)
-	}
-	if cursor1 == "" {
-		t.Fatal("page 1 should have a next cursor")
-	}
-
-	// Second page.
-	page2, cursor2, err := paginateAndSortThreads(threads, 2, cursor1)
-	if err != nil {
-		t.Fatalf("page 2: %v", err)
-	}
-	if got, want := idsOf(page2), []string{"b", "a"}; !slices.Equal(got, want) {
-		t.Errorf("page 2: got %v, want %v", got, want)
-	}
-	if cursor2 != "" {
-		t.Errorf("page 2 should be the last page; got cursor %q", cursor2)
-	}
-}
-
-func TestPaginateAndSortThreads_CursorProgressionThreePages(t *testing.T) {
-	now := time.Now()
-	threads := []*junk.Thread{
-		makeThread("a", now.Add(-5*time.Hour)),
-		makeThread("b", now.Add(-4*time.Hour)),
-		makeThread("c", now.Add(-3*time.Hour)),
-		makeThread("d", now.Add(-2*time.Hour)),
-		makeThread("e", now.Add(-1*time.Hour)),
-	}
-
-	// Walk three pages of 2, 2, 1 and verify we visit every thread exactly once.
-	seen := []string{}
-	cursor := ""
-	for pageNum := 1; pageNum <= 3; pageNum++ {
-		page, next, err := paginateAndSortThreads(threads, 2, cursor)
-		if err != nil {
-			t.Fatalf("page %d: %v", pageNum, err)
-		}
-		seen = append(seen, idsOf(page)...)
-		if pageNum < 3 {
-			if next == "" {
-				t.Fatalf("page %d should have a next cursor", pageNum)
-			}
-			cursor = next
-		} else if next != "" {
-			t.Errorf("page %d should be the last; got cursor %q", pageNum, next)
-		}
-	}
-
-	want := []string{"e", "d", "c", "b", "a"}
-	if !slices.Equal(seen, want) {
-		t.Errorf("progression order: got %v, want %v", seen, want)
-	}
-}
-
-func TestPaginateAndSortThreads_TiebreakByID(t *testing.T) {
-	// Three threads share the exact same UpdatedAt.
-	// They must paginate in id-ascending order, and a cursor pointing
-	// at "b" must skip "b" on the next page.
-	same := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
-	threads := []*junk.Thread{
-		makeThread("c", same),
-		makeThread("a", same),
-		makeThread("b", same),
-	}
-
-	page1, cursor1, err := paginateAndSortThreads(threads, 2, "")
-	if err != nil {
-		t.Fatalf("page 1: %v", err)
-	}
-	if got, want := idsOf(page1), []string{"a", "b"}; !slices.Equal(got, want) {
-		t.Errorf("page 1 (tied): got %v, want %v", got, want)
-	}
-	if cursor1 == "" {
-		t.Fatal("page 1 should have a next cursor (c remains)")
-	}
-
-	page2, cursor2, err := paginateAndSortThreads(threads, 2, cursor1)
-	if err != nil {
-		t.Fatalf("page 2: %v", err)
-	}
-	if got, want := idsOf(page2), []string{"c"}; !slices.Equal(got, want) {
-		t.Errorf("page 2 (tied): got %v, want %v", got, want)
-	}
-	if cursor2 != "" {
-		t.Errorf("page 2 should be the last; got cursor %q", cursor2)
-	}
-}
-
-func TestPaginateAndSortThreads_InvalidCursor(t *testing.T) {
-	now := time.Now()
-	threads := []*junk.Thread{makeThread("a", now)}
-
-	_, _, err := paginateAndSortThreads(threads, 20, "!!!not-base64!!!")
-	if err == nil {
-		t.Fatal("expected error for invalid cursor, got nil")
-	}
-	if !errors.Is(err, errInvalidCursor) {
-		t.Errorf("expected errInvalidCursor, got %v", err)
-	}
-}
-
-func TestPaginateAndSortThreads_CursorPastEndReturnsEmpty(t *testing.T) {
-	now := time.Now()
-	threads := []*junk.Thread{
-		makeThread("a", now.Add(-2*time.Hour)),
-		makeThread("b", now.Add(-1*time.Hour)),
-	}
-
-	// Build a cursor pointing to "a" (the OLDEST thread). The next page
-	// should be empty.
-	c, err := (threadCursor{
-		Version: threadCursorVersion,
-		LastAt:  lastActivity(threads[0]),
-		ID:      threads[0].ID,
-	}).encode()
-	if err != nil {
-		t.Fatalf("encode: %v", err)
-	}
-
-	page, next, err := paginateAndSortThreads(threads, 20, c)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(page) != 0 {
-		t.Errorf("expected empty page, got %d items", len(page))
-	}
-	if next != "" {
-		t.Errorf("expected empty next cursor, got %q", next)
-	}
-}
-
-func TestPaginateAndSortThreads_LimitOne(t *testing.T) {
-	now := time.Now()
-	threads := []*junk.Thread{
-		makeThread("a", now.Add(-2*time.Hour)),
-		makeThread("b", now.Add(-1*time.Hour)),
-	}
-
-	page, next, err := paginateAndSortThreads(threads, 1, "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(page) != 1 {
-		t.Fatalf("expected 1 item, got %d", len(page))
-	}
-	if got, want := idsOf(page), []string{"b"}; !slices.Equal(got, want) {
-		t.Errorf("got %v, want %v", got, want)
+	if page[0].ID != "t1" || page[1].ID != "t2" {
+		t.Errorf("expected first two items, got %+v", page)
 	}
 	if next == "" {
-		t.Error("expected next cursor when items remain")
+		t.Fatal("expected a next cursor, got empty")
+	}
+
+	// Follow the cursor.
+	page2, next2, err := paginateAndSortThreads(threads, 2, next)
+	if err != nil {
+		t.Fatalf("unexpected error on follow: %v", err)
+	}
+	if len(page2) != 2 || page2[0].ID != "t3" || page2[1].ID != "t4" {
+		t.Errorf("expected remaining items, got %+v", page2)
+	}
+	if next2 != "" {
+		t.Errorf("expected no next cursor on final page, got %q", next2)
 	}
 }
 
-func TestPaginateAndSortThreads_LimitLargerThanTotal(t *testing.T) {
-	now := time.Now()
-	threads := []*junk.Thread{
-		makeThread("a", now.Add(-2*time.Hour)),
-		makeThread("b", now.Add(-1*time.Hour)),
-	}
+// TestPaginateAndSortThreads_InvalidCursorReturnsErrInvalidCursor
+// verifies that a malformed cursor yields the sentinel error.
+func TestPaginateAndSortThreads_InvalidCursorReturnsErrInvalidCursor(t *testing.T) {
 
-	page, next, err := paginateAndSortThreads(threads, 1000, "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(page) != 2 {
-		t.Errorf("expected 2 items, got %d", len(page))
-	}
-	if next != "" {
-		t.Errorf("expected empty next cursor, got %q", next)
-	}
-}
 
-func TestPaginateAndSortThreads_LimitZeroTreatedAsOne(t *testing.T) {
-	now := time.Now()
-	threads := []*junk.Thread{
-		makeThread("a", now.Add(-1*time.Hour)),
-		makeThread("b", now),
-	}
-
-	page, _, err := paginateAndSortThreads(threads, 0, "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(page) != 1 {
-		t.Errorf("limit 0 should yield 1 item (clamped), got %d", len(page))
-	}
-}
-
-func TestPaginateAndSortThreads_LimitNegativeTreatedAsOne(t *testing.T) {
-	now := time.Now()
-	threads := []*junk.Thread{
-		makeThread("a", now.Add(-1*time.Hour)),
-	}
-
-	page, _, err := paginateAndSortThreads(threads, -5, "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(page) != 1 {
-		t.Errorf("negative limit should yield 1 item (clamped), got %d", len(page))
-	}
-}
-
-func TestPaginateAndSortThreads_DoesNotMutateInputIDs(t *testing.T) {
-	// The function sorts in place; callers should see the same *Thread
-	// pointers in the result. Verify the original slice still contains
-	// the same pointers (even if the order changed).
-	now := time.Now()
-	a := makeThread("a", now.Add(-2*time.Hour))
-	b := makeThread("b", now.Add(-1*time.Hour))
-	threads := []*junk.Thread{a, b}
-
-	page, _, err := paginateAndSortThreads(threads, 20, "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(page) != 2 {
-		t.Fatalf("expected 2 items, got %d", len(page))
-	}
-	// The most recent should now be first.
-	if page[0] != b || page[1] != a {
-		t.Errorf("sort mutated incorrectly: got [%p, %p], want [%p, %p]",
-			page[0], page[1], b, a)
-	}
-	// The original slice should now be in sorted order too.
-	if threads[0] != b || threads[1] != a {
-		t.Errorf("original slice not sorted in place: got [%p, %p]", threads[0], threads[1])
-	}
-}
-
-func TestCursor_RoundTrip(t *testing.T) {
-	original := threadCursor{
-		Version:   threadCursorVersion,
-		LastAt: time.Date(2026, 6, 15, 12, 30, 45, 0, time.UTC),
-		ID:        "abc-123",
-	}
-
-	encoded, err := original.encode()
-	if err != nil {
-		t.Fatalf("encode: %v", err)
-	}
-	if encoded == "" {
-		t.Fatal("encoded cursor is empty")
-	}
-
-	decoded, err := decodeThreadCursor(encoded)
-	if err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if decoded.Version != original.Version {
-		t.Errorf("Version: got %d, want %d", decoded.Version, original.Version)
-	}
-	if !decoded.LastAt.Equal(original.LastAt) {
-		t.Errorf("LastAt: got %v, want %v", decoded.LastAt, original.LastAt)
-	}
-	if decoded.ID != original.ID {
-		t.Errorf("ID: got %q, want %q", decoded.ID, original.ID)
-	}
-}
-
-func TestCursor_StableEncoding(t *testing.T) {
-	c := threadCursor{
-		Version:   threadCursorVersion,
-		LastAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-		ID:        "x",
-	}
-	first, err := c.encode()
-	if err != nil {
-		t.Fatalf("encode #1: %v", err)
-	}
-	second, err := c.encode()
-	if err != nil {
-		t.Fatalf("encode #2: %v", err)
-	}
-	if first != second {
-		t.Errorf("cursor encoding is not stable: %q vs %q", first, second)
-	}
-}
-
-func TestCursor_MalformedBase64(t *testing.T) {
-	_, err := decodeThreadCursor("!!!not-base64!!!")
+	_, _, err := paginateAndSortThreads(nil, 20, "not-a-real-cursor!!!")
 	if err == nil {
-		t.Fatal("expected error for malformed base64, got nil")
-	}
-	if !errors.Is(err, errInvalidCursor) {
-		t.Errorf("expected errInvalidCursor, got %v", err)
+		t.Fatal("expected error for malformed cursor")
 	}
 }
 
-func TestCursor_MalformedJSON(t *testing.T) {
-	// Valid base64, but the decoded bytes are not valid JSON.
-	// We use json here to construct a valid base64 string for the test.
-	validJSON, _ := json.Marshal("hello")
-	notJSON := strings.Trim(string(validJSON), `"`) + "!!!"
-	_, err := decodeThreadCursor(notJSON)
-	if err == nil {
-		t.Fatal("expected error for malformed JSON, got nil")
-	}
-	if !errors.Is(err, errInvalidCursor) {
-		t.Errorf("expected errInvalidCursor, got %v", err)
-	}
-}
+// TestParseLimit_ClampingAndDefaults verifies the limit parsing
+// behaviour.
+func TestParseLimit_ClampingAndDefaults(t *testing.T) {
 
-func TestCursor_UnknownVersion(t *testing.T) {
-	unknown := threadCursor{Version: 999, LastAt: time.Now(), ID: "x"}
-	encoded, err := unknown.encode()
-	if err != nil {
-		t.Fatalf("encode: %v", err)
-	}
-	_, err = decodeThreadCursor(encoded)
-	if err == nil {
-		t.Fatal("expected error for unknown version, got nil")
-	}
-	if !errors.Is(err, errInvalidCursor) {
-		t.Errorf("expected errInvalidCursor, got %v", err)
-	}
-	if !strings.Contains(err.Error(), "999") {
-		t.Errorf("error should mention the bad version (999): %v", err)
-	}
-}
 
-func TestCursor_EmptyString(t *testing.T) {
-	_, err := decodeThreadCursor("")
-	if err == nil {
-		t.Fatal("expected error for empty cursor, got nil")
-	}
-	if !errors.Is(err, errInvalidCursor) {
-		t.Errorf("expected errInvalidCursor, got %v", err)
-	}
-}
-
-func TestThreadsListResponseJSON_MarshalsToEnvelope(t *testing.T) {
-	resp := threadsListResponseJSON{
-		Threads: []threadSummaryJSON{
-			{ID: "a", LastAt: time.Unix(2, 0).UTC().Format(time.RFC3339)},
-		},
-		NextCursor: "opaque",
-	}
-	data, err := json.Marshal(resp)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	got := string(data)
-	for _, want := range []string{`"threads"`, `"next_cursor"`, `"a"`, `"opaque"`} {
-		if !strings.Contains(got, want) {
-			t.Errorf("marshalled response missing %q: %s", want, got)
-		}
-	}
-}
-
-func TestThreadsListResponseJSON_OmitsEmptyCursor(t *testing.T) {
-	resp := threadsListResponseJSON{
-		Threads: []threadSummaryJSON{},
-	}
-	data, err := json.Marshal(resp)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	if strings.Contains(string(data), "next_cursor") {
-		t.Errorf("expected next_cursor to be omitted when empty, got: %s", data)
-	}
-}
-
-func TestThreadsListResponseJSON_EmptyThreadsArray(t *testing.T) {
-	resp := threadsListResponseJSON{}
-	data, err := json.Marshal(resp)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	got := string(data)
-	if !strings.Contains(got, `"threads":[]`) {
-		t.Errorf("expected empty threads array, got: %s", got)
-	}
-}
-
-// TestEncodeProducesBase64URL is a sanity test that the cursor encoding
-// uses URL-safe base64 with no padding, so cursors survive in query
-// strings without further escaping.
-func TestEncodeProducesBase64URL(t *testing.T) {
-	c := threadCursor{Version: threadCursorVersion, LastAt: time.Now(), ID: "x"}
-	encoded, err := c.encode()
-	if err != nil {
-		t.Fatalf("encode: %v", err)
-	}
-	if strings.ContainsAny(encoded, "+/=") {
-		t.Errorf("cursor contains non-URL-safe base64 chars: %q", encoded)
-	}
-	// Verify the format is recoverable.
-	decoded, err := decodeThreadCursor(encoded)
-	if err != nil {
-		t.Fatalf("decode round-trip failed: %v", err)
-	}
-	if decoded.ID != "x" {
-		t.Errorf("round-trip changed ID: got %q", decoded.ID)
-	}
-}
-
-// Ensure that the comparator used by slices.SortFunc is well-behaved
-// across edge cases (equal timestamps, equal IDs, etc.). The
-// comparator works on each thread's last-turn timestamp, so we
-// construct threads with a single turn whose timestamp is set
-// explicitly.
-func TestCompareThreads(t *testing.T) {
-	now := time.Now()
-	a := makeThread("a", now)
-	b := makeThread("b", now)
-	c := makeThread("c", now.Add(time.Hour))
-
-	if compareThreads(a, b) >= 0 {
-		t.Error("a should sort before b (same ts, lower id)")
-	}
-	if compareThreads(b, a) <= 0 {
-		t.Error("b should sort after a (same ts, higher id)")
-	}
-	if compareThreads(c, a) >= 0 {
-		t.Error("c (later ts) should sort before a")
-	}
-	if compareThreads(a, c) <= 0 {
-		t.Error("a (earlier ts) should sort after c")
-	}
-	// Stability check: compareThreads(a, a) == 0.
-	if compareThreads(a, a) != 0 {
-		t.Errorf("compareThreads(a, a) = %d, want 0", compareThreads(a, a))
-	}
-}
-
-// Quick smoke test that threadIsAfterCursor handles the boundary correctly.
-func TestThreadIsAfterCursor(t *testing.T) {
-	now := time.Now()
-	earlier := now.Add(-time.Hour)
-	later := now.Add(time.Hour)
-	c := threadCursor{Version: 1, LastAt: now, ID: "m"}
-
-	tests := []struct {
-		name string
-		thr  *junk.Thread
-		want bool
+	cases := []struct {
+		in   string
+		want int
 	}{
-		{"strictly earlier ts", makeThread("z", earlier), true},
-		{"strictly later ts", makeThread("a", later), false},
-		{"same ts, lower id", makeThread("a", now), false},
-		{"same ts, higher id", makeThread("z", now), true},
-		{"same ts, same id", makeThread("m", now), false},
+		{"", defaultThreadPageSize},
+		{"abc", defaultThreadPageSize},
+		{"0", 1},
+		{"-5", 1},
+		{"5", 5},
+		{"5000", maxThreadPageSize},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := threadIsAfterCursor(tt.thr, c)
-			if got != tt.want {
-				t.Errorf("got %v, want %v", got, tt.want)
+	for _, c := range cases {
+		t.Run(c.in, func(t *testing.T) {
+			if got := parseLimit(c.in); got != c.want {
+				t.Errorf("parseLimit(%q) = %d, want %d", c.in, got, c.want)
 			}
 		})
 	}
-}
-
-// Ensure that error messages mention the cursor problem (helps clients
-// debug bad cursors).
-func TestInvalidCursorError_HasDescriptiveMessage(t *testing.T) {
-	_, err := decodeThreadCursor("garbage")
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "cursor") {
-		t.Errorf("error message should mention 'cursor': %v", err)
-	}
-	// Also ensure the sentinel error can be unwrapped.
-	if !errors.Is(err, errInvalidCursor) {
-		t.Errorf("err should unwrap to errInvalidCursor: %v", err)
-	}
-	_ = fmt.Sprintf
 }

@@ -1,14 +1,16 @@
 // Audio notification contract for the HTTP conduit web UI.
 // When the server advertises the "audio-notification" capability,
-// the client plays a short tone on assistant turn_complete (880Hz sine)
-// and a lower buzz on error (220Hz sawtooth). AudioContext is created
-// lazily on first user interaction to satisfy browser autoplay policies.
+// the client plays a short tone on assistant lifecycle "done"
+// (880Hz sine) and a lower buzz on error (220Hz sawtooth).
+// AudioContext is created lazily on first user interaction to satisfy
+// browser autoplay policies.
 
 let sessionId = null;
 let isTurnInProgress = false;
 let typingIndicatorDiv = null;
 let audioCtx = null;
 let lastStatus = {};
+let eventsSource = null;
 
 // ensureAudio lazily creates an AudioContext on first use. This avoids
 // the autoplay restriction in most browsers and defers resource setup
@@ -60,39 +62,43 @@ function setStatus(text) {
     document.getElementById('status').textContent = text || '';
 }
 
-function fetchHistory(sessionId) {
-    return fetch('/sessions/' + sessionId + '/turns')
+// openSessionEvents opens an EventSource on /sessions/{id}/events
+// and routes the events into handleEvent. The source is closed on
+// page unload or when the session changes.
+function openSessionEvents(id) {
+    if (eventsSource) {
+        eventsSource.close();
+        eventsSource = null;
+    }
+    eventsSource = new EventSource('/sessions/' + encodeURIComponent(id) + '/events');
+    eventsSource.onmessage = (e) => {
+        try {
+            const event = JSON.parse(e.data);
+            handleEvent(event);
+        } catch (err) {
+            console.error('Failed to parse SSE event:', err, e.data);
+        }
+    };
+    eventsSource.onerror = (e) => {
+        console.warn('SSE error:', e);
+    };
+}
+
+function createSession() {
+    setStatus('Creating session...');
+    fetch('/sessions', { method: 'POST' })
         .then(r => {
-            if (!r.ok) throw new Error('Failed to fetch history (' + r.status + ')');
+            if (!r.ok) throw new Error('Failed to create session (' + r.status + ')');
             return r.json();
         })
-        .then(turns => {
-            const chat = document.getElementById('chat');
-            chat.innerHTML = '';
-            for (const turn of turns) {
-                if (turn.role === 'user') {
-                    for (const artifact of turn.artifacts) {
-                        if (artifact.kind === 'text') {
-                            renderUserMessage(artifact.content);
-                        }
-                    }
-                } else if (turn.role === 'assistant') {
-                    for (const artifact of turn.artifacts) {
-                        if (artifact.kind === 'text') {
-                            renderTextBlock(artifact.content);
-                        } else if (artifact.kind === 'reasoning') {
-                            renderReasoningBlock(artifact.content);
-                        } else if (artifact.kind === 'tool_call') {
-                            renderToolCallBlock(artifact.id, artifact.name, artifact.arguments, artifact.display);
-                        } else if (artifact.kind === 'tool_result') {
-                            renderToolResultBlock(artifact.tool_call_id, artifact.content, artifact.is_error);
-                        }
-                    }
-                }
-            }
+        .then(data => {
+            sessionId = data.id;
+            setStatus('Ready');
+            openSessionEvents(sessionId);
         })
         .catch(err => {
-            console.error('History fetch failed:', err);
+            setStatus('Error: ' + err.message);
+            console.error('Session creation failed:', err);
         });
 }
 
@@ -111,28 +117,11 @@ function attachToThread(threadId) {
         .then(data => {
             sessionId = data.id;
             setStatus('Ready');
-            return fetchHistory(sessionId);
+            openSessionEvents(sessionId);
         })
         .catch(err => {
             setStatus('Error: ' + err.message);
             console.error('Thread attach failed:', err);
-        });
-}
-
-function createSession() {
-    setStatus('Creating session...');
-    fetch('/sessions', { method: 'POST' })
-        .then(r => {
-            if (!r.ok) throw new Error('Failed to create session (' + r.status + ')');
-            return r.json();
-        })
-        .then(data => {
-            sessionId = data.id;
-            setStatus('Ready');
-        })
-        .catch(err => {
-            setStatus('Error: ' + err.message);
-            console.error('Session creation failed:', err);
         });
 }
 
@@ -252,37 +241,44 @@ function finalizeTurn() {
     updateSendButton();
 }
 
+// renderArtifact extracts the inner payload of an artifact event
+// and dispatches to the right renderer. The server emits artifact
+// events with the artifact's own kind field (text, reasoning, etc.).
+function renderArtifact(art) {
+    switch (art.kind) {
+        case 'text':
+            renderTextBlock(art.content);
+            return;
+        case 'reasoning':
+            renderReasoningBlock(art.content);
+            return;
+        case 'tool_call':
+            renderToolCallBlock(art.id, art.name, art.arguments, art.display);
+            return;
+        case 'tool_result':
+            renderToolResultBlock(art.tool_call_id, art.content, art.is_error);
+            return;
+        case 'usage':
+        case 'image':
+            // Ignored for chat UI.
+            return;
+        default:
+            console.warn('Unknown artifact kind:', art.kind);
+    }
+}
+
 function handleEvent(event) {
-    if (event.kind === 'tool_call_delta') {
+    // Skip deltas: the block-based UI renders assistant output only
+    // at the end of each turn via the turn_complete event.
+    if (event.kind === 'text_delta' || event.kind === 'reasoning_delta' ||
+        event.kind === 'tool_call_delta' || event.kind === 'tool_result_delta') {
         return;
     }
 
-    if (event.kind === 'text_delta' || event.kind === 'reasoning_delta') {
-        // Deltas are not used in the block-based UI.
-        return;
-    }
-
-    if (event.kind === 'text') {
-        renderTextBlock(event.content);
-        return;
-    }
-
-    if (event.kind === 'reasoning') {
-        renderReasoningBlock(event.content);
-        return;
-    }
-
-    if (event.kind === 'tool_call') {
-        renderToolCallBlock(event.id, event.name, event.arguments, event.display);
-        return;
-    }
-
-    if (event.kind === 'tool_result') {
-        renderToolResultBlock(event.tool_call_id, event.content, event.is_error);
-        return;
-    }
-
-    if (event.kind === 'turn_complete') {
+    if (event.kind === 'turn_complete' && event.turn && event.turn.artifacts) {
+        for (const art of event.turn.artifacts) {
+            renderArtifact(art);
+        }
         return;
     }
 
@@ -305,8 +301,13 @@ function handleEvent(event) {
         return;
     }
 
-    if (event.kind === 'status') {
-        Object.assign(lastStatus, event.status);
+    if (event.kind === 'properties' && event.operations) {
+        const next = Object.assign({}, lastStatus);
+        for (const op of event.operations) {
+            if (op.op === 'set') next[op.key] = op.value;
+            else if (op.op === 'delete') delete next[op.key];
+        }
+        lastStatus = next;
         const parts = [];
         for (const [key, val] of Object.entries(lastStatus)) {
             if (val) parts.push(`${key}=${val}`);
@@ -315,45 +316,12 @@ function handleEvent(event) {
         return;
     }
 
-    if (event.kind === 'usage' || event.kind === 'image') {
-        // Silently ignore usage and image events in the chat UI.
+    if (event.kind === 'notice') {
+        setStatus(event.content || '');
         return;
     }
 
     console.warn('Unknown event kind:', event.kind);
-}
-
-async function readNDJSONStream(reader, decoder) {
-    let buffer = '';
-
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-            try {
-                const event = JSON.parse(trimmed);
-                handleEvent(event);
-            } catch (err) {
-                console.error('Failed to parse NDJSON line:', err, line);
-            }
-        }
-    }
-
-    if (buffer.trim()) {
-        try {
-            const event = JSON.parse(buffer.trim());
-            handleEvent(event);
-        } catch (err) {
-            console.error('Failed to parse final NDJSON line:', err, buffer);
-        }
-    }
 }
 
 async function sendMessage(content) {
@@ -374,22 +342,22 @@ async function sendMessage(content) {
             const createData = await createRes.json();
             sessionId = createData.id;
             history.pushState(null, '', '/chat?thread=' + sessionId);
-            setStatus('Ready');
+            openSessionEvents(sessionId);
         }
 
-        const response = await fetch('/sessions/' + sessionId + '/messages', {
+        const submitRes = await fetch('/sessions/' + encodeURIComponent(sessionId) + '/events', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: content })
+            body: JSON.stringify({ kind: 'user_message', content: content })
         });
 
-        if (!response.ok) {
-            throw new Error('Failed to send message (' + response.status + ')');
+        if (!submitRes.ok) {
+            throw new Error('Failed to send message (' + submitRes.status + ')');
         }
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        await readNDJSONStream(reader, decoder);
+        // Output is delivered via the SSE stream opened in
+        // openSessionEvents. We rely on the lifecycle "done" event
+        // to finalize the turn.
     } catch (err) {
         setStatus('Error: ' + err.message);
         console.error('Send failed:', err);
@@ -439,3 +407,12 @@ if (threadId) {
 } else {
     setStatus('Ready — type a message to start');
 }
+
+// Close the SSE stream on page unload so the server-side
+// subscriber goroutine can exit promptly.
+window.addEventListener('beforeunload', () => {
+    if (eventsSource) {
+        eventsSource.close();
+        eventsSource = null;
+    }
+});

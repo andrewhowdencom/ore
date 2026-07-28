@@ -5,16 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"io"
 	stdhttp "net/http"
 	"strings"
-	"time"
 
-	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/junk"
-	"github.com/andrewhowdencom/ore/ledger"
+	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/x/conduit"
 
 	"go.opentelemetry.io/otel/propagation"
@@ -24,23 +20,6 @@ import (
 // Option configures a Handler via functional options.
 type Option func(*Handler)
 
-// WithUI is a no-op — the built-in web UI is enabled by default in New().
-// It exists only for legacy callers and may be removed in a future release.
-// Use WithoutUI to explicitly disable the UI.
-func WithUI() Option {
-	return func(h *Handler) {
-		h.withUI = true
-	}
-}
-
-// WithoutUI disables the built-in web chat UI. Use this when embedding the
-// handler in an existing server where the UI routes are not desired.
-func WithoutUI() Option {
-	return func(h *Handler) {
-		h.withUI = false
-	}
-}
-
 // WithAddr sets the TCP address for the HTTP server (e.g., ":7654").
 // If not specified, the server defaults to ":7654".
 func WithAddr(addr string) Option {
@@ -49,7 +28,8 @@ func WithAddr(addr string) Option {
 	}
 }
 
-// WithName sets the application name displayed in the web chat UI title and header.
+// WithName sets the application name displayed in the web chat UI
+// title and header.
 func WithName(name string) Option {
 	return func(h *Handler) {
 		h.name = name
@@ -57,8 +37,9 @@ func WithName(name string) Option {
 }
 
 // WithTracer configures an OpenTelemetry tracer for the HTTP handler.
-// When configured, incoming requests extract traceparent from headers,
-// start a server span, and outgoing event responses carry the span context.
+// When configured, incoming requests extract traceparent from headers
+// and start a server span, and outgoing SSE responses carry the
+// span context.
 func WithTracer(tracer trace.Tracer) Option {
 	return func(h *Handler) {
 		h.tracer = tracer
@@ -66,10 +47,24 @@ func WithTracer(tracer trace.Tracer) Option {
 	}
 }
 
+// WithoutUI disables the embedded web chat UI. Use this when embedding
+// the handler in an existing server where the UI routes are not
+// desired.
+func WithoutUI() Option {
+	return func(h *Handler) {
+		h.withUI = false
+	}
+}
+
+// WithUI is retained for legacy callers; the UI is enabled by default
+// in New. Calling WithUI explicitly is a no-op.
+func WithUI() Option {
+	return func(h *Handler) {
+		h.withUI = true
+	}
+}
+
 // Descriptor enumerates the capabilities of the HTTP conduit.
-// CapAudioNotification is included because the embedded web UI
-// (chat.js) can play Web Audio API oscillator tones on assistant
-// turn completion and error events.
 var Descriptor = conduit.Descriptor{
 	Name:        "HTTP",
 	Description: "HTTP conduit with embedded web chat UI",
@@ -82,10 +77,10 @@ var Descriptor = conduit.Descriptor{
 	},
 }
 
-// Handler provides HTTP endpoints for the ore framework's thread
+// Handler provides HTTP endpoints for the ore framework's session
 // primitives. It is mounted on an http.ServeMux via ServeMux().
 type Handler struct {
-	mgr        *junk.Manager
+	backend    Backend
 	withUI     bool
 	addr       string
 	name       string
@@ -96,12 +91,13 @@ type Handler struct {
 // New creates a new HTTP conduit that implements conduit.Conduit.
 // The returned value must be started with Start(ctx) to begin serving.
 // For advanced use cases (e.g., embedding in an existing http.Server),
-// type-assert the returned conduit.Conduit to *Handler and call ServeMux().
-func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error) {
-	if mgr == nil {
-		return nil, fmt.Errorf("session manager is required")
+// type-assert the returned conduit.Conduit to *Handler and call
+// ServeMux().
+func New(backend Backend, opts ...Option) (conduit.Conduit, error) {
+	if backend == nil {
+		return nil, fmt.Errorf("backend is required")
 	}
-	h := &Handler{mgr: mgr, withUI: true, name: "ore chat"}
+	h := &Handler{backend: backend, withUI: true, name: "ore chat"}
 	for _, opt := range opts {
 		opt(h)
 	}
@@ -111,101 +107,18 @@ func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error) {
 	return h, nil
 }
 
-// threadItem holds the data for a single thread on the landing page.
-type threadItem struct {
-	ID      string
-	Preview string
-	LastAt  time.Time
-}
-
-func (h *Handler) serveLanding(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-	if r.URL.Path != "/" {
-		stdhttp.NotFound(w, r)
-		return
-	}
-
-	threads, err := h.mgr.ListThreads()
-	if err != nil {
-		w.WriteHeader(stdhttp.StatusInternalServerError)
-		return
-	}
-
-	page, next, err := paginateAndSortThreads(threads, defaultThreadPageSize, "")
-	if err != nil {
-		// The cursor is always empty for the landing page, so any error
-		// here is unexpected and indicates a programming error.
-		w.WriteHeader(stdhttp.StatusInternalServerError)
-		return
-	}
-
-	items := make([]threadItem, len(page))
-	for i, thr := range page {
-		items[i] = threadItem{
-			ID:      thr.ID,
-			Preview: previewSnippet(thr, 120),
-			LastAt:  lastActivity(thr),
-		}
-	}
-
-	data, err := staticFS.ReadFile("static/landing.html")
-	if err != nil {
-		w.WriteHeader(stdhttp.StatusInternalServerError)
-		return
-	}
-	tmpl, err := template.New("landing").Parse(string(data))
-	if err != nil {
-		w.WriteHeader(stdhttp.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = tmpl.Execute(w, struct {
-		Name       string
-		Threads    []threadItem
-		NextCursor string
-	}{Name: h.name, Threads: items, NextCursor: next})
-}
-
-// previewSnippet extracts a preview from the first user Text artifact in the
-// thread's state, truncated to the given length with "...".
-func previewSnippet(thr *junk.Thread, maxLen int) string {
-	for _, turn := range thr.State.Turns() {
-		if turn.Role != ledger.RoleUser {
-			continue
-		}
-		for _, art := range turn.Artifacts {
-			if art.Kind() != "text" {
-				continue
-			}
-			text, ok := art.(artifact.Text)
-			if !ok {
-				continue
-			}
-			if len(text.Content) <= maxLen {
-				return text.Content
-			}
-			return text.Content[:maxLen] + "..."
-		}
-		break // only consider the first user turn
-	}
-	return ""
-}
-
-// ServeMux returns an http.ServeMux with all HTTP conduit routes registered.
-// Routes include POST /sessions, DELETE /sessions/{id}, POST /messages,
-// GET /events, GET /sessions/{id}/turns, and GET /threads. When WithUI() is
-// enabled, GET /chat and GET /chat.js are also registered for the embedded
-// web client, and GET / renders a thread-list landing page.
-// This method is exported primarily for table-driven unit tests; most
-// callers should use Start(ctx) which creates and runs the server internally.
+// ServeMux returns an http.ServeMux with all HTTP conduit routes
+// registered. This method is exported primarily for table-driven
+// unit tests; most callers should use Start(ctx), which creates and
+// runs the server internally.
 func (h *Handler) ServeMux() *stdhttp.ServeMux {
 	mux := stdhttp.NewServeMux()
 	mux.HandleFunc("POST /sessions", h.createSession)
+	mux.HandleFunc("GET /sessions/{id}", h.getSession)
 	mux.HandleFunc("DELETE /sessions/{id}", h.deleteSession)
-	mux.HandleFunc("POST /sessions/{id}/messages", h.sendMessage)
-	mux.HandleFunc("GET /sessions/{id}/events", h.sessionEvents)
-	mux.HandleFunc("GET /sessions/{id}/turns", h.sessionTurns)
 	mux.HandleFunc("GET /threads", h.listThreads)
+	mux.HandleFunc("POST /sessions/{id}/events", h.submitEvent)
+	mux.HandleFunc("GET /sessions/{id}/events", h.sessionEvents)
 	if h.withUI {
 		mux.HandleFunc("GET /", h.serveLanding)
 		mux.HandleFunc("GET /chat", h.serveUI)
@@ -215,9 +128,9 @@ func (h *Handler) ServeMux() *stdhttp.ServeMux {
 }
 
 // Start creates an http.Server from the Handler's ServeMux and begins
-// listening on the configured address. It blocks until ctx is cancelled
-// or the server encounters a fatal error. On context cancellation the
-// server is shut down gracefully.
+// listening on the configured address. It blocks until ctx is
+// cancelled or the server encounters a fatal error. On context
+// cancellation the server is shut down gracefully.
 func (h *Handler) Start(ctx context.Context) error {
 	server := &stdhttp.Server{
 		Addr:    h.addr,
@@ -232,7 +145,7 @@ func (h *Handler) Start(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		_ = server.Shutdown(context.Background())
-		<-errCh // wait for ListenAndServe to return
+		<-errCh
 		return nil
 	case err := <-errCh:
 		if err == stdhttp.ErrServerClosed {
@@ -242,218 +155,211 @@ func (h *Handler) Start(ctx context.Context) error {
 	}
 }
 
-// createSession handles POST /sessions by creating a new ephemeral junk.
-// If a "thread_id" is provided in the JSON body, the session attaches
-// to an existing thread. On success it responds with 201 Created and a
-// JSON body:
+// createSession handles POST /sessions.
 //
-//	{"id": "<session-id>", "events_url": "/sessions/<session-id>/events"}
+// Request body (all fields optional):
+//
+//	{
+//	  "thread_id": "<existing-thread-id>"   // omit for a fresh session
+//	}
+//
+// An empty or absent body is treated as a request to create a
+// fresh session (no thread attach).
+//
+// Response: 201 Created with
+//
+//	{"id": "<session-id>", "events_url": "/sessions/<id>/events"}
 func (h *Handler) createSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	var req struct {
 		ThreadID string `json:"thread_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		// An empty body is valid (creates a new session).
-		// Any non-EOF error means malformed JSON.
-		if err != io.EOF {
-			w.WriteHeader(stdhttp.StatusBadRequest)
+		// An empty body is valid (no thread_id). Any other decode
+		// error is malformed JSON.
+		if !errors.Is(err, io.EOF) {
+			writeJSONError(w, stdhttp.StatusBadRequest, "invalid request body")
 			return
 		}
 	}
 
-	var stream *junk.Stream
-	var err error
-
-	if req.ThreadID != "" {
-		stream, err = h.mgr.Attach(req.ThreadID)
-		if err != nil {
-			w.WriteHeader(stdhttp.StatusNotFound)
+	sess, err := h.backend.CreateSession(r.Context(), req.ThreadID)
+	if err != nil {
+		if errors.Is(err, session.ErrSessionNotFound) {
+			writeJSONError(w, stdhttp.StatusNotFound, "thread not found")
 			return
 		}
-	} else {
-		stream, err = h.mgr.Create()
-		if err != nil {
-			w.WriteHeader(stdhttp.StatusInternalServerError)
-			return
-		}
+		writeJSONError(w, stdhttp.StatusInternalServerError, err.Error())
+		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(stdhttp.StatusCreated)
-	_ = json.NewEncoder(w).Encode(map[string]string{
-		"id":         stream.ID(),
-		"events_url": "/sessions/" + stream.ID() + "/events",
+	writeJSON(w, stdhttp.StatusCreated, map[string]string{
+		"id":         sess.ID(),
+		"events_url": "/sessions/" + sess.ID() + "/events",
 	})
 }
 
-// deleteSession handles DELETE /sessions/{id} by removing the session and
-// closing its Step. The thread is NOT deleted from the store.
+// getSession handles GET /sessions/{id}.
+//
+// Response: 200 OK with session metadata (id + thread id when
+// applicable).
+func (h *Handler) getSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+	id := r.PathValue("id")
+
+	sess, err := h.backend.GetSession(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, session.ErrSessionNotFound) {
+			writeJSONError(w, stdhttp.StatusNotFound, "session not found")
+			return
+		}
+		writeJSONError(w, stdhttp.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, stdhttp.StatusOK, map[string]string{
+		"id": sess.ID(),
+	})
+}
+
+// deleteSession handles DELETE /sessions/{id}. The thread itself is
+// preserved; the session is removed from the active registry.
 func (h *Handler) deleteSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	id := r.PathValue("id")
 
-	if err := h.mgr.Close(id); err != nil {
-		w.WriteHeader(stdhttp.StatusNotFound)
+	if err := h.backend.DeleteSession(r.Context(), id); err != nil {
+		if errors.Is(err, session.ErrSessionNotFound) {
+			writeJSONError(w, stdhttp.StatusNotFound, "session not found")
+			return
+		}
+		writeJSONError(w, stdhttp.StatusInternalServerError, err.Error())
 		return
 	}
 
 	w.WriteHeader(stdhttp.StatusNoContent)
 }
 
-// sendMessage handles POST /sessions/{id}/messages by running the inference
-// pipeline through the session manager and streaming events as NDJSON.
-func (h *Handler) sendMessage(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+// submitEvent handles POST /sessions/{id}/events.
+//
+// Request body:
+//
+//	{
+//	  "kind":    "user_message" | "interrupt",
+//	  "content": "..."                       // only for user_message
+//	}
+//
+// The session is resolved first; a missing session returns 404
+// before the body is parsed. This mirrors the routing-test
+// expectation that an unknown session ID is the dominant error.
+//
+// Response: 202 Accepted on admission. The handler does not block on
+// inference; the application's admission policy (e.g., the engine's
+// bounded queue) governs the outcome. Errors that surface here are
+// the application's: queue full, session not registered, etc.
+func (h *Handler) submitEvent(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	id := r.PathValue("id")
 
-	stream, err := h.mgr.Get(id)
-	if err != nil {
-		w.WriteHeader(stdhttp.StatusNotFound)
-		return
-	}
-
-	// Parse request body.
-	var req struct {
-		Content string   `json:"content"`
-		Kinds   []string `json:"kinds,omitempty"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(stdhttp.StatusBadRequest)
-		return
-	}
-
-	// Default event kinds when none specified.
-	if len(req.Kinds) == 0 {
-		req.Kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "properties", "lifecycle", "notice"}
-	}
-
-	// Subscribe to the session's FanOut before the goroutine starts.
-	subCh := stream.Subscribe(req.Kinds...)
-
-	// Extract traceparent from request headers and start server span.
 	ctx := r.Context()
 	if h.propagator != nil {
 		ctx = h.propagator.Extract(ctx, propagation.HeaderCarrier(r.Header))
 	}
-	var span trace.Span
-	if h.tracer != nil {
-		ctx, span = h.tracer.Start(ctx, "http.send_message", trace.WithSpanKind(trace.SpanKindServer))
-		defer span.End()
-	}
 
-	// Run the inference pipeline in a goroutine.
-	done := make(chan error)
-	go func() {
-		err := stream.Process(ctx, junk.UserMessageEvent{
-			Content: req.Content,
-			Ctx:     loop.WithProvenance(ctx, "http"),
-		})
-		select {
-		case done <- err:
-		case <-ctx.Done():
+	if _, err := h.backend.GetSession(ctx, id); err != nil {
+		if errors.Is(err, session.ErrSessionNotFound) {
+			writeJSONError(w, stdhttp.StatusNotFound, "session not found")
+			return
 		}
-	}()
-
-	// Setup NDJSON writer.
-	nw, err := newNDJSONWriter(w)
-	if err != nil {
-		w.WriteHeader(stdhttp.StatusInternalServerError)
+		writeJSONError(w, stdhttp.StatusInternalServerError, err.Error())
 		return
 	}
-	w.Header().Set("Content-Type", "application/x-ndjson")
 
-	// Stream events from the subscription until the pipeline completes.
-	for {
-		select {
-		case event, ok := <-subCh:
-			if !ok {
-				return
-			}
-			data, err := MarshalOutputEvent(event)
-			if err != nil {
-				// Skip events that can't be marshaled.
-				continue
-			}
-			if data == nil {
-				// Skip unknown artifact kinds (e.g., custom extensions).
-				continue
-			}
-			if err := nw.WriteEvent(data); err != nil {
-				// Client likely disconnected.
-				return
-			}
-			// turn_complete (assistant) is written but we don't return here;
-			// we wait for done to fire so that any post-turn error (e.g. Save)
-			// is not lost. With unbuffered s.events, done cannot fire until
-			// after the FanOut has delivered all events to subCh.
-		case err := <-done:
-			// Drain all remaining events from the subscription buffer before
-			// returning. LifecycleEvent with Phase "done" is the terminal
-			// event. If no terminal event was observed and the pipeline
-			// errored, write a fallback ErrorEvent.
-			sawTerminal := false
-			for {
-				select {
-				case event := <-subCh:
-					data, _ := MarshalOutputEvent(event)
-					if data != nil {
-						_ = nw.WriteEvent(data)
-					}
-					if le, ok := event.(loop.LifecycleEvent); ok && le.Phase == "done" {
-						sawTerminal = true
-					}
-				default:
-					if !sawTerminal && err != nil {
-						data, _ := MarshalOutputEvent(loop.ErrorEvent{Err: err})
-						_ = nw.WriteEvent(data)
-					}
-					return
-				}
-			}
-		case <-r.Context().Done():
-			// Client disconnected; stop streaming.
+	var req struct {
+		Kind    string `json:"kind"`
+		Content string `json:"content,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if !errors.Is(err, io.EOF) {
+			writeJSONError(w, stdhttp.StatusBadRequest, "invalid request body")
 			return
 		}
 	}
+
+	var event session.Event
+	switch req.Kind {
+	case "user_message":
+		event = session.UserMessageEvent{
+			Content: req.Content,
+			Ctx:     loop.WithProvenance(ctx, "http"),
+		}
+	case "interrupt":
+		event = session.InterruptEvent{
+			Ctx: loop.WithProvenance(ctx, "http"),
+		}
+	case "":
+		// Empty body: treat as interrupt, the minimal "cancel anything
+		// in-flight" signal.
+		event = session.InterruptEvent{
+			Ctx: loop.WithProvenance(ctx, "http"),
+		}
+	default:
+		writeJSONError(w, stdhttp.StatusBadRequest, fmt.Sprintf("unknown event kind: %q", req.Kind))
+		return
+	}
+
+	if err := h.backend.Submit(ctx, id, event); err != nil {
+		if errors.Is(err, session.ErrSessionNotFound) {
+			writeJSONError(w, stdhttp.StatusNotFound, "session not found")
+			return
+		}
+		writeJSONError(w, stdhttp.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(stdhttp.StatusAccepted)
 }
 
-// sessionEvents handles GET /sessions/{id}/events by establishing a persistent
-// SSE connection that streams events from the session's FanOut.
+// sessionEvents handles GET /sessions/{id}/events. It opens an SSE
+// stream from the session's authoritative output channel. The query
+// parameter ?kinds=... (comma-separated) filters by event kind; the
+// default is all kinds. The stream closes when the client
+// disconnects, the session is closed, or the request context is
+// cancelled.
 func (h *Handler) sessionEvents(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	id := r.PathValue("id")
 
-	// Parse kinds from query parameter.
-	var kinds []string
+	kinds := defaultEventKinds
 	if k := r.URL.Query().Get("kinds"); k != "" {
 		kinds = strings.Split(k, ",")
 	}
-	// Default event kinds when none specified.
-	if len(kinds) == 0 {
-		kinds = []string{"text", "reasoning", "tool_call", "tool_result", "turn_complete", "error", "properties", "lifecycle", "notice"}
-	}
 
-	// Subscribe to the session's FanOut.
-	stream, err := h.mgr.Get(id)
+	sess, err := h.backend.GetSession(r.Context(), id)
 	if err != nil {
-		w.WriteHeader(stdhttp.StatusNotFound)
+		if errors.Is(err, session.ErrSessionNotFound) {
+			writeJSONError(w, stdhttp.StatusNotFound, "session not found")
+			return
+		}
+		writeJSONError(w, stdhttp.StatusInternalServerError, err.Error())
 		return
 	}
-	subCh := stream.Subscribe(kinds...)
 
-	// Setup SSE writer.
+	sub := sess.Subscribe(kinds...)
+
 	sw, err := newSSEWriter(w)
 	if err != nil {
-		w.WriteHeader(stdhttp.StatusInternalServerError)
+		writeJSONError(w, stdhttp.StatusInternalServerError, err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	// Read from subscription until client disconnects or session closes.
+	// Flush response headers before any events arrive so the
+	// client's Do() returns promptly rather than blocking on the
+	// first byte.
+	_ = sw.WriteComment("connected")
+
 	for {
 		select {
-		case event, ok := <-subCh:
+		case event, ok := <-sub:
 			if !ok {
-				// Subscription channel closed (session deleted).
 				return
 			}
 			data, err := MarshalOutputEvent(event)
@@ -469,85 +375,22 @@ func (h *Handler) sessionEvents(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 }
 
-// sessionTurns handles GET /sessions/{id}/turns by returning the thread's
-// turn history as a JSON array. Each turn includes role, artifacts, and timestamp.
-func (h *Handler) sessionTurns(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-	id := r.PathValue("id")
-
-	stream, err := h.mgr.Get(id)
-	if err != nil {
-		w.WriteHeader(stdhttp.StatusNotFound)
-		return
-	}
-
-	turns := stream.Turns()
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(turns)
+// defaultEventKinds is the default set of kinds streamed by
+// /sessions/{id}/events when ?kinds= is not specified.
+var defaultEventKinds = []string{
+	"text_delta", "reasoning_delta", "tool_call", "tool_result",
+	"turn_complete", "error", "properties", "lifecycle", "notice", "activity",
 }
 
-// serveUI serves the embedded static files (index.html and chat.js) for the
-// web chat client. It reads the requested file from staticFS and returns 404
-// for unknown paths. It is registered at GET /chat and GET /chat.js when WithUI()
-// is enabled.
-func (h *Handler) serveUI(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-	switch r.URL.Path {
-	case "/chat":
-		data, err := staticFS.ReadFile("static/index.html")
-		if err != nil {
-			w.WriteHeader(stdhttp.StatusInternalServerError)
-			return
-		}
-		tmpl, err := template.New("index").Parse(string(data))
-		if err != nil {
-			w.WriteHeader(stdhttp.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = tmpl.Execute(w, struct{ Name string }{Name: h.name})
-	case "/chat.js":
-		data, err := staticFS.ReadFile("static/chat.js")
-		if err != nil {
-			w.WriteHeader(stdhttp.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-		_, _ = w.Write(data)
-	default:
-		w.WriteHeader(stdhttp.StatusNotFound)
-	}
+// writeJSON writes a JSON response with the given status code.
+func writeJSON(w stdhttp.ResponseWriter, status int, body interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(body)
 }
 
-// listThreads handles GET /threads by returning a single page of
-// threads, sorted by updated_at descending with id ascending as a
-// tiebreaker, wrapped in an envelope that includes the next-page
-// cursor. The endpoint accepts ?limit= (default 20, max 100) and
-// ?cursor= (opaque, from a previous response's next_cursor).
-func (h *Handler) listThreads(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-	threads, err := h.mgr.ListThreads()
-	if err != nil {
-		w.WriteHeader(stdhttp.StatusInternalServerError)
-		return
-	}
-
-	limit := parseLimit(r.URL.Query().Get("limit"))
-	page, next, err := paginateAndSortThreads(threads, limit, r.URL.Query().Get("cursor"))
-	if err != nil {
-		if errors.Is(err, errInvalidCursor) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(stdhttp.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(map[string]string{
-				"error": "invalid cursor: " + err.Error(),
-			})
-			return
-		}
-		w.WriteHeader(stdhttp.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(threadsListResponseJSON{
-		Threads:    summariesFrom(page),
-		NextCursor: next,
-	})
+// writeJSONError writes a JSON error response with the given status
+// code and message.
+func writeJSONError(w stdhttp.ResponseWriter, status int, message string) {
+	writeJSON(w, status, map[string]string{"error": message})
 }
