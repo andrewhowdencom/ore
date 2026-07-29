@@ -108,8 +108,8 @@ func WithName(name string) Option {
 // WithCancelFunc registers a context.CancelFunc to be invoked when the user
 // presses Ctrl+C or Esc inside the TUI. The application typically passes the
 // cancel func of a context.WithCancel whose parent ctx is also passed to
-// tui.Start and session.Runner.Run, so a single cancel unwinds the UI,
-// any in-flight turn, and the runner pump.
+// tui.Start and engine.Submit, so a single cancel unwinds the UI, any
+// in-flight engine execution, and the engine pump.
 func WithCancelFunc(cancel context.CancelFunc) Option {
 	return func(t *TUI) {
 		t.cancelFunc = cancel
@@ -222,7 +222,7 @@ var _ conduit.AudioNotifier = (*TUI)(nil)
 // The session must not be nil; the TUI reads from it (turns, metadata,
 // Subscribe) but does not own its lifecycle. The application is
 // responsible for attaching or creating the session before calling New
-// and for pumping Events() into a session.Runner.
+// and for pumping Events() into an engine.Engine.
 //
 // Available options include WithName, WithCancelFunc, WithTracer,
 // WithTheme, WithStatusZones, WithStatusLabels, and WithProgramOptions.
@@ -239,8 +239,8 @@ func New(sess *session.Session, opts ...Option) (conduit.Conduit, error) {
 
 // Events returns a buffered channel of user-initiated session events.
 // The application is expected to consume this channel and pass each event
-// to session.Runner.Run(ctx, sess, evt). The channel is created lazily on
-// the first call to Start and is closed when Start returns.
+// to engine.Engine.Submit(ctx, sess.ID(), evt). The channel is created
+// lazily on the first call to Start and is closed when Start returns.
 //
 // Events produced on the channel include session.UserMessageEvent when
 // the user presses Enter and session.InterruptEvent when the user
@@ -325,7 +325,7 @@ func statusFromSession(sess *session.Session) tea.Msg {
 // Start is a no-op turn-loop driver: it neither invokes the provider
 // nor manages the inference pipeline. The application is expected to
 // range over Events() in a separate goroutine and pass each event to
-// session.Runner.Run.
+// engine.Engine.Submit.
 func (t *TUI) Start(ctx context.Context) error {
 	surfEventsCh := make(chan session.Event, 16)
 	m := t.initModel(ctx, surfEventsCh, t.sess)

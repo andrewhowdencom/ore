@@ -46,7 +46,7 @@ var usageNotice = loop.Notice{Content: "Usage: /model <name>", Severity: loop.Se
 // *session.Session is available (e.g. unit tests that exercise the
 // registry directly) returns the usage notice instead of panicking. The
 // framework guarantees a non-nil session for handlers running inside
-// session.Runner.Run.
+// engine.Submit.
 func Slash() slash.Handler {
 	return func(ctx context.Context, emitter loop.Emitter, cmd slash.Command) (slash.Result, error) {
 		name := strings.TrimSpace(cmd.Input)
