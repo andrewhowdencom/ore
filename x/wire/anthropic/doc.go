@@ -43,6 +43,26 @@
 // CacheWriteTokens fields. The new ThinkingTokens field is populated
 // from usage.output_tokens_details.thinking_tokens when present.
 //
+// # Prompt caching
+//
+// The provider honors models.Spec.CacheControl on the request side.
+// When non-nil, the wire stamps Anthropic-style
+// cache_control:{type:"ephemeral",ttl:?} blocks at three locations
+// (the system message, the last tool definition, and the last
+// user/assistant text content part), mirroring the placement logic
+// the openai wire uses for its applyCacheControl. Missing targets
+// are skipped silently.
+//
+// The TTL flows from models.CacheControlTTL through to the SDK's
+// CacheControlEphemeralTTL via translateCacheControlTTL. An empty
+// TTL drops the field on the wire and the upstream uses its
+// default 5m; unknown TTLs are forwarded verbatim so the upstream
+// API surfaces a validation error at request time.
+//
+// The wire does not cache responses locally: the framework observes
+// Anthropic's server-side cache hits via the read-side metrics
+// above, but the next Invoke() always goes out over the wire.
+//
 // # Host-aware auth
 //
 // WithAPIKey(key) sets the right header depending on the configured
