@@ -1,6 +1,7 @@
 // Package models defines the ModelSpec value type — a typed object
 // combining a model identity with its inference configuration — and
-// the supporting ThinkingLevel type used to express reasoning effort.
+// the supporting ThinkingLevel and CacheControl types used to express
+// reasoning effort and prompt-cache configuration respectively.
 //
 // ModelSpec is the canonical argument to provider invocations. It
 // supersedes the bare-string model identity and the per-call option

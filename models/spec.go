@@ -86,4 +86,15 @@ type Spec struct {
 	// PresencePenalty discourages token repetition based on
 	// presence. nil means "use the model's default".
 	PresencePenalty *float64
+
+	// CacheControl opts the request into provider-side prompt
+	// caching on providers that support it. nil means "no cache
+	// control"; a non-nil value with an empty TTL uses the
+	// provider's default TTL (Anthropic: 5m). Currently honored
+	// by the Anthropic wire (x/wire/anthropic), which stamps
+	// cache_control:{type:"ephemeral",ttl:?} blocks at the system
+	// message, the last tool definition, and the last
+	// user/assistant text content part. The OpenAI wire and
+	// other adapters ignore this field.
+	CacheControl *CacheControl
 }
