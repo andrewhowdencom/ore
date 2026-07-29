@@ -5,18 +5,19 @@
 // session.Session. The TUI subscribes to the session's output events and
 // routes them into the Bubble Tea program; outbound user actions (typed
 // messages, interrupts) are produced on a channel returned by Events() for
-// the application to consume via session.Runner.Run.
+// the application to consume via engine.Engine.Submit.
 //
 // The TUI is a dumb pipe: it does not invoke the provider, does not own the
 // session's lifecycle, and does not manage the turn loop. The application is
 // responsible for constructing the session, seeding any default metadata
-// before Start, and pumping Events() into a session.Runner.
+// before Start, and pumping Events() into an engine.Engine.
 //
 // Cancellation is wired through WithCancelFunc: the registered cancel
 // function is invoked when the user presses Ctrl+C or Esc inside the TUI.
 // The application typically pairs this with a context.WithCancel whose
-// cancel func is shared with both Start(ctx) and runner.Run, so a single
-// signal unwinds the UI, any in-flight turn, and the runner pump.
+// cancel func is shared with both Start(ctx) and engine.Submit, so a single
+// signal unwinds the UI, any in-flight engine execution, and the engine
+// pump.
 //
 // Streaming model:
 // The TUI subscribes to delta artifact events (text_delta, reasoning_delta,
