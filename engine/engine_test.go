@@ -1,4 +1,4 @@
-package engine_test
+package engine
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/andrewhowdencom/ore/agent"
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
-	"github.com/andrewhowdencom/ore/engine"
+	
 	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
@@ -68,10 +68,10 @@ func drain(ch <-chan loop.OutputEvent, d time.Duration, max int) ([]loop.OutputE
 func TestEngine_New_ValidatesDeps(t *testing.T) {
 	t.Parallel()
 
-	if _, err := engine.New(nil, newFactory(t)); err == nil {
+	if _, err := New(nil, newFactory(t)); err == nil {
 		t.Fatal("New(nil, factory) returned nil error; expected validation failure")
 	}
-	if _, err := engine.New(session.NewInMemoryRegistry(), nil); err == nil {
+	if _, err := New(session.NewInMemoryRegistry(), nil); err == nil {
 		t.Fatal("New(registry, nil) returned nil error; expected validation failure")
 	}
 }
@@ -79,7 +79,7 @@ func TestEngine_New_ValidatesDeps(t *testing.T) {
 func TestEngine_Submit_UnknownSessionReturnsErrSessionNotFound(t *testing.T) {
 	t.Parallel()
 
-	e, err := engine.New(session.NewInMemoryRegistry(), newFactory(t))
+	e, err := New(session.NewInMemoryRegistry(), newFactory(t))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestEngine_Submit_UnknownSessionReturnsErrSessionNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("Submit returned nil; expected ErrSessionNotFound")
 	}
-	if !errors.Is(err, engine.ErrSessionNotFound) {
+	if !errors.Is(err, ErrSessionNotFound) {
 		t.Errorf("error %v does not wrap ErrSessionNotFound", err)
 	}
 }
@@ -104,7 +104,7 @@ func TestEngine_Submit_DrainsUserMessageLifecycle(t *testing.T) {
 		t.Fatalf("Register: %v", err)
 	}
 
-	e, err := engine.New(reg, newFactory(t))
+	e, err := New(reg, newFactory(t))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestEngine_Submit_InterruptSkipsInference(t *testing.T) {
 		t.Fatalf("Register: %v", err)
 	}
 
-	e, err := engine.New(reg, newFactory(t))
+	e, err := New(reg, newFactory(t))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -221,10 +221,10 @@ func TestEngine_Submit_QueueFullReturnsErrQueueFull(t *testing.T) {
 	gate := make(chan struct{})
 	slow := &slowPattern{gate: gate}
 
-	e, err := engine.New(
+	e, err := New(
 		reg,
 		agent.NewDefaultFactory(noopProvider{}, slow, noop.NewTracerProvider().Tracer("test")),
-		engine.WithQueueSize(1),
+		WithQueueSize(1),
 	)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -256,7 +256,7 @@ func TestEngine_Submit_QueueFullReturnsErrQueueFull(t *testing.T) {
 	if err == nil {
 		t.Fatal("third Submit returned nil; expected ErrQueueFull")
 	}
-	if !errors.Is(err, engine.ErrQueueFull) {
+	if !errors.Is(err, ErrQueueFull) {
 		t.Errorf("error %v does not wrap ErrQueueFull", err)
 	}
 }
@@ -274,7 +274,7 @@ func TestEngine_Submit_FactoryErrorSurfacesErrorEvent(t *testing.T) {
 	// Factory that always errors.
 	failingFactory := failingFactory{err: errors.New("factory boom")}
 
-	e, err := engine.New(reg, failingFactory)
+	e, err := New(reg, failingFactory)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -333,7 +333,7 @@ func TestEngine_Close_RefusesFurtherSubmissions(t *testing.T) {
 		t.Fatalf("Register: %v", err)
 	}
 
-	e, err := engine.New(reg, newFactory(t))
+	e, err := New(reg, newFactory(t))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -345,7 +345,7 @@ func TestEngine_Close_RefusesFurtherSubmissions(t *testing.T) {
 	if err == nil {
 		t.Fatal("Submit after Close returned nil; expected ErrClosed")
 	}
-	if !errors.Is(err, engine.ErrClosed) {
+	if !errors.Is(err, ErrClosed) {
 		t.Errorf("error %v does not wrap ErrClosed", err)
 	}
 }
@@ -353,7 +353,7 @@ func TestEngine_Close_RefusesFurtherSubmissions(t *testing.T) {
 func TestEngine_Close_IsIdempotent(t *testing.T) {
 	t.Parallel()
 
-	e, err := engine.New(session.NewInMemoryRegistry(), newFactory(t))
+	e, err := New(session.NewInMemoryRegistry(), newFactory(t))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -378,7 +378,7 @@ func TestEngine_ConcurrentSubmitsAcrossSessionsAreSafe(t *testing.T) {
 		}
 	}
 
-	e, err := engine.New(reg, newFactory(t))
+	e, err := New(reg, newFactory(t))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
