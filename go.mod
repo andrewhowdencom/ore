@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore/x/conduit v0.1.5
+	github.com/andrewhowdencom/ore/x/conduit v0.2.0
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
