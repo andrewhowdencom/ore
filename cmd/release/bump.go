@@ -99,6 +99,23 @@ func maxBump(a, b Bump) Bump {
 	return a
 }
 
+// applyCapMajor returns the bump to use when --cap-major is in effect.
+// A Major is demoted to Minor; the rest pass through unchanged. This
+// suppresses an unintended cross-major-version release (e.g. v1 → v2)
+// that the tool cannot complete cleanly, because Go's semantic-import
+// versioning (https://go.dev/ref/mod#major-version-suffix) requires
+// the module path itself to carry the /vN suffix once a module crosses
+// v2 — a workspace-wide source rewrite that `release` does not perform.
+//
+// The cap is opt-in so that real major releases remain possible when
+// the migration is ready.
+func applyCapMajor(cap bool, b Bump) Bump {
+	if cap && b == Major {
+		return Minor
+	}
+	return b
+}
+
 func isBreaking(msg string) bool {
 	// Footer / body indicators (case-sensitive per the spec).
 	if strings.Contains(msg, "BREAKING CHANGE:") || strings.Contains(msg, "BREAKING-CHANGE:") {

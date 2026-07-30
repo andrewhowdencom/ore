@@ -78,6 +78,31 @@ func TestBumpType(t *testing.T) {
 	}
 }
 
+func TestApplyCapMajor(t *testing.T) {
+	tests := []struct {
+		name string
+		cap  bool
+		in   Bump
+		want Bump
+	}{
+		{"cap off: none", false, None, None},
+		{"cap off: patch", false, Patch, Patch},
+		{"cap off: minor", false, Minor, Minor},
+		{"cap off: major", false, Major, Major},
+		{"cap on: none stays none", true, None, None},
+		{"cap on: patch stays patch", true, Patch, Patch},
+		{"cap on: minor stays minor", true, Minor, Minor},
+		{"cap on: major demotes to minor", true, Major, Minor},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := applyCapMajor(tt.cap, tt.in); got != tt.want {
+				t.Errorf("applyCapMajor(%v, %v) = %v, want %v", tt.cap, tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestNextVersion(t *testing.T) {
 	tests := []struct {
 		current string

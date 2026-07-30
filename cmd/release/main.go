@@ -14,13 +14,17 @@ func main() {
 
 func run(args []string) error {
 	dryRun := false
+	capMajor := false
 	var remaining []string
 	for _, a := range args {
-		if a == "-dry-run" || a == "--dry-run" {
+		switch {
+		case a == "-dry-run" || a == "--dry-run":
 			dryRun = true
-			continue
+		case a == "-cap-major" || a == "--cap-major":
+			capMajor = true
+		default:
+			remaining = append(remaining, a)
 		}
-		remaining = append(remaining, a)
 	}
 
 	if len(remaining) == 0 || remaining[0] == "--help" || remaining[0] == "-h" {
@@ -38,9 +42,9 @@ func run(args []string) error {
 	case "status":
 		return runStatus(dryRun, cmdArgs)
 	case "all":
-		return runAll(dryRun, cmdArgs)
+		return runAll(dryRun, capMajor, cmdArgs)
 	default:
-		return runRelease(cmd, dryRun, cmdArgs)
+		return runRelease(cmd, dryRun, capMajor, cmdArgs)
 	}
 }
 
@@ -54,5 +58,6 @@ func usage() {
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Flags:")
 	fmt.Fprintln(os.Stderr, "  -dry-run        Print actions without executing them")
+	fmt.Fprintln(os.Stderr, "  -cap-major      Demote computed major bumps to minor")
 }
 

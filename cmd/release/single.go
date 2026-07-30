@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func runRelease(path string, dryRun bool, args []string) error {
+func runRelease(path string, dryRun, capMajor bool, args []string) error {
 	root, err := repoRoot()
 	if err != nil {
 		return err
@@ -79,6 +79,7 @@ func runRelease(path string, dryRun bool, args []string) error {
 	if err != nil {
 		return err
 	}
+	bump = applyCapMajor(capMajor, bump)
 	version, err := nextVersion(allVersions[m.Path], bump)
 	if err != nil {
 		return err
