@@ -3,11 +3,11 @@ module github.com/andrewhowdencom/ore/examples
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.2.2
-	github.com/andrewhowdencom/ore/x/conduit/http v0.0.0-00010101000000-000000000000
-	github.com/andrewhowdencom/ore/x/conduit/tui v0.12.8
+	github.com/andrewhowdencom/ore v1.3.0
+	github.com/andrewhowdencom/ore/x/conduit/http v0.9.0
+	github.com/andrewhowdencom/ore/x/conduit/tui v0.12.10
 	github.com/andrewhowdencom/ore/x/provider/openai v0.6.5
-	github.com/andrewhowdencom/ore/x/tool v0.6.0
+	github.com/andrewhowdencom/ore/x/tool v0.6.1
 	github.com/andrewhowdencom/ore/x/tool/calculator v0.4.1
 	github.com/andrewhowdencom/ore/x/tool/filesystem v0.5.2
 	github.com/stretchr/testify v1.11.1
@@ -19,11 +19,11 @@ require (
 	charm.land/lipgloss/v2 v2.0.3 // indirect
 	github.com/alecthomas/chroma/v2 v2.20.0 // indirect
 	github.com/andrewhowdencom/ore/x/compaction v0.5.1 // indirect
-	github.com/andrewhowdencom/ore/x/conduit v0.1.5 // indirect
+	github.com/andrewhowdencom/ore/x/conduit v0.2.0 // indirect
 	github.com/andrewhowdencom/ore/x/llmbytes v0.1.2 // indirect
 	github.com/andrewhowdencom/ore/x/provider/retry v0.0.3 // indirect
 	github.com/andrewhowdencom/ore/x/tool/truncate v0.1.1 // indirect
-	github.com/andrewhowdencom/ore/x/wire/openai v0.1.3 // indirect
+	github.com/andrewhowdencom/ore/x/wire/openai v0.1.4 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
@@ -76,10 +76,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace (
-	github.com/andrewhowdencom/ore/x/conduit => ../x/conduit
-	github.com/andrewhowdencom/ore/x/llmbytes => ../x/llmbytes
-)
+replace github.com/andrewhowdencom/ore/x/llmbytes => ../x/llmbytes
 
 replace github.com/andrewhowdencom/ore/x/tool => ../x/tool
 
@@ -89,13 +86,7 @@ replace github.com/andrewhowdencom/ore/x/tool/truncate => ../x/tool/truncate
 
 replace github.com/andrewhowdencom/ore/x/verifier => ../x/verifier
 
-replace github.com/andrewhowdencom/ore => ..
-
 replace github.com/andrewhowdencom/ore/x/compaction => ../x/compaction
-
-replace github.com/andrewhowdencom/ore/x/conduit/http => ../x/conduit/http
-
-replace github.com/andrewhowdencom/ore/x/conduit/tui => ../x/conduit/tui
 
 replace github.com/andrewhowdencom/ore/x/telemetry => ../x/telemetry
 
@@ -108,3 +99,11 @@ replace github.com/andrewhowdencom/ore/x/tool/set_title => ../x/tool/set_title
 replace github.com/andrewhowdencom/ore/x/usage => ../x/usage
 
 replace github.com/andrewhowdencom/ore/x/provider/openai => ../x/provider/openai
+
+replace github.com/andrewhowdencom/ore => ..
+
+replace github.com/andrewhowdencom/ore/x/conduit => ../x/conduit
+
+replace github.com/andrewhowdencom/ore/x/conduit/http => ../x/conduit/http
+
+replace github.com/andrewhowdencom/ore/x/conduit/tui => ../x/conduit/tui
