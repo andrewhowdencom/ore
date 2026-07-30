@@ -1,48 +1,35 @@
-// Package http implements an HTTP conduit for the ore framework,
-// exposing *junk.Stream conversation primitives over HTTP with NDJSON
-// streaming and SSE ambient channels.
+// Package http implements an HTTP handler library for the ore framework.
+// The conduit translates external HTTP requests into session events and
+// renders session output as Server-Sent Events (SSE).
 //
-// API:
+// # Architecture
 //
-//	New(mgr, opts...)         - create an HTTP conduit implementing conduit.Conduit
-//	WithUI()                  - retained for compatibility; UI is enabled by default
-//	WithoutUI()               - disable the built-in web chat UI
-//	WithAddr(addr)            - set the listen address (default: ":7654")
-//	Start(ctx)                - start the HTTP server and block until ctx cancelled
-//	ServeMux()                - returns *http.ServeMux with all routes registered (testing)
+// The conduit is a dumb pipe: it owns no provider, agent, factory, queue,
+// or persistent state. It depends on an application-supplied Backend
+// (see backend.go) for session lifecycle and event submission, and on
+// session.Subscribe for output observation.
 //
-// Routes:
+// # Wire
 //
-//	POST /sessions                    - create a new session (201)
-//	DELETE /sessions/{id}             - close a session (204)
-//	POST /sessions/{id}/messages      - send a message; NDJSON response
-//	GET  /sessions/{id}/events        - subscribe to events; SSE stream
-//	GET  /threads                     - list all threads
+// All endpoints return JSON or text/event-stream. Errors are signalled
+// by HTTP status codes; the body is JSON for 4xx/5xx responses.
 //
-// Status codes:
+//	POST   /sessions                       Create a new (or attach to a thread)
+//	                                       session.
+//	GET    /sessions/{id}                  Return metadata for the session.
+//	DELETE /sessions/{id}                  Close the session (the thread is
+//	                                       preserved).
+//	GET    /threads                         Paginated list of persisted threads.
+//	POST   /sessions/{id}/events            Submit a session.Event (e.g. user
+//	                                       message, interrupt). Returns 202 on
+//	                                       admission.
+//	GET    /sessions/{id}/events?kinds=...  Server-Sent Events stream of the
+//	                                       session's authoritative output
+//	                                       stream.
 //
-//	201  - session created
-//	204  - session closed
-//	404  - session or thread not found
-//	400  - malformed JSON or unsupported event
-//	405  - method not allowed (returned automatically by net/http.ServeMux)
-//	500  - internal error (provider, store, etc.)
+// # Lifecycle
 //
-// Default event kinds for POST /messages responses:
-//
-//	text, reasoning, tool_call, tool_result, turn_complete, error,
-//	properties, lifecycle
-//
-// Per-request handlers obtain a *junk.Stream handle from the Manager
-// and use it directly for Process and Subscribe, while Manager methods
-// remain for metadata and registry lifecycle (Store, List, Check, Close).
-//
-// Serialization of all output events is handled by MarshalOutputEvent in
-// x/conduit/http/types.go, which dispatches to each event's json.Marshaler
-// implementation.
-//
-// The authoritative API contract is documented in the OpenAPI 3.1
-// specification at openapi.yaml, which defines all endpoints, request and
-// response schemas, event kind discriminated unions, and lifecycle phases.
-// Test-time validation against the spec is provided via kin-openapi.
+// The handler is constructed with a Backend and started via
+// Start(ctx). On context cancellation, the HTTP server is shut down
+// gracefully and Start returns nil.
 package http

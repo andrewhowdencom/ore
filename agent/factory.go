@@ -1,12 +1,12 @@
-package session
+package agent
 
 import (
 	"strconv"
 
-	"github.com/andrewhowdencom/ore/agent"
 	"github.com/andrewhowdencom/ore/cognitive"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
+	"github.com/andrewhowdencom/ore/session"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -16,7 +16,8 @@ import (
 // These constants are the framework contract. Slash handlers write
 // under these keys; the factory reads them and translates the
 // metadata into a models.Spec. They are duplicated in junk/stream.go
-// for backwards compatibility; that duplication is removed in Task 10.
+// for backwards compatibility; that duplication is removed in a
+// follow-up plan.
 const (
 	MetadataKeyModelName            = "ore.model.name"
 	MetadataKeyModelThinkingLevel   = "ore.model.thinking_level"
@@ -24,31 +25,24 @@ const (
 	MetadataKeyModelMaxOutputTokens = "ore.model.max_output_tokens"
 )
 
-// AgentFactory builds an *agent.Agent for a given Session. The factory
-// reads session.Metadata and other session state to construct the
-// agent's spec, transforms, and other per-turn configuration.
+// Factory builds an *Agent for a given Session. The factory reads
+// session metadata and other session state to construct the agent's
+// spec, transforms, and other per-turn configuration.
 //
-// The factory is invoked by Runner on every cognitive-pattern invocation;
-// it is the canonical place where "session configuration influences
-// agent design" is expressed.
-type AgentFactory interface {
-	Build(sess *Session) (*agent.Agent, error)
+// The factory is invoked by the engine on every cognitive-pattern
+// invocation; it is the canonical place where "session configuration
+// influences agent design" is expressed.
+type Factory interface {
+	Build(sess *session.Session) (*Agent, error)
 }
 
 // DefaultFactory builds an agent from a Session's metadata, using the
 // factory's configured Provider, Pattern, and Tracer. It is the
-// reference implementation of AgentFactory.
+// reference implementation of Factory.
 //
-// Path B (locked in): the agent continues to construct its own
-// internal *loop.Step at agent.New time. Long-term subscribers
-// attach to the session's step (via Session.Subscribe), which is
-// distinct from the agent's step. Re-routing the agent's events
-// through the session's step requires an agent.WithStep option
-// (or equivalent), which is tracked separately as #523. Until
-// that lands, the agent's internal step is unused for fanout —
-// subscribers read events from the session's step directly,
-// which receives lifecycle events emitted by the Runner and
-// any PropertiesEvents emitted by Session.SetMetadata.
+// The factory accepts a *session.Session and reads the session's
+// metadata, but does not retain it; the engine constructs an agent
+// for this turn only, then the agent is discarded.
 type DefaultFactory struct {
 	Provider provider.Provider
 	Pattern  cognitive.Pattern
@@ -64,28 +58,28 @@ func NewDefaultFactory(p provider.Provider, pat cognitive.Pattern, tr trace.Trac
 	}
 }
 
-// Build constructs an *agent.Agent for the given session. It reads the
+// Build constructs an *Agent for the given session. It reads the
 // session's metadata to derive a model spec, then constructs the agent
 // with the factory's configured provider, pattern, and tracer.
 //
 // The session is bound as the agent's default state (for the auto-append
 // behavior of TurnCompleteEvent). Per-call overrides by the pattern
 // still win over the bound spec.
-func (f *DefaultFactory) Build(sess *Session) (*agent.Agent, error) {
+func (f *DefaultFactory) Build(sess *session.Session) (*Agent, error) {
 	spec := specFromMetadata(sess.AllMetadata())
 
-	return agent.New(sess.ID(),
-		agent.WithProvider(f.Provider),
-		agent.WithSpec(spec),
-		agent.WithPattern(f.Pattern),
-		agent.WithTracer(f.Tracer),
-		agent.WithState(sess.Thread()),
+	return New(sess.ID(),
+		WithProvider(f.Provider),
+		WithSpec(spec),
+		WithPattern(f.Pattern),
+		WithTracer(f.Tracer),
+		WithState(sess.Thread()),
 	), nil
 }
 
 // specFromMetadata derives a models.Spec from a metadata map. It returns
-// a zero-valued Spec and false when no recognized metadata keys are
-// set; callers should fall back to the step's default in that case.
+// a zero-valued Spec when no recognized metadata keys are set; callers
+// should fall back to the step's default in that case.
 //
 // Recognized keys:
 //

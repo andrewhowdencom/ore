@@ -219,3 +219,64 @@ func TestFileRepository_AppendIsAppendOnly(t *testing.T) {
 	}
 	assert.Equal(t, 3, lines, "each append must produce exactly one line")
 }
+
+func TestFileRepository_ListThreadIDs(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	r, err := NewFileRepository(dir)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	// Empty repository lists nothing.
+	ids, err := r.ListThreadIDs(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, ids)
+
+	// Persist across three threads.
+	for _, id := range []string{"alpha", "beta", "gamma"} {
+		require.NoError(t, r.SaveTurn(ctx, id, &Turn{ID: "u-" + id, Role: RoleUser, Timestamp: time.Now()}))
+	}
+
+	ids, err = r.ListThreadIDs(ctx)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"alpha", "beta", "gamma"}, ids)
+
+	// Adding a fourth thread is reflected immediately.
+	require.NoError(t, r.SaveTurn(ctx, "delta", &Turn{ID: "u-d", Role: RoleUser, Timestamp: time.Now()}))
+	ids, err = r.ListThreadIDs(ctx)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"alpha", "beta", "gamma", "delta"}, ids)
+}
+
+func TestFileRepository_ListThreadIDs_IgnoresNonJournalFiles(t *testing.T) {
+	dir := t.TempDir()
+	r, err := NewFileRepository(dir)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	// Drop a non-journal file alongside the journals.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("hello"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".hidden"), []byte("hidden"), 0o644))
+
+	require.NoError(t, r.SaveTurn(ctx, "thread-1", &Turn{ID: "u", Role: RoleUser, Timestamp: time.Now()}))
+
+	ids, err := r.ListThreadIDs(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"thread-1"}, ids)
+}
+
+func TestFileRepository_ListThreadIDs_DirectoryMissing(t *testing.T) {
+	// A repository whose directory was removed after creation still
+	// returns an empty list rather than an error, matching the
+	// behavior of HydrateThread on a missing file.
+	dir := t.TempDir()
+	r, err := NewFileRepository(dir)
+	require.NoError(t, err)
+
+	require.NoError(t, os.RemoveAll(dir))
+
+	ids, err := r.ListThreadIDs(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, ids)
+}

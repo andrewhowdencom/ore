@@ -104,3 +104,4 @@ func (*testRepository) UpdateTurnParent(_ context.Context, _, _, _ string) error
 func (*testRepository) HydrateThread(_ context.Context, _ string) (map[string]*Turn, string, error) {
 	return nil, "", nil
 }
+func (*testRepository) ListThreadIDs(_ context.Context) ([]string, error) { return nil, nil }

@@ -3,23 +3,14 @@ module github.com/andrewhowdencom/ore/examples
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.2.1
-	github.com/andrewhowdencom/ore/x/analytics v0.2.5
-	github.com/andrewhowdencom/ore/x/compaction v0.5.1
-	github.com/andrewhowdencom/ore/x/conduit/http v0.8.1
+	github.com/andrewhowdencom/ore v1.2.2
+	github.com/andrewhowdencom/ore/x/conduit/http v0.0.0-00010101000000-000000000000
 	github.com/andrewhowdencom/ore/x/conduit/tui v0.12.8
 	github.com/andrewhowdencom/ore/x/provider/openai v0.6.5
-	github.com/andrewhowdencom/ore/x/telemetry v0.1.4
 	github.com/andrewhowdencom/ore/x/tool v0.6.0
 	github.com/andrewhowdencom/ore/x/tool/calculator v0.4.1
 	github.com/andrewhowdencom/ore/x/tool/filesystem v0.5.2
-	github.com/andrewhowdencom/ore/x/tool/set_model v0.1.5
-	github.com/andrewhowdencom/ore/x/tool/set_title v0.3.2
-	github.com/andrewhowdencom/ore/x/usage v0.2.2
-	go.opentelemetry.io/otel v1.44.0
-	go.opentelemetry.io/otel/sdk v1.44.0
-	go.opentelemetry.io/otel/sdk/metric v1.44.0
-	go.opentelemetry.io/otel/trace v1.44.0
+	github.com/stretchr/testify v1.11.1
 )
 
 require (
@@ -27,6 +18,7 @@ require (
 	charm.land/bubbletea/v2 v2.0.6 // indirect
 	charm.land/lipgloss/v2 v2.0.3 // indirect
 	github.com/alecthomas/chroma/v2 v2.20.0 // indirect
+	github.com/andrewhowdencom/ore/x/compaction v0.5.1 // indirect
 	github.com/andrewhowdencom/ore/x/conduit v0.1.5 // indirect
 	github.com/andrewhowdencom/ore/x/llmbytes v0.1.2 // indirect
 	github.com/andrewhowdencom/ore/x/provider/retry v0.0.3 // indirect
@@ -49,10 +41,10 @@ require (
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -62,6 +54,7 @@ require (
 	github.com/muesli/reflow v0.3.0 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/openai/openai-go v1.12.0 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
@@ -72,12 +65,15 @@ require (
 	github.com/yuin/goldmark-emoji v1.0.6 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.69.0 // indirect
+	go.opentelemetry.io/otel v1.44.0 // indirect
 	go.opentelemetry.io/otel/metric v1.44.0 // indirect
+	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/term v0.42.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 replace (

@@ -42,8 +42,8 @@
 //     The constructor uses the functional-options pattern. It MUST validate
 //     that sess is non-nil and return a clear error otherwise. The conduit
 //     reads from the session (turns, metadata, Subscribe) but does not own
-//     its lifecycle — the application is responsible for creating or
-//     attaching the session via `session.Runner.Create` or `Runner.Get`.
+//     its lifecycle — the application is responsible for registering the
+//     session in a session.Registry before constructing the conduit.
 //     It returns a value that satisfies conduit.Conduit and may be
 //     type-asserted to the concrete type for package-specific extensions.
 //
@@ -51,7 +51,7 @@
 //
 //     Conduits that produce user-initiated events MUST expose a buffered
 //     channel via Events(). The application consumes this channel and
-//     submits each event to `session.Runner.Run`. The channel is closed
+//     submits each event to `engine.Engine.Submit`. The channel is closed
 //     when Start returns. Per-event provenance is attached via
 //     `loop.WithProvenance` on the event's Ctx field so downstream
 //     interceptors and tracing layers can attribute the event to the conduit.
@@ -61,10 +61,10 @@
 //     Conduits that react to user interrupts (Ctrl+C, Esc) MUST support
 //     registration of a context.CancelFunc. The conduit invokes the
 //     registered func alongside the session.InterruptEvent emission, so a
-//     single cancel signal unwinds the UI, any in-flight runner.Run,
-//     and the runner pump. The application typically pairs this with a
-//     context.WithCancel whose parent ctx is also passed to tui.Start and
-//     session.Runner.Run.
+//     single cancel signal unwinds the UI, any in-flight engine
+//     execution, and the engine pump. The application typically pairs
+//     this with a context.WithCancel whose parent ctx is also passed to
+//     tui.Start and engine.Submit.
 //
 //  4. Exported Descriptor — var Descriptor = conduit.Descriptor{...}
 //
@@ -96,14 +96,17 @@
 // The following conduit packages still follow the legacy `*junk.Manager`
 // pattern that pre-dated this contract:
 //
-//   - x/conduit/http
 //   - x/conduit/slack
 //   - x/conduit/telegram
 //   - x/conduit/stdio
 //
-// Their constructors take `*junk.Manager` and manage session lifecycle
-// internally (`mgr.Create`, `mgr.Attach(threadID)`). They submit user
-// events through `stream.Submit` and cancel in-flight turns via
+// x/conduit/http was migrated to the session-based contract in the
+// engine migration; it now depends on a narrow Backend capability
+// supplied by the application rather than junk.Manager.
+//
+// The remaining legacy conduits take `*junk.Manager` and manage session
+// lifecycle internally (`mgr.Create`, `mgr.Attach(threadID)`). They submit
+// user events through `stream.Submit` and cancel in-flight turns via
 // `stream.Cancel`. Migrating each of these to the session-based contract
 // is tracked separately. Do NOT use the legacy pattern for new conduits.
 //

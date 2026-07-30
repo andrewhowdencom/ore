@@ -11,8 +11,8 @@ import (
     "github.com/andrewhowdencom/ore/x/conduit/tui"
 )
 
-// 1. Construct the session (typically via session.Runner, agent.Agent,
-//    etc. — see examples/tui-chat for the full wiring).
+// 1. Construct the session (typically via an engine.Engine — see
+//    examples/tui-chat for the full wiring).
 sess := session.New("thread-id", ledger.NewThread())
 // Seed any default metadata before constructing the TUI.
 sess.SetMetadata("thread_id", sess.ID())
@@ -23,10 +23,10 @@ if err != nil {
     // handle error
 }
 
-// 3. The application pumps Events() into a session.Runner.
+// 3. The application pumps Events() into an engine.Engine.
 go func() {
     for evt := range tuiConduit.(*tui.TUI).Events() {
-        runner.Run(ctx, sess, evt)
+        eng.Submit(ctx, sess.ID(), evt)
     }
 }()
 
@@ -38,7 +38,7 @@ The TUI is a **dumb pipe**: it does not invoke the provider, does not own
 the session lifecycle, and does not manage the turn loop. It subscribes to
 session output events and routes them into the Bubble Tea program. User
 actions (typed messages, Ctrl+C, Esc) are produced on the channel
-returned by `Events()` for the application to consume via `session.Runner.Run`.
+returned by `Events()` for the application to consume via `engine.Engine.Submit`.
 
 ## Window Title
 
@@ -60,8 +60,8 @@ a terminal multiplexer.
 Use `WithCancelFunc` to wire the TUI's keyboard interrupts (Ctrl+C, Esc) to
 the application's cancellable context. The application typically pairs this
 with a `context.WithCancel` whose parent ctx is also passed to `tui.Start`
-and `session.Runner.Run`, so a single `cancel()` unwinds the UI, any
-in-flight turn, and the runner pump:
+and `engine.Submit`, so a single `cancel()` unwinds the UI, any in-flight
+engine execution, and the engine pump:
 
 ```go
 ctx, cancel := context.WithCancel(context.Background())
@@ -73,7 +73,7 @@ go tui.Start(ctx)
 
 In addition to invoking the cancel func, the TUI emits
 `session.InterruptEvent` on its outbound channel so the application's
-runner pump can observe the interrupt before the shared context is cancelled.
+engine pump can observe the interrupt before the shared context is cancelled.
 
 ## Keyboard Shortcuts
 
@@ -126,13 +126,13 @@ session-based API moves that responsibility to the application:
 
 - **Before:** `tui.New(mgr, tui.WithThreadID("abc"))` — the TUI attached
   to thread `abc` on `Start`.
-- **After:** the application calls `runner.Get("abc")` (or `runner.Create()`)
-  to obtain a `*session.Session`, then passes it to `tui.New(sess)`.
+- **After:** the application constructs the session (via
+  `engine.Engine`'s session registry) and passes it to `tui.New(sess)`.
 
 This matches the framework-wide dumb-pipe convention: conduits do not
 own session lifecycle or manage the turn loop. The TUI is the canonical
-first adopter of the new pattern; other conduits (`x/conduit/http`,
-`x/conduit/slack`, `x/conduit/telegram`, `x/conduit/stdio`) still follow
-the legacy `*junk.Manager` pattern and are tracked separately.
+first adopter of the new pattern; other conduits (`x/conduit/slack`,
+`x/conduit/telegram`, `x/conduit/stdio`) still follow the legacy
+`*junk.Manager` pattern and are tracked separately.
 
 For full API documentation, run `go doc ./x/conduit/tui`.

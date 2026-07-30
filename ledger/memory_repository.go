@@ -219,3 +219,16 @@ func (r *MemoryRepository) Journal(threadID string) []JournalEntry {
 	copy(out, src)
 	return out
 }
+
+// ListThreadIDs returns every thread ID recorded in the repository.
+// The result is a defensive copy of the keys; callers may mutate it
+// freely. Order is unspecified.
+func (r *MemoryRepository) ListThreadIDs(_ context.Context) ([]string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	ids := make([]string, 0, len(r.journals))
+	for id := range r.journals {
+		ids = append(ids, id)
+	}
+	return ids, nil
+}

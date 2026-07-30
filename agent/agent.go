@@ -19,6 +19,12 @@ import (
 // many Run calls; differences between "kinds" of agent (ReAct,
 // SingleShot, Verified) live in the configured pattern, not in the
 // agent type.
+//
+// The internal loop.Step is constructed by New unless the caller
+// supplies one via WithStep. The provided-step path lets the engine
+// inject the session's step so that every artifact the pattern emits
+// reaches subscribers via session.Subscribe; the agent does not own
+// that step's lifecycle (Close is a no-op for a caller-provided step).
 type Agent struct {
 	name string
 
@@ -33,14 +39,24 @@ type Agent struct {
 
 	closeOnce sync.Once
 	closeErr  error
-	step      *loop.Step
+
+	// step is the agent's runtime step. It is set either by New
+	// (constructed from the configured options) or by WithStep
+	// (provided by the caller).
+	step *loop.Step
+
+	// stepOwned is true when the agent created step itself; false
+	// when the caller provided step via WithStep. The Close path
+	// uses this to avoid double-closing a caller-owned step.
+	stepOwned bool
 }
 
 // New constructs an Agent with the given name and options. The pattern
 // must be configured via WithPattern; if not, New panics.
 //
-// New builds an internal *loop.Step from the configured options. The
-// step is reused across Run calls.
+// New builds an internal *loop.Step from the configured options, unless
+// a step was provided via WithStep. The step is reused across Run
+// calls.
 func New(name string, opts ...Option) *Agent {
 	a := &Agent{name: name}
 	for _, opt := range opts {
@@ -50,17 +66,20 @@ func New(name string, opts ...Option) *Agent {
 		panic("agent.New: WithPattern is required")
 	}
 
-	stepOpts := []loop.Option{
-		loop.WithTransforms(a.transforms...),
-		loop.WithHandlers(a.handlers...),
-		loop.WithInvokeOptions(a.invokeOpts...),
-		loop.WithDefaultSpec(a.spec),
-		loop.WithTracer(a.tracer),
+	if a.step == nil {
+		stepOpts := []loop.Option{
+			loop.WithTransforms(a.transforms...),
+			loop.WithHandlers(a.handlers...),
+			loop.WithInvokeOptions(a.invokeOpts...),
+			loop.WithDefaultSpec(a.spec),
+			loop.WithTracer(a.tracer),
+		}
+		if a.state != nil {
+			stepOpts = append(stepOpts, loop.WithState(a.state))
+		}
+		a.step = loop.New(stepOpts...)
+		a.stepOwned = true
 	}
-	if a.state != nil {
-		stepOpts = append(stepOpts, loop.WithState(a.state))
-	}
-	a.step = loop.New(stepOpts...)
 
 	// Inject the agent's runtime dependencies into the pattern. Patterns
 	// implement SetRuntime to opt in; this lets the agent own the
@@ -112,9 +131,15 @@ func (a *Agent) Subscribe(kinds ...string) <-chan loop.OutputEvent {
 
 // Close stops the agent's internal step and closes all subscriber
 // channels. Safe to call multiple times.
+//
+// When the agent was constructed via WithStep, the supplied step is
+// owned by the caller; Close does not invoke Close on it. The agent's
+// own Close is still idempotent.
 func (a *Agent) Close() error {
 	a.closeOnce.Do(func() {
-		a.closeErr = a.step.Close()
+		if a.stepOwned && a.step != nil {
+			a.closeErr = a.step.Close()
+		}
 	})
 	return a.closeErr
 }

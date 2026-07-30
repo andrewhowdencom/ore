@@ -1,10 +1,16 @@
 // Package main is a reference application demonstrating the
-// x/conduit/tui conduit wired together with the session.Runner and
-// agent.Agent primitives. It shows the canonical "dumb pipe" pattern:
-// the TUI accepts an already-attached *session.Session, exposes user
-// actions on an outbound channel via Events(), and emits
-// session.UserMessageEvent / session.InterruptEvent values that the
-// application feeds into runner.Run.
+// x/conduit/tui conduit wired together with the session primitives
+// and the engine execution boundary. The TUI accepts an already-attached
+// *session.Session, exposes user actions on an outbound channel via
+// Events(), and emits session.UserMessageEvent / session.InterruptEvent
+// values that the application feeds into engine.Submit.
+//
+// The application owns the canonical inference-driven pump: it
+// registers the session in the engine's registry, constructs the
+// engine with the agent factory, and forwards every TUI event to
+// engine.Submit. The engine serializes events per session and runs
+// inference on its own goroutine; this application never invokes
+// the provider directly.
 //
 // Usage:
 //
@@ -26,7 +32,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/andrewhowdencom/ore/agent"
 	"github.com/andrewhowdencom/ore/cognitive"
+	"github.com/andrewhowdencom/ore/engine"
 	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/x/conduit/tui"
@@ -48,8 +56,8 @@ func run() error {
 	defer cancel()
 
 	// 1. Build the provider from the environment. The agent factory
-	//    below uses this provider; the runner never touches it
-	//    directly — the agent does.
+	//    below uses this provider; the engine itself never touches
+	//    it directly.
 	apiKey := os.Getenv("ORE_API_KEY")
 	if apiKey == "" {
 		return fmt.Errorf("ORE_API_KEY not set")
@@ -71,17 +79,11 @@ func run() error {
 	// 2. Build a session factory. DefaultFactory derives a per-turn
 	//    models.Spec from session metadata; absent metadata, the
 	//    agent's default Spec (set below via WithSpec) is used.
-	factory := session.NewDefaultFactory(prov, &cognitive.ReAct{}, nil)
+	factory := agent.NewDefaultFactory(prov, &cognitive.ReAct{}, nil)
 
-	// 3. Build the runner. It owns the AgentFactory and drives
-	//    inference against sessions. Run is synchronous — events are
-	//    processed in the caller's goroutine.
-	runner := session.NewRunner(session.WithFactory(factory))
-
-	// 4. Construct (or attach to) a session. The thread ID may be
+	// 3. Construct (or attach to) a session. The thread ID may be
 	//    supplied via ORE_THREAD_ID to resume; otherwise we generate
-	//    a new one. The session is a pure-data primitive; the runner
-	//    does not know it exists until we Register it.
+	//    a new one.
 	threadID := os.Getenv("ORE_THREAD_ID")
 	if threadID == "" {
 		// Stdlib-only thread id: time-based nanos with a "tui-chat-"
@@ -89,10 +91,9 @@ func run() error {
 		threadID = "tui-chat-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	}
 	sess := session.New(threadID, ledger.NewThread())
-	runner.Register(sess)
 	defer sess.Close()
 
-	// 5. Seed default metadata on the session before constructing the
+	// 4. Seed default metadata on the session before constructing the
 	//    TUI. The TUI subscribes to live events only, so any
 	//    metadata seeded here is what the status bar shows on the
 	//    first frame.
@@ -102,11 +103,28 @@ func run() error {
 		sess.SetMetadata("cwd", cwd)
 	}
 
+	// 5. Register the session in a registry, then construct the
+	//    engine. The engine owns per-session execution; the
+	//    application only feeds it events.
+	registry := session.NewInMemoryRegistry()
+	if err := registry.Register(sess); err != nil {
+		return fmt.Errorf("register session: %w", err)
+	}
+	eng, err := engine.New(registry, factory)
+	if err != nil {
+		return fmt.Errorf("create engine: %w", err)
+	}
+	defer func() {
+		if err := eng.Close(context.Background()); err != nil {
+			slog.Warn("engine close", "err", err)
+		}
+	}()
+
 	// 6. Construct the TUI conduit. Pass the cancel func so the TUI
 	//    can unwind the shared context when the user presses Ctrl+C
 	//    or Esc. The same cancel func is held by the application
 	//    for SIGINT, so a single signal unwinds the UI, any
-	//    in-flight runner.Run, and the runner pump.
+	//    in-flight engine.Submit, and the pump goroutine.
 	tuiC, err := tui.New(sess,
 		tui.WithName("ore"),
 		tui.WithCancelFunc(cancel),
@@ -130,17 +148,17 @@ func run() error {
 		cancel()
 	}()
 
-	// 8. Run the runner pump. The TUI emits session.Event values on
-	//    its Events() channel; we submit each into runner.Run against
-	//    the shared context so a single cancel unwinds both the UI
-	//    loop and any in-flight inference.
+	// 8. Run the engine pump. The TUI emits session.Event values on
+	//    its Events() channel; we submit each into engine.Submit
+	//    against the shared context so a single cancel unwinds both
+	//    the UI loop and any in-flight engine execution.
 	events := tuiC.(*tui.TUI).Events()
 	pumpDone := make(chan struct{})
 	go func() {
 		defer close(pumpDone)
 		for evt := range events {
-			if err := runner.Run(ctx, sess, evt); err != nil {
-				slog.Error("runner.Run failed", "err", err)
+			if err := eng.Submit(ctx, sess.ID(), evt); err != nil {
+				slog.Error("engine.Submit failed", "err", err)
 				cancel()
 				return
 			}
@@ -151,8 +169,8 @@ func run() error {
 	//    SIGINT handler cancels ctx, or a fatal error occurs.
 	startErr := tuiC.Start(ctx)
 
-	// 10. Cancel to unblock the runner pump if it is waiting on
-	//     runner.Run, then wait for it to drain.
+	// 10. Cancel to unblock the pump if it is waiting on
+	//     engine.Submit, then wait for it to drain.
 	cancel()
 	<-pumpDone
 
