@@ -89,12 +89,15 @@ type Spec struct {
 
 	// CacheControl opts the request into provider-side prompt
 	// caching on providers that support it. nil means "no cache
-	// control"; a non-nil value with an empty TTL uses the
+	// control"; a non-nil value with a zero TTL uses the
 	// provider's default TTL (Anthropic: 5m). Currently honored
 	// by the Anthropic wire (x/wire/anthropic), which stamps
 	// cache_control:{type:"ephemeral",ttl:?} blocks at the system
 	// message, the last tool definition, and the last
 	// user/assistant text content part. The OpenAI wire and
-	// other adapters ignore this field.
+	// other adapters ignore this field. The TTL is a
+	// time.Duration; use the named constants
+	// (models.CacheControlTTL5m, models.CacheControlTTL1h) for the
+	// values the Anthropic API accepts.
 	CacheControl *CacheControl
 }

@@ -2,6 +2,7 @@ package models_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/stretchr/testify/assert"
@@ -69,40 +70,17 @@ func TestSpec_PointerFieldIdentity(t *testing.T) {
 	assert.Same(t, cc, s.CacheControl)
 }
 
-func TestCacheControlTTL_Valid(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		ttl  models.CacheControlTTL
-		want bool
-	}{
-		{models.CacheControlTTL5m, true},
-		{models.CacheControlTTL1h, true},
-		{models.CacheControlTTL(""), false},
-		{models.CacheControlTTL("5M"), false}, // case-sensitive
-		{models.CacheControlTTL("1H"), false},
-		{models.CacheControlTTL("garbage"), false},
-		{models.CacheControlTTL("5min"), false},
-	}
-	for _, tc := range cases {
-		assert.Equal(t, tc.want, tc.ttl.Valid(), "%q.Valid()", tc.ttl)
-	}
-}
-
+// TestCacheControlTTL_Constants asserts the canonical TTL values
+// are the time.Duration values Anthropic accepts. The constants
+// are untyped at declaration so callers can use them in any
+// time.Duration context.
 func TestCacheControlTTL_Constants(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
-		ttl  models.CacheControlTTL
-		want string
-	}{
-		{models.CacheControlTTL5m, "5m"},
-		{models.CacheControlTTL1h, "1h"},
-	}
-	for _, tc := range cases {
-		assert.Equal(t, tc.want, string(tc.ttl), "constant string value")
-		assert.True(t, tc.ttl.Valid(), "%q should be valid", tc.ttl)
-	}
+	assert.Equal(t, 5*time.Minute, models.CacheControlTTL5m,
+		"CacheControlTTL5m must be exactly 5 minutes")
+	assert.Equal(t, time.Hour, models.CacheControlTTL1h,
+		"CacheControlTTL1h must be exactly 1 hour")
 }
 
 func TestThinkingLevel_Valid(t *testing.T) {
