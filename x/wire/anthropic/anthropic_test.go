@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/ledger"
@@ -2288,9 +2289,10 @@ func TestInvoke_SpecCacheControl_StampsAllThreeLocations(t *testing.T) {
 }
 
 // TestInvoke_SpecCacheControl_EmptyTTL_OmitsTTLField verifies that
-// a non-nil spec.CacheControl with an empty TTL produces
+// a non-nil spec.CacheControl with a zero TTL produces
 // cache_control:{type:"ephemeral"} on the wire (no ttl field). The
-// SDK's `omitzero` tag drops the empty TTL.
+// SDK's `omitzero` tag drops the empty TTL when the translator
+// returns the zero case's empty string.
 func TestInvoke_SpecCacheControl_EmptyTTL_OmitsTTLField(t *testing.T) {
 	t.Parallel()
 
@@ -2306,7 +2308,7 @@ func TestInvoke_SpecCacheControl_EmptyTTL_OmitsTTLField(t *testing.T) {
 
 	spec := models.Spec{
 		Name:         "claude-3-7-sonnet-latest",
-		CacheControl: &models.CacheControl{}, // TTL is ""
+		CacheControl: &models.CacheControl{}, // TTL is 0 (use provider default)
 	}
 
 	mem := ledger.NewThread()
@@ -2327,6 +2329,57 @@ func TestInvoke_SpecCacheControl_EmptyTTL_OmitsTTLField(t *testing.T) {
 	assert.Equal(t, "ephemeral", cc["type"])
 	_, hasTTL := cc["ttl"]
 	assert.False(t, hasTTL, "empty TTL must be omitted from the wire")
+}
+
+// TestInvoke_SpecCacheControl_NonCanonicalTTLForwardedVerbatim
+// verifies that a non-canonical time.Duration TTL (i.e., one not
+// matching the framework's TTL5m / TTL1h constants) is forwarded
+// verbatim via time.Duration.String() at the wire layer. The
+// Anthropic API will reject the value at request time; the wire
+// layer does not validate, because the user explicitly opted
+// out of the framework's canonical vocabulary by passing a
+// different duration.
+func TestInvoke_SpecCacheControl_NonCanonicalTTLForwardedVerbatim(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingTransport{
+		contentType: "text/event-stream",
+		response:    minimalSSEBody(),
+	}
+
+	p, err := New(WithAPIKey("test-key"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	// 30 minutes: not in the framework's canonical vocabulary
+	// (5m, 1h). The wire forwards it as time.Duration.String()
+	// which produces "30m0s".
+	spec := models.Spec{
+		Name:         "claude-3-7-sonnet-latest",
+		CacheControl: &models.CacheControl{TTL: 30 * time.Minute},
+	}
+
+	mem := ledger.NewThread()
+	mem.Append(ledger.RoleSystem, artifact.Text{Content: "be terse."})
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
+
+	ch := make(chan artifact.Artifact, 16)
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
+	drainArtifacts(ch)
+
+	body := capturedBody(t, transport)
+
+	sys := sysBlocks(body)
+	require.Len(t, sys, 1)
+	cc, ok := sys[0]["cache_control"].(map[string]any)
+	require.True(t, ok, "expected cache_control object")
+	assert.Equal(t, "ephemeral", cc["type"])
+	// Non-canonical breakdown: 30 minutes' String() form is
+	// "30m0s", which Anthropic's TTL vocabulary does not include.
+	// The user is on the hook for picking valid values; the wire
+	// forwards verbatim.
+	assert.Equal(t, "30m0s", cc["ttl"], "non-canonical TTL forwards as time.Duration.String()")
 }
 
 // TestInvoke_SpecCacheControl_NoSystemNoTools verifies that

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"strings"
+	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/loop"
@@ -190,20 +191,28 @@ func translateThinkingLevel(l models.ThinkingLevel, maxTokens int64) (int64, boo
 	return budget, true
 }
 
-// translateCacheControlTTL maps a models.CacheControlTTL to the SDK's
-// CacheControlEphemeralTTL. Empty TTL stays empty (the SDK's `omitzero`
-// tag drops an empty TTL on the wire, and the upstream API treats the
-// absence as its default 5m). Unknown values are forwarded verbatim so
-// the upstream API surfaces a validation error at request time — the
-// right place to fail because the user-facing knob is misconfigured.
-func translateCacheControlTTL(t models.CacheControlTTL) anthropic.CacheControlEphemeralTTL {
-	switch t {
+// translateCacheControlTTL maps a models time.Duration TTL to the
+// SDK's CacheControlEphemeralTTL. The named framework constants
+// (models.CacheControlTTL5m, models.CacheControlTTL1h) are recognized;
+// any other duration is forwarded verbatim as its time.Duration.String()
+// text (e.g. "30m0s"), which produces a request the Anthropic API
+// will reject at request time — the right place to fail loudly
+// because the user-facing knob is misconfigured.
+//
+// Zero duration is reserved for "use the provider default" (Anthropic:
+// 5m). The empty string returned for the zero case lets the SDK's
+// `omitzero` tag drop the ttl field from the wire, which the API
+// treats as default TTL.
+func translateCacheControlTTL(d time.Duration) anthropic.CacheControlEphemeralTTL {
+	switch d {
+	case 0:
+		return ""
 	case models.CacheControlTTL5m:
 		return anthropic.CacheControlEphemeralTTLTTL5m
 	case models.CacheControlTTL1h:
 		return anthropic.CacheControlEphemeralTTLTTL1h
 	}
-	return anthropic.CacheControlEphemeralTTL(t)
+	return anthropic.CacheControlEphemeralTTL(d.String())
 }
 
 // applySpecCacheControl mutates the system, message, and tool slices
