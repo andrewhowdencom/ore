@@ -190,6 +190,102 @@ func translateThinkingLevel(l models.ThinkingLevel, maxTokens int64) (int64, boo
 	return budget, true
 }
 
+// translateCacheControlTTL maps a models.CacheControlTTL to the SDK's
+// CacheControlEphemeralTTL. Empty TTL stays empty (the SDK's `omitzero`
+// tag drops an empty TTL on the wire, and the upstream API treats the
+// absence as its default 5m). Unknown values are forwarded verbatim so
+// the upstream API surfaces a validation error at request time — the
+// right place to fail because the user-facing knob is misconfigured.
+func translateCacheControlTTL(t models.CacheControlTTL) anthropic.CacheControlEphemeralTTL {
+	switch t {
+	case models.CacheControlTTL5m:
+		return anthropic.CacheControlEphemeralTTLTTL5m
+	case models.CacheControlTTL1h:
+		return anthropic.CacheControlEphemeralTTLTTL1h
+	}
+	return anthropic.CacheControlEphemeralTTL(t)
+}
+
+// applySpecCacheControl mutates the system, message, and tool slices
+// to attach Anthropic-style cache_control:{type:ephemeral,ttl:?} blocks
+// at the three locations the OpenAI wire's applyCacheControl targets.
+// The caller is responsible for gating on spec.CacheControl != nil.
+//
+// Missing targets are silently skipped: no system blocks, no tools
+// present, or no text-bearing user/assistant message discovered. The
+// mutation is conservative: it never removes or replaces existing
+// content; it only sets CacheControl on the targeted blocks.
+//
+// The three locations are:
+//
+//   - The system message: every TextBlockParam in params.System is
+//     stamped. There is conventionally one; the OpenAI wire documents
+//     the same convention.
+//   - The last user/assistant message's last text content block.
+//     Walking back from the end, the first message with role
+//     user or assistant AND a non-empty text block is the target;
+//     the stamp lands on its last text block. Tool-only assistant
+//     messages and tool-result-only user messages are skipped, so
+//     a tool-call-then-tool-result exchange does not displace the
+//     stamp from the next user text turn.
+//   - The last tool definition. The ToolUnionParam's OfTool is
+//     checked for nil first; tool-search variants use a different
+//     variant and are skipped silently.
+func applySpecCacheControl(
+	cc models.CacheControl,
+	system []anthropic.TextBlockParam,
+	messages []anthropic.MessageParam,
+	tools []anthropic.ToolUnionParam,
+) {
+	param := anthropic.NewCacheControlEphemeralParam()
+	if ttl := translateCacheControlTTL(cc.TTL); ttl != "" {
+		param.TTL = ttl
+	}
+
+	// System blocks. The Anthropic Messages API accepts a list of
+	// content blocks here; each is a candidate breakpoint. The
+	// OpenAI wire's "the system message" rule maps to "every
+	// system block" because the SDK models system as a list.
+	for i := range system {
+		system[i].CacheControl = param
+	}
+
+	// Last user/assistant text content block. Walk back from the
+	// end; the first match wins. The stamp lands on the LAST
+	// text block in the matched message, mirroring the OpenAI
+	// wire's "last user/assistant text content part" rule.
+stamped:
+	for i := len(messages) - 1; i >= 0; i-- {
+		msg := messages[i]
+		if msg.Role != anthropic.MessageParamRoleUser &&
+			msg.Role != anthropic.MessageParamRoleAssistant {
+			continue
+		}
+		for j := len(msg.Content) - 1; j >= 0; j-- {
+			block := msg.Content[j]
+			if block.OfText == nil || block.OfText.Text == "" {
+				continue
+			}
+			block.OfText.CacheControl = param
+			msg.Content[j] = block
+			messages[i] = msg
+			break stamped
+		}
+	}
+
+	// Last tool. ToolUnionParam is a union; only the OfTool
+	// variant carries the cache_control field. Tool-search and
+	// other variants use OfToolSearchToolBm25/OfToolSearchToolRegex
+	// and have no slot to stamp, so we skip them silently.
+	if n := len(tools); n > 0 {
+		last := tools[n-1]
+		if last.OfTool != nil {
+			last.OfTool.CacheControl = param
+			tools[n-1] = last
+		}
+	}
+}
+
 // invokeOptions is the resolved per-invocation configuration collected by
 // Invoke. Each field has its own default so a missing option does not
 // silently change behavior.
@@ -506,6 +602,18 @@ func (p *Provider) Invoke(ctx context.Context, s ledger.State, spec models.Spec,
 		if budget, ok := translateThinkingLevel(inv.thinkingLevel, inv.maxTokens); ok {
 			params.Thinking = anthropic.ThinkingConfigParamOfEnabled(budget)
 		}
+	}
+
+	// Prompt caching: when spec.CacheControl is non-nil, stamp
+	// Anthropic-style cache_control blocks at the three locations
+	// (system message, last tool definition, last user/assistant
+	// text content part). Missing targets are skipped silently;
+	// the call is a no-op when no system / tools / text-bearing
+	// turn is present. The TTL travels verbatim via
+	// translateCacheControlTTL; an empty TTL drops the field on
+	// the wire and the upstream uses its default 5m.
+	if spec.CacheControl != nil {
+		applySpecCacheControl(*spec.CacheControl, params.System, params.Messages, params.Tools)
 	}
 
 	stream := p.client.Messages.NewStreaming(ctx, params)

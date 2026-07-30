@@ -27,6 +27,7 @@ func TestSpec_ZeroValue(t *testing.T) {
 	assert.Nil(t, s.StopSequences, "StopSequences is nil")
 	assert.Nil(t, s.FrequencyPenalty, "FrequencyPenalty is nil")
 	assert.Nil(t, s.PresencePenalty, "PresencePenalty is nil")
+	assert.Nil(t, s.CacheControl, "CacheControl is nil")
 }
 
 func TestSpec_PointerFieldIdentity(t *testing.T) {
@@ -40,6 +41,7 @@ func TestSpec_PointerFieldIdentity(t *testing.T) {
 	seed := int64(42)
 	fp := 0.1
 	pp := 0.2
+	cc := &models.CacheControl{TTL: models.CacheControlTTL5m}
 
 	s := models.Spec{
 		Name:             "gpt-4o",
@@ -53,6 +55,7 @@ func TestSpec_PointerFieldIdentity(t *testing.T) {
 		FrequencyPenalty: &fp,
 		PresencePenalty:  &pp,
 		StopSequences:    []string{"\n\nUser:"},
+		CacheControl:     cc,
 	}
 
 	// Each pointer should be the same identity that was
@@ -63,6 +66,43 @@ func TestSpec_PointerFieldIdentity(t *testing.T) {
 	assert.Same(t, &seed, s.Seed)
 	assert.Same(t, &fp, s.FrequencyPenalty)
 	assert.Same(t, &pp, s.PresencePenalty)
+	assert.Same(t, cc, s.CacheControl)
+}
+
+func TestCacheControlTTL_Valid(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		ttl  models.CacheControlTTL
+		want bool
+	}{
+		{models.CacheControlTTL5m, true},
+		{models.CacheControlTTL1h, true},
+		{models.CacheControlTTL(""), false},
+		{models.CacheControlTTL("5M"), false}, // case-sensitive
+		{models.CacheControlTTL("1H"), false},
+		{models.CacheControlTTL("garbage"), false},
+		{models.CacheControlTTL("5min"), false},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, tc.ttl.Valid(), "%q.Valid()", tc.ttl)
+	}
+}
+
+func TestCacheControlTTL_Constants(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		ttl  models.CacheControlTTL
+		want string
+	}{
+		{models.CacheControlTTL5m, "5m"},
+		{models.CacheControlTTL1h, "1h"},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, string(tc.ttl), "constant string value")
+		assert.True(t, tc.ttl.Valid(), "%q should be valid", tc.ttl)
+	}
 }
 
 func TestThinkingLevel_Valid(t *testing.T) {

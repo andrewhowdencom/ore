@@ -14,6 +14,8 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/ledger"
+	"github.com/andrewhowdencom/ore/provider"
+	"github.com/andrewhowdencom/ore/tool"
 	"github.com/andrewhowdencom/ore/x/provider/retry"
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/stretchr/testify/assert"
@@ -2153,4 +2155,384 @@ func attrValue(attrs []attribute.KeyValue, key string) string {
 		}
 	}
 	return ""
+}
+
+// capturedBody returns the JSON-decoded Anthropic Messages request
+// body that Invoke placed on the wire. Helper for the cache-control
+// tests; the SDK does not expose a typed accessor for the
+// streaming request body, so we read it through the
+// recordingTransport's body capture.
+func capturedBody(t *testing.T, transport *recordingTransport) map[string]any {
+	t.Helper()
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(transport.Body(), &body))
+	return body
+}
+
+// minimalSSEBody is the smallest SSE stream that exercises the
+// Invoke read path (StartEvent → MessageDelta → MessageStop).
+// Used by the cache_control tests, which don't care about the
+// streamed artifacts — just the request body that Invoke
+// produces before opening the stream.
+func minimalSSEBody() string {
+	return sseEvent("message_start", `{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"model":"claude-3-7-sonnet-latest","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}`) +
+		sseEvent("message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":1,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}`) +
+		sseEvent("message_stop", `{"type":"message_stop"}`)
+}
+
+// TestInvoke_SpecCacheControl_Nil_NoStamps verifies that when
+// spec.CacheControl is nil (the zero value) the request body is
+// byte-equivalent to the pre-change shape: no cache_control keys
+// anywhere in the system, messages, or tools.
+func TestInvoke_SpecCacheControl_Nil_NoStamps(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingTransport{
+		contentType: "text/event-stream",
+		response:    minimalSSEBody(),
+	}
+
+	p, err := New(WithAPIKey("test-key"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	spec := models.Spec{Name: "claude-3-7-sonnet-latest"}
+
+	mem := ledger.NewThread()
+	mem.Append(ledger.RoleSystem, artifact.Text{Content: "be terse."})
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
+	mem.Append(ledger.RoleAssistant, artifact.Text{Content: "first answer"})
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "follow up"})
+
+	ch := make(chan artifact.Artifact, 16)
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
+	drainArtifacts(ch)
+
+	body := capturedBody(t, transport)
+
+	// No cache_control key anywhere in the request.
+	for _, sysBlock := range sysBlocks(body) {
+		assertCacheControlKeyAbsent(t, sysBlock)
+	}
+	for _, msg := range messages(body) {
+		for _, block := range contentBlocks(msg) {
+			assertCacheControlKeyAbsent(t, block)
+		}
+	}
+	for _, tool := range bodyTools(body) {
+		assertCacheControlKeyAbsent(t, tool)
+	}
+}
+
+// TestInvoke_SpecCacheControl_StampsAllThreeLocations verifies that
+// a non-nil spec.CacheControl with TTL "5m" produces cache_control
+// blocks at the system message, the last user/assistant text
+// content part, and the last tool definition. Two tools are
+// supplied so the test can assert only the LAST tool is stamped.
+func TestInvoke_SpecCacheControl_StampsAllThreeLocations(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingTransport{
+		contentType: "text/event-stream",
+		response:    minimalSSEBody(),
+	}
+
+	p, err := New(WithAPIKey("test-key"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	spec := models.Spec{
+		Name:          "claude-3-7-sonnet-latest",
+		CacheControl:  &models.CacheControl{TTL: models.CacheControlTTL5m},
+	}
+
+	tools := []tool.Tool{
+		{Name: "first", Schema: map[string]any{"type": "object"}},
+		{Name: "second", Schema: map[string]any{"type": "object"}},
+	}
+
+	mem := ledger.NewThread()
+	mem.Append(ledger.RoleSystem, artifact.Text{Content: "be terse."})
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "first question"})
+	mem.Append(ledger.RoleAssistant, artifact.Text{Content: "first answer"})
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "follow up"})
+
+	ch := make(chan artifact.Artifact, 16)
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch, provider.WithTools(tools)))
+	drainArtifacts(ch)
+
+	body := capturedBody(t, transport)
+
+	// System: stamps the only TextBlockParam.
+	sys := sysBlocks(body)
+	require.Len(t, sys, 1, "expected one system block")
+	assertCacheControlEphemeral(t, sys[0], "5m")
+
+	// Last user message: the follow-up turn. Its only text block
+	// carries the stamp.
+	msgs := messages(body)
+	require.NotEmpty(t, msgs)
+	lastMsg := msgs[len(msgs)-1]
+	require.Equal(t, "user", lastMsg["role"])
+	blocks := contentBlocks(lastMsg)
+	require.Len(t, blocks, 1, "expected one content block on the last user message")
+	assertCacheControlEphemeral(t, blocks[0], "5m")
+
+	// Tools: only the LAST tool is stamped.
+	ts := bodyTools(body)
+	require.Len(t, ts, 2, "expected two tools")
+	assertCacheControlKeyAbsent(t, ts[0])
+	assertCacheControlEphemeral(t, ts[1], "5m")
+}
+
+// TestInvoke_SpecCacheControl_EmptyTTL_OmitsTTLField verifies that
+// a non-nil spec.CacheControl with an empty TTL produces
+// cache_control:{type:"ephemeral"} on the wire (no ttl field). The
+// SDK's `omitzero` tag drops the empty TTL.
+func TestInvoke_SpecCacheControl_EmptyTTL_OmitsTTLField(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingTransport{
+		contentType: "text/event-stream",
+		response:    minimalSSEBody(),
+	}
+
+	p, err := New(WithAPIKey("test-key"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	spec := models.Spec{
+		Name:         "claude-3-7-sonnet-latest",
+		CacheControl: &models.CacheControl{}, // TTL is ""
+	}
+
+	mem := ledger.NewThread()
+	mem.Append(ledger.RoleSystem, artifact.Text{Content: "be terse."})
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
+
+	ch := make(chan artifact.Artifact, 16)
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
+	drainArtifacts(ch)
+
+	body := capturedBody(t, transport)
+
+	// System block: cache_control present, NO ttl field.
+	sys := sysBlocks(body)
+	require.Len(t, sys, 1)
+	cc, ok := sys[0]["cache_control"].(map[string]any)
+	require.True(t, ok, "expected cache_control object")
+	assert.Equal(t, "ephemeral", cc["type"])
+	_, hasTTL := cc["ttl"]
+	assert.False(t, hasTTL, "empty TTL must be omitted from the wire")
+}
+
+// TestInvoke_SpecCacheControl_NoSystemNoTools verifies that
+// applySpecCacheControl is a no-op when there is no system, no
+// tools, and no text-bearing user/assistant message to stamp. The
+// request body must not contain any cache_control keys.
+func TestInvoke_SpecCacheControl_NoSystemNoTools(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingTransport{
+		contentType: "text/event-stream",
+		response:    minimalSSEBody(),
+	}
+
+	p, err := New(WithAPIKey("test-key"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	spec := models.Spec{
+		Name:         "claude-3-7-sonnet-latest",
+		CacheControl: &models.CacheControl{TTL: models.CacheControlTTL5m},
+	}
+
+	// No system turn, no tools. A single user turn gives the
+	// message walker a text-bearing target.
+	mem := ledger.NewThread()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hi"})
+
+	ch := make(chan artifact.Artifact, 16)
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
+	drainArtifacts(ch)
+
+	body := capturedBody(t, transport)
+
+	// No system blocks.
+	assert.Empty(t, sysBlocks(body), "no system turns means no system blocks")
+	// No tools.
+	assert.Empty(t, bodyTools(body), "no tools supplied means no tool blocks")
+	// The single user message still gets a stamp.
+	msgs := messages(body)
+	require.Len(t, msgs, 1)
+	blocks := contentBlocks(msgs[0])
+	require.Len(t, blocks, 1)
+	assertCacheControlEphemeral(t, blocks[0], "5m")
+}
+
+// TestInvoke_SpecCacheControl_ToolOnlyAssistantSkipped verifies that
+// a tool-call-only assistant message is skipped by the message
+// walker. The stamp lands on the next user text turn, not on the
+// tool-only assistant or the tool-result user turn.
+func TestInvoke_SpecCacheControl_ToolOnlyAssistantSkipped(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingTransport{
+		contentType: "text/event-stream",
+		response:    minimalSSEBody(),
+	}
+
+	p, err := New(WithAPIKey("test-key"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	spec := models.Spec{
+		Name:         "claude-3-7-sonnet-latest",
+		CacheControl: &models.CacheControl{TTL: models.CacheControlTTL5m},
+	}
+
+	mem := ledger.NewThread()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "first question"})
+	// Tool-call-only assistant turn: no text artifacts.
+	mem.Append(ledger.RoleAssistant,
+		artifact.ToolCall{ID: "call_1", Name: "lookup", Arguments: `{"q":"foo"}`},
+	)
+	// Tool-result user turn: no text content.
+	mem.Append(ledger.RoleTool, artifact.ToolResult{
+		ToolCallID: "call_1",
+		Content:    `{"result":"bar"}`,
+	})
+	// Final user text turn — the stamp should land here.
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "follow up"})
+
+	ch := make(chan artifact.Artifact, 16)
+	require.NoError(t, p.Invoke(t.Context(), mem, spec, ch))
+	drainArtifacts(ch)
+
+	body := capturedBody(t, transport)
+
+	msgs := messages(body)
+	require.NotEmpty(t, msgs)
+
+	// Walk every message; only the LAST user text turn should
+	// carry a cache_control block on its content.
+	for i, msg := range msgs {
+		role := string(msg["role"].(string))
+		for _, block := range contentBlocks(msg) {
+			_, hasCC := block["cache_control"]
+			if i == len(msgs)-1 && role == "user" {
+				assert.True(t, hasCC, "last user message must carry cache_control")
+			} else {
+				assert.False(t, hasCC, "non-target message %d (%s) must not carry cache_control", i, role)
+			}
+		}
+	}
+}
+
+// -----------------------------------------------------------------------
+// Cache-control test helpers: walk the captured JSON body and
+// assert on cache_control blocks. Kept private to the test file
+// because they model the SDK's wire shape, not the SDK's typed
+// surface.
+// -----------------------------------------------------------------------
+
+// sysBlocks returns the array of system blocks (the Anthropic
+// Messages API emits a flat `system` array of TextBlockParam).
+// Returns an empty slice when the request has no system.
+func sysBlocks(body map[string]any) []map[string]any {
+	v, ok := body["system"].([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(v))
+	for _, raw := range v {
+		if m, ok := raw.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// messages returns the array of messages from the request body. Each
+// element is a map[string]any with a "content" array.
+func messages(body map[string]any) []map[string]any {
+	v, ok := body["messages"].([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(v))
+	for _, raw := range v {
+		if m, ok := raw.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// contentBlocks extracts the content blocks from a message map.
+// The Anthropic Messages API model serializes content as either a
+// string (text-only) or an array of content-part maps. The wire
+// adapter always emits a content-part array when cache_control is
+// set, so the helper expects the array shape.
+func contentBlocks(msg map[string]any) []map[string]any {
+	v, ok := msg["content"].([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(v))
+	for _, raw := range v {
+		if m, ok := raw.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// bodyTools returns the array of tool definitions from the request body.
+// Each element is a map with the cache_control field on the tool
+// itself (the Anthropic SDK wraps the tool in a "type: function"
+// block; the cache_control key sits on the tool's outer map).
+func bodyTools(body map[string]any) []map[string]any {
+	v, ok := body["tools"].([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(v))
+	for _, raw := range v {
+		if m, ok := raw.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// assertCacheControlKeyAbsent asserts that the given block map
+// does not contain a cache_control key. Used by the "no stamps
+// when nil" tests.
+func assertCacheControlKeyAbsent(t *testing.T, m map[string]any) {
+	t.Helper()
+	_, has := m["cache_control"]
+	assert.False(t, has, "block must not contain cache_control: %v", m)
+}
+
+// assertCacheControlEphemeral asserts the block carries a
+// cache_control:{type:"ephemeral",ttl:ttl} (or without ttl when
+// expectedTTL is ""). Used by the "stamps all three locations" and
+// "empty TTL omits field" tests.
+func assertCacheControlEphemeral(t *testing.T, m map[string]any, expectedTTL string) {
+	t.Helper()
+	cc, ok := m["cache_control"].(map[string]any)
+	require.True(t, ok, "expected cache_control object in %v", m)
+	assert.Equal(t, "ephemeral", cc["type"], "cache_control.type")
+	if expectedTTL == "" {
+		_, hasTTL := cc["ttl"]
+		assert.False(t, hasTTL, "expected no ttl field; got %v", cc)
+	} else {
+		assert.Equal(t, expectedTTL, cc["ttl"], "cache_control.ttl")
+	}
 }
