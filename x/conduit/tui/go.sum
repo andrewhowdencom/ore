@@ -14,8 +14,6 @@ github.com/alecthomas/repr v0.5.1 h1:E3G4t2QbHTSNpPKBgMTln5KLkZHLOcU7r37J4pXBuIg
 github.com/alecthomas/repr v0.5.1/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
 github.com/andrewhowdencom/ore/x/compaction v0.5.1 h1:QKzSjcSLvTG4ozOz8tA6IXvbcfhnTrpOogo3Mc6F3iE=
 github.com/andrewhowdencom/ore/x/compaction v0.5.1/go.mod h1:/0TZUx+uj/JNoADAAtow5L8exioI7qq553EfeQAwUNQ=
-github.com/andrewhowdencom/ore/x/conduit v0.1.5 h1:92q2VFr+2Fb9GoeALh0YOIspy/jPZFLjl9CLyRsVo8I=
-github.com/andrewhowdencom/ore/x/conduit v0.1.5/go.mod h1:83aDeFABkaP1x98A9jxkqIr3zN4XsiprPnpAxHGpPFw=
 github.com/andrewhowdencom/ore/x/llmbytes v0.1.2 h1:Iextd0XUHRZOvhVWawJY2MMQj0o0mjniqTJbgvjAMBc=
 github.com/andrewhowdencom/ore/x/llmbytes v0.1.2/go.mod h1:JxGVBAMfkWklMOC4kUCF5gs1/epk4g1WMIYtl02ZwCY=
 github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
