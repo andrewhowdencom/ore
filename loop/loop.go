@@ -369,9 +369,6 @@ func WithSpanAttributes(ctx context.Context, attrs ...attribute.KeyValue) contex
 // attached. The returned slice is the same one stored on the context;
 // callers must not mutate it.
 func SpanAttributesFrom(ctx context.Context) []attribute.KeyValue {
-	if ctx == nil {
-		return nil
-	}
 	attrs, _ := ctx.Value(spanAttributesKey{}).([]attribute.KeyValue)
 	return attrs
 }

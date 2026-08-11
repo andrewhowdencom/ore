@@ -2019,11 +2019,6 @@ func TestWithSpanAttributes_EmptyNoop(t *testing.T) {
 	assert.Nil(t, SpanAttributesFrom(out), "WithSpanAttributes(ctx) with no args must not allocate")
 }
 
-func TestSpanAttributesFrom_NilSafe(t *testing.T) {
-	// Explicit nil ctx — returns nil rather than panicking.
-	assert.Nil(t, SpanAttributesFrom(nil))
-}
-
 func TestStartSpan_AppliesSpanAttributes(t *testing.T) {
 	tracer := &recordingTracer{}
 	mem := ledger.NewThread()
