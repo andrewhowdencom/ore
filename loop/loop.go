@@ -341,6 +341,38 @@ func ThreadIDFrom(ctx context.Context) (string, bool) {
 	return id, ok
 }
 
+// spanAttributesKey is the typed context key for an ordered list of
+// OpenTelemetry attribute key-values. Multiple calls to
+// WithSpanAttributes append; the consuming span reads the combined
+// slice via SpanAttributesFrom.
+type spanAttributesKey struct{}
+
+// WithSpanAttributes attaches OpenTelemetry attribute key-values to the
+// context. Subsequent calls append to the existing list, so callers
+// (e.g. an engine attaching session properties, a context-wrapper
+// attaching correlation ids) can compose without overwriting. The
+// returned context is consumed by Step.startSpan, which calls
+// SetAttributes on the loop.turn span for every entry found.
+func WithSpanAttributes(ctx context.Context, attrs ...attribute.KeyValue) context.Context {
+	if len(attrs) == 0 {
+		return ctx
+	}
+	existing, _ := ctx.Value(spanAttributesKey{}).([]attribute.KeyValue)
+	combined := make([]attribute.KeyValue, 0, len(existing)+len(attrs))
+	combined = append(combined, existing...)
+	combined = append(combined, attrs...)
+	return context.WithValue(ctx, spanAttributesKey{}, combined)
+}
+
+// SpanAttributesFrom extracts the attributes attached via
+// WithSpanAttributes, if any. Returns nil when no attributes have been
+// attached. The returned slice is the same one stored on the context;
+// callers must not mutate it.
+func SpanAttributesFrom(ctx context.Context) []attribute.KeyValue {
+	attrs, _ := ctx.Value(spanAttributesKey{}).([]attribute.KeyValue)
+	return attrs
+}
+
 // OnEmit is a synchronous callback invoked by Emit before the event is
 // forwarded to the async FanOut. OnEmit callbacks are blocking, ordered,
 // and zero-drop. They replace previous direct ledger.Append calls,
@@ -492,9 +524,10 @@ func WithTracer(tracer trace.Tracer) Option {
 }
 
 // startSpan creates a "loop.turn" internal span when a tracer is configured.
-// It reads thread_id from the context and adds it as a span attribute.
-// Returns the span-attached context and a function that must be called to end
-// the span. If no tracer is configured, returns the input context and a no-op.
+// It reads thread_id and any attributes attached via WithSpanAttributes from
+// the context and adds them as span attributes. Returns the span-attached
+// context and a function that must be called to end the span. If no tracer
+// is configured, returns the input context and a no-op.
 func (s *Step) startSpan(ctx context.Context) (context.Context, func()) {
 	if s.tracer == nil {
 		return ctx, func() {}
@@ -502,6 +535,9 @@ func (s *Step) startSpan(ctx context.Context) (context.Context, func()) {
 	ctx, span := s.tracer.Start(ctx, "loop.turn", trace.WithSpanKind(trace.SpanKindInternal))
 	if id, ok := ThreadIDFrom(ctx); ok {
 		span.SetAttributes(attribute.String("thread_id", id))
+	}
+	if attrs := SpanAttributesFrom(ctx); len(attrs) > 0 {
+		span.SetAttributes(attrs...)
 	}
 	return ctx, func() { span.End() }
 }

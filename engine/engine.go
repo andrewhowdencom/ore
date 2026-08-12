@@ -280,6 +280,15 @@ func (e *Engine) handleEvent(sess *session.Session, mb *mailbox, event session.E
 		mb.clearInflight()
 	}()
 
+	// Snapshot the session's metadata once per event and bind it to
+	// the per-event context. The same ctx flows into sess.Submit (the
+	// user turn) and ag.Run (the assistant turn, which calls
+	// Step.Turn), so both Step.Submit and Step.Turn spans carry the
+	// same session.<key> attributes. Mid-event SetMetadata calls
+	// (e.g. a slash command handler) are intentionally NOT reflected
+	// on subsequent turns within this event — snapshot semantics.
+	ctx = loop.WithSpanAttributes(ctx, sess.Attributes()...)
+
 	eventCtx := event.Context()
 
 	// 1. Record the user turn, if applicable. The Submit method

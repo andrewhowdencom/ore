@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -11,12 +12,15 @@ import (
 	"github.com/andrewhowdencom/ore/agent"
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
-	
+
 	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/session"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/embedded"
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
@@ -444,9 +448,167 @@ func (f failingFactory) Build(_ *session.Session) (*agent.Agent, error) {
 	return nil, f.err
 }
 
+// turnPattern invokes the underlying step's Turn once with the configured
+// provider and spec. Unlike echoPattern (which just returns the state
+// unchanged), this exercises Step.startSpan and lets the engine's wiring
+// be observed end-to-end on the loop.turn span.
+type turnPattern struct {
+	name string
+	step loop.TurnRunner
+	spec models.Spec
+	prov provider.Provider
+}
+
+var _ cognitive.Pattern = (*turnPattern)(nil)
+
+func (p *turnPattern) Name() string { return p.name }
+func (p *turnPattern) Run(ctx context.Context, st ledger.State) (ledger.State, error) {
+	return p.step.Turn(ctx, st, p.spec, p.prov)
+}
+func (p *turnPattern) SetRuntime(step loop.TurnRunner, prov provider.Provider, spec models.Spec, _ trace.Tracer) {
+	p.step = step
+	p.prov = prov
+	p.spec = spec
+}
+
+// recordingTracer captures every span Start and every SetAttributes
+// call so the engine test can inspect the loop.turn span's final
+// attribute set. Local copy of the loop package's recorder; the
+// engine cannot import a _test.go file from another package.
+type recordingTracer struct {
+	embedded.Tracer
+
+	mu      sync.Mutex
+	started []startedRecording
+}
+
+type startedRecording struct {
+	name       string
+	attributes map[attribute.Key]attribute.Value
+}
+
+func (t *recordingTracer) Start(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
+	cfg := trace.NewSpanStartConfig(opts...)
+	startAttrs := make(map[attribute.Key]attribute.Value, len(cfg.Attributes()))
+	for _, kv := range cfg.Attributes() {
+		startAttrs[kv.Key] = kv.Value
+	}
+	s := &recordingSpan{attrs: startAttrs}
+	t.mu.Lock()
+	t.started = append(t.started, startedRecording{name: name, attributes: s.attrs})
+	t.mu.Unlock()
+	return trace.ContextWithSpan(ctx, s), s
+}
+
+func (t *recordingTracer) snapshot() []startedRecording {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := make([]startedRecording, len(t.started))
+	copy(out, t.started)
+	return out
+}
+
+type recordingSpan struct {
+	noop.Span
+
+	mu    sync.Mutex
+	attrs map[attribute.Key]attribute.Value
+}
+
+func (s *recordingSpan) SetAttributes(kv ...attribute.KeyValue) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.attrs == nil {
+		s.attrs = make(map[attribute.Key]attribute.Value, len(kv))
+	}
+	for _, k := range kv {
+		s.attrs[k.Key] = k.Value
+	}
+}
+
 // Compile-time assertions: the test helpers satisfy the interfaces the
 // engine depends on.
 var (
-	_ agent.Factory = failingFactory{}
+	_ agent.Factory    = failingFactory{}
 	_ cognitive.Pattern = (*slowPattern)(nil)
+	_ cognitive.Pattern = (*turnPattern)(nil)
 )
+
+func TestEngine_HandleEvent_AttachesSessionAttributesToTurnSpan(t *testing.T) {
+	t.Parallel()
+
+	reg := session.NewInMemoryRegistry()
+	sess := session.New("alpha", ledger.NewThread())
+	sess.SetMetadata("ore.model.name", "claude-opus-4-5")
+	sess.SetMetadata("ore.model.thinking_level", "high")
+	t.Cleanup(func() { _ = sess.Close() })
+	if err := reg.Register(sess); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	tracer := &recordingTracer{}
+	pat := &turnPattern{name: "turn"}
+	factory := agent.NewDefaultFactory(noopProvider{}, pat, tracer)
+
+	e, err := New(reg, factory)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	sub := sess.Subscribe("lifecycle")
+
+	// IMPORTANT: register sess.Close LAST so it runs FIRST (LIFO). The
+	// subscription channel closes when the session's step is closed; the
+	// drain in the sub cleanup below blocks until that happens.
+	t.Cleanup(func() {
+		for range sub {
+		}
+	})
+	t.Cleanup(func() { _ = e.Close(context.Background()) })
+	t.Cleanup(func() { _ = sess.Close() })
+
+	if err := e.Submit(context.Background(), "alpha", session.UserMessageEvent{Content: "hi"}); err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+
+	// Wait for the engine's terminal lifecycle marker.
+	deadline := time.After(time.Second)
+loop:
+	for {
+		select {
+		case evt := <-sub:
+			if le, ok := evt.(loop.LifecycleEvent); ok && le.Phase == "done" {
+				break loop
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for lifecycle done")
+		}
+	}
+
+	// The recorder should have observed at least one loop.turn
+	// span emitted by the agent's internal step. Its attributes
+	// must include the session.* entries set above.
+	started := tracer.snapshot()
+	var turn *startedRecording
+	for i := range started {
+		if started[i].name == "loop.turn" {
+			turn = &started[i]
+			break
+		}
+	}
+	if turn == nil {
+		var names []string
+		for _, s := range started {
+			names = append(names, s.name)
+		}
+		t.Fatalf("expected loop.turn span; recorded span names = %v", names)
+	}
+
+	attrs := turn.attributes
+	if v, ok := attrs[attribute.Key("session.ore.model.name")]; !ok || v.AsString() != "claude-opus-4-5" {
+		t.Errorf(`attrs["session.ore.model.name"] = %q (present=%v), want "claude-opus-4-5"`, v.AsString(), ok)
+	}
+	if v, ok := attrs[attribute.Key("session.ore.model.thinking_level")]; !ok || v.AsString() != "high" {
+		t.Errorf(`attrs["session.ore.model.thinking_level"] = %q (present=%v), want "high"`, v.AsString(), ok)
+	}
+}

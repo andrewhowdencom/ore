@@ -7,6 +7,7 @@ import (
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/loop"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // Session is the per-conversation primitive. It owns the identity, the
@@ -121,6 +122,27 @@ func (s *Session) AllMetadata() map[string]string {
 	out := make(map[string]string, len(s.metadata))
 	for k, v := range s.metadata {
 		out[k] = v
+	}
+	return out
+}
+
+// Attributes returns the session's metadata as a flat slice of
+// OpenTelemetry attribute key-values, namespaced under "session.".
+// The conversion is performed under the session lock; the returned
+// slice is a fresh allocation and is safe to keep across calls.
+//
+// The snapshot reflects the state of the metadata map at the moment
+// of the call — concurrent SetMetadata calls do not retroactively
+// mutate the returned slice. This is the snapshot semantics callers
+// (e.g. engine.handleEvent) rely on when attaching session state to
+// a span: the snapshot is taken once per event and attached to the
+// per-event context.
+func (s *Session) Attributes() []attribute.KeyValue {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]attribute.KeyValue, 0, len(s.metadata))
+	for k, v := range s.metadata {
+		out = append(out, attribute.String("session."+k, v))
 	}
 	return out
 }

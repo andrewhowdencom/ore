@@ -5,9 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/andrewhowdencom/ore/models"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/andrewhowdencom/ore/models"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/embedded"
+	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/provider"
@@ -1917,4 +1923,141 @@ func TestActivityEvent_EmitAndReceive(t *testing.T) {
 	require.True(t, ok)
 	assert.False(t, inactive.Active)
 	assert.Equal(t, "compacting", inactive.Description)
+}
+
+// recordingTracer captures every span Start and every SetAttributes
+// call. It implements trace.Tracer so it can stand in for a real
+// tracer in tests, and returns a recordingSpan so the consumer can
+// observe post-Start mutations.
+type recordingTracer struct {
+	embedded.Tracer
+
+	mu      sync.Mutex
+	started []startedRecording
+}
+
+type startedRecording struct {
+	name       string
+	attributes map[attribute.Key]attribute.Value
+}
+
+func (t *recordingTracer) Start(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
+	cfg := trace.NewSpanStartConfig(opts...)
+	startAttrs := make(map[attribute.Key]attribute.Value, len(cfg.Attributes()))
+	for _, kv := range cfg.Attributes() {
+		startAttrs[kv.Key] = kv.Value
+	}
+	s := &recordingSpan{attrs: startAttrs}
+	t.mu.Lock()
+	t.started = append(t.started, startedRecording{name: name, attributes: s.attrs})
+	t.mu.Unlock()
+	return trace.ContextWithSpan(ctx, s), s
+}
+
+// snapshot returns a defensive copy of all recorded start events.
+func (t *recordingTracer) snapshot() []startedRecording {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := make([]startedRecording, len(t.started))
+	copy(out, t.started)
+	return out
+}
+
+// recordingSpan embeds noop.Span so we only need to override the
+// methods we care about. SetAttributes records into the same map that
+// Start populates, so callers can inspect the final union.
+type recordingSpan struct {
+	noop.Span
+
+	mu    sync.Mutex
+	attrs map[attribute.Key]attribute.Value
+}
+
+func (s *recordingSpan) SetAttributes(kv ...attribute.KeyValue) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.attrs == nil {
+		s.attrs = make(map[attribute.Key]attribute.Value, len(kv))
+	}
+	for _, k := range kv {
+		s.attrs[k.Key] = k.Value
+	}
+}
+
+func TestWithSpanAttributes_RoundTrips(t *testing.T) {
+	ctx := context.Background()
+
+	got := WithSpanAttributes(ctx,
+		attribute.String("k1", "v1"),
+		attribute.Int("k2", 42),
+	)
+
+	attrs := SpanAttributesFrom(got)
+	require.Len(t, attrs, 2)
+	assert.Equal(t, attribute.String("k1", "v1"), attrs[0])
+	assert.Equal(t, attribute.Int("k2", 42), attrs[1])
+}
+
+func TestWithSpanAttributes_Appends(t *testing.T) {
+	ctx := context.Background()
+
+	first := WithSpanAttributes(ctx, attribute.String("a", "1"))
+	second := WithSpanAttributes(first, attribute.String("b", "2"))
+	third := WithSpanAttributes(second, attribute.String("c", "3"))
+
+	got := SpanAttributesFrom(third)
+	require.Len(t, got, 3, "subsequent WithSpanAttributes calls must append, not overwrite")
+	keys := []string{string(got[0].Key), string(got[1].Key), string(got[2].Key)}
+	assert.Equal(t, []string{"a", "b", "c"}, keys)
+}
+
+func TestWithSpanAttributes_EmptyNoop(t *testing.T) {
+	ctx := context.Background()
+	assert.Nil(t, SpanAttributesFrom(ctx))
+
+	out := WithSpanAttributes(ctx)
+	assert.Nil(t, SpanAttributesFrom(out), "WithSpanAttributes(ctx) with no args must not allocate")
+}
+
+func TestStartSpan_AppliesSpanAttributes(t *testing.T) {
+	tracer := &recordingTracer{}
+	mem := ledger.NewThread()
+	s := New(WithTracer(tracer))
+
+	ctx := WithSpanAttributes(context.Background(),
+		attribute.String("session.ore.model.name", "claude-opus-4-5"),
+		attribute.String("session.ore.model.thinking_level", "high"),
+	)
+
+	_, err := s.Turn(ctx, mem, models.Spec{Name: "test-model"}, &mockProvider{})
+	require.NoError(t, err)
+
+	started := tracer.snapshot()
+	require.Len(t, started, 1, "Turn must start exactly one span")
+	assert.Equal(t, "loop.turn", started[0].name)
+
+	// The recordingSpan.SetAttributes records into the same map that
+	// Start populates, so we can inspect the final union via the map
+	// captured at Start time.
+	gotAttrs := started[0].attributes
+	require.Contains(t, gotAttrs, attribute.Key("session.ore.model.name"))
+	require.Contains(t, gotAttrs, attribute.Key("session.ore.model.thinking_level"))
+	assert.Equal(t, "claude-opus-4-5", gotAttrs[attribute.Key("session.ore.model.name")].AsString())
+	assert.Equal(t, "high", gotAttrs[attribute.Key("session.ore.model.thinking_level")].AsString())
+}
+
+func TestStartSpan_NoAttributesWhenContextEmpty(t *testing.T) {
+	tracer := &recordingTracer{}
+	mem := ledger.NewThread()
+	s := New(WithTracer(tracer))
+
+	_, err := s.Turn(context.Background(), mem, models.Spec{Name: "test-model"}, &mockProvider{})
+	require.NoError(t, err)
+
+	started := tracer.snapshot()
+	require.Len(t, started, 1)
+	// Without a thread_id or attached attributes, the span must
+	// still start cleanly — no panic, empty attribute map.
+	assert.NotNil(t, started[0].attributes)
+	assert.Empty(t, started[0].attributes)
 }
