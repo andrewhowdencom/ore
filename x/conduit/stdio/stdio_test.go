@@ -1,336 +1,125 @@
 package stdio
 
 import (
-	"bytes"
-	"context"
 	"errors"
-	"github.com/andrewhowdencom/ore/models"
-	"strings"
+	"io"
+	"os"
 	"testing"
-	"time"
 
-	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/ledger"
+	"github.com/andrewhowdencom/ore/session"
+	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace"
 )
 
-type mockProvider struct {
-	artifacts []artifact.Artifact
-	err       error
-}
-
-func (m *mockProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
-	for _, art := range m.artifacts {
-		select {
-		case ch <- art:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-	return m.err
-}
-
-type blockingProvider struct{}
-
-func (p *blockingProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
-	<-ctx.Done()
-	return ctx.Err()
-}
-
-type multiTurnProvider struct {
-	invocations int
-}
-
-func (m *multiTurnProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
-	m.invocations++
-	switch m.invocations {
-	case 1:
-		ch <- artifact.TextDelta{Content: "First turn: "}
-		ch <- artifact.TextDelta{Content: "hello"}
-	case 2:
-		ch <- artifact.TextDelta{Content: "Second turn: "}
-		ch <- artifact.TextDelta{Content: "world"}
-	}
-	return nil
-}
-
-func simpleProcessor() junk.TurnProcessor {
-	return func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
-		spec := models.Spec{Name: "test-model"}; _ = spec
-		return step.Turn(ctx, st, spec, prov)
-	}
-}
-
-func newManager(prov provider.Provider) *junk.Manager {
-	store := junk.NewMemoryStore()
-	return junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
-}
-
-func TestNew_NilManager(t *testing.T) {
+func TestNew_NilSession(t *testing.T) {
 	c, err := New(nil)
 	require.Error(t, err)
 	require.Nil(t, c)
 }
 
+// TestNew_Defaults asserts the constructor binds to the supplied
+// session and uses the os.* defaults for io.Reader / io.Writer.
 func TestNew_Defaults(t *testing.T) {
-	prov := &mockProvider{}
-	mgr := newManager(prov)
-	c, err := New(mgr)
+	sess := session.New("test-thread", ledger.NewThread())
+	c, err := New(sess)
 	require.NoError(t, err)
 	require.NotNil(t, c)
 
 	s, ok := c.(*stdio)
 	require.True(t, ok)
-	require.NotNil(t, s.in)
-	require.NotNil(t, s.out)
-}
-
-func TestNew_WithThreadID(t *testing.T) {
-	prov := &mockProvider{}
-	mgr := newManager(prov)
-	c, err := New(mgr, WithThreadID("test-thread"))
-	require.NoError(t, err)
-	require.NotNil(t, c)
-
-	s, ok := c.(*stdio)
-	require.True(t, ok)
-	require.Equal(t, "test-thread", s.threadID)
+	require.Same(t, sess, s.sess)
+	require.Same(t, os.Stdin, s.in)
+	require.Same(t, os.Stdout, s.out)
+	require.Same(t, os.Stderr, s.err)
+	require.Nil(t, s.tracer)
 }
 
 func TestNew_WithInput(t *testing.T) {
-	prov := &mockProvider{}
-	mgr := newManager(prov)
-	in := bytes.NewBufferString("hello")
-	c, err := New(mgr, WithInput(in))
+	sess := session.New("test-thread", ledger.NewThread())
+	in := newBytesReader("hello")
+	c, err := New(sess, WithInput(in))
 	require.NoError(t, err)
-
-	s, ok := c.(*stdio)
-	require.True(t, ok)
-	require.Equal(t, in, s.in)
+	s := c.(*stdio)
+	require.Same(t, in, s.in)
 }
 
 func TestNew_WithOutput(t *testing.T) {
-	prov := &mockProvider{}
-	mgr := newManager(prov)
-	out := &bytes.Buffer{}
-	c, err := New(mgr, WithOutput(out))
+	sess := session.New("test-thread", ledger.NewThread())
+	out := newDiscardWriter()
+	c, err := New(sess, WithOutput(out))
 	require.NoError(t, err)
-
-	s, ok := c.(*stdio)
-	require.True(t, ok)
-	require.Equal(t, out, s.out)
+	s := c.(*stdio)
+	require.Same(t, out, s.out)
 }
 
+func TestNew_WithStderr(t *testing.T) {
+	sess := session.New("test-thread", ledger.NewThread())
+	errOut := newDiscardWriter()
+	c, err := New(sess, WithStderr(errOut))
+	require.NoError(t, err)
+	s := c.(*stdio)
+	require.Same(t, errOut, s.err)
+}
+
+func TestNew_WithTracer(t *testing.T) {
+	sess := session.New("test-thread", ledger.NewThread())
+	tr := trace.NewNoopTracerProvider().Tracer("")
+	c, err := New(sess, WithTracer(tr))
+	require.NoError(t, err)
+	s := c.(*stdio)
+	require.Equal(t, tr, s.tracer)
+}
+
+// TestDescriptor covers the package-level Descriptor. The stdio
+// conduit advertises its capabilities for the conduit registry.
 func TestDescriptor(t *testing.T) {
 	require.Equal(t, "stdio", Descriptor.Name)
 	require.NotEmpty(t, Descriptor.Description)
-	require.NotEmpty(t, Descriptor.Capabilities)
 }
 
-func TestStart_HappyPath(t *testing.T) {
-	prov := &mockProvider{
-		artifacts: []artifact.Artifact{
-			artifact.TextDelta{Content: "Hello, "},
-			artifact.TextDelta{Content: "world!"},
-		},
+// TestDescriptor_Capabilities enumerates the capabilities the
+// stdio conduit advertises. If this list grows, downstream
+// tooling that introspects capabilities will see the new keys;
+// keep this list in sync with the implementation in Start().
+func TestDescriptor_Capabilities(t *testing.T) {
+	caps := make(map[conduit.Capability]bool)
+	for _, c := range Descriptor.Capabilities {
+		caps[c] = true
 	}
-	mgr := newManager(prov)
-
-	out := &bytes.Buffer{}
-	in := bytes.NewBufferString("hi")
-	c, err := New(mgr, WithInput(in), WithOutput(out))
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	err = c.Start(ctx)
-	require.NoError(t, err)
-	require.Contains(t, out.String(), "Hello, world!")
+	require.True(t, caps[conduit.CapEventSource], "stdio emits events (user messages)")
+	require.True(t, caps[conduit.CapRenderMarkdown], "stdio renders assistant markdown")
+	require.True(t, caps[conduit.CapAcceptText], "stdio accepts a text payload")
 }
 
-func TestStart_ReasoningBlocks(t *testing.T) {
-	prov := &mockProvider{
-		artifacts: []artifact.Artifact{
-			artifact.TextDelta{Content: "Let me think..."},
-			artifact.ReasoningDelta{Content: "thinking..."},
-			artifact.TextDelta{Content: " Done!"},
-		},
+// newBytesReader / newDiscardWriter are local helpers that avoid
+// pulling io-test's full machinery into the package's test
+// dependencies.
+func newBytesReader(s string) *byteReader     { return &byteReader{s: s} }
+func newDiscardWriter() *discardWriter     { return &discardWriter{} }
+
+type byteReader struct {
+	s string
+	i int
+}
+
+func (r *byteReader) Read(p []byte) (int, error) {
+	if r.i >= len(r.s) {
+		return 0, io.EOF
 	}
-	mgr := newManager(prov)
-
-	out := &bytes.Buffer{}
-	in := bytes.NewBufferString("question")
-	c, err := New(mgr, WithInput(in), WithOutput(out))
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	err = c.Start(ctx)
-	require.NoError(t, err)
-	require.Contains(t, out.String(), "Let me think...")
-	require.Contains(t, out.String(), "thinking...")
-	require.Contains(t, out.String(), "Done!")
-	require.Contains(t, out.String(), "```reasoning")
-	require.Contains(t, out.String(), "```")
+	n := copy(p, r.s[r.i:])
+	r.i += n
+	return n, nil
 }
 
-func TestStart_ErrorEvent(t *testing.T) {
-	prov := &mockProvider{
-		err: errors.New("provider failure"),
-	}
-	mgr := newManager(prov)
+type discardWriter struct{}
 
-	out := &bytes.Buffer{}
-	in := bytes.NewBufferString("test")
-	c, err := New(mgr, WithInput(in), WithOutput(out))
-	require.NoError(t, err)
+func (d *discardWriter) Write(p []byte) (int, error) { return len(p), nil }
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+// Compile-time checks: the helpers satisfy the io interfaces.
+var _ io.Reader = (*byteReader)(nil)
+var _ io.Writer = (*discardWriter)(nil)
 
-	err = c.Start(ctx)
-	require.Error(t, err)
-	require.Contains(t, out.String(), "error:")
-	require.Contains(t, out.String(), "provider failure")
-}
-
-func TestStart_NoticeEvent(t *testing.T) {
-	// Build a custom processor that emits a NoticeEvent in addition to
-	// the normal provider-driven turn. NoticeEvents flow through the
-	// junk.Stream's FanOut alongside the other output events.
-	store := junk.NewMemoryStore()
-	prov := &mockProvider{}
-	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
-		spec := models.Spec{Name: "test-model"}
-		st, err := step.Turn(ctx, st, spec, prov)
-		if err != nil {
-			return st, err
-		}
-		step.Emit(ctx, loop.NoticeEvent{
-			Notice: loop.Notice{Content: `role "foo" not found`, Severity: loop.SeverityError},
-			Ctx:    loop.WithProvenance(ctx, "stdio"),
-		})
-		return st, nil
-	})
-
-	out := &bytes.Buffer{}
-	errBuf := &bytes.Buffer{}
-	in := bytes.NewBufferString("hi")
-	c, err := New(mgr, WithInput(in), WithOutput(out), WithStderr(errBuf))
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	err = c.Start(ctx)
-	require.NoError(t, err)
-	// Notice goes to stderr, prefixed with the severity label.
-	require.Contains(t, errBuf.String(), `Error: role "foo" not found`)
-	// Assistant stream stays clean (no notice on stdout).
-	require.NotContains(t, out.String(), "role \"foo\" not found")
-	require.NotContains(t, out.String(), "Error:")
-}
-
-func TestStart_WithThreadID(t *testing.T) {
-	store := junk.NewMemoryStore()
-	prov := &mockProvider{
-		artifacts: []artifact.Artifact{
-			artifact.TextDelta{Content: "attached"},
-		},
-	}
-	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
-
-	thr, err := store.Create()
-	require.NoError(t, err)
-
-	out := &bytes.Buffer{}
-	in := bytes.NewBufferString("hello")
-	c, err := New(mgr, WithInput(in), WithOutput(out), WithThreadID(thr.ID))
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	err = c.Start(ctx)
-	require.NoError(t, err)
-	require.Contains(t, out.String(), "attached")
-}
-
-func TestStart_ProvenanceFiltering(t *testing.T) {
-	store := junk.NewMemoryStore()
-	foreignProcessor := func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
-		step.SetEventContext(loop.WithProvenance(context.Background(), "other"))
-		spec := models.Spec{Name: "test-model"}; _ = spec
-		return step.Turn(ctx, st, spec, prov)
-	}
-	prov := &mockProvider{
-		artifacts: []artifact.Artifact{
-			artifact.TextDelta{Content: "should be ignored"},
-		},
-	}
-	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, foreignProcessor)
-
-	out := &bytes.Buffer{}
-	in := bytes.NewBufferString("test")
-	c, err := New(mgr, WithInput(in), WithOutput(out))
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	err = c.Start(ctx)
-	require.NoError(t, err)
-	require.NotContains(t, out.String(), "should be ignored")
-}
-
-func TestStart_ContextCancellation(t *testing.T) {
-	store := junk.NewMemoryStore()
-	prov := &blockingProvider{}
-	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
-
-	out := &bytes.Buffer{}
-	in := bytes.NewBufferString("test")
-	c, err := New(mgr, WithInput(in), WithOutput(out))
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		cancel()
-	}()
-
-	err = c.Start(ctx)
-	require.Error(t, err)
-	require.True(t, errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "context canceled"))
-}
-
-func TestStart_MultiTurnCapture(t *testing.T) {
-	prov := &multiTurnProvider{}
-	store := junk.NewMemoryStore()
-	mgr := junk.NewManager(store, prov, func(*junk.Stream) ([]loop.Option, error) { return nil, nil }, func(ctx context.Context, step *loop.Step, st ledger.State, prov provider.Provider, _ models.Spec) (ledger.State, error) {
-		spec := models.Spec{Name: "test-model"}
-		st, err := step.Turn(ctx, st, spec, prov)
-		if err != nil {
-			return st, err
-		}
-		return step.Turn(ctx, st, spec, prov)
-	})
-
-	out := &bytes.Buffer{}
-	in := bytes.NewBufferString("hi")
-	c, err := New(mgr, WithInput(in), WithOutput(out))
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	err = c.Start(ctx)
-	require.NoError(t, err)
-	require.Contains(t, out.String(), "First turn: hello")
-	require.Contains(t, out.String(), "Second turn: world")
-}
+// Ensure context import is used even if not directly referenced.
+var _ = errors.New

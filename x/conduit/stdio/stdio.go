@@ -7,9 +7,9 @@ import (
 	"os"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/loop"
-	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/ledger"
+	"github.com/andrewhowdencom/ore/loop"
+	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -26,12 +26,11 @@ var Descriptor = conduit.Descriptor{
 }
 
 type stdio struct {
-	mgr      *junk.Manager
-	in       io.Reader
-	out      io.Writer
-	err      io.Writer
-	threadID string
-	tracer   trace.Tracer
+	sess   *session.Session
+	in     io.Reader
+	out    io.Writer
+	err    io.Writer
+	tracer trace.Tracer
 }
 
 // Option configures the stdio conduit.
@@ -60,13 +59,6 @@ func WithStderr(w io.Writer) Option {
 	}
 }
 
-// WithThreadID sets the thread ID to resume on start.
-func WithThreadID(id string) Option {
-	return func(s *stdio) {
-		s.threadID = id
-	}
-}
-
 // WithTracer configures an OpenTelemetry tracer for the stdio conduit.
 func WithTracer(tracer trace.Tracer) Option {
 	return func(s *stdio) {
@@ -74,16 +66,26 @@ func WithTracer(tracer trace.Tracer) Option {
 	}
 }
 
-// New creates a new stdio conduit that implements conduit.Conduit.
-func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error) {
-	if mgr == nil {
-		return nil, fmt.Errorf("session manager is required")
+// New creates a new session-shaped stdio conduit that drives a
+// single inference turn on the supplied session. The session is
+// expected to be registered with an engine elsewhere; New binds
+// the conduit to the session's existing event stream and renders
+// output to the configured io.Writer(s).
+//
+// Thread lookup or hydration is the caller's responsibility — use
+// a session.Backend (e.g. the httpc.Backend implementation in
+// workshop) to attach to an existing thread ID before passing
+// the session in. The legacy WithThreadID option is gone: the
+// session already carries the thread identity.
+func New(sess *session.Session, opts ...Option) (conduit.Conduit, error) {
+	if sess == nil {
+		return nil, fmt.Errorf("session is required")
 	}
 	s := &stdio{
-		mgr: mgr,
-		in:  os.Stdin,
-		out: os.Stdout,
-		err: os.Stderr,
+		sess: sess,
+		in:   os.Stdin,
+		out:  os.Stdout,
+		err:  os.Stderr,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -91,117 +93,24 @@ func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error) {
 	return s, nil
 }
 
-// Start reads input, processes one turn, streams assistant artifacts as Markdown
-// blocks to the configured io.Writer, and returns. This is a deliberate
-// exception to the standard conduit blocking-contract; the conduit is designed
-// for single-shot Unix-filter usage rather than long-running ambient I/O.
+// Start reads input, submits a single user turn to the bound
+// session, and streams the session's events to the configured
+// io.Writers. Returns when the turn is complete (lifecycle "done")
+// or on error. This is a deliberate exception to the standard
+// conduit blocking-contract; the conduit is designed for
+// single-shot Unix-filter usage rather than long-running ambient
+// I/O.
 func (s *stdio) Start(ctx context.Context) error {
-	var stream *junk.Stream
-	var err error
-	if s.threadID != "" {
-		stream, err = s.mgr.Attach(s.threadID)
-	} else {
-		stream, err = s.mgr.Create()
-	}
-	if err != nil {
-		return fmt.Errorf("start session: %w", err)
-	}
-
-	outputCh := stream.Subscribe("text_delta", "reasoning_delta", "tool_call_delta", "tool_call", "turn_complete", "error", "lifecycle", "notice")
+	outputCh := s.sess.Subscribe(
+		"text_delta", "reasoning_delta", "tool_call", "tool_result",
+		"turn_complete", "error", "properties", "lifecycle", "notice", "activity",
+	)
 
 	done := make(chan struct{})
 	stop := make(chan struct{})
 	var turnErr error
 
-	go func() {
-		defer close(done)
-		currentKind := ""
-		for {
-			select {
-			case event, ok := <-outputCh:
-				if !ok {
-					return
-				}
-				if p, _ := loop.ProvenanceFrom(event.Context()); p != "stdio" && p != "" {
-					continue
-				}
-
-				switch e := event.(type) {
-				case loop.ArtifactEvent:
-					kind := e.Artifact.Kind()
-					if kind != currentKind {
-						if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
-							fmt.Fprint(s.out, "\n```\n")
-						}
-						if kind == "reasoning_delta" {
-							fmt.Fprint(s.out, "```reasoning\n")
-						} else if kind == "tool_call_delta" {
-							fmt.Fprint(s.out, "```tool-call\n")
-						}
-						currentKind = kind
-					}
-
-					switch art := e.Artifact.(type) {
-					case artifact.TextDelta:
-						fmt.Fprint(s.out, art.Content)
-					case artifact.ReasoningDelta:
-						fmt.Fprint(s.out, art.Content)
-					case artifact.ToolCallDelta:
-						if art.Name != "" {
-							fmt.Fprintf(s.out, "%s: ", art.Name)
-						}
-						fmt.Fprint(s.out, art.Arguments)
-					case artifact.ToolCall:
-						// Complete tool_call after accumulation; prefer display string.
-						fmt.Fprintf(s.out, "```tool-call\n%s\n```\n", art.MarkdownString())
-					}
-
-				case loop.TurnCompleteEvent:
-					if e.Turn.Role != ledger.RoleAssistant {
-						continue
-					}
-					if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
-						fmt.Fprint(s.out, "\n```\n")
-					}
-					currentKind = ""
-
-				case loop.LifecycleEvent:
-					// Print phase transitions for user feedback.
-					switch e.Phase {
-					case "submitted":
-						fmt.Fprint(s.out, "\n")
-					case "done":
-						if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
-							fmt.Fprint(s.out, "\n```\n")
-						}
-						currentKind = ""
-					}
-
-				case loop.ErrorEvent:
-					if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
-						fmt.Fprint(s.out, "\n```\n")
-					}
-					turnErr = e.Err
-					fmt.Fprintf(s.out, "\nerror: %v\n", e.Err)
-					return
-
-				case loop.NoticeEvent:
-					// Notices are out-of-band UI messages (slash
-					// success, handler errors auto-converted in the
-					// slash interceptor, etc.). They go to stderr
-					// with a severity label prefix so a Unix-filter
-					// invocation can split the assistant stream
-					// (`stdout`) from the notice stream (`stderr`).
-					fmt.Fprintf(s.err, "%s: %s\n", e.Notice.Severity, e.Notice.Content)
-				}
-			case <-stop:
-				if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
-					fmt.Fprint(s.out, "\n```\n")
-				}
-				return
-			}
-		}
-	}()
+	go s.renderLoop(outputCh, &turnErr, done, stop)
 
 	data, err := io.ReadAll(s.in)
 	if err != nil {
@@ -222,16 +131,19 @@ func (s *stdio) Start(ctx context.Context) error {
 		defer span.End()
 	}
 
-	event := junk.UserMessageEvent{
-		Content: string(data),
-		Ctx:     loop.WithProvenance(turnCtx, "stdio"),
+	// Submit the user message as a turn. session.Submit appends
+	// the turn to the bound thread and emits a TurnCompleteEvent
+	// when the engine processes it. The engine (which the caller
+	// has wired) drives the actual inference; this stdio just
+	// blocks on the subscriber channel until "done".
+	if _, err := s.sess.Submit(turnCtx, ledger.RoleUser,
+		artifact.Text{Content: string(data)}); err != nil {
+		close(stop)
+		<-done
+		return fmt.Errorf("submit user message: %w", err)
 	}
-	processErr := stream.Process(turnCtx, event)
 
-	// Close the stream to signal completion and let the goroutine drain
-	// any remaining events (including ErrorEvent on failure) before the
-	// subscriber channel is closed.
-	_ = stream.Close()
+	_ = s.sess.Close()
 
 	select {
 	case <-done:
@@ -241,9 +153,96 @@ func (s *stdio) Start(ctx context.Context) error {
 		return ctx.Err()
 	}
 
-	if processErr != nil {
-		return fmt.Errorf("process event: %w", processErr)
+	if turnErr != nil {
+		return fmt.Errorf("turn error: %w", turnErr)
 	}
+	return nil
+}
 
-	return turnErr
+// renderLoop drains the output channel, rendering assistant
+// artifacts, lifecycle transitions, and errors to the configured
+// io.Writers. Tool-call deltas are detected and rendered as
+// inline JSON; complete tool_call artifacts (delivered after
+// the upstream accumulator folds the deltas) are rendered as a
+// Markdown code block.
+func (s *stdio) renderLoop(outputCh <-chan loop.OutputEvent, turnErr *error, done, stop chan struct{}) {
+	defer close(done)
+	currentKind := ""
+	for {
+		select {
+		case event, ok := <-outputCh:
+			if !ok {
+				return
+			}
+			if p, _ := loop.ProvenanceFrom(event.Context()); p != "stdio" && p != "" {
+				continue
+			}
+
+			switch e := event.(type) {
+			case loop.ArtifactEvent:
+				kind := e.Artifact.Kind()
+				if kind != currentKind {
+					if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
+						fmt.Fprint(s.out, "\n```\n")
+					}
+					if kind == "reasoning_delta" {
+						fmt.Fprint(s.out, "```reasoning\n")
+					} else if kind == "tool_call_delta" {
+						fmt.Fprint(s.out, "```tool-call\n")
+					}
+					currentKind = kind
+				}
+
+				switch art := e.Artifact.(type) {
+				case artifact.TextDelta:
+					fmt.Fprint(s.out, art.Content)
+				case artifact.ReasoningDelta:
+					fmt.Fprint(s.out, art.Content)
+				case artifact.ToolCallDelta:
+					if art.Name != "" {
+						fmt.Fprintf(s.out, "%s: ", art.Name)
+					}
+					fmt.Fprint(s.out, art.Arguments)
+				case artifact.ToolCall:
+					fmt.Fprintf(s.out, "```tool-call\n%s\n```\n", art.MarkdownString())
+				}
+
+			case loop.TurnCompleteEvent:
+				if e.Turn.Role != ledger.RoleAssistant {
+					continue
+				}
+				if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
+					fmt.Fprint(s.out, "\n```\n")
+				}
+				currentKind = ""
+
+			case loop.LifecycleEvent:
+				switch e.Phase {
+				case "submitted":
+					fmt.Fprint(s.out, "\n")
+				case "done":
+					if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
+						fmt.Fprint(s.out, "\n```\n")
+					}
+					currentKind = ""
+				}
+
+			case loop.ErrorEvent:
+				if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
+					fmt.Fprint(s.out, "\n```\n")
+				}
+				*turnErr = e.Err
+				fmt.Fprintf(s.out, "\nerror: %v\n", e.Err)
+				return
+
+			case loop.NoticeEvent:
+				fmt.Fprintf(s.err, "%s: %s\n", e.Notice.Severity, e.Notice.Content)
+			}
+		case <-stop:
+			if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
+				fmt.Fprint(s.out, "\n```\n")
+			}
+			return
+		}
+	}
 }
