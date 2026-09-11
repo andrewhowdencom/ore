@@ -38,10 +38,7 @@
 //
 //  1. (UserMessageEvent only) records the user turn via
 //     session.Session.Submit, which emits a TurnCompleteEvent and
-//     auto-appends to the session's thread. (InterruptEvent is not
-//     submitted; the engine treats it as a "skip inference" signal
-//     so that queued events are not discarded but no extra turn is
-//     added.)
+//     auto-appends to the session's thread.
 //
 //  2. Builds an agent via the factory using the session's current
 //     metadata, binding the session's step via agent.WithStep so that
@@ -61,9 +58,11 @@
 //
 // # Cancellation
 //
-// session.InterruptEvent causes the engine to skip inference for that
-// event. Pending events remain queued. The engine's Close drains
-// active operations and refuses further submissions.
+// The engine derives the per-event context from event.Context() so
+// that cancelling the upstream context (e.g. via tui.WithEventContext)
+// propagates into the running agent's Run without further engine
+// intervention. The engine's Close cancels any in-flight execution
+// in every active mailbox.
 package engine
 
 import (
@@ -197,8 +196,11 @@ func (m *mailbox) getInflight() context.CancelFunc {
 //   - ErrQueueFull when the per-session mailbox is at capacity.
 //   - ErrClosed when the engine has been Closed.
 //
-// To cancel the active operation in a session, submit a
-// session.InterruptEvent; that does not discard pending events.
+// To cancel the active operation in a session, cancel the context
+// propagated on the event (typically by cancelling the upstream
+// context passed to tui.WithEventContext or equivalent). The engine
+// derives the per-event context from event.Context(); cancellation
+// propagates into the agent's Run.
 func (e *Engine) Submit(ctx context.Context, sessionID string, event session.Event) error {
 	if event == nil {
 		return fmt.Errorf("engine.Submit: nil event")
@@ -269,11 +271,18 @@ func (e *Engine) runMailbox(sess *session.Session, mb *mailbox) {
 // not return until the agent has completed (or failed).
 //
 // Lifecycle contract: a single LifecycleEvent{Phase: "done"} is
-// emitted on every successful or failed path. Interrupt events skip
-// inference but still emit the lifecycle marker so subscribers
-// observe a clean end-of-handling.
+// emitted on every successful or failed path.
 func (e *Engine) handleEvent(sess *session.Session, mb *mailbox, event session.Event) {
-	ctx, cancel := context.WithCancel(context.Background())
+	// Derive the per-event context from event.Context() so cancellation
+	// propagates from the upstream ctx (e.g. tui.WithEventContext) into
+	// the agent's Run. If the event carries no context (older callers),
+	// fall back to context.Background(). The local cancel is stored on
+	// the mailbox so engine.Close can forcibly unwind the running handler.
+	parent := event.Context()
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parent)
 	mb.setInflight(cancel)
 	defer func() {
 		cancel()
@@ -289,35 +298,24 @@ func (e *Engine) handleEvent(sess *session.Session, mb *mailbox, event session.E
 	// on subsequent turns within this event — snapshot semantics.
 	ctx = loop.WithSpanAttributes(ctx, sess.Attributes()...)
 
-	eventCtx := event.Context()
-
 	// 1. Record the user turn, if applicable. The Submit method
 	//    emits a TurnCompleteEvent and auto-appends to the session's
 	//    thread (because the session's step is bound to it via
 	//    WithState).
-	switch e := event.(type) {
-	case session.UserMessageEvent:
-		if _, err := sess.Submit(ctx, ledger.RoleUser, artifact.Text{Content: e.Content}); err != nil {
-			sess.Emitter().Emit(ctx, loop.ErrorEvent{Err: fmt.Errorf("submit user turn: %w", err), Ctx: eventCtx})
-			sess.Emitter().Emit(ctx, loop.LifecycleEvent{Phase: "done", Ctx: eventCtx})
+	if ue, ok := event.(session.UserMessageEvent); ok {
+		if _, err := sess.Submit(ctx, ledger.RoleUser, artifact.Text{Content: ue.Content}); err != nil {
+			sess.Emitter().Emit(ctx, loop.ErrorEvent{Err: fmt.Errorf("submit user turn: %w", err), Ctx: event.Context()})
+			sess.Emitter().Emit(ctx, loop.LifecycleEvent{Phase: "done", Ctx: event.Context()})
 			return
 		}
-	case session.InterruptEvent:
-		// Interrupt: skip inference. Pending events remain queued.
-		// The active operation (the previous event in this mailbox)
-		// has already completed; the cancel() on the active event
-		// context is a no-op for that case. We emit just "done"
-		// so subscribers observe a clean end-of-handling.
-		sess.Emitter().Emit(ctx, loop.LifecycleEvent{Phase: "done", Ctx: eventCtx})
-		return
 	}
 
 	// 2. Build the agent for this turn, binding the session's step
 	//    so artifacts the pattern emits reach session.Subscribe.
 	ag, err := e.factory.Build(sess)
 	if err != nil {
-		sess.Emitter().Emit(ctx, loop.ErrorEvent{Err: fmt.Errorf("agent factory: %w", err), Ctx: eventCtx})
-		sess.Emitter().Emit(ctx, loop.LifecycleEvent{Phase: "done", Ctx: eventCtx})
+		sess.Emitter().Emit(ctx, loop.ErrorEvent{Err: fmt.Errorf("agent factory: %w", err), Ctx: event.Context()})
+		sess.Emitter().Emit(ctx, loop.LifecycleEvent{Phase: "done", Ctx: event.Context()})
 		return
 	}
 
@@ -325,11 +323,11 @@ func (e *Engine) handleEvent(sess *session.Session, mb *mailbox, event session.E
 	//    is silent (the pattern's emissions are already on the
 	//    session's event stream).
 	if _, err := ag.Run(ctx, sess.Thread()); err != nil {
-		sess.Emitter().Emit(ctx, loop.ErrorEvent{Err: err, Ctx: eventCtx})
+		sess.Emitter().Emit(ctx, loop.ErrorEvent{Err: err, Ctx: event.Context()})
 	}
 
 	// 4. Always publish the terminal lifecycle event.
-	sess.Emitter().Emit(ctx, loop.LifecycleEvent{Phase: "done", Ctx: eventCtx})
+	sess.Emitter().Emit(ctx, loop.LifecycleEvent{Phase: "done", Ctx: event.Context()})
 }
 
 // Close stops accepting submissions, cancels any in-flight execution

@@ -159,54 +159,95 @@ func TestEngine_Submit_DrainsUserMessageLifecycle(t *testing.T) {
 	}
 }
 
-func TestEngine_Submit_InterruptSkipsInference(t *testing.T) {
+func TestEngine_Submit_EventCtxCancellationUnwindsAgent(t *testing.T) {
 	t.Parallel()
 
-	reg := session.NewInMemoryRegistry()
+	// blockingPattern blocks on ctx.Done() and returns ctx.Err().
+	// Used to verify that cancelling the event's context propagates
+	// into the running agent's Run.
+	pat := &blockingPattern{started: make(chan struct{})}
 	sess := session.New("alpha", ledger.NewThread())
 
+	reg := session.NewInMemoryRegistry()
 	if err := reg.Register(sess); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
-
-	e, err := New(reg, newFactory(t))
+	e, err := New(reg, agent.NewDefaultFactory(noopProvider{}, pat, noop.NewTracerProvider().Tracer("test")))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	sub := sess.Subscribe("lifecycle", "error", "properties", "turn_complete")
-
-	// LIFO order: sub drain first, then e.Close, then sess.Close.
-	t.Cleanup(func() {
-		for range sub {
-		}
-	})
 	t.Cleanup(func() { _ = e.Close(context.Background()) })
 	t.Cleanup(func() { _ = sess.Close() })
 
-	if err := e.Submit(context.Background(), "alpha", session.InterruptEvent{Ctx: context.Background()}); err != nil {
+	// Submit a user message whose event carries a cancellable context.
+	// When we cancel the parent context, the per-event ctx derived
+	// inside handleEvent must cancel, unwinding the blocking agent.
+	parentCtx, cancelParent := context.WithCancel(context.Background())
+
+	if err := e.Submit(parentCtx, "alpha", session.UserMessageEvent{
+		Content: "go",
+		Ctx:     parentCtx,
+	}); err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
 
-	got, closed := drain(sub, time.Second, 4)
-	if !closed && len(got) < 1 {
-		t.Fatalf("expected at least 1 event, got %d (closed=%v): %+v", len(got), closed, got)
+	// Wait for the blocking pattern's Run to enter before cancelling;
+	// this ensures handleEvent has reached ag.Run, so cancelling the
+	// parent context unwinds the running agent.
+	select {
+	case <-pat.started:
+	case <-time.After(time.Second):
+		t.Fatal("blocking pattern did not start within 1s")
 	}
 
-	sawDone := false
-	for _, evt := range got {
-		if le, ok := evt.(loop.LifecycleEvent); ok && le.Phase == "done" {
-			sawDone = true
+	cancelParent()
+
+	// Wait for the agent to observe context cancellation.
+	deadline := time.After(2 * time.Second)
+	for {
+		pat.mu.Lock()
+		runErr := pat.runErr
+		pat.mu.Unlock()
+		if runErr != nil {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("blocking pattern did not observe ctx.Err() within 2s")
+		case <-time.After(10 * time.Millisecond):
 		}
 	}
-	if !sawDone {
-		t.Errorf("expected LifecycleEvent{Phase: \"done\"} after interrupt, got %+v", got)
+	if !errors.Is(pat.runErr, context.Canceled) {
+		t.Fatalf("blocking pattern saw err = %v, want context.Canceled", pat.runErr)
 	}
+}
 
-	// Interrupt must not add a turn to the thread.
-	if turns := sess.Turns(); len(turns) != 0 {
-		t.Errorf("interrupt should not append a turn; thread has %d turns", len(turns))
+// blockingPattern blocks on ctx.Done() and returns ctx.Err() once the
+// per-event context is cancelled. Signals on `started` once entry has
+// reached Run so the test can synchronise past handleEvent's setInflight.
+type blockingPattern struct {
+	started chan struct{}
+	runErr  error
+	mu      sync.Mutex
+}
+
+func (p *blockingPattern) Name() string { return "blocking" }
+func (p *blockingPattern) Run(ctx context.Context, st ledger.State) (ledger.State, error) {
+	p.mu.Lock()
+	p.runErr = nil
+	p.mu.Unlock()
+	select {
+	case <-p.started:
+	default:
+		close(p.started)
 	}
+	<-ctx.Done()
+	err := ctx.Err()
+	p.mu.Lock()
+	p.runErr = err
+	p.mu.Unlock()
+	return st, err
 }
 
 func TestEngine_Submit_QueueFullReturnsErrQueueFull(t *testing.T) {
