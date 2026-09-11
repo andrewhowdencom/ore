@@ -20,9 +20,8 @@
 //	DELETE /sessions/{id}                  Close the session (the thread is
 //	                                       preserved).
 //	GET    /threads                         Paginated list of persisted threads.
-//	POST   /sessions/{id}/events            Submit a session.Event (e.g. user
-//	                                       message, interrupt). Returns 202 on
-//	                                       admission.
+//	POST   /sessions/{id}/events            Submit a user message event.
+//	                                       Returns 202 on admission.
 //	GET    /sessions/{id}/events?kinds=...  Server-Sent Events stream of the
 //	                                       session's authoritative output
 //	                                       stream.

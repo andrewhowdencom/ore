@@ -242,9 +242,16 @@ func (h *Handler) deleteSession(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 // Request body:
 //
 //	{
-//	  "kind":    "user_message" | "interrupt",
+//	  "kind":    "user_message",
 //	  "content": "..."                       // only for user_message
 //	}
+//
+// Only session.UserMessageEvent is accepted. Unknown kinds and an
+// empty body are rejected with 400 Bad Request. Cancellation is
+// out-of-band: the conduit's session-event surface carries user
+// messages, while user-driven cancellation is signalled through the
+// application's own channel (for example, a cancel-func option
+// wired into the conduit that backed the session).
 //
 // The session is resolved first; a missing session returns 404
 // before the body is parsed. This mirrors the routing-test
@@ -288,16 +295,6 @@ func (h *Handler) submitEvent(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		event = session.UserMessageEvent{
 			Content: req.Content,
 			Ctx:     loop.WithProvenance(ctx, "http"),
-		}
-	case "interrupt":
-		event = session.InterruptEvent{
-			Ctx: loop.WithProvenance(ctx, "http"),
-		}
-	case "":
-		// Empty body: treat as interrupt, the minimal "cancel anything
-		// in-flight" signal.
-		event = session.InterruptEvent{
-			Ctx: loop.WithProvenance(ctx, "http"),
 		}
 	default:
 		writeJSONError(w, stdhttp.StatusBadRequest, fmt.Sprintf("unknown event kind: %q", req.Kind))

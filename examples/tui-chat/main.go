@@ -1,9 +1,10 @@
 // Package main is a reference application demonstrating the
 // x/conduit/tui conduit wired together with the session primitives
 // and the engine execution boundary. The TUI accepts an already-attached
-// *session.Session, exposes user actions on an outbound channel via
-// Events(), and emits session.UserMessageEvent / session.InterruptEvent
-// values that the application feeds into engine.Submit.
+// *session.Session and exposes user actions on an outbound channel via
+// Events() (currently only session.UserMessageEvent; cancellation is
+// out-of-band via context propagation). The application feeds each
+// emitted event into engine.Submit.
 //
 // The application owns the canonical inference-driven pump: it
 // registers the session in the engine's registry, constructs the
@@ -16,8 +17,8 @@
 //
 //	ORE_API_KEY=... go run ./examples/tui-chat
 //
-// Type a message and press Enter. Press Esc to emit an interrupt
-// event (does not quit). Press Ctrl+C (or send SIGINT) to interrupt
+// Type a message and press Enter. Press Esc to invoke the cancel
+// func (does not quit). Press Ctrl+C (or send SIGINT) to interrupt
 // any in-flight turn and quit. ORE_THREAD_ID optionally resumes an
 // existing thread; otherwise a new thread ID is generated.
 package main
@@ -120,14 +121,16 @@ func run() error {
 		}
 	}()
 
-	// 6. Construct the TUI conduit. Pass the cancel func so the TUI
-	//    can unwind the shared context when the user presses Ctrl+C
-	//    or Esc. The same cancel func is held by the application
-	//    for SIGINT, so a single signal unwinds the UI, any
-	//    in-flight engine.Submit, and the pump goroutine.
+	// 6. Construct the TUI conduit. The application shares one
+	//    cancellable event-context (runCtx) with both tui.WithEventContext
+	//    (so emitted events carry it as their context) and eng.Submit
+	//    (so the engine's Submit loop is bounded by it). Pressing Esc
+	//    cancels the TUI's internal wrapper around runCtx; the engine
+	//    observes the cancellation through event.Context() in handleEvent
+	//    and unwinds the running agent.
 	tuiC, err := tui.New(sess,
 		tui.WithName("ore"),
-		tui.WithCancelFunc(cancel),
+		tui.WithEventContext(runCtx),
 	)
 	if err != nil {
 		return fmt.Errorf("create tui conduit: %w", err)
