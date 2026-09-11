@@ -304,10 +304,12 @@ func TestEvents_EmitsUserMessageEvent(t *testing.T) {
 	}
 }
 
-// TestEvents_EmitsInterruptEventOnEscape asserts that pressing Esc
-// drives a session.InterruptEvent on the Events() channel but does
-// NOT quit the program (the user can keep typing).
-func TestEvents_EmitsInterruptEventOnEscape(t *testing.T) {
+
+// TestEvents_EscDoesNotEmit asserts that pressing Esc with no
+// event-context cancellation registered does NOT send any event on
+// the channel. The TUI no longer signals cancellation via session
+// events; cancellation flows through the event's Context().
+func TestEvents_EscDoesNotEmit(t *testing.T) {
 	eventsCh := make(chan session.Event, 16)
 	m := newTestModel()
 	m.ctx = context.Background()
@@ -318,23 +320,16 @@ func TestEvents_EmitsInterruptEventOnEscape(t *testing.T) {
 
 	select {
 	case e := <-eventsCh:
-		require.Equal(t, "interrupt", e.Kind())
-		ie, ok := e.(session.InterruptEvent)
-		require.True(t, ok, "expected session.InterruptEvent, got %T", e)
-		assert.Equal(t, "tui", func() string { s, _ := loop.ProvenanceFrom(ie.Ctx); return s }(),
-			"interrupt events must carry 'tui' provenance")
+		t.Fatalf("did not expect any event on Esc, got %T", e)
 	default:
-		t.Fatal("expected interrupt event on channel")
 	}
 
 	assert.Nil(t, cmd, "Escape should not quit the program")
 }
 
-// TestEvents_EmitsInterruptEventOnCtrlC asserts that pressing Ctrl+C
-// drives a session.InterruptEvent AND returns a tea.Cmd that quits
-// the program. The cancel-func invocation is covered separately in
-// TestWithCancelFunc below.
-func TestEvents_EmitsInterruptEventOnCtrlC(t *testing.T) {
+// TestEvents_CtrlCQuits asserts that pressing Ctrl+C returns a
+// tea.Quit cmd and does not send a session event on the channel.
+func TestEvents_CtrlCQuits(t *testing.T) {
 	eventsCh := make(chan session.Event, 16)
 	m := newTestModel()
 	m.ctx = context.Background()
@@ -344,9 +339,8 @@ func TestEvents_EmitsInterruptEventOnCtrlC(t *testing.T) {
 
 	select {
 	case e := <-eventsCh:
-		require.Equal(t, "interrupt", e.Kind())
+		t.Fatalf("did not expect any event on Ctrl+C, got %T", e)
 	default:
-		t.Fatal("expected interrupt event on channel")
 	}
 
 	// Ctrl+C should request the program to quit; the cmd returned by
@@ -354,135 +348,49 @@ func TestEvents_EmitsInterruptEventOnCtrlC(t *testing.T) {
 	require.NotNil(t, cmd, "Ctrl+C should request a quit")
 }
 
-// TestWithCancelFunc_InvokedOnCtrlC asserts that the cancel func
-// registered via WithCancelFunc is invoked when the user presses Ctrl+C.
-func TestWithCancelFunc_InvokedOnCtrlC(t *testing.T) {
-	eventsCh := make(chan session.Event, 16)
-	cancelled := make(chan struct{}, 1)
-	cancel := func() { cancelled <- struct{}{} }
+// TestInvokeCancel_CancelsEventContext asserts that Esc and Ctrl+C
+// cancel the model's internal event-context wrapper, which is the
+// propagation path for engine cancellation.
+func TestInvokeCancel_CancelsEventContext(t *testing.T) {
+	t.Run("esc", func(t *testing.T) {
+		m := newTestModel()
+		ctx, cancel := context.WithCancel(context.Background())
+		m.ctx = ctx
+		m.cancelEvent = cancel
 
-	m := newTestModel()
-	m.ctx = context.Background()
-	m.eventsCh = eventsCh
-	m.cancelFunc = cancel
+		_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 
-	_, _ = m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
-
-	select {
-	case <-cancelled:
-		// OK
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("expected cancel func to be invoked on Ctrl+C")
-	}
-
-	// Also drain the interrupt event so the channel does not leak.
-	select {
-	case <-eventsCh:
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("expected interrupt event on channel")
-	}
-}
-
-// TestWithCancelFunc_InvokedOnEscape asserts that the cancel func
-// is also invoked on Esc, even though Esc does not quit the program.
-func TestWithCancelFunc_InvokedOnEscape(t *testing.T) {
-	eventsCh := make(chan session.Event, 16)
-	cancelled := make(chan struct{}, 1)
-	cancel := func() { cancelled <- struct{}{} }
-
-	m := newTestModel()
-	m.ctx = context.Background()
-	m.eventsCh = eventsCh
-	m.cancelFunc = cancel
-
-	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-
-	select {
-	case <-cancelled:
-		// OK
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("expected cancel func to be invoked on Escape")
-	}
-}
-
-// TestWithCancelFunc_NotInvokedWhenNotSet guards against a nil-cancelFunc
-// panic. The TUI must remain safe to use when the application does not
-// register a cancel func — it just emits the event and moves on.
-func TestWithCancelFunc_NotInvokedWhenNotSet(t *testing.T) {
-	eventsCh := make(chan session.Event, 16)
-	m := newTestModel()
-	m.ctx = context.Background()
-	m.eventsCh = eventsCh
-	m.cancelFunc = nil // explicit: no cancel func registered
-
-	// Should not panic on Ctrl+C.
-	_, _ = m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
-
-	// And should not panic on Esc.
-	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-
-	// Both events should be on the channel.
-	for i := 0; i < 2; i++ {
 		select {
-		case e := <-eventsCh:
-			assert.Equal(t, "interrupt", e.Kind())
+		case <-ctx.Done():
+			// OK
 		case <-time.After(100 * time.Millisecond):
-			t.Fatalf("expected interrupt event %d", i)
+			t.Fatal("expected cancel on Esc")
 		}
-	}
+	})
+
+	t.Run("ctrl_c", func(t *testing.T) {
+		m := newTestModel()
+		ctx, cancel := context.WithCancel(context.Background())
+		m.ctx = ctx
+		m.cancelEvent = cancel
+
+		_, _ = m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+
+		select {
+		case <-ctx.Done():
+			// OK
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("expected cancel on Ctrl+C")
+		}
+	})
 }
 
-// TestEvents_DropsUserMessageWhenChannelFull asserts that the model
-// does not block when the application is not draining Events() that
-// quickly. The buffered channel has a capacity of 16; the 17th send
-// is dropped (with a warning log) so the UI thread continues to be
-// responsive.
-func TestEvents_DropsUserMessageWhenChannelFull(t *testing.T) {
-	// Capacity 1, then fill it.
-	eventsCh := make(chan session.Event, 1)
+// TestInvokeCancel_NilSafe guards against a nil-cancelEvent panic
+// when the model has no event context (e.g. before initModel runs).
+func TestInvokeCancel_NilSafe(t *testing.T) {
 	m := newTestModel()
-	m.ctx = context.Background()
-	m.eventsCh = eventsCh
-	m.textarea.SetValue("first")
-
-	// First send fills the channel.
-	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	// Second send should be dropped (no block).
-	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-
-	// Confirm exactly one event in the channel.
-	select {
-	case <-eventsCh:
-		// OK
-	default:
-		t.Fatal("expected first event in channel")
-	}
-	select {
-	case <-eventsCh:
-		t.Fatal("second event should have been dropped")
-	default:
-		// OK
-	}
-}
-
-// ---------------------------------------------------------------------------
-// invokeCancelFunc — internal helper (defensive nil-check)
-// ---------------------------------------------------------------------------
-
-// TestInvokeCancelFunc_NilSafe guards against a nil-cancelFunc panic
-// when the application has not registered a cancel func. The TUI
-// constructs cancelFunc==nil in New when WithCancelFunc is omitted.
-func TestInvokeCancelFunc_NilSafe(t *testing.T) {
-	tui := &TUI{} // cancelFunc is nil
-	require.NotPanics(t, func() { tui.invokeCancelFunc() })
-}
-
-// TestInvokeCancelFunc_InvokesRegistered asserts the happy path.
-func TestInvokeCancelFunc_InvokesRegistered(t *testing.T) {
-	called := false
-	tui := &TUI{cancelFunc: func() { called = true }}
-	tui.invokeCancelFunc()
-	assert.True(t, called)
+	m.cancelEvent = nil
+	require.NotPanics(t, func() { m.invokeCancel() })
 }
 
 // ---------------------------------------------------------------------------

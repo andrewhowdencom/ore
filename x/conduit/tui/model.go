@@ -188,15 +188,16 @@ type model struct {
 	// ctx is the TUI's runtime context. It is propagated onto every
 	// emitted session.Event via loop.WithProvenance so downstream
 	// interceptors and tracing layers can attribute the event to the
-	// "tui" conduit. nil is treated as context.Background().
+	// "tui" conduit. The TUI derives this internally from the
+	// application-supplied event context (see WithEventContext); nil
+	// is treated as context.Background().
 	ctx context.Context
 
-	// cancelFunc is invoked on Ctrl+C and Esc after the corresponding
-	// session.InterruptEvent is emitted. nil means no cancel func was
-	// registered via tui.WithCancelFunc; in that case only the event
-	// is emitted and the application is responsible for any other
-	// cancellation strategy.
-	cancelFunc context.CancelFunc
+	// cancelEvent cancels the model's internal event-context wrapper
+	// on Esc and Ctrl+C. Cancelling the event context propagates into
+	// any in-flight engine work via the standard context-propagation
+	// pathway. nil is a no-op.
+	cancelEvent context.CancelFunc
 
 	// Conversation history.
 	turns []renderedTurn
@@ -302,23 +303,13 @@ func (m *model) emitUserMessage(content string) {
 	}
 }
 
-// emitInterrupt sends a session.InterruptEvent on the model's egress
-// channel and invokes the registered cancelFunc, if any. Used by both
-// Ctrl+C and Esc keyboard handlers. The cancel call is made AFTER the
-// event send so that an application that consumes events can observe
-// the interrupt before the shared context is cancelled; the cancel
-// also fires if the channel is full, so the cancel signal is not
-// silently swallowed.
-func (m *model) emitInterrupt() {
-	evt := session.InterruptEvent{
-		Ctx: loop.WithProvenance(m.contextOrBackground(), "tui"),
-	}
-	select {
-	case m.eventsCh <- evt:
-	default:
-	}
-	if m.cancelFunc != nil {
-		m.cancelFunc()
+// invokeCancel cancels the model's internal event-context wrapper
+// (set up by initModel). Used by both Ctrl+C and Esc keyboard
+// handlers. Cancellation propagates into any in-flight engine work
+// via the event's Context().
+func (m *model) invokeCancel() {
+	if m.cancelEvent != nil {
+		m.cancelEvent()
 	}
 }
 
@@ -942,17 +933,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.recalcLayout()
 			return m, cmd
 		case tea.KeyEscape:
-			m.emitInterrupt()
+			m.invokeCancel()
 			return m, nil
 		}
 
-		// Ctrl+C — emit InterruptEvent, invoke cancelFunc (if any),
-		// and quit the program. The cancel signal reaches the
-		// application even if the runner pump is not yet reading the
-		// Events channel, so an in-flight turn is interrupted
-		// without waiting for the application to drain the queue.
+		// Ctrl+C — cancel the event context (unwinding any
+		// in-flight engine work via context propagation) and quit
+		// the program.
 		if msg.Key().Code == 'c' && msg.Key().Mod.Contains(tea.ModCtrl) {
-			m.emitInterrupt()
+			m.invokeCancel()
 			return m, tea.Quit
 		}
 
