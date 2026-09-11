@@ -56,15 +56,18 @@
 //     `loop.WithProvenance` on the event's Ctx field so downstream
 //     interceptors and tracing layers can attribute the event to the conduit.
 //
-//  3. Cancellation — WithCancelFunc(cancel context.CancelFunc) Option
+//  3. Cancellation — WithEventContext(ctx context.Context) Option
 //
-//     Conduits that react to user interrupts (Ctrl+C, Esc) MUST support
-//     registration of a context.CancelFunc. The conduit invokes the
-//     registered func alongside the session.InterruptEvent emission, so a
-//     single cancel signal unwinds the UI, any in-flight engine
-//     execution, and the engine pump. The application typically pairs
-//     this with a context.WithCancel whose parent ctx is also passed to
-//     tui.Start and engine.Submit.
+//     Conduits that react to user interrupts (Ctrl+C, Esc) MUST
+//     support registration of a cancellable event context. The conduit
+//     invokes the registered func on the user interrupt; the application
+//     pairs this with the cancellation primitive appropriate for the
+//     engine backing the session. For the session/engine architecture,
+//     cancelling the event context propagates into the engine's per-event
+//     context and unwinds the running agent's Run. Conduits MUST NOT
+//     emit session events to signal cancellation; the cancel path is
+//     out-of-band via context propagation.
+//
 //
 //  4. Exported Descriptor — var Descriptor = conduit.Descriptor{...}
 //

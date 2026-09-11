@@ -61,18 +61,6 @@ func (e UserMessageEvent) Kind() string { return "user_message" }
 // Context returns the event's context.Context metadata.
 func (e UserMessageEvent) Context() context.Context { return e.Ctx }
 
-// InterruptEvent represents the user interrupting the current operation.
-type InterruptEvent struct {
-	// Ctx carries the provenance/context metadata for the interrupt event.
-	Ctx context.Context
-}
-
-// Kind returns the event kind identifier.
-func (e InterruptEvent) Kind() string { return "interrupt" }
-
-// Context returns the event's context.Context metadata.
-func (e InterruptEvent) Context() context.Context { return e.Ctx }
-
 // SessionSwitchEvent signals a cross-session navigation. Slash handlers
 // emit it to redirect the conduit to another session.
 type SessionSwitchEvent struct {

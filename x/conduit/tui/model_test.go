@@ -107,7 +107,7 @@ func TestModel_Update_LifecycleDone_ClearsPending(t *testing.T) {
 	assert.False(t, mm.pending)
 }
 
-func TestModel_Update_KeyEscape_SendsInterrupt(t *testing.T) {
+func TestModel_Update_KeyEscape(t *testing.T) {
 	eventsCh := make(chan session.Event, 10)
 	m := newTestModel()
 	m.eventsCh = eventsCh
@@ -115,15 +115,17 @@ func TestModel_Update_KeyEscape_SendsInterrupt(t *testing.T) {
 	newM, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	mm := newM.(*model)
 
+	// Esc no longer emits a session event; the cancel func (if
+	// registered) is invoked out-of-band. Assert the channel is
+	// empty and the program is not asked to quit.
 	select {
 	case e := <-eventsCh:
-		require.Equal(t, "interrupt", e.Kind())
+		t.Fatalf("did not expect any event on Esc, got %T", e)
 	default:
-		t.Fatal("expected interrupt event on channel")
 	}
 
 	assert.Nil(t, cmd, "Escape should not quit the program")
-	_ = mm // suppress unused
+	_ = mm
 }
 
 func TestModel_Update_LifecycleCancelled_ClearsCurrentTurn(t *testing.T) {
@@ -273,11 +275,12 @@ func TestModel_Update_KeyCtrlC(t *testing.T) {
 	newM, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	mm := newM.(*model)
 
+	// Ctrl+C no longer emits a session event; the cancel func (if
+	// registered) is invoked out-of-band and the program quits.
 	select {
 	case e := <-eventsCh:
-		require.Equal(t, "interrupt", e.Kind())
+		t.Fatalf("did not expect any event on Ctrl+C, got %T", e)
 	default:
-		t.Fatal("expected interrupt event on channel")
 	}
 
 	require.NotNil(t, cmd)

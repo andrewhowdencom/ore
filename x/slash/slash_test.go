@@ -166,7 +166,7 @@ func TestRegistry_NonUserMessage(t *testing.T) {
 		return Result{}, nil
 	})
 
-	event := session.InterruptEvent{Ctx: context.Background()}
+	event := session.SessionSwitchEvent{SessionID: "next", Ctx: context.Background()}
 	result, err := r.Intercept(context.Background(), event, nil, nil)
 
 	require.NoError(t, err)

@@ -76,13 +76,10 @@ func (b *fakeBackend) Submit(ctx context.Context, id string, event session.Event
 		return err
 	}
 	// Push the event into the session's step so subscribers observe it.
-	switch e := event.(type) {
-	case session.UserMessageEvent:
-		if _, err := s.Submit(ctx, ledger.RoleUser, artifact.Text{Content: e.Content}); err != nil {
+	if ue, ok := event.(session.UserMessageEvent); ok {
+		if _, err := s.Submit(ctx, ledger.RoleUser, artifact.Text{Content: ue.Content}); err != nil {
 			return err
 		}
-	case session.InterruptEvent:
-		// No-op for the fake backend; real engine emits lifecycle.
 	}
 	s.Emitter().Emit(ctx, loop.LifecycleEvent{Phase: "done", Ctx: event.Context()})
 	return nil
@@ -297,7 +294,7 @@ func TestSubmitEvent_InterruptReturns202(t *testing.T) {
 	resp, err := stdhttp.Post(server.URL+"/sessions/"+id+"/events", "application/json", bytes.NewReader(body))
 	require.NoError(t, err)
 	defer resp.Body.Close()
-	assert.Equal(t, 202, resp.StatusCode)
+	assert.Equal(t, 400, resp.StatusCode)
 }
 
 func TestSubmitEvent_UnknownKindReturns400(t *testing.T) {

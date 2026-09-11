@@ -12,12 +12,14 @@
 // responsible for constructing the session, seeding any default metadata
 // before Start, and pumping Events() into an engine.Engine.
 //
-// Cancellation is wired through WithCancelFunc: the registered cancel
-// function is invoked when the user presses Ctrl+C or Esc inside the TUI.
-// The application typically pairs this with a context.WithCancel whose
-// cancel func is shared with both Start(ctx) and engine.Submit, so a single
-// signal unwinds the UI, any in-flight engine execution, and the engine
-// pump.
+// Cancellation flows through the event context. The application
+// provides a cancellable event context (via WithEventContext); the
+// TUI wraps it internally and cancels the wrapper on Esc and Ctrl+C.
+// That cancellation propagates through the event's Context() into
+// the engine's per-event context, unwinding any in-flight turn. The
+// ctx passed to Start governs the TUI's lifetime; cancelling it
+// triggers a graceful shutdown (matching the pattern used by
+// x/conduit/http and x/conduit/stdio).
 //
 // Streaming model:
 // The TUI subscribes to delta artifact events (text_delta, reasoning_delta,
@@ -82,13 +84,13 @@ func readBoundaryFromSession(sess *session.Session) compaction.BoundaryInfo {
 // TUI is a terminal user interface conduit. It hides all Bubble Tea internals
 // from callers.
 type TUI struct {
-	sess           *session.Session
-	events         chan session.Event
-	cancelFunc     context.CancelFunc
-	program        *tea.Program
-	programOpts    []tea.ProgramOption
-	name           string
-	zoneFormatter  conduit.StatusFormatter
+	sess          *session.Session
+	events        chan session.Event
+	eventContext  context.Context // parent for emitted events; wrapped internally for cancellation
+	program       *tea.Program
+	programOpts   []tea.ProgramOption
+	name          string
+	zoneFormatter conduit.StatusFormatter
 	zonePriorities map[string]int
 	statusLabels   map[string]string
 	tracer         trace.Tracer
@@ -105,14 +107,22 @@ func WithName(name string) Option {
 	}
 }
 
-// WithCancelFunc registers a context.CancelFunc to be invoked when the user
-// presses Ctrl+C or Esc inside the TUI. The application typically passes the
-// cancel func of a context.WithCancel whose parent ctx is also passed to
-// tui.Start and engine.Submit, so a single cancel unwinds the UI, any
-// in-flight engine execution, and the engine pump.
-func WithCancelFunc(cancel context.CancelFunc) Option {
+// WithEventContext configures the parent context for events emitted
+// by the TUI. The TUI internally derives a cancellable wrapper from
+// this context; Esc and Ctrl+C cancel the wrapper, propagating the
+// cancellation into any in-flight engine work via the standard
+// context-propagation pathway. The lifetime of the TUI itself is
+// governed by the ctx passed to Start, separately from this event
+// context.
+//
+// If WithEventContext is not called, the TUI derives the event
+// context from the lifetime ctx passed to Start. In that case,
+// cancelling the lifetime ctx (e.g. via SIGINT-driven shutdown)
+// cancels the event context as well; the framework treats this as
+// the simple single-context case where one ctx governs everything.
+func WithEventContext(ctx context.Context) Option {
 	return func(t *TUI) {
-		t.cancelFunc = cancel
+		t.eventContext = ctx
 	}
 }
 
@@ -224,7 +234,7 @@ var _ conduit.AudioNotifier = (*TUI)(nil)
 // responsible for attaching or creating the session before calling New
 // and for pumping Events() into an engine.Engine.
 //
-// Available options include WithName, WithCancelFunc, WithTracer,
+// Available options include WithName, WithEventContext, WithTracer,
 // WithTheme, WithStatusZones, WithStatusLabels, and WithProgramOptions.
 func New(sess *session.Session, opts ...Option) (conduit.Conduit, error) {
 	if sess == nil {
@@ -268,10 +278,20 @@ func (t *TUI) initModel(ctx context.Context, eventsCh chan session.Event, sess *
 	ta.MinHeight = 1
 	ta.Focus()
 
+	// The event context is the application-provided ctx (via
+	// WithEventContext), or — if unset — the lifetime ctx. The TUI
+	// derives a cancellable wrapper; Esc and Ctrl+C cancel it. The
+	// lifetime ctx (passed to Start) governs the program's exit.
+	eventParent := t.eventContext
+	if eventParent == nil {
+		eventParent = ctx
+	}
+	eventCtx, cancelEvent := context.WithCancel(eventParent)
+
 	m := model{
 		eventsCh:       eventsCh,
-		ctx:            ctx,
-		cancelFunc:     t.cancelFunc,
+		ctx:            eventCtx,
+		cancelEvent:    cancelEvent,
 		viewport:       viewport.New(),
 		textarea:       ta,
 		md:             newGlamourMarkdownRenderer(t.themeOrAuto()),
@@ -384,18 +404,30 @@ func (t *TUI) Start(ctx context.Context) error {
 		}
 	}()
 
-	// Goroutine to quit the program when the context is cancelled.
+	// Run the program in a goroutine so we can integrate ctx.Done()
+	// handling into Start's main select — matching the pattern used by
+	// x/conduit/http and x/conduit/stdio. On ctx.Done(), request a
+	// graceful Bubble Tea shutdown and wait for p.Run to return.
+	runDone := make(chan error, 1)
 	go func() {
-		<-ctx.Done()
-		p.Quit()
+		_, err := p.Run()
+		runDone <- err
 	}()
 
-	_, err := p.Run()
-	close(t.events)
-	if err != nil {
-		slog.Debug("tui: program returned error", "err", err)
+	var runErr error
+	select {
+	case runErr = <-runDone:
+		// Program exited on its own (Ctrl+C returns tea.Quit, etc.).
+	case <-ctx.Done():
+		p.Quit()
+		runErr = <-runDone
 	}
-	return err
+
+	close(t.events)
+	if runErr != nil {
+		slog.Debug("tui: program returned error", "err", runErr)
+	}
+	return runErr
 }
 
 // PlayDone forwards an audio notification to the Bubble Tea model so the
@@ -434,12 +466,8 @@ func (t *TUI) ReloadHistory(turns []ledger.Turn, boundary compaction.BoundaryInf
 	return nil
 }
 
-// invokeCancelFunc invokes the registered WithCancelFunc function, if any.
-// Used by the model on Ctrl+C and Esc to ensure the cancel signal reaches
-// the application even if the Events() channel has not yet been read by
-// the runner pump.
-func (t *TUI) invokeCancelFunc() {
-	if t.cancelFunc != nil {
-		t.cancelFunc()
-	}
-}
+// invokeCancelFunc is removed. Cancellation flows through the model's
+// eventCtx, derived in initModel from t.eventContext (or the lifetime
+// ctx as a fallback). Esc and Ctrl+C cancel the eventCtx directly;
+// propagation carries the cancellation into the engine's per-event
+// ctx via the event's Context().
