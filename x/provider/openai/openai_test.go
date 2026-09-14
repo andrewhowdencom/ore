@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -49,6 +49,14 @@ func TestOptionPassthrough(t *testing.T) {
 	// option list reached the wire.
 	_, err := New()
 	require.Error(t, err)
+}
+
+func TestBearerTokenSourcePassthrough(t *testing.T) {
+	p, err := New(WithBearerTokenSource(func(context.Context) (string, error) {
+		return "access-token", nil
+	}))
+	require.NoError(t, err)
+	require.NotNil(t, p)
 }
 
 // Compile-time interface conformance assertion: the wire's *Provider
