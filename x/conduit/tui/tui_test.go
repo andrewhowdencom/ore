@@ -349,14 +349,21 @@ func TestEvents_CtrlCQuits(t *testing.T) {
 }
 
 // TestInvokeCancel_CancelsEventContext asserts that Esc and Ctrl+C
-// cancel the model's internal event-context wrapper, which is the
-// propagation path for engine cancellation.
+// cancel the model's in-flight batch context. Under the
+// cancel-all + auto-re-arm semantic, inflightCancel is *not*
+// consumed after firing — it stays set and a subsequent Esc is
+// safe because context.CancelFunc is idempotent.
 func TestInvokeCancel_CancelsEventContext(t *testing.T) {
 	t.Run("esc", func(t *testing.T) {
+		eventsCh := make(chan session.Event, 1)
 		m := newTestModel()
+		m.ctx = context.Background()
+		m.eventsCh = eventsCh
+
+		// Stage an in-flight cancellable ctx as if emitUserMessage
+		// had just produced an event. Esc must cancel it.
 		ctx, cancel := context.WithCancel(context.Background())
-		m.ctx = ctx
-		m.cancelEvent = cancel
+		m.inflightCancel = cancel
 
 		_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 
@@ -366,13 +373,21 @@ func TestInvokeCancel_CancelsEventContext(t *testing.T) {
 		case <-time.After(100 * time.Millisecond):
 			t.Fatal("expected cancel on Esc")
 		}
+		require.NotNil(t, m.inflightCancel,
+			"inflightCancel must remain set after firing; the next emit replaces it (auto re-arm)")
+		// A second Esc must not panic — CancelFunc is idempotent.
+		require.NotPanics(t, func() { m.invokeCancel() })
 	})
 
 	t.Run("ctrl_c", func(t *testing.T) {
+		eventsCh := make(chan session.Event, 1)
 		m := newTestModel()
+		m.ctx = context.Background()
+		m.eventsCh = eventsCh
+
+		// Same shape as the Esc sub-test, with Ctrl+C.
 		ctx, cancel := context.WithCancel(context.Background())
-		m.ctx = ctx
-		m.cancelEvent = cancel
+		m.inflightCancel = cancel
 
 		_, _ = m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 
@@ -382,15 +397,70 @@ func TestInvokeCancel_CancelsEventContext(t *testing.T) {
 		case <-time.After(100 * time.Millisecond):
 			t.Fatal("expected cancel on Ctrl+C")
 		}
+		require.NotNil(t, m.inflightCancel,
+			"inflightCancel must remain set after firing; the next emit replaces it (auto re-arm)")
+		// A second Ctrl+C must not panic — CancelFunc is idempotent.
+		require.NotPanics(t, func() { m.invokeCancel() })
 	})
 }
 
-// TestInvokeCancel_NilSafe guards against a nil-cancelEvent panic
-// when the model has no event context (e.g. before initModel runs).
+// TestInvokeCancel_NilSafe guards against a nil-inflightCancel panic
+// when the model has no in-flight emission (e.g. before the first
+// emit, or after a previous Esc/Ctrl+C has already consumed the
+// canceller).
 func TestInvokeCancel_NilSafe(t *testing.T) {
 	m := newTestModel()
-	m.cancelEvent = nil
+	m.inflightCancel = nil
 	require.NotPanics(t, func() { m.invokeCancel() })
+	require.Nil(t, m.inflightCancel,
+		"a no-op invokeCancel must leave inflightCancel nil")
+}
+
+// TestEmitUserMessage_PostEscCtxIsLive pins the regression where Esc
+// permanently cancelled the model's context, causing every subsequent
+// emitted event to carry a dead ctx and the engine's per-event turn
+// to unwind immediately with context.Canceled. After the fix, Esc
+// cancels only the most recently emitted event's context; later
+// emissions derive a fresh ctx from the parent and are live.
+func TestEmitUserMessage_PostEscCtxIsLive(t *testing.T) {
+	eventsCh := make(chan session.Event, 2)
+	m := newTestModel()
+	m.ctx = context.Background()
+	m.eventsCh = eventsCh
+
+	// First emission: ctx starts live.
+	m.emitUserMessage("first")
+	var first session.UserMessageEvent
+	select {
+	case e := <-eventsCh:
+		var ok bool
+		first, ok = e.(session.UserMessageEvent)
+		require.True(t, ok, "expected session.UserMessageEvent, got %T", e)
+	default:
+		t.Fatal("expected first user message event on channel")
+	}
+	require.NoError(t, first.Ctx.Err(),
+		"first event ctx should start live")
+
+	// Esc cancels the in-flight ctx — only the first.
+	m.invokeCancel()
+	require.ErrorIs(t, first.Ctx.Err(), context.Canceled,
+		"first event ctx should be cancelled after Esc")
+
+	// Second emission after Esc must yield a live ctx (regression
+	// guard).
+	m.emitUserMessage("second")
+	var second session.UserMessageEvent
+	select {
+	case e := <-eventsCh:
+		var ok bool
+		second, ok = e.(session.UserMessageEvent)
+		require.True(t, ok, "expected session.UserMessageEvent, got %T", e)
+	default:
+		t.Fatal("expected second user message event on channel")
+	}
+	require.NoError(t, second.Ctx.Err(),
+		"second event ctx must be live after Esc (regression: post-Esc turns must run)")
 }
 
 // ---------------------------------------------------------------------------
