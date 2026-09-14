@@ -13,10 +13,10 @@ import (
 	"strings"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/andrewhowdencom/ore/x/provider/retry"
 	"github.com/openai/openai-go"
@@ -209,11 +209,11 @@ func WithCacheControl() provider.InvokeOption {
 
 // config holds the build-time configuration for the Provider.
 type config struct {
-	apiKey           string
-	baseURL          string
-	httpClient       option.HTTPClient
-	tracer           trace.Tracer
-	reasoningInclude *bool
+	bearerTokenSource BearerTokenSource
+	baseURL           string
+	httpClient        option.HTTPClient
+	tracer            trace.Tracer
+	reasoningInclude  *bool
 	// nameResolver translates the canonical [models.Spec.Name] into
 	// the wire name understood by the upstream host. It is invoked
 	// once per [Provider.Invoke] on the effective model. The default
@@ -259,10 +259,28 @@ func WithNameResolver(r func(canonical string) string) Option {
 // Option configures a Provider via the functional options pattern.
 type Option func(*config)
 
-// WithAPIKey sets the API key for the OpenAI-compatible provider.
+// BearerTokenSource returns the bearer credential for an outgoing request.
+// It is called with the request context for every HTTP attempt, allowing an
+// application-owned OAuth implementation to refresh credentials as needed.
+type BearerTokenSource func(context.Context) (string, error)
+
+// WithAPIKey sets a static bearer credential for the OpenAI-compatible
+// provider.
 func WithAPIKey(key string) Option {
+	if key == "" {
+		return WithBearerTokenSource(nil)
+	}
+	return WithBearerTokenSource(func(context.Context) (string, error) {
+		return key, nil
+	})
+}
+
+// WithBearerTokenSource configures a dynamic bearer credential source. OAuth
+// grant flows, refresh, and persistence remain application concerns; the wire
+// asks the source for the current token before each HTTP attempt.
+func WithBearerTokenSource(src BearerTokenSource) Option {
 	return func(c *config) {
-		c.apiKey = key
+		c.bearerTokenSource = src
 	}
 }
 
@@ -300,8 +318,8 @@ func New(opts ...Option) (*Provider, error) {
 		opt(cfg)
 	}
 
-	if cfg.apiKey == "" {
-		return nil, fmt.Errorf("missing required option: apiKey")
+	if cfg.bearerTokenSource == nil {
+		return nil, fmt.Errorf("missing required option: WithAPIKey or WithBearerTokenSource")
 	}
 
 	// Default to identity resolution. WithNameResolver already
@@ -311,10 +329,12 @@ func New(opts ...Option) (*Provider, error) {
 		cfg.nameResolver = identityNameResolver
 	}
 
-	sdkOpts := []option.RequestOption{option.WithAPIKey(cfg.apiKey)}
+	sdkOpts := []option.RequestOption{}
 	if cfg.baseURL != "" {
 		sdkOpts = append(sdkOpts, option.WithBaseURL(cfg.baseURL))
 	}
+
+	sdkOpts = append(sdkOpts, option.WithMiddleware(bearerAuthMiddleware(cfg.bearerTokenSource)))
 	if cfg.httpClient != nil {
 		sdkOpts = append(sdkOpts, option.WithHTTPClient(cfg.httpClient))
 	}
@@ -326,6 +346,22 @@ func New(opts ...Option) (*Provider, error) {
 		isOpenRouter:     isOpenRouter(cfg.baseURL),
 		nameResolver:     cfg.nameResolver,
 	}, nil
+}
+
+func bearerAuthMiddleware(source BearerTokenSource) option.Middleware {
+	return func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+		token, err := source(req.Context())
+		if err != nil {
+			return nil, fmt.Errorf("get bearer token: %w", err)
+		}
+		if token == "" {
+			return nil, fmt.Errorf("get bearer token: empty token")
+		}
+
+		req = req.Clone(req.Context())
+		req.Header.Set("Authorization", "Bearer "+token)
+		return next(req)
+	}
 }
 
 // Compile-time interface check.

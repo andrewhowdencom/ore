@@ -6,20 +6,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/andrewhowdencom/ore/models"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptrace"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/ledger"
-	"github.com/andrewhowdencom/ore/x/provider/retry"
+	"github.com/andrewhowdencom/ore/models"
+	"github.com/andrewhowdencom/ore/provider"
 	toolpkg "github.com/andrewhowdencom/ore/tool"
+	"github.com/andrewhowdencom/ore/x/provider/retry"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
 	"github.com/openai/openai-go"
 	"github.com/stretchr/testify/assert"
@@ -2800,9 +2801,9 @@ func TestProviderInvoke_ToolUseSpanEvents(t *testing.T) {
 
 	// Span attributes: model, thread_id, message_count, tool_use_count.
 	wantAttrs := map[attribute.Key]attribute.Value{
-		"model":                          attribute.StringValue("gpt-4"),
-		"openai.request.message_count":   attribute.IntValue(2), // user + assistant
-		"openai.request.tool_use_count":  attribute.IntValue(2), // two tool_calls
+		"model":                         attribute.StringValue("gpt-4"),
+		"openai.request.message_count":  attribute.IntValue(2), // user + assistant
+		"openai.request.tool_use_count": attribute.IntValue(2), // two tool_calls
 	}
 	gotAttrs := map[attribute.Key]attribute.Value{}
 	for _, kv := range span.Attributes() {
@@ -2811,7 +2812,7 @@ func TestProviderInvoke_ToolUseSpanEvents(t *testing.T) {
 	for k, v := range wantAttrs {
 		got, ok := gotAttrs[k]
 		require.True(t, ok, "missing attribute %q", k)
-		assert.True(t, v.Emit() == got.Emit(), "attribute %q = %v; want %v", k, got, v)
+		assert.Equal(t, v.String(), got.String(), "attribute %q", k)
 	}
 
 	// Span events: exactly two openai.tool_use events, in order.
@@ -2888,6 +2889,89 @@ func TestProviderInvoke_NoSpanWithoutTracer(t *testing.T) {
 	// transport captured the outgoing request — the SDK request
 	// still fires even when no tracer is configured.
 	assert.NotNil(t, transport.request)
+}
+
+func TestBearerTokenSource(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingMockTransport{responseBody: simpleSSE("ok")}
+	var calls atomic.Int32
+	p, err := New(
+		WithBearerTokenSource(func(context.Context) (string, error) {
+			return fmt.Sprintf("token-%d", calls.Add(1)), nil
+		}),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	require.NoError(t, err)
+
+	mem := ledger.NewThread()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
+	for range 2 {
+		ch := make(chan artifact.Artifact, 10)
+		require.NoError(t, p.Invoke(t.Context(), mem, models.Spec{Name: "gpt-4"}, ch))
+		drainArtifacts(ch)
+	}
+
+	requests := transport.Requests()
+	require.Len(t, requests, 2)
+	assert.Equal(t, "Bearer token-1", requests[0].request.Header.Get("Authorization"))
+	assert.Equal(t, "Bearer token-2", requests[1].request.Header.Get("Authorization"))
+}
+
+func TestBearerTokenSourceErrors(t *testing.T) {
+	t.Parallel()
+
+	sourceErr := errors.New("refresh failed")
+	tests := []struct {
+		name   string
+		source BearerTokenSource
+		want   string
+		is     error
+	}{
+		{
+			name: "source error",
+			source: func(context.Context) (string, error) {
+				return "", sourceErr
+			},
+			want: "get bearer token",
+			is:   sourceErr,
+		},
+		{
+			name: "empty token",
+			source: func(context.Context) (string, error) {
+				return "", nil
+			},
+			want: "empty token",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			transport := &recordingMockTransport{responseBody: simpleSSE("unused")}
+			p, err := New(WithBearerTokenSource(tt.source), WithHTTPClient(&http.Client{Transport: transport}))
+			require.NoError(t, err)
+
+			mem := ledger.NewThread()
+			mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
+			ch := make(chan artifact.Artifact, 1)
+			err = p.Invoke(t.Context(), mem, models.Spec{Name: "gpt-4"}, ch)
+			require.ErrorContains(t, err, tt.want)
+			if tt.is != nil {
+				assert.ErrorIs(t, err, tt.is)
+			}
+			assert.Empty(t, transport.Requests())
+		})
+	}
+}
+
+func TestNewRequiresCredential(t *testing.T) {
+	t.Parallel()
+
+	for _, opts := range [][]Option{nil, {WithBearerTokenSource(nil)}} {
+		_, err := New(opts...)
+		require.ErrorContains(t, err, "WithAPIKey or WithBearerTokenSource")
+	}
 }
 
 // openaiAttrValue extracts a string-valued attribute by key from a

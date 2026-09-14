@@ -4,6 +4,14 @@
 // It uses the official OpenAI Go SDK and supports custom base URLs for
 // local proxies or alternative endpoints.
 //
+// # Authentication
+//
+// WithAPIKey configures a static bearer credential. WithBearerTokenSource
+// accepts an application-owned function that supplies the current credential
+// for each HTTP attempt, which supports OAuth and workload identity tokens.
+// Authorization grants, refresh, and persistence remain outside this wire.
+// The configured API endpoint must accept the returned credential.
+//
 // # Reasoning
 //
 // The provider surfaces one per-invocation option for reasoning

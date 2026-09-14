@@ -1,6 +1,8 @@
 // Package openai is the first-party OpenAI Chat Completions API provider.
 //
-// See [New] for usage and the package overview for the rationale.
+// Use [WithAPIKey] for a static credential or [WithBearerTokenSource] for an
+// application-managed OAuth or workload identity token. The package does not
+// implement authorization grants, refresh, or credential persistence.
 package openai
 
 // This file is intentionally minimal. The first-party wrapper is a

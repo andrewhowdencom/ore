@@ -33,6 +33,11 @@ import (
 // [New].
 type Option = openaiwire.Option
 
+// BearerTokenSource returns the current bearer credential for an outgoing
+// request. OAuth acquisition, refresh, and persistence remain application
+// concerns.
+type BearerTokenSource = openaiwire.BearerTokenSource
+
 // New constructs a first-party OpenAI provider. The first-party
 // wrapper currently composes the wire implementation with identity
 // resolution (canonical spec names forwarded verbatim). Vendor-specific
@@ -55,6 +60,11 @@ func New(opts ...Option) (provider.Provider, error) {
 
 // WithAPIKey sets the API key for the OpenAI provider.
 func WithAPIKey(key string) Option { return openaiwire.WithAPIKey(key) }
+
+// WithBearerTokenSource configures a dynamic bearer credential source.
+func WithBearerTokenSource(src BearerTokenSource) Option {
+	return openaiwire.WithBearerTokenSource(src)
+}
 
 // WithBaseURL sets a custom API base URL.
 func WithBaseURL(url string) Option { return openaiwire.WithBaseURL(url) }
