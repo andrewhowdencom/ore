@@ -185,19 +185,23 @@ func isRerenderableKind(kind string) bool {
 type model struct {
 	eventsCh chan session.Event
 
-	// ctx is the TUI's runtime context. It is propagated onto every
-	// emitted session.Event via loop.WithProvenance so downstream
-	// interceptors and tracing layers can attribute the event to the
-	// "tui" conduit. The TUI derives this internally from the
-	// application-supplied event context (see WithEventContext); nil
-	// is treated as context.Background().
+	// ctx is the lifetime parent context for the in-flight batch.
+	// Each call to emitUserMessage derives a fresh cancellable
+	// context from ctx (or context.Background() if nil) and uses
+	// that for the emitted event. Esc and Ctrl+C cancel the current
+	// batch — every derived context is a child of this parent, so
+	// cancelling the in-flight cancel cascades to all of them. The
+	// TUI derives this internally from the application-supplied
+	// event context (see WithEventContext); nil is treated as
+	// context.Background().
 	ctx context.Context
 
-	// cancelEvent cancels the model's internal event-context wrapper
-	// on Esc and Ctrl+C. Cancelling the event context propagates into
-	// any in-flight engine work via the standard context-propagation
-	// pathway. nil is a no-op.
-	cancelEvent context.CancelFunc
+	// inflightCancel cancels the current batch's derived context on
+	// Esc / Ctrl+C. emitUserMessage replaces this on every emission
+	// (auto re-arm), so a second Esc with no in-flight turn fires
+	// the most recent (already-cancelled) cancel — a safe no-op,
+	// since context.CancelFunc is idempotent. nil is a no-op.
+	inflightCancel context.CancelFunc
 
 	// Conversation history.
 	turns []renderedTurn
@@ -287,40 +291,55 @@ type renderedTurn struct {
 	timestamp time.Time
 }
 
-// emitUserMessage sends a session.UserMessageEvent on the model's egress
-// channel with the model's runtime context wrapped in loop.WithProvenance.
-// The channel is buffered; if it is full, the message is dropped with a
-// warning rather than blocking the UI goroutine.
+// emitUserMessage sends a session.UserMessageEvent on the model's
+// egress channel. Each call first cancels any in-flight batch
+// (auto re-arm — emitting a new message supersedes the previous
+// one), then derives a fresh cancellable context from the model's
+// runtime context (or context.Background() if nil), records its
+// cancel function as the in-flight canceller, and wraps it in
+// loop.WithProvenance so downstream interceptors and tracing
+// layers can attribute the event to the "tui" conduit. The channel
+// is buffered; if it is full, the message is dropped with a warning
+// and the derived context is cancelled so it does not leak.
 func (m *model) emitUserMessage(content string) {
+	// Auto re-arm: cancel the previous batch's parent before
+	// starting a fresh one. Cancelling the previous batch's cancel
+	// cascades to all of its in-flight children.
+	if m.inflightCancel != nil {
+		m.inflightCancel()
+	}
+
+	parent := m.ctx
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parent)
+	m.inflightCancel = cancel
+
 	evt := session.UserMessageEvent{
 		Content: content,
-		Ctx:     loop.WithProvenance(m.contextOrBackground(), "tui"),
+		Ctx:     loop.WithProvenance(ctx, "tui"),
 	}
+
 	select {
 	case m.eventsCh <- evt:
 	default:
+		cancel()
 		slog.Warn("event channel full, dropping user message")
 	}
 }
 
-// invokeCancel cancels the model's internal event-context wrapper
-// (set up by initModel). Used by both Ctrl+C and Esc keyboard
-// handlers. Cancellation propagates into any in-flight engine work
-// via the event's Context().
+// invokeCancel cancels the current in-flight batch's context.
+// Used by both Ctrl+C and Esc keyboard handlers. Cancellation
+// cascades into any in-flight engine work via the event's
+// Context(). The cancel func is not cleared after firing — the
+// next emitUserMessage replaces it via auto re-arm. Calling
+// invokeCancel twice in a row is safe (CancelFunc is idempotent);
+// calling it before any emit is a no-op (nil guard).
 func (m *model) invokeCancel() {
-	if m.cancelEvent != nil {
-		m.cancelEvent()
+	if m.inflightCancel != nil {
+		m.inflightCancel()
 	}
-}
-
-// contextOrBackground returns the model's runtime context, or
-// context.Background() if nil. Used when wrapping emitted events with
-// loop.WithProvenance.
-func (m *model) contextOrBackground() context.Context {
-	if m.ctx == nil {
-		return context.Background()
-	}
-	return m.ctx
 }
 
 // hashToolCallID derives a 4-character truncated hex hash from a toolCallID.

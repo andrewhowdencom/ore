@@ -279,19 +279,19 @@ func (t *TUI) initModel(ctx context.Context, eventsCh chan session.Event, sess *
 	ta.Focus()
 
 	// The event context is the application-provided ctx (via
-	// WithEventContext), or — if unset — the lifetime ctx. The TUI
-	// derives a cancellable wrapper; Esc and Ctrl+C cancel it. The
-	// lifetime ctx (passed to Start) governs the program's exit.
+	// WithEventContext), or — if unset — the lifetime ctx. Esc and
+	// Ctrl+C cancel only the most recently emitted event's context;
+	// each emission derives a fresh cancellable child from this
+	// parent. The lifetime ctx (passed to Start) governs the
+	// program's exit.
 	eventParent := t.eventContext
 	if eventParent == nil {
 		eventParent = ctx
 	}
-	eventCtx, cancelEvent := context.WithCancel(eventParent)
 
 	m := model{
 		eventsCh:       eventsCh,
-		ctx:            eventCtx,
-		cancelEvent:    cancelEvent,
+		ctx:            eventParent,
 		viewport:       viewport.New(),
 		textarea:       ta,
 		md:             newGlamourMarkdownRenderer(t.themeOrAuto()),
