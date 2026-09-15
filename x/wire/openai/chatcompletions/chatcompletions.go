@@ -1,6 +1,6 @@
-// Package openai implements a provider adapter for OpenAI-compatible chat
+// Package chatcompletions implements a provider adapter for OpenAI-compatible chat
 // completions APIs. It wraps the official github.com/openai/openai-go client.
-package openai
+package chatcompletions
 
 import (
 	"context"

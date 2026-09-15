@@ -3,7 +3,7 @@
 // It is the recommended import path for application code that wants to
 // call the OpenAI Chat Completions API (and the OpenAI-compatible
 // surface exposed by the wire). The package composes the wire
-// implementation at github.com/andrewhowdencom/ore/x/wire/openai and
+// implementation at github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions and
 // applies first-party defaults (currently identity — canonical spec
 // names are forwarded verbatim to the upstream API).
 //
@@ -22,7 +22,7 @@ import (
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/tool"
-	openaiwire "github.com/andrewhowdencom/ore/x/wire/openai"
+	openaiwire "github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions"
 
 	"go.opentelemetry.io/otel/trace"
 )

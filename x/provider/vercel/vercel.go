@@ -2,7 +2,7 @@ package vercel
 
 import (
 	"github.com/andrewhowdencom/ore/provider"
-	openaiwire "github.com/andrewhowdencom/ore/x/wire/openai"
+	openaiwire "github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions"
 )
 
 // nameResolver looks up the canonical spec name in the generated

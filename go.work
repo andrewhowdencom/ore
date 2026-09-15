@@ -17,6 +17,7 @@ use (
 	./x/export
 	./x/llmbytes
 	./x/provider/anthropic
+	./x/provider/codex
 	./x/provider/minimax
 	./x/provider/mock
 	./x/provider/mock/anthropic
@@ -40,7 +41,8 @@ use (
 	./x/usage
 	./x/verifier
 	./x/wire/anthropic
-	./x/wire/openai
+	./x/wire/openai/chatcompletions
+	./x/wire/openai/responses
 )
 
 replace github.com/andrewhowdencom/ore v0.0.0 => .

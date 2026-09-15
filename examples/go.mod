@@ -23,7 +23,7 @@ require (
 	github.com/andrewhowdencom/ore/x/llmbytes v0.1.2 // indirect
 	github.com/andrewhowdencom/ore/x/provider/retry v0.0.3 // indirect
 	github.com/andrewhowdencom/ore/x/tool/truncate v0.1.1 // indirect
-	github.com/andrewhowdencom/ore/x/wire/openai v0.1.4 // indirect
+	github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions v0.0.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
@@ -99,6 +99,8 @@ replace github.com/andrewhowdencom/ore/x/tool/set_title => ../x/tool/set_title
 replace github.com/andrewhowdencom/ore/x/usage => ../x/usage
 
 replace github.com/andrewhowdencom/ore/x/provider/openai => ../x/provider/openai
+
+replace github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions => ../x/wire/openai/chatcompletions
 
 replace github.com/andrewhowdencom/ore => ..
 

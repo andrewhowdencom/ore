@@ -3,9 +3,9 @@ module github.com/andrewhowdencom/ore/x/provider/minimax
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.2.1
+	github.com/andrewhowdencom/ore v1.3.2
 	github.com/andrewhowdencom/ore/x/wire/anthropic v0.2.1
-	github.com/andrewhowdencom/ore/x/wire/openai v0.1.3
+	github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions v0.0.0
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -39,3 +39,5 @@ require (
 )
 
 replace github.com/andrewhowdencom/ore => ../../..
+
+replace github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions => ../../wire/openai/chatcompletions

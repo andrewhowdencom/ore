@@ -1,13 +1,9 @@
 github.com/andrewhowdencom/ore/x/provider/anthropic v0.2.5 h1:e1a9Ro7Da5iklA7jydUBx4TUpmi/ceud4RBy6H+URJo=
 github.com/andrewhowdencom/ore/x/provider/anthropic v0.2.5/go.mod h1:ynJmv6b9DMnDsoSVRP8h9gFcKmhqPWY0DpF5UxAyKkQ=
-github.com/andrewhowdencom/ore/x/provider/openai v0.6.5 h1:dYVqIRfxNLe7MGkfODLW1Cg0HRvriNvHUYgwZTU9IzA=
-github.com/andrewhowdencom/ore/x/provider/openai v0.6.5/go.mod h1:lLx4GvV8NbDhTsCY6uK4lswtrYKBhrqZwB2vnKMbKH4=
 github.com/andrewhowdencom/ore/x/provider/retry v0.0.3 h1:hSfSKo7jzYQrjvaEHiyivfod5U2FaOa5wOaJlPaWfUc=
 github.com/andrewhowdencom/ore/x/provider/retry v0.0.3/go.mod h1:2zgSUOf65hQ72u1GDMiy6V5Una18yWAvPJqzcMIGUfE=
 github.com/andrewhowdencom/ore/x/wire/anthropic v0.2.2 h1:YR1yjFbCWoYr30YD/Xfq3ErxRQKZd8lOorunVt9Rzlo=
 github.com/andrewhowdencom/ore/x/wire/anthropic v0.2.2/go.mod h1:WIxltt1IMM44UzculS5rjxKO123cNBrEFf/M+yc65Ko=
-github.com/andrewhowdencom/ore/x/wire/openai v0.1.4 h1:UrD0MQ6eWpxIA+TffFFfziEIMB5j+L4uMR1qgSUhO4I=
-github.com/andrewhowdencom/ore/x/wire/openai v0.1.4/go.mod h1:m6w6PwdBwP/yWoF8yAkpdgbGXHVbHaYtBAJO6zcNDyE=
 github.com/anthropics/anthropic-sdk-go v1.50.1 h1:XTd1RkdeHCPusPpzcBY5RIWj/WW6ZktjftxrHvQBJfU=
 github.com/anthropics/anthropic-sdk-go v1.50.1/go.mod h1:3EfIfmFqxH6rbiLcIP4tPFyXL/IHakx2wDG4OU+TIEI=
 github.com/bahlo/generic-list-go v0.2.0 h1:5sz/EEAK+ls5wF+NeqDpk5+iNdMDXrh3z3nPnH1Wvgk=
