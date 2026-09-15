@@ -55,6 +55,9 @@ building agents, not a specific agent implementation).
 
 Extensions (provider adapters, conduits, and tool implementations) live under `x/`.
 
+To use a ChatGPT Plus or Pro subscription through the experimental Codex
+service surface, see [Use a ChatGPT subscription with an ore agent](docs/how-to/use-chatgpt-subscription.md).
+
 
 ## Getting Started
 
