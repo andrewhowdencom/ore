@@ -3,7 +3,7 @@ package minimax
 import (
 	"github.com/andrewhowdencom/ore/provider"
 	anthropicwire "github.com/andrewhowdencom/ore/x/wire/anthropic"
-	openaiwire "github.com/andrewhowdencom/ore/x/wire/openai"
+	openaiwire "github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions"
 )
 
 // identityResolver returns its input unchanged. It is exported so
@@ -33,7 +33,7 @@ func NewAnthropic(apiKey string) (provider.Provider, error) {
 // name resolver so that canonical spec names from the ore catalog
 // are forwarded verbatim to the upstream host.
 //
-// The wire's [github.com/andrewhowdencom/ore/x/wire/openai.WithNameResolver]
+// The wire's [github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions.WithNameResolver]
 // option remains the escape hatch when the upstream adopts aliases.
 func NewOpenAI(apiKey string) (provider.Provider, error) {
 	return openaiwire.New(

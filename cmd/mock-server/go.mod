@@ -22,3 +22,7 @@ replace github.com/andrewhowdencom/ore/x/provider/mock => ../../x/provider/mock
 replace github.com/andrewhowdencom/ore/x/provider/mock/anthropic => ../../x/provider/mock/anthropic
 
 replace github.com/andrewhowdencom/ore/x/provider/mock/openai => ../../x/provider/mock/openai
+
+replace github.com/andrewhowdencom/ore/x/provider/openai => ../../x/provider/openai
+
+replace github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions => ../../x/wire/openai/chatcompletions

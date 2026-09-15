@@ -11,7 +11,7 @@
 //
 // The package does not introduce a new wire protocol; it is a thin
 // first-party wrapper over [github.com/andrewhowdencom/ore/x/wire/anthropic]
-// and [github.com/andrewhowdencom/ore/x/wire/openai].
+// and [github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions].
 //
 // # Constructors
 //

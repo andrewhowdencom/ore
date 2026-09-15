@@ -101,7 +101,7 @@ func TestHandler_TextOnly(t *testing.T) {
 // is set, a dedicated usage chunk follows the final-chunk-with-stop.
 //
 // The SDK only emits a [artifact.Usage] when it sees a chunk with
-// `len(Choices) == 0` AND a non-zero TotalTokens (x/wire/openai/openai.go:686).
+// `len(Choices) == 0` AND a non-zero TotalTokens (the Chat Completions wire).
 // The mock emits usage on a frame of its own so this branch fires.
 func TestHandler_Usage(t *testing.T) {
 	t.Parallel()
@@ -144,7 +144,7 @@ func TestHandler_Usage(t *testing.T) {
 }
 
 // TestHandler_Reasoning exercises the reasoning-delivery path. The
-// OpenAI SDK reads `delta.reasoning_content` (see x/wire/openai/openai.go:722).
+// OpenAI SDK reads `delta.reasoning_content` (see the Chat Completions wire).
 func TestHandler_Reasoning(t *testing.T) {
 	t.Parallel()
 

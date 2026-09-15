@@ -6,5 +6,5 @@
 package openai
 
 // This file is intentionally minimal. The first-party wrapper is a
-// thin shim over the wire at github.com/andrewhowdencom/ore/x/wire/openai;
+// thin shim over the wire at github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions;
 // see openai.go for the implementation.

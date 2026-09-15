@@ -1,4 +1,4 @@
-// Package openai implements a provider adapter for OpenAI-compatible chat
+// Package chatcompletions implements a provider adapter for OpenAI-compatible chat
 // completions APIs.
 //
 // It uses the official OpenAI Go SDK and supports custom base URLs for
@@ -60,4 +60,4 @@
 //     SetExtraFields to inject cache_control and reasoning blocks, so
 //     unknown fields are dropped by the host. No regression for users
 //     that do not call WithCacheControl.
-package openai
+package chatcompletions

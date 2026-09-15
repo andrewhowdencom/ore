@@ -70,7 +70,7 @@ func TestNewSucceeds(t *testing.T) {
 func TestNew_RequiresAPIKey(t *testing.T) {
 	_, err := New("")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "apiKey",
+	assert.Contains(t, err.Error(), "WithAPIKey",
 		"error should name the missing option")
 }
 

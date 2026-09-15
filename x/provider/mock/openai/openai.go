@@ -195,7 +195,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Final chunk with the stop reason. The OpenAI SDK's read-side
-	// (x/wire/openai/openai.go:686) only emits the Usage artifact
+	// (x/wire/openai/chatcompletions/chatcompletions.go) only emits the Usage artifact
 	// when len(choices) == 0, so we keep this chunk's choices
 	// populated and emit a separate usage chunk below when needed.
 	s.writeChunk(w, chatChunk{
@@ -209,7 +209,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Optional usage chunk. Matches the byte shape in
-	// x/wire/openai/openai_test.go:191 — usage is delivered on a
+	// x/wire/openai/chatcompletions/chatcompletions_test.go — usage is delivered on a
 	// dedicated frame with empty choices so the SDK's
 	// `len(choices) == 0` branch fires.
 	if resp.Usage != nil {
@@ -276,7 +276,7 @@ func (s *Server) nextID() string {
 // ---------------------------------------------------------------------------
 
 // chatChunk is the streaming delta object emitted on every SSE frame.
-// The shape matches x/wire/openai/openai_test.go:142-186 byte-for-byte.
+// The shape matches x/wire/openai/chatcompletions/chatcompletions_test.go byte-for-byte.
 type chatChunk struct {
 	ID      string       `json:"id"`
 	Object  string       `json:"object"`
@@ -286,9 +286,9 @@ type chatChunk struct {
 	Usage   *chatUsage   `json:"usage,omitempty"`
 }
 
-// chatChoice mirrors x/wire/openai.go's `Choices[0]`. ReasoningContent
+// chatChoice mirrors the Chat Completions wire's `Choices[0]`. ReasoningContent
 // lives at the Delta level so it matches the SDK's read path
-// (x/wire/openai/openai.go:722 — `delta.reasoning_content`).
+// (x/wire/openai/chatcompletions/chatcompletions.go — `delta.reasoning_content`).
 type chatChoice struct {
 	Index        int       `json:"index"`
 	Delta        chatDelta `json:"delta"`
@@ -299,8 +299,8 @@ type chatChoice struct {
 // (string) and ToolCalls ([]) are mutually independent — a single
 // chunk may set any combination of them.
 type chatDelta struct {
-	Content          string             `json:"content,omitempty"`
-	ReasoningContent string             `json:"reasoning_content,omitempty"`
+	Content          string              `json:"content,omitempty"`
+	ReasoningContent string              `json:"reasoning_content,omitempty"`
 	ToolCalls        []chatToolCallDelta `json:"tool_calls,omitempty"`
 }
 
@@ -308,9 +308,9 @@ type chatDelta struct {
 // The OpenAI SDK reads these as `delta.ToolCalls` and aggregates
 // them by Index. The mock emits one delta per Response.ToolCall.
 type chatToolCallDelta struct {
-	Index    int                 `json:"index"`
-	ID       string              `json:"id"`
-	Type     string              `json:"type"`
+	Index    int                  `json:"index"`
+	ID       string               `json:"id"`
+	Type     string               `json:"type"`
 	Function chatToolCallFunction `json:"function"`
 }
 

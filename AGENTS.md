@@ -22,9 +22,10 @@ state/         ← depends on artifact/
 models/        ← leaf value type carried through state, loop, provider
 provider/      ← depends on state/, artifact/, models/
 loop/          ← depends on artifact/, state/, provider/, models/
-x/wire/...     ← wire-format adapters (e.g. x/wire/anthropic/, x/wire/openai/);
+x/wire/...     ← wire-format adapters (e.g. x/wire/anthropic/,
+                  x/wire/openai/{chatcompletions,responses}/);
                   depend only on provider/, models/, state/, artifact/
-x/provider/{openai,anthropic,minimax,openrouter,vercel}/  ← first-party, third-party, and gateway provider packages
+x/provider/{openai,anthropic,codex,minimax,openrouter,vercel}/  ← first-party, third-party, and gateway provider packages
                                                                 (vendor wrappers); depend on x/wire/... and models/; never import loop/
 x/provider/retry/                                          ← framework-level provider decorator; may import loop/
                                                                  to emit cross-cutting user-facing events (notices, errors, telemetry)
@@ -35,9 +36,10 @@ cmd/modelsdev-gen/  ← generator binary; stdlib-only; produces x/catalog/models
 ```
 
 - **Core packages** (`artifact/`, `state/`, `provider/`, `loop/`, `models/`) live at the root level so external applications can import them. Do not place framework contracts under `internal/`.
-- **Wire adapters** live under `x/wire/<vendor>/` (e.g., `x/wire/anthropic/`). They translate a `models.Spec` to a vendor-specific wire format and implement `provider.Provider`. They never import `loop/`. Wire adapters are *transport*, not "the Anthropic provider" or "the OpenAI provider" — there are several distinct ways to expose each vendor (first-party, third-party mirrors, gateways), all built on top of the wires.
-- **Provider packages** live under `x/provider/<name>/` (e.g., `x/provider/openai/`, `x/provider/anthropic/`, `x/provider/minimax/`, `x/provider/openrouter/`, `x/provider/vercel/`). They are thin wrappers that compose a wire adapter with vendor-specific defaults (base URL, name resolver, auth selection) and re-export the wire's options under their own package name. Three sub-shapes coexist:
+- **Wire adapters** live under `x/wire/<vendor>/<protocol>/` when a vendor defines multiple protocols (for example, `x/wire/openai/chatcompletions/` and `x/wire/openai/responses/`); single-protocol vendors may remain directly under `x/wire/<vendor>/` (for example, `x/wire/anthropic/`). They translate a `models.Spec` to a vendor-specific wire format and implement `provider.Provider`. They never import `loop/`. Wire adapters are *transport*, not "the Anthropic provider" or "the OpenAI provider" — there are several distinct ways to expose each vendor (first-party, third-party mirrors, gateways), all built on top of the wires.
+- **Provider packages** live under `x/provider/<name>/` (e.g., `x/provider/openai/`, `x/provider/anthropic/`, `x/provider/codex/`, `x/provider/minimax/`, `x/provider/openrouter/`, `x/provider/vercel/`). They compose a wire adapter with service-specific defaults (base URL, name resolver, auth selection) and re-export the wire's options under their own package name. Four sub-shapes coexist:
   - **First-party** (`x/provider/anthropic/`, `x/provider/openai/`): identity resolution, no base URL, no auth overrides. The canonical entry point for direct vendor calls.
+  - **Authenticated service surface** (`x/provider/codex/`): composes the OpenAI Responses wire with the ChatGPT Codex endpoint and owns OAuth login, refresh, logout, credential persistence, and account headers. It is experimental and never reads Codex's `auth.json`.
   - **Third-party** (`x/provider/minimax/`): identity resolution, fixed base URL targeting a vendor's API mirror, two constructors (`NewAnthropic`, `NewOpenAI`) for the two wire surfaces the mirror accepts.
   - **Gateway** (`x/provider/openrouter/`, `x/provider/vercel/`): identity resolution with a generated lookup table, fixed base URL targeting the gateway host.
   Provider packages implement `provider.Provider` (via composition with a wire) but never import `loop/`. Framework-level decorators under `x/provider/` — currently `x/provider/retry/` — are an exception: they participate in the event stream and may import `loop/` to emit notices and errors.

@@ -1,0 +1,11 @@
+version: '3'
+
+tasks:
+  build:
+    cmds: [go build ./...]
+  test:
+    cmds: [go test -race ./...]
+  lint:
+    cmds: [go vet ./..., golangci-lint run ./...]
+  validate:
+    deps: [lint, test, build]

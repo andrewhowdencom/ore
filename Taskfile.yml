@@ -12,6 +12,8 @@ includes:
     dir: x/catalog/models
   x-provider-anthropic:
     dir: x/provider/anthropic
+  x-provider-codex:
+    dir: x/provider/codex
   x-provider-minimax:
     dir: x/provider/minimax
   x-provider-mock:
@@ -42,8 +44,10 @@ includes:
     dir: x/export
   x-wire-anthropic:
     dir: x/wire/anthropic
-  x-wire-openai:
-    dir: x/wire/openai
+  x-wire-openai-chatcompletions:
+    dir: x/wire/openai/chatcompletions
+  x-wire-openai-responses:
+    dir: x/wire/openai/responses
   x-tool:
     dir: x/tool
   x-tool-bash:
@@ -105,6 +109,7 @@ tasks:
       - task examples:validate
       - task x-catalog-models:validate
       - task x-provider-anthropic:validate
+      - task x-provider-codex:validate
       - task x-provider-minimax:validate
       - task x-provider-mock:validate
       - task x-provider-mock-anthropic:validate
@@ -119,7 +124,8 @@ tasks:
       - task x-conduit-telegram:validate
       - task x-conduit-tui:validate
       - task x-wire-anthropic:validate
-      - task x-wire-openai:validate
+      - task x-wire-openai-chatcompletions:validate
+      - task x-wire-openai-responses:validate
       - task x-tool:validate
       - task x-tool-bash:validate
       - task x-tool-calculator:validate

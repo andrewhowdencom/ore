@@ -1,12 +1,12 @@
-package openai
+package chatcompletions
 
 import (
 	"net/http"
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/ledger"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
