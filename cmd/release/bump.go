@@ -14,7 +14,6 @@ const (
 	None Bump = iota
 	Patch
 	Minor
-	Major
 )
 
 func (b Bump) String() string {
@@ -25,19 +24,17 @@ func (b Bump) String() string {
 		return "patch"
 	case Minor:
 		return "minor"
-	case Major:
-		return "major"
 	default:
 		return "unknown"
 	}
 }
 
-// bumpType analyses a slice of commit messages and returns the highest semver
-// bump required according to the Conventional Commits specification.
+// bumpType analyses a slice of Conventional Commit messages and returns the
+// highest bump allowed by the project's release policy.
 //
 // Rules:
 //   - Any commit containing "BREAKING CHANGE:" or "BREAKING-CHANGE:" in its
-//     body, or a "!" immediately before the ":" in the subject line → Major.
+//     body, or a "!" immediately before the ":" in the subject line → Minor.
 //   - A commit whose type is exactly "feat" (with optional scope) → Minor.
 //   - All other commits → Patch (so nothing is silently dropped).
 func bumpType(msgs []string) Bump {
@@ -45,7 +42,7 @@ func bumpType(msgs []string) Bump {
 	for _, msg := range msgs {
 		switch {
 		case isBreaking(msg):
-			b = maxBump(b, Major)
+			b = maxBump(b, Minor)
 		case isFeat(msg):
 			b = maxBump(b, Minor)
 		default:
@@ -65,11 +62,12 @@ func bumpType(msgs []string) Bump {
 // last tag. `excludeDirs` lists sibling module directories (used to scope the
 // root module's diff to its own files — see bumpFromDiff).
 //
-// The mechanical check fires Major for any non-test .go file deletion or
+// The mechanical check fires Minor for any non-test .go file deletion or
 // rename in `dir`, regardless of commit message. This guards against
 // `refactor:` (or any non-conventional) commits that quietly remove exported
 // API surface — the bug that prompted v0.12.6 (a breaking rename tagged as a
-// patch).
+// patch). Minor is the maximum release bump because the project does not
+// promise API compatibility while its core library is evolving.
 func bumpForModule(root, dir, tag string, msgs []string, excludeDirs []string) (Bump, error) {
 	diffBump, err := bumpFromDiff(root, dir, tag, excludeDirs)
 	if err != nil {
@@ -97,23 +95,6 @@ func maxBump(a, b Bump) Bump {
 		return b
 	}
 	return a
-}
-
-// applyCapMajor returns the bump to use when --cap-major is in effect.
-// A Major is demoted to Minor; the rest pass through unchanged. This
-// suppresses an unintended cross-major-version release (e.g. v1 → v2)
-// that the tool cannot complete cleanly, because Go's semantic-import
-// versioning (https://go.dev/ref/mod#major-version-suffix) requires
-// the module path itself to carry the /vN suffix once a module crosses
-// v2 — a workspace-wide source rewrite that `release` does not perform.
-//
-// The cap is opt-in so that real major releases remain possible when
-// the migration is ready.
-func applyCapMajor(cap bool, b Bump) Bump {
-	if cap && b == Major {
-		return Minor
-	}
-	return b
 }
 
 func isBreaking(msg string) bool {
@@ -174,10 +155,6 @@ func nextVersion(current string, bump Bump) (string, error) {
 		patch++
 	case Minor:
 		minor++
-		patch = 0
-	case Major:
-		major++
-		minor = 0
 		patch = 0
 	}
 

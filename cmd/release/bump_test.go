@@ -62,42 +62,17 @@ func TestBumpType(t *testing.T) {
 		{"empty", nil, None},
 		{"single fix", []string{"fix: bug"}, Patch},
 		{"single feat", []string{"feat: add feature"}, Minor},
-		{"single breaking", []string{"feat!: breaking"}, Major},
+		{"single breaking", []string{"feat!: breaking"}, Minor},
 		{"fix then feat", []string{"fix: bug", "feat: add feature"}, Minor},
-		{"fix then breaking", []string{"fix: bug", "feat!: breaking"}, Major},
+		{"fix then breaking", []string{"fix: bug", "feat!: breaking"}, Minor},
 		{"non-conventional", []string{"random message"}, Patch},
 		{"docs commit", []string{"docs: update readme"}, Patch},
-		{"multiple breaking", []string{"fix: bug", "feat: feature", "chore!: break"}, Major},
+		{"multiple breaking", []string{"fix: bug", "feat: feature", "chore!: break"}, Minor},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := bumpType(tt.msgs); got != tt.want {
 				t.Errorf("bumpType() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestApplyCapMajor(t *testing.T) {
-	tests := []struct {
-		name string
-		cap  bool
-		in   Bump
-		want Bump
-	}{
-		{"cap off: none", false, None, None},
-		{"cap off: patch", false, Patch, Patch},
-		{"cap off: minor", false, Minor, Minor},
-		{"cap off: major", false, Major, Major},
-		{"cap on: none stays none", true, None, None},
-		{"cap on: patch stays patch", true, Patch, Patch},
-		{"cap on: minor stays minor", true, Minor, Minor},
-		{"cap on: major demotes to minor", true, Major, Minor},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := applyCapMajor(tt.cap, tt.in); got != tt.want {
-				t.Errorf("applyCapMajor(%v, %v) = %v, want %v", tt.cap, tt.in, got, tt.want)
 			}
 		})
 	}
@@ -112,13 +87,10 @@ func TestNextVersion(t *testing.T) {
 	}{
 		{"", Patch, "v0.1.0", false},
 		{"", Minor, "v0.1.0", false},
-		{"", Major, "v0.1.0", false},
 		{"v0.1.0", Patch, "v0.1.1", false},
 		{"v0.1.0", Minor, "v0.2.0", false},
-		{"v0.1.0", Major, "v1.0.0", false},
 		{"v1.2.3", Patch, "v1.2.4", false},
 		{"v1.2.3", Minor, "v1.3.0", false},
-		{"v1.2.3", Major, "v2.0.0", false},
 		{"v0.0.0-00010101000000-000000000000", Patch, "v0.0.1", false},
 		{"invalid", Patch, "", true},
 		{"0.0.1", Patch, "", true},
@@ -134,5 +106,16 @@ func TestNextVersion(t *testing.T) {
 				t.Errorf("nextVersion(%q, %v) = %q, want %q", tt.current, tt.bump, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestBreakingChangeDoesNotIncrementMajorVersion(t *testing.T) {
+	bump := bumpType([]string{"feat!: replace the public API"})
+	got, err := nextVersion("v1.2.3", bump)
+	if err != nil {
+		t.Fatalf("nextVersion: %v", err)
+	}
+	if got != "v1.3.0" {
+		t.Errorf("nextVersion() = %q, want v1.3.0", got)
 	}
 }

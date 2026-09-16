@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func runAll(dryRun, capMajor bool, args []string) error {
+func runAll(dryRun bool, args []string) error {
 	root, err := repoRoot()
 	if err != nil {
 		return err
@@ -82,7 +82,6 @@ func runAll(dryRun, capMajor bool, args []string) error {
 		if err != nil {
 			return err
 		}
-		bump = applyCapMajor(capMajor, bump)
 		version, err := nextVersion(allVersions[m.Path], bump)
 		if err != nil {
 			return err
@@ -102,11 +101,7 @@ func runAll(dryRun, capMajor bool, args []string) error {
 	}
 
 	// Print release plan summary.
-	if capMajor {
-		fmt.Printf("Releasing %d module(s) (--cap-major: major bumps demoted to minor):\n", len(targets))
-	} else {
-		fmt.Printf("Releasing %d module(s):\n", len(targets))
-	}
+	fmt.Printf("Releasing %d module(s):\n", len(targets))
 	for _, t := range targets {
 		if t.current == "" {
 			fmt.Printf("  %s  (none) → %s  (%s, %d commits)\n", t.module.Path, t.version, t.bump, t.count)
@@ -137,10 +132,10 @@ func runAll(dryRun, capMajor bool, args []string) error {
 	}
 
 	// Pre-flight: tidy go.mod with target (about-to-be-published)
-// versions, temporarily redirecting in-this-run dependencies at
-// their local source so modules that depend on yet-to-be-published
-// versions (or on a rename of the dependency's source) can still
-// validate the module graph.
+	// versions, temporarily redirecting in-this-run dependencies at
+	// their local source so modules that depend on yet-to-be-published
+	// versions (or on a rename of the dependency's source) can still
+	// validate the module graph.
 	if !dryRun {
 		fmt.Println("Pre-flight: validating go mod tidy...")
 

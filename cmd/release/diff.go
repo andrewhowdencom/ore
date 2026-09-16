@@ -7,7 +7,7 @@ import (
 )
 
 // bumpFromDiff inspects the changes in `dir` between `tag` and HEAD and returns
-// Major if any non-test .go file was deleted or renamed within the module.
+// Minor if any non-test .go file was deleted or renamed within the module.
 //
 // An empty `tag` means the module has never been tagged, so there is no
 // prior API surface to break; this returns None.
@@ -73,7 +73,7 @@ func bumpFromDiff(root, dir, tag string, excludeDirs []string) (Bump, error) {
 			continue
 		}
 		if strings.HasSuffix(oldPath, ".go") && !strings.HasSuffix(oldPath, "_test.go") {
-			return Major, nil
+			return Minor, nil
 		}
 	}
 	return None, nil
@@ -89,9 +89,7 @@ func bumpFromDiff(root, dir, tag string, excludeDirs []string) (Bump, error) {
 //     not a breaking change to the module's library API surface.
 //
 // Without the cmd/ filter, deleting any `cmd/<binary>/main.go`
-// would falsely promote a patch release to major (e.g. retiring an
-// experimental CLI triggers a v1 → v2 jump, which downstream
-// consumers cannot adopt without a `/v2` path migration).
+// would falsely promote a patch release to minor.
 //
 // For nested modules (`dir != "."`) the path must equal `dir` or
 // start with `dir + "/"`. For the root module (`dir == "."`) the

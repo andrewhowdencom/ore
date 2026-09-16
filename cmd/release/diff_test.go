@@ -100,13 +100,13 @@ func TestBumpFromDiff_DeletedGoFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bumpFromDiff: %v", err)
 	}
-	if got != Major {
-		t.Errorf("bumpFromDiff() = %v, want Major", got)
+	if got != Minor {
+		t.Errorf("bumpFromDiff() = %v, want Minor", got)
 	}
 }
 
 // Deleting a binary under cmd/ (the Go convention for executable
-// entry points) must not trigger a major bump. The bumpFromDiff check
+// entry points) must not trigger a minor bump. The bumpFromDiff check
 // is meant to surface library surface-area changes (package renames,
 // removed exported files), not binary removals — a binary's removal
 // cannot break consumers that import the module as a library, and
@@ -190,8 +190,8 @@ func TestBumpFromDiff_RenamedGoFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bumpFromDiff: %v", err)
 	}
-	if got != Major {
-		t.Errorf("bumpFromDiff() = %v, want Major (package rename is breaking)", got)
+	if got != Minor {
+		t.Errorf("bumpFromDiff() = %v, want Minor (package rename is breaking)", got)
 	}
 }
 
@@ -261,14 +261,14 @@ func TestBumpFromDiff_PathspecCatchesOwnDeletion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bumpFromDiff: %v", err)
 	}
-	if got != Major {
-		t.Errorf("bumpFromDiff() = %v, want Major (deletion in own dir must fire)", got)
+	if got != Minor {
+		t.Errorf("bumpFromDiff() = %v, want Minor (deletion in own dir must fire)", got)
 	}
 }
 
 // Regression test for the exact bug that bit the junk rename: a `refactor:`
 // commit that deletes every .go file under one package and re-creates them
-// under another should be detected as a Major bump even though the commit
+// under another should be detected as a Minor bump even though the commit
 // message is non-breaking.
 func TestBumpFromDiff_RegressionSessionToJunk(t *testing.T) {
 	dir := setupTestRepo(t)
@@ -287,8 +287,8 @@ func TestBumpFromDiff_RegressionSessionToJunk(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bumpFromDiff: %v", err)
 	}
-	if got != Major {
-		t.Errorf("bumpFromDiff() = %v, want Major (this is the exact bug that motivated the check)", got)
+	if got != Minor {
+		t.Errorf("bumpFromDiff() = %v, want Minor (this is the exact bug that motivated the check)", got)
 	}
 }
 
@@ -310,7 +310,7 @@ func TestBumpForModule_OnlyCommitMessage(t *testing.T) {
 }
 
 func TestBumpForModule_StructuralOverridesMessage(t *testing.T) {
-	// Structural change must upgrade a Patch-bumping message to Major.
+	// Structural change must upgrade a Patch-bumping message to Minor.
 	dir := setupTestRepo(t)
 	commitFile(t, dir, "init.go", "init")
 	commitFile(t, dir, "public.go", "initial public surface")
@@ -321,13 +321,13 @@ func TestBumpForModule_StructuralOverridesMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bumpForModule: %v", err)
 	}
-	if got != Major {
-		t.Errorf("bumpForModule() = %v, want Major (deletion upgrades even a patch-typed message)", got)
+	if got != Minor {
+		t.Errorf("bumpForModule() = %v, want Minor (deletion upgrades even a patch-typed message)", got)
 	}
 }
 
-func TestBumpForModule_MessageMajorWinsEvenIfNoStructure(t *testing.T) {
-	// Major from the message still counts when there's no structural change.
+func TestBumpForModule_BreakingMessageTriggersMinor(t *testing.T) {
+	// Breaking changes are released as minor while the API remains unstable.
 	dir := setupTestRepo(t)
 	commitFile(t, dir, "init.go", "init")
 	tagAt(t, dir, "v0.1.0")
@@ -337,7 +337,7 @@ func TestBumpForModule_MessageMajorWinsEvenIfNoStructure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bumpForModule: %v", err)
 	}
-	if got != Major {
-		t.Errorf("bumpForModule() = %v, want Major", got)
+	if got != Minor {
+		t.Errorf("bumpForModule() = %v, want Minor", got)
 	}
 }
