@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.3.2
+	github.com/andrewhowdencom/ore v1.4.0
 	github.com/andrewhowdencom/ore/x/provider/retry v0.0.3
 	github.com/andrewhowdencom/ore/x/tool v0.6.1
 	github.com/openai/openai-go v1.12.0
@@ -35,6 +35,6 @@ require (
 
 replace github.com/andrewhowdencom/ore/x/provider/retry => ../../../provider/retry
 
-replace github.com/andrewhowdencom/ore => ../../../../
-
 replace github.com/andrewhowdencom/ore/x/tool => ../../../tool
+
+replace github.com/andrewhowdencom/ore => ../../../../
