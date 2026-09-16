@@ -3,10 +3,10 @@ module github.com/andrewhowdencom/ore/examples
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.3.2
+	github.com/andrewhowdencom/ore v1.4.0
 	github.com/andrewhowdencom/ore/x/conduit/http v0.9.1
-	github.com/andrewhowdencom/ore/x/conduit/tui v0.12.11
-	github.com/andrewhowdencom/ore/x/provider/openai v0.6.5
+	github.com/andrewhowdencom/ore/x/conduit/tui v0.12.12
+	github.com/andrewhowdencom/ore/x/provider/openai v0.6.7
 	github.com/andrewhowdencom/ore/x/tool v0.6.1
 	github.com/andrewhowdencom/ore/x/tool/calculator v0.4.1
 	github.com/andrewhowdencom/ore/x/tool/filesystem v0.5.2
@@ -23,7 +23,7 @@ require (
 	github.com/andrewhowdencom/ore/x/llmbytes v0.1.2 // indirect
 	github.com/andrewhowdencom/ore/x/provider/retry v0.0.3 // indirect
 	github.com/andrewhowdencom/ore/x/tool/truncate v0.1.1 // indirect
-	github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions v0.0.0 // indirect
+	github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions v0.1.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
@@ -98,14 +98,14 @@ replace github.com/andrewhowdencom/ore/x/tool/set_title => ../x/tool/set_title
 
 replace github.com/andrewhowdencom/ore/x/usage => ../x/usage
 
-replace github.com/andrewhowdencom/ore/x/provider/openai => ../x/provider/openai
-
-replace github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions => ../x/wire/openai/chatcompletions
-
-replace github.com/andrewhowdencom/ore => ..
-
 replace github.com/andrewhowdencom/ore/x/conduit => ../x/conduit
 
 replace github.com/andrewhowdencom/ore/x/conduit/http => ../x/conduit/http
 
 replace github.com/andrewhowdencom/ore/x/conduit/tui => ../x/conduit/tui
+
+replace github.com/andrewhowdencom/ore => ..
+
+replace github.com/andrewhowdencom/ore/x/provider/openai => ../x/provider/openai
+
+replace github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions => ../x/wire/openai/chatcompletions
