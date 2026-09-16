@@ -3,8 +3,8 @@ module github.com/andrewhowdencom/ore/x/provider/codex
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.3.2
-	github.com/andrewhowdencom/ore/x/wire/openai/responses v0.0.0
+	github.com/andrewhowdencom/ore v1.4.0
+	github.com/andrewhowdencom/ore/x/wire/openai/responses v0.1.0
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel/trace v1.44.0
 )
