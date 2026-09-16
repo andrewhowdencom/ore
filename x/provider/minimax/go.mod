@@ -3,9 +3,9 @@ module github.com/andrewhowdencom/ore/x/provider/minimax
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.3.2
-	github.com/andrewhowdencom/ore/x/wire/anthropic v0.2.1
-	github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions v0.0.0
+	github.com/andrewhowdencom/ore v1.4.0
+	github.com/andrewhowdencom/ore/x/wire/anthropic v0.2.3
+	github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions v0.1.0
 	github.com/stretchr/testify v1.11.1
 )
 
