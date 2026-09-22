@@ -1312,6 +1312,39 @@ func TestCompactTokenSegments_PartialKeys(t *testing.T) {
 		"partial key set must not introduce placeholder gaps")
 }
 
+func TestBuildStatusLine_CacheUsageGrouped(t *testing.T) {
+	status := map[string]string{
+		"sent":        "2000",
+		"cache_read":  "148000",
+		"cache_write": "5000",
+		"received":    "800",
+		"total":       "155800",
+		"thinking":    "5",
+	}
+
+	rendered, lines := buildStatusLine(theme.Dark(), status, 200)
+	assert.Equal(t, 1, lines)
+	assert.Contains(t, rendered, "↑ 2.0K · ↻ 148K · ⊕ 5.0K · ↓ 800 · Σ 156K · Ψ 5")
+	assert.NotContains(t, rendered, "cache_read:")
+	assert.NotContains(t, rendered, "cache_write:")
+}
+
+func TestCompactTokenSegments_CacheUsageNarrativeOrder(t *testing.T) {
+	segs := []conduit.StatusSegment{
+		{Label: "thinking", Value: "5", Zone: "lifecycle"},
+		{Label: "cache_write", Value: "5000", Zone: "lifecycle"},
+		{Label: "total", Value: "155800", Zone: "lifecycle"},
+		{Label: "received", Value: "800", Zone: "lifecycle"},
+		{Label: "cache_read", Value: "148000", Zone: "lifecycle"},
+		{Label: "sent", Value: "2000", Zone: "lifecycle"},
+	}
+
+	got := compactTokenSegments(segs)
+	require.Len(t, got, 1)
+	assert.Equal(t, "tokens", got[0].Label)
+	assert.Equal(t, "↑ 2.0K · ↻ 148K · ⊕ 5.0K · ↓ 800 · Σ 156K · Ψ 5", got[0].Value)
+}
+
 func TestBuildStatusLine_ZoneGrouping(t *testing.T) {
 	segments := []conduit.StatusSegment{
 		{Label: "phase", Value: "streaming", Zone: "lifecycle"},

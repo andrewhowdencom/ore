@@ -66,14 +66,15 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 	total := h.total
 	h.mu.Unlock()
 
-	e.Emit(ctx, loop.PropertiesEvent{
-		Operations: []loop.PropertyOperation{
-			{Op: loop.PropertyOpSet, Key: "sent", Value: strconv.Itoa(prompt)},
-			{Op: loop.PropertyOpSet, Key: "received", Value: strconv.Itoa(completion)},
-			{Op: loop.PropertyOpSet, Key: "thinking", Value: thinkingString(thinking)},
-			{Op: loop.PropertyOpSet, Key: "total", Value: strconv.Itoa(total)},
-		},
-	})
+	operations := []loop.PropertyOperation{
+		{Op: loop.PropertyOpSet, Key: "sent", Value: strconv.Itoa(prompt)},
+		{Op: loop.PropertyOpSet, Key: "received", Value: strconv.Itoa(completion)},
+		{Op: loop.PropertyOpSet, Key: "thinking", Value: thinkingString(thinking)},
+		{Op: loop.PropertyOpSet, Key: "total", Value: strconv.Itoa(total)},
+		cacheOperation("cache_read", u.CacheReadTokens),
+		cacheOperation("cache_write", u.CacheWriteTokens),
+	}
+	e.Emit(ctx, loop.PropertiesEvent{Operations: operations})
 	return nil
 }
 
@@ -86,6 +87,13 @@ func (h *Handler) Handle(ctx context.Context, art artifact.Artifact, e loop.Emit
 //
 // Centralising the conversion here keeps the TUI free of pointer
 // arithmetic and lets the contract evolve in one place.
+func cacheOperation(key string, tokens int) loop.PropertyOperation {
+	if tokens == 0 {
+		return loop.PropertyOperation{Op: loop.PropertyOpDelete, Key: key}
+	}
+	return loop.PropertyOperation{Op: loop.PropertyOpSet, Key: key, Value: strconv.Itoa(tokens)}
+}
+
 func thinkingString(t *int) string {
 	if t == nil {
 		return "?"
