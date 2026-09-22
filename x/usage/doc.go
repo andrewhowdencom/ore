@@ -12,10 +12,16 @@
 //
 // The emitted PropertiesEvent contains the following string key/value pairs:
 //
-//   - "sent":     per-turn prompt token count
-//   - "received": per-turn completion token count
-//   - "thinking": per-turn output tokens consumed by the model's extended-thinking / reasoning phase
-//   - "total":    cumulative total token count
+//   - "sent":        latest-request prompt token count
+//   - "cache_read":  latest-request cached prompt tokens, omitted when zero
+//   - "cache_write": latest-request prompt-cache writes, omitted when zero
+//   - "received":    latest-request completion token count
+//   - "thinking":    latest-request reasoning token count
+//   - "total":       cumulative total token count over the handler's lifetime
+//
+// Cache accounting varies by provider. OpenAI includes cached prompt tokens in
+// sent and total; other APIs may report cache buckets separately. Consumers
+// should display the breakdown without deriving a replacement total from it.
 //
 // # Usage
 //

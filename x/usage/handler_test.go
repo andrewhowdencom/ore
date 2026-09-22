@@ -211,6 +211,37 @@ func TestHandler_EmitsUnknownWhenNil(t *testing.T) {
 	assert.Equal(t, "?", v)
 }
 
+func TestHandler_EmitsCacheUsageAndClearsStaleValues(t *testing.T) {
+	h := New()
+	var e mockEmitter
+
+	err := h.Handle(context.Background(), artifact.Usage{
+		PromptTokens:     100,
+		CompletionTokens: 20,
+		TotalTokens:      120,
+		CacheReadTokens:  80,
+		CacheWriteTokens: 10,
+	}, &e)
+	require.NoError(t, err)
+
+	require.Len(t, e.events, 1)
+	first := e.events[0].(loop.PropertiesEvent)
+	assertOpsContain(t, first.Operations, "cache_read", "80")
+	assertOpsContain(t, first.Operations, "cache_write", "10")
+
+	err = h.Handle(context.Background(), artifact.Usage{
+		PromptTokens:     120,
+		CompletionTokens: 30,
+		TotalTokens:      150,
+	}, &e)
+	require.NoError(t, err)
+
+	require.Len(t, e.events, 2)
+	second := e.events[1].(loop.PropertiesEvent)
+	assertOpsDelete(t, second.Operations, "cache_read")
+	assertOpsDelete(t, second.Operations, "cache_write")
+}
+
 // opsToMap folds an Operations stream into a key/value map for tests
 // that compare against the legacy map[string]string shape. Set ops
 // overwrite earlier values for the same key; delete ops remove the
@@ -240,7 +271,17 @@ func assertOpsContain(t *testing.T, ops []loop.PropertyOperation, key, want stri
 		assert.Equal(t, want, op.Value, msgAndArgs...)
 		return
 	}
-	t.Fatalf("key %q not present in operations", key)
+	t.Fatalf("set operation for key %q not present", key)
+}
+
+func assertOpsDelete(t *testing.T, ops []loop.PropertyOperation, key string) {
+	t.Helper()
+	for _, op := range ops {
+		if op.Op == loop.PropertyOpDelete && op.Key == key {
+			return
+		}
+	}
+	t.Fatalf("delete operation for key %q not present", key)
 }
 
 // ptr returns a pointer to v. Test-only helper for building pointer-typed
