@@ -12,12 +12,12 @@ import (
     "context"
     "fmt"
 
-    "github.com/andrewhowdencom/ore/x/conduit"
     "github.com/andrewhowdencom/ore/loop"
-    "github.com/andrewhowdencom/ore/junk"
+    "github.com/andrewhowdencom/ore/session"
+    "github.com/andrewhowdencom/ore/x/conduit"
 )
 
-// See Standard Conduit Contract §2 — Exported Descriptor
+// See Standard Conduit Contract §4 — Exported Descriptor
 var Descriptor = conduit.Descriptor{
     Name:        "MyConduit",
     Description: "One-line description of what this conduit does",
@@ -29,50 +29,37 @@ var Descriptor = conduit.Descriptor{
 
 // MyConduit is the conduit implementation. Keep it minimal.
 type MyConduit struct {
-    mgr      *junk.Manager
-    threadID string // optional; for resuming an existing thread
+    sess   *session.Session
+    events chan session.Event
 }
 
 // Option configures the conduit via functional options.
 type Option func(*MyConduit)
 
-// WithThreadID sets the thread ID to resume on Start.
-func WithThreadID(id string) Option {
-    return func(c *MyConduit) {
-        c.threadID = id
-    }
-}
-
 // See Standard Conduit Contract §1 — Constructor
-func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error) {
-    if mgr == nil {
-        return nil, fmt.Errorf("session manager is required")
+func New(sess *session.Session, opts ...Option) (conduit.Conduit, error) {
+    if sess == nil {
+        return nil, fmt.Errorf("session is required")
     }
-    c := &MyConduit{mgr: mgr}
+    c := &MyConduit{sess: sess, events: make(chan session.Event, 16)}
     for _, opt := range opts {
         opt(c)
     }
     return c, nil
 }
 
-// See Standard Conduit Contract §3, §4 — Sink registration, Blocking Start
-func (c *MyConduit) Start(ctx context.Context) error {
-    var stream *junk.Stream
-    var err error
-    if c.threadID != "" {
-        stream, err = c.mgr.Attach(c.threadID)
-    } else {
-        stream, err = c.mgr.Create()
-    }
-    if err != nil {
-        return err
-    }
+// Events returns input events for the application to pass to engine.Submit.
+func (c *MyConduit) Events() <-chan session.Event { return c.events }
 
-    // See Standard Conduit Contract §3 — Sink registration inside Start()
+// See Standard Conduit Contract §5, §6 — Sink registration, Blocking Start
+func (c *MyConduit) Start(ctx context.Context) error {
+    defer close(c.events)
+
+    // See Standard Conduit Contract §5 — Sink registration inside Start()
     // Subscribe to the output events your conduit renders.
     // "turn_complete" is the common choice for batched rendering.
     // For streaming, subscribe to artifact kinds directly.
-    outputCh := stream.Subscribe("turn_complete")
+    outputCh := c.sess.Subscribe("turn_complete", "error")
 
     // Capture your delivery mechanism in this closure.
     // Examples: http.ResponseWriter, Slack API client, tea.Program.
@@ -89,21 +76,19 @@ func (c *MyConduit) Start(ctx context.Context) error {
         }
     }()
 
-    // TODO: Set up external input → stream.Process() loop.
+    // TODO: Set up external input -> c.events loop.
     //
     // Interactive: read input, then:
-    //   stream.Process(ctx, junk.UserMessageEvent{Content: text})
-    //
-    // Webhook/polling: in your receiver goroutine:
-    //   stream.Process(ctx, junk.UserMessageEvent{Content: payload})
+    //   c.events <- session.UserMessageEvent{Ctx: ctx, Content: text}
+    // The application reads Events() and submits each event to its engine.
 
-    // See Standard Conduit Contract §4 — Block until shutdown
+    // See Standard Conduit Contract §6 — Block until shutdown
     <-ctx.Done()
 
-    // See Standard Conduit Contract §5 — Graceful shutdown
+    // See Standard Conduit Contract §7 — Graceful shutdown
     return nil
 }
 ```
 
-> **Note:** This skeleton shows a single-conduit agent. For multi-conduit
-> patterns, see the `conduit` skill.
+> **Note:** Session creation, registration, and engine submission belong to the
+> application. The conduit only translates external I/O.

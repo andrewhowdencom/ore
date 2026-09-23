@@ -10,131 +10,86 @@ go get github.com/andrewhowdencom/ore/x/conduit/stdio@latest
 
 ## Overview
 
-The stdio conduit reads a single user message from an `io.Reader`, submits it
-through a `junk.Manager`, streams assistant artifacts as Markdown blocks to
-an `io.Writer`, and returns after the turn completes. This is a deliberate
-exception to the standard conduit blocking-contract (which normally blocks until
-`ctx.Done()`) so the conduit can be used in CLI pipelines and Unix filters.
+The stdio conduit reads one user message from an `io.Reader`, submits it to a
+bound `session.Session`, streams assistant artifacts to an `io.Writer`, and
+returns when the turn finishes. The application owns the session, registers it
+with an engine, and drives inference; the conduit only handles terminal I/O.
+
+Unlike long-running conduits, `Start` deliberately returns after one turn so it
+can be used in CLI pipelines and Unix filters.
 
 ## Capabilities
 
-This conduit exports the following capabilities (see `Descriptor.Capabilities`):
+`stdio.Descriptor` advertises the following static capabilities:
 
-- `event-source` — receives inbound text from an `io.Reader` and pushes it
-  into the ore session stream as a `junk.UserMessageEvent`.
-- `render-markdown` — streams assistant artifacts as Markdown blocks to the
-  configured `io.Writer`.
-- `accept-text` — maps raw text input directly to
-  `junk.UserMessageEvent{Content: ...}`.
+- `event-source` — submits input as a user turn on the bound session.
+- `render-markdown` — renders assistant output as Markdown-compatible text.
+- `accept-text` — accepts one raw text payload from an `io.Reader`.
+
+Descriptors are descriptive metadata rather than runtime feature negotiation.
 
 ## Composition
 
-The constructor signature follows the standard ore conduit contract:
-
 ```go
-func New(mgr *junk.Manager, opts ...Option) (conduit.Conduit, error)
+func New(sess *session.Session, opts ...Option) (conduit.Conduit, error)
 ```
 
-Instantiate the conduit with a `*junk.Manager` and functional options:
+The session must already be registered with an engine that will process its
+events. A minimal conduit setup looks like this; see the example applications
+for complete engine construction and lifecycle management.
 
 ```go
-package main
-
-import (
-    "context"
-    "log/slog"
-
-    "github.com/andrewhowdencom/ore/x/conduit/stdio"
-    "github.com/andrewhowdencom/ore/junk"
+c, err := stdio.New(sess,
+    stdio.WithInput(os.Stdin),
+    stdio.WithOutput(os.Stdout),
+    stdio.WithStderr(os.Stderr),
 )
+if err != nil {
+    return err
+}
 
-func main() {
-    mgr := junk.NewManager(...)
-
-    c, err := stdio.New(mgr)
-    if err != nil {
-        slog.Error("create conduit", "err", err)
-        return
-    }
-
-    if err := c.Start(context.Background()); err != nil {
-        slog.Error("conduit exited", "err", err)
-    }
+if err := c.Start(ctx); err != nil {
+    return err
 }
 ```
 
-For file I/O, use `WithInput` and `WithOutput`:
+Thread lookup and hydration are application responsibilities. Construct or
+attach the desired session before calling `New`; the conduit has no thread-ID
+option and does not create sessions itself.
 
-```go
-c, err := stdio.New(mgr,
-    stdio.WithInput(os.Stdin),
-    stdio.WithOutput(os.Stdout),
-)
-```
+## Configuration
 
-## Configuration / Options
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `WithInput(r io.Reader)` | `io.Reader` | `os.Stdin` | Source for the single user message. |
-| `WithOutput(w io.Writer)` | `io.Writer` | `os.Stdout` | Destination for streaming Markdown output. |
-| `WithThreadID(id string)` | `string` | empty string | Resume an existing thread on start. Empty string creates a new junk. |
+| Option | Default | Description |
+|---|---|---|
+| `WithInput(io.Reader)` | `os.Stdin` | Source of the single user message. |
+| `WithOutput(io.Writer)` | `os.Stdout` | Destination for assistant output. |
+| `WithStderr(io.Writer)` | `os.Stderr` | Destination for notices and other out-of-band output. |
+| `WithTracer(trace.Tracer)` | no tracing | Tracer used for the `stdio.turn` server span. |
 
 ## Runtime Semantics
 
-### Session Model
+`Start` subscribes to the bound session before reading input. It then submits a
+user turn with `session.Submit` and waits for the engine-driven session stream
+to report completion or failure.
 
-- On start with no `WithThreadID`, the conduit calls `mgr.Create()` to obtain a
-  new ephemeral junk.
-- If `WithThreadID(id)` is set, the conduit calls `mgr.Attach(threadID)` to
-  resume the existing thread.
-- Newly created sessions are closed when the turn completes. Attached sessions
-  are left open for other conduits.
+The renderer handles:
 
-### Event Subscription
+- `text_delta` as plain text;
+- `reasoning_delta` in a `reasoning` Markdown fence;
+- `tool_call_delta` and complete tool calls in `tool-call` Markdown fences;
+- notices on the configured stderr writer;
+- turn errors as returned errors.
 
-The conduit subscribes to `text_delta`, `reasoning_delta`, `tool_call_delta`,
-`turn_complete`, and `error` events inside `Start()`. Artifacts stream to the
-`io.Writer` as they arrive:
+Events carrying non-empty provenance other than `stdio` are ignored, preventing
+the conduit from rendering output initiated by another conduit sharing the
+session. Events without provenance are accepted.
 
-- `text_delta` — written directly as plain text.
-- `reasoning_delta` — wrapped in a `` ```reasoning `` Markdown code block.
-- `tool_call_delta` — wrapped in a `` ```tool-call `` Markdown code block; if the
-  artifact includes a name, it is printed as `<name>: <arguments>`.
-
-### Echo Suppression
-
-Before calling `stream.Process()`, the conduit sets
-`EventContext.Provenance` to `stdio`. The subscriber processes only events
-whose provenance matches `stdio`, skipping responses generated by other
-conduits sharing the same stream.
-
-### Single-Shot Return Behavior
-
-Unlike long-running conduits, `Start()` returns promptly after the assistant
-turn completes (or on error). It does **not** block until `ctx.Done()`. This
-design enables Unix-filter composition:
-
-```bash
-echo "Hello" | my-ore-agent | cat
-```
-
-If the provided context is cancelled before the turn completes, the conduit
-aborts processing and returns the cancellation error.
+The bound session is closed after submission. `Start` returns after the
+subscriber finishes, when the context is cancelled, or when an error occurs.
 
 ## Error Handling
 
-### Fatal errors (returned from `Start()`)
-
-These trigger application-level shutdown:
-
-- Failure to create or attach a junk.
-- `io.ReadAll` failure on the input reader.
-- Empty input (zero-length read) returns `no input provided`.
-- `stream.Process()` returns an error (provider failure, handler error, etc.).
-
-### Non-fatal behavior
-
-The subscriber goroutine silently ignores write failures to the `io.Writer` and
-continues streaming. Output delivery errors are not fatal because the primary
-failure mode is already captured by `stream.Process()` errors.
+`Start` returns an error when it cannot read input, receives empty input, cannot
+submit the user turn, observes a turn error, or is cancelled before completion.
+Writes currently use the configured writers directly; individual write errors
+are not surfaced.
