@@ -6,12 +6,24 @@ version: '3'
 includes:
   # When adding a new workspace module, add an entry here pointing to
   # Taskfile.lib.yml with dir: set to the module directory.
+  cmd-mock-server:
+    taskfile: Taskfile.lib.yml
+    dir: cmd/mock-server
   examples:
     taskfile: Taskfile.lib.yml
     dir: examples
+  examples-verifier-chat:
+    taskfile: Taskfile.lib.yml
+    dir: examples/verifier-chat
+  x-analytics:
+    taskfile: Taskfile.lib.yml
+    dir: x/analytics
   x-catalog-models:
     taskfile: Taskfile.lib.yml
     dir: x/catalog/models
+  x-compaction:
+    taskfile: Taskfile.lib.yml
+    dir: x/compaction
   x-provider-anthropic:
     taskfile: Taskfile.lib.yml
     dir: x/provider/anthropic
@@ -36,9 +48,18 @@ includes:
   x-provider-openrouter:
     taskfile: Taskfile.lib.yml
     dir: x/provider/openrouter
+  x-provider-retry:
+    taskfile: Taskfile.lib.yml
+    dir: x/provider/retry
   x-provider-vercel:
     taskfile: Taskfile.lib.yml
     dir: x/provider/vercel
+  x-subagent:
+    taskfile: Taskfile.lib.yml
+    dir: x/subagent
+  x-telemetry:
+    taskfile: Taskfile.lib.yml
+    dir: x/telemetry
   x-conduit:
     taskfile: Taskfile.lib.yml
     dir: x/conduit
@@ -60,6 +81,9 @@ includes:
   x-export:
     taskfile: Taskfile.lib.yml
     dir: x/export
+  x-llmbytes:
+    taskfile: Taskfile.lib.yml
+    dir: x/llmbytes
   x-wire-anthropic:
     taskfile: Taskfile.lib.yml
     dir: x/wire/anthropic
@@ -90,12 +114,21 @@ includes:
   x-tool-set-model:
     taskfile: Taskfile.lib.yml
     dir: x/tool/set_model
+  x-tool-set-title:
+    taskfile: Taskfile.lib.yml
+    dir: x/tool/set_title
   x-tool-skills:
     taskfile: Taskfile.lib.yml
     dir: x/tool/skills
   x-tool-truncate:
     taskfile: Taskfile.lib.yml
     dir: x/tool/truncate
+  x-usage:
+    taskfile: Taskfile.lib.yml
+    dir: x/usage
+  x-verifier:
+    taskfile: Taskfile.lib.yml
+    dir: x/verifier
 
 tasks:
   default:
@@ -141,6 +174,17 @@ tasks:
     desc: Run lints, tests, and build across all workspace modules
     deps: [lint, test, build]
     cmds:
+      - task cmd-mock-server:validate
+      - task examples-verifier-chat:validate
+      - task x-analytics:validate
+      - task x-compaction:validate
+      - task x-llmbytes:validate
+      - task x-provider-retry:validate
+      - task x-subagent:validate
+      - task x-telemetry:validate
+      - task x-tool-set-title:validate
+      - task x-usage:validate
+      - task x-verifier:validate
       - task examples:validate
       - task x-catalog-models:validate
       - task x-provider-anthropic:validate

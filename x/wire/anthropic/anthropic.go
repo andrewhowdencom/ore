@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/andrewhowdencom/ore/x/provider/retry"
 	"github.com/anthropics/anthropic-sdk-go"
@@ -626,7 +626,7 @@ func (p *Provider) Invoke(ctx context.Context, s ledger.State, spec models.Spec,
 	}
 
 	stream := p.client.Messages.NewStreaming(ctx, params)
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	// The SDK's MessageDeltaUsage is cumulative across the stream,
 	// so we buffer the latest message_delta usage and emit a single

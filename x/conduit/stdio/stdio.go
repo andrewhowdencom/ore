@@ -183,28 +183,29 @@ func (s *stdio) renderLoop(outputCh <-chan loop.OutputEvent, turnErr *error, don
 				kind := e.Artifact.Kind()
 				if kind != currentKind {
 					if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
-						fmt.Fprint(s.out, "\n```\n")
+						_, _ = fmt.Fprint(s.out, "\n```\n")
 					}
-					if kind == "reasoning_delta" {
-						fmt.Fprint(s.out, "```reasoning\n")
-					} else if kind == "tool_call_delta" {
-						fmt.Fprint(s.out, "```tool-call\n")
+					switch kind {
+					case "reasoning_delta":
+						_, _ = fmt.Fprint(s.out, "```reasoning\n")
+					case "tool_call_delta":
+						_, _ = fmt.Fprint(s.out, "```tool-call\n")
 					}
 					currentKind = kind
 				}
 
 				switch art := e.Artifact.(type) {
 				case artifact.TextDelta:
-					fmt.Fprint(s.out, art.Content)
+					_, _ = fmt.Fprint(s.out, art.Content)
 				case artifact.ReasoningDelta:
-					fmt.Fprint(s.out, art.Content)
+					_, _ = fmt.Fprint(s.out, art.Content)
 				case artifact.ToolCallDelta:
 					if art.Name != "" {
-						fmt.Fprintf(s.out, "%s: ", art.Name)
+						_, _ = fmt.Fprintf(s.out, "%s: ", art.Name)
 					}
-					fmt.Fprint(s.out, art.Arguments)
+					_, _ = fmt.Fprint(s.out, art.Arguments)
 				case artifact.ToolCall:
-					fmt.Fprintf(s.out, "```tool-call\n%s\n```\n", art.MarkdownString())
+					_, _ = fmt.Fprintf(s.out, "```tool-call\n%s\n```\n", art.MarkdownString())
 				}
 
 			case loop.TurnCompleteEvent:
@@ -212,35 +213,35 @@ func (s *stdio) renderLoop(outputCh <-chan loop.OutputEvent, turnErr *error, don
 					continue
 				}
 				if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
-					fmt.Fprint(s.out, "\n```\n")
+					_, _ = fmt.Fprint(s.out, "\n```\n")
 				}
 				currentKind = ""
 
 			case loop.LifecycleEvent:
 				switch e.Phase {
 				case "submitted":
-					fmt.Fprint(s.out, "\n")
+					_, _ = fmt.Fprint(s.out, "\n")
 				case "done":
 					if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
-						fmt.Fprint(s.out, "\n```\n")
+						_, _ = fmt.Fprint(s.out, "\n```\n")
 					}
 					currentKind = ""
 				}
 
 			case loop.ErrorEvent:
 				if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
-					fmt.Fprint(s.out, "\n```\n")
+					_, _ = fmt.Fprint(s.out, "\n```\n")
 				}
 				*turnErr = e.Err
-				fmt.Fprintf(s.out, "\nerror: %v\n", e.Err)
+				_, _ = fmt.Fprintf(s.out, "\nerror: %v\n", e.Err)
 				return
 
 			case loop.NoticeEvent:
-				fmt.Fprintf(s.err, "%s: %s\n", e.Notice.Severity, e.Notice.Content)
+				_, _ = fmt.Fprintf(s.err, "%s: %s\n", e.Notice.Severity, e.Notice.Content)
 			}
 		case <-stop:
 			if currentKind == "reasoning_delta" || currentKind == "tool_call_delta" {
-				fmt.Fprint(s.out, "\n```\n")
+				_, _ = fmt.Fprint(s.out, "\n```\n")
 			}
 			return
 		}

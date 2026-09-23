@@ -76,10 +76,10 @@ type modelsDevProvider struct {
 // A handful of upstream models omit "limit" entirely; those are
 // skipped (we cannot emit a Spec without a Window).
 type modelsDevModel struct {
-	ID        string             `json:"id"`
-	Name      string             `json:"name"`
-	Reasoning bool               `json:"reasoning"`
-	Limit     *modelsDevLimit    `json:"limit,omitempty"`
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Reasoning bool            `json:"reasoning"`
+	Limit     *modelsDevLimit `json:"limit,omitempty"`
 }
 
 // modelsDevLimit carries the context window and per-call output
@@ -245,8 +245,8 @@ var {{.Identifier}} = models.Spec{
 // templateData is the per-family payload rendered into the
 // template above.
 type templateData struct {
-	Family  string
-	Specs   []specData
+	Family string
+	Specs  []specData
 }
 
 // specData carries one rendered model. The fields are exported
@@ -459,7 +459,7 @@ func identifierFor(wire string) string {
 	// handles hyphens, dots, underscores, colons, slashes,
 	// etc. in one pass.
 	parts := strings.FieldsFunc(wire, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z') && !(r >= 'A' && r <= 'Z') && !(r >= '0' && r <= '9')
+		return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9')
 	})
 	var b strings.Builder
 	for _, p := range parts {
@@ -506,7 +506,7 @@ func fetch(url string, timeout time.Duration) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP %s", resp.Status)
 	}
@@ -600,20 +600,20 @@ func isDateSuffix(s string) bool {
 //
 // Rules, in priority order:
 //
-//  1. Exact match on the stripped form (e.g. "gemini-2.5-pro").
-//     Preserves the natural id as exposed by the upstream
-//     gateway. This is the common case when the gateway and
-//     models.dev agree on naming.
+//   1. Exact match on the stripped form (e.g. "gemini-2.5-pro").
+//      Preserves the natural id as exposed by the upstream
+//      gateway. This is the common case when the gateway and
+//      models.dev agree on naming.
 //
-//  2. Exact match with dots normalized to dashes (e.g.
-//     "claude-opus-4.5" -> "claude-opus-4-5"). Bridges the
-//     convention difference between Anthropic (dots) and
-//     models.dev (dashes) for the Opus 4.5 generation.
+//   2. Exact match with dots normalized to dashes (e.g.
+//      "claude-opus-4.5" -> "claude-opus-4-5"). Bridges the
+//      convention difference between Anthropic (dots) and
+//      models.dev (dashes) for the Opus 4.5 generation.
 //
-//  3. Date-suffix prefix match (e.g. "claude-opus-4-1" matches
-//     "claude-opus-4-1-20250805" in models.dev). Handles the
-//     case where models.dev lists a date-pinned variant but
-//     the gateway uses the undated form.
+//   3. Date-suffix prefix match (e.g. "claude-opus-4-1" matches
+//      "claude-opus-4-1-20250805" in models.dev). Handles the
+//      case where models.dev lists a date-pinned variant but
+//      the gateway uses the undated form.
 //
 // Gateway models without a recognized prefix, or whose stripped
 // forms match no catalog entry under any rule, are dropped silently

@@ -49,8 +49,8 @@ func BuildReport(results []VerificationResult) string {
 	b.WriteString("# Verification Report\n\n")
 
 	for _, r := range results {
-		b.WriteString(fmt.Sprintf("## %s\n\n", r.Name))
-		b.WriteString(fmt.Sprintf("**Status:** %s\n\n", r.Status.String()))
+		fmt.Fprintf(&b, "## %s\n\n", r.Name)
+		fmt.Fprintf(&b, "**Status:** %s\n\n", r.Status.String())
 		if r.Report != "" {
 			b.WriteString("```\n")
 			b.WriteString(r.Report)

@@ -152,7 +152,7 @@ func reasoningSSE(content, reasoning string) string {
 func reasoningOnlySSE(parts ...string) string {
 	var sb strings.Builder
 	for i, part := range parts {
-		sb.WriteString(fmt.Sprintf("data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":%d,\"model\":\"o3-mini\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":%q},\"finish_reason\":null}]}\n\n", i+1, part))
+		fmt.Fprintf(&sb, "data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":%d,\"model\":\"o3-mini\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":%q},\"finish_reason\":null}]}\n\n", i+1, part)
 	}
 	sb.WriteString("data: [DONE]\n\n")
 	return sb.String()

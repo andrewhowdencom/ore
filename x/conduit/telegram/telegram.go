@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/junk"
 	"github.com/andrewhowdencom/ore/ledger"
+	"github.com/andrewhowdencom/ore/loop"
 
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"go.opentelemetry.io/otel/trace"
@@ -302,7 +302,7 @@ func (c *telegramConduit) getMe(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("getMe request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("getMe returned status %d", resp.StatusCode)
@@ -344,7 +344,7 @@ func (c *telegramConduit) getUpdates(ctx context.Context, offset int) ([]update,
 	if err != nil {
 		return nil, fmt.Errorf("getUpdates request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("getUpdates returned status %d", resp.StatusCode)
@@ -385,7 +385,7 @@ func (c *telegramConduit) sendMessage(ctx context.Context, chatID int64, text st
 	if err != nil {
 		return fmt.Errorf("sendMessage request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("sendMessage returned status %d", resp.StatusCode)

@@ -38,7 +38,7 @@ func (b Bump) String() string {
 //   - A commit whose type is exactly "feat" (with optional scope) → Minor.
 //   - All other commits → Patch (so nothing is silently dropped).
 func bumpType(msgs []string) Bump {
-	var b Bump = None
+	b := None
 	for _, msg := range msgs {
 		switch {
 		case isBreaking(msg):

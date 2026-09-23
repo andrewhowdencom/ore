@@ -15,8 +15,8 @@ import (
 	"github.com/andrewhowdencom/ore/agent"
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
-	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/ledger"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
@@ -100,7 +100,6 @@ func run() error {
 	}
 	prov, err := openai.New(append([]openai.Option{
 		openai.WithAPIKey(apiKey),
-		
 	}, opts...)...)
 	if err != nil {
 		return fmt.Errorf("create openai provider: %w", err)
@@ -124,7 +123,7 @@ func run() error {
 		agent.WithInvokeOptions(openai.WithTools(registry.Tools())),
 		agent.WithState(mem),
 	)
-	defer a.Close()
+	defer func() { _ = a.Close() }()
 
 	result, err := a.Run(ctx, mem)
 	if err != nil {

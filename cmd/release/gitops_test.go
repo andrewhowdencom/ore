@@ -31,9 +31,13 @@ func captureStdout(t *testing.T, fn func()) string {
 	}()
 
 	fn()
-	w.Close()
+	closeErr := w.Close()
 	os.Stdout = old
-	return <-outC
+	out := <-outC
+	if closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	return out
 }
 
 func TestStageAndCommit_NoChanges_SkipsCommit(t *testing.T) {

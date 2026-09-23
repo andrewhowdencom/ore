@@ -3,7 +3,6 @@ package openrouter
 import (
 	"testing"
 
-	"github.com/andrewhowdencom/ore/provider"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -64,9 +63,6 @@ func TestNewSucceeds(t *testing.T) {
 	p, err := New("test-key")
 	require.NoError(t, err)
 	require.NotNil(t, p)
-	// Compile-time check that the returned value satisfies the
-	// provider.Provider interface.
-	var _ provider.Provider = p
 }
 
 // TestNew_RequiresAPIKey verifies that omitting the API key surfaces

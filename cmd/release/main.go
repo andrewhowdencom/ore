@@ -16,8 +16,8 @@ func run(args []string) error {
 	dryRun := false
 	var remaining []string
 	for _, a := range args {
-		switch {
-		case a == "-dry-run" || a == "--dry-run":
+		switch a {
+		case "-dry-run", "--dry-run":
 			dryRun = true
 		default:
 			remaining = append(remaining, a)

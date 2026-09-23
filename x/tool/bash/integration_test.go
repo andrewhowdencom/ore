@@ -80,7 +80,7 @@ func TestBash_LargeOutput_BoundedResult(t *testing.T) {
 
 	// Temp file should be set and contain the full output.
 	require.NotEmpty(t, r.StdoutPath, "StdoutPath should be set on truncation")
-	t.Cleanup(func() { os.Remove(r.StdoutPath) })
+	t.Cleanup(func() { require.NoError(t, os.Remove(r.StdoutPath)) })
 	contents, err := os.ReadFile(r.StdoutPath)
 	require.NoError(t, err, "temp file should be readable")
 	assert.GreaterOrEqual(t, len(contents), 50*1024*1024,
@@ -143,7 +143,7 @@ func TestBash_LargeOutput_BoundedHeap(t *testing.T) {
 	require.NotNil(t, r.Truncation)
 	t.Cleanup(func() {
 		if r.StdoutPath != "" {
-			os.Remove(r.StdoutPath)
+			require.NoError(t, os.Remove(r.StdoutPath))
 		}
 	})
 
@@ -193,7 +193,7 @@ func TestBash_LargeOutput_MarshalLLM_IncludesHint(t *testing.T) {
 	r := result.(*Result)
 	t.Cleanup(func() {
 		if r.StdoutPath != "" {
-			os.Remove(r.StdoutPath)
+			require.NoError(t, os.Remove(r.StdoutPath))
 		}
 	})
 

@@ -51,12 +51,6 @@ func TestTitleUpdate_ImplementsStatusContributor(t *testing.T) {
 	var _ interface{ Status() map[string]string } = TitleUpdate{}
 }
 
-func TestTool_ImplementsToolFunc(t *testing.T) {
-	t.Parallel()
-
-	var _ tool.ToolFunc = Tool()
-}
-
 func TestToolDescriptor(t *testing.T) {
 	t.Parallel()
 
@@ -154,10 +148,4 @@ func assertOpsContain(t *testing.T, ops []loop.PropertyOperation, key, want stri
 		return
 	}
 	t.Fatalf("key %q not present in operations", key)
-}
-
-func TestSlash_ImplementsSlashHandler(t *testing.T) {
-	t.Parallel()
-
-	var _ slash.Handler = Slash()
 }

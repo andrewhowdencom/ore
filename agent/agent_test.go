@@ -10,10 +10,10 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
@@ -123,7 +123,11 @@ func TestNew_StoresOptions(t *testing.T) {
 		WithSpec(spec),
 		WithPattern(pat),
 	)
-	defer a.Close()
+	defer func() {
+		if err := a.Close(); err != nil {
+			t.Errorf("close agent: %v", err)
+		}
+	}()
 
 	assert.Equal(t, "test", a.Name())
 	assert.Same(t, p, a.Provider())
@@ -141,7 +145,11 @@ func TestNew_EmptySliceOptions(t *testing.T) {
 		WithHandlers(),
 		WithInvokeOptions(),
 	)
-	defer a.Close()
+	defer func() {
+		if err := a.Close(); err != nil {
+			t.Errorf("close agent: %v", err)
+		}
+	}()
 	require.NotNil(t, a.Step())
 }
 
@@ -151,7 +159,11 @@ func TestAgent_Run_DelegatesToPattern(t *testing.T) {
 		WithProvider(&mockProvider{}),
 		WithPattern(pat),
 	)
-	defer a.Close()
+	defer func() {
+		if err := a.Close(); err != nil {
+			t.Errorf("close agent: %v", err)
+		}
+	}()
 
 	st := ledger.NewThread()
 	result, err := a.Run(context.Background(), st)
@@ -171,7 +183,11 @@ func TestAgent_Run_PatternErrorPropagates(t *testing.T) {
 		WithProvider(&mockProvider{}),
 		WithPattern(pat),
 	)
-	defer a.Close()
+	defer func() {
+		if err := a.Close(); err != nil {
+			t.Errorf("close agent: %v", err)
+		}
+	}()
 
 	_, err := a.Run(context.Background(), ledger.NewThread())
 	require.ErrorIs(t, err, want)
@@ -185,7 +201,11 @@ func TestAgent_Run_RecordsAgentRunSpan(t *testing.T) {
 		WithPattern(pat),
 		WithTracer(tracer),
 	)
-	defer a.Close()
+	defer func() {
+		if err := a.Close(); err != nil {
+			t.Errorf("close agent: %v", err)
+		}
+	}()
 
 	_, err := a.Run(context.Background(), ledger.NewThread())
 	require.NoError(t, err)
@@ -211,7 +231,11 @@ func TestAgent_Run_ReusesStep(t *testing.T) {
 		WithProvider(&mockProvider{}),
 		WithPattern(pat),
 	)
-	defer a.Close()
+	defer func() {
+		if err := a.Close(); err != nil {
+			t.Errorf("close agent: %v", err)
+		}
+	}()
 
 	step1 := a.Step()
 	_, err := a.Run(context.Background(), ledger.NewThread())

@@ -13,7 +13,11 @@ import (
 func TestFanOut_SingleSubscriber(t *testing.T) {
 	src := make(chan outputEventEnvelope, 10)
 	f := NewFanOut(src)
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Errorf("close fanout: %v", err)
+		}
+	}()
 
 	ch := f.Subscribe("text_delta")
 
@@ -35,7 +39,11 @@ func TestFanOut_SingleSubscriber(t *testing.T) {
 func TestFanOut_MultipleSubscribersDifferentKinds(t *testing.T) {
 	src := make(chan outputEventEnvelope, 10)
 	f := NewFanOut(src)
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Errorf("close fanout: %v", err)
+		}
+	}()
 
 	deltaCh := f.Subscribe("text_delta")
 	turnCh := f.Subscribe("turn_complete")
@@ -63,7 +71,11 @@ func TestFanOut_MultipleSubscribersDifferentKinds(t *testing.T) {
 func TestFanOut_NoMatchingEvents(t *testing.T) {
 	src := make(chan outputEventEnvelope, 10)
 	f := NewFanOut(src)
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Errorf("close fanout: %v", err)
+		}
+	}()
 
 	ch := f.Subscribe("text_delta")
 
@@ -105,7 +117,11 @@ func TestFanOut_CloseIdempotent(t *testing.T) {
 func TestFanOut_LateSubscribe(t *testing.T) {
 	src := make(chan outputEventEnvelope, 10)
 	f := NewFanOut(src)
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Errorf("close fanout: %v", err)
+		}
+	}()
 
 	// Send events before subscribing. Because src is buffered, these events
 	// sit in the channel until run() reads them. If a subscription is created
@@ -133,7 +149,11 @@ func TestFanOut_LateSubscribe(t *testing.T) {
 func TestFanOut_ConcurrentSubscribeAndSend(t *testing.T) {
 	src := make(chan outputEventEnvelope, 100)
 	f := NewFanOut(src)
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Errorf("close fanout: %v", err)
+		}
+	}()
 
 	// Start sending events concurrently.
 	var sendWg sync.WaitGroup
@@ -166,7 +186,11 @@ func TestFanOut_ConcurrentSubscribeAndSend(t *testing.T) {
 func TestFanOut_MultipleKindsOneSubscriber(t *testing.T) {
 	src := make(chan outputEventEnvelope, 10)
 	f := NewFanOut(src)
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Errorf("close fanout: %v", err)
+		}
+	}()
 
 	ch := f.Subscribe("text_delta", "turn_complete")
 
@@ -187,7 +211,11 @@ func TestFanOut_MultipleKindsOneSubscriber(t *testing.T) {
 func TestFanOut_MultipleSubscribersSameKind(t *testing.T) {
 	src := make(chan outputEventEnvelope, 10)
 	f := NewFanOut(src)
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Errorf("close fanout: %v", err)
+		}
+	}()
 
 	ch1 := f.Subscribe("text_delta")
 	ch2 := f.Subscribe("text_delta")
@@ -210,7 +238,11 @@ func TestFanOut_MultipleSubscribersSameKind(t *testing.T) {
 func TestFanOut_SubscribeAllKinds(t *testing.T) {
 	src := make(chan outputEventEnvelope, 10)
 	f := NewFanOut(src)
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Errorf("close fanout: %v", err)
+		}
+	}()
 
 	ch := f.Subscribe() // no kinds = all events
 

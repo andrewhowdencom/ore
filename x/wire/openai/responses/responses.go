@@ -161,7 +161,7 @@ func (p *Provider) Invoke(ctx context.Context, state ledger.State, spec models.S
 		p.recordError(span, err)
 		return fmt.Errorf("responses: send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		err := newHTTPError(resp)
 		p.recordError(span, err)

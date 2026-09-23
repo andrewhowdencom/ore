@@ -114,7 +114,7 @@ func TestRun_AcceptsBothVendors(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
-			defer resp.Body.Close()
+			defer func() { require.NoError(t, resp.Body.Close()) }()
 
 			b, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
@@ -139,7 +139,7 @@ func TestBuildHandler_OpenAI(t *testing.T) {
 	resp, err := http.Post(ts.URL+"/chat/completions", "application/json",
 		strings.NewReader(`{"model":"gpt-4o","messages":[]}`))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { require.NoError(t, resp.Body.Close()) }()
 	b, _ := io.ReadAll(resp.Body)
 	body := string(b)
 
@@ -165,7 +165,7 @@ func TestBuildHandler_Anthropic(t *testing.T) {
 	resp, err := http.Post(ts.URL+"/v1/messages", "application/json",
 		strings.NewReader(`{"model":"claude-3-7-sonnet-latest","max_tokens":1024,"messages":[]}`))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { require.NoError(t, resp.Body.Close()) }()
 	b, _ := io.ReadAll(resp.Body)
 	body := string(b)
 

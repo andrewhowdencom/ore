@@ -1969,6 +1969,7 @@ func TestRetriableError_PassesThroughNonSDKError(t *testing.T) {
 //   - the input_kind taxonomy (must be one of the four documented kinds)
 //   - the request-shape integer attributes (message_count, tool_use_count)
 //   - the always-on behavior when a tracer is configured
+//
 // all fail this test. This is what makes an upstream 400 of the form
 // "messages.N.content.K.tool_use.input: Input should be a valid
 // dictionary" diagnosable from a trace alone.
@@ -1978,8 +1979,8 @@ func TestRetriableError_PassesThroughNonSDKError(t *testing.T) {
 //   - toolu_obj:  Arguments='{"path":"/tmp/x"}'   -> input_kind="object"
 //   - toolu_empty: Arguments=""                    -> input_kind="object"
 //     (parseToolArguments returns map[string]any{} for empty Arguments,
-//      which the classifier reports as "object"; this is the correct
-//      shape — Anthropic accepts an empty object as input.)
+//     which the classifier reports as "object"; this is the correct
+//     shape — Anthropic accepts an empty object as input.)
 func TestProviderInvoke_ToolUseSpanEvents(t *testing.T) {
 	t.Parallel()
 
@@ -2052,7 +2053,7 @@ func TestProviderInvoke_ToolUseSpanEvents(t *testing.T) {
 	// message_count, tool_use_count.
 	wantAttrs := map[attribute.Key]attribute.Value{
 		"model":                            attribute.StringValue("claude-3-7-sonnet-latest"),
-		"anthropic.request.message_count": attribute.IntValue(2), // user + assistant
+		"anthropic.request.message_count":  attribute.IntValue(2), // user + assistant
 		"anthropic.request.tool_use_count": attribute.IntValue(2), // two tool_uses
 	}
 	gotAttrs := map[attribute.Key]attribute.Value{}
@@ -2062,7 +2063,7 @@ func TestProviderInvoke_ToolUseSpanEvents(t *testing.T) {
 	for k, v := range wantAttrs {
 		got, ok := gotAttrs[k]
 		require.True(t, ok, "missing attribute %q", k)
-		assert.True(t, v.Emit() == got.Emit(), "attribute %q = %v; want %v", k, got, v)
+		assert.Equal(t, v, got, "attribute %q", k)
 	}
 
 	// Span events. Exactly two anthropic.tool_use events, in order,
@@ -2245,8 +2246,8 @@ func TestInvoke_SpecCacheControl_StampsAllThreeLocations(t *testing.T) {
 	require.NoError(t, err)
 
 	spec := models.Spec{
-		Name:          "claude-3-7-sonnet-latest",
-		CacheControl:  &models.CacheControl{TTL: models.CacheControlTTL5m},
+		Name:         "claude-3-7-sonnet-latest",
+		CacheControl: &models.CacheControl{TTL: models.CacheControlTTL5m},
 	}
 
 	tools := []tool.Tool{

@@ -241,13 +241,11 @@ func (p *Provider) StartBrowserLogin(ctx context.Context) (*Login, error) {
 	login, loginCtx := newLogin(ctx)
 	verifier, challenge, err := newPKCE()
 	if err != nil {
-		listener.Close()
-		return nil, err
+		return nil, errors.Join(err, listener.Close())
 	}
 	state, err := randomURLToken(32)
 	if err != nil {
-		listener.Close()
-		return nil, err
+		return nil, errors.Join(err, listener.Close())
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
 	redirectURI := fmt.Sprintf("http://localhost:%d/auth/callback", port)
@@ -356,7 +354,7 @@ func (m *authManager) exchangeAndStore(ctx context.Context, code, redirectURI, v
 	if err != nil {
 		return fmt.Errorf("codex: exchange authorization code: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return safeHTTPError("token exchange", resp)
 	}
@@ -468,7 +466,7 @@ func loadCredential(path string) (*credential, error) {
 	if err != nil {
 		return nil, fmt.Errorf("codex: open credentials: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	var cred credential
 	if err := json.NewDecoder(io.LimitReader(file, 1<<20)).Decode(&cred); err != nil {
 		return nil, fmt.Errorf("codex: decode credentials: %w", err)
@@ -493,16 +491,13 @@ func saveCredential(path string, cred credential) error {
 		}
 	}()
 	if err := file.Chmod(0o600); err != nil {
-		file.Close()
-		return fmt.Errorf("codex: protect credential file: %w", err)
+		return fmt.Errorf("codex: protect credential file: %w", errors.Join(err, file.Close()))
 	}
 	if err := json.NewEncoder(file).Encode(cred); err != nil {
-		file.Close()
-		return fmt.Errorf("codex: write credentials: %w", err)
+		return fmt.Errorf("codex: write credentials: %w", errors.Join(err, file.Close()))
 	}
 	if err := file.Sync(); err != nil {
-		file.Close()
-		return fmt.Errorf("codex: sync credentials: %w", err)
+		return fmt.Errorf("codex: sync credentials: %w", errors.Join(err, file.Close()))
 	}
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("codex: close credentials: %w", err)
@@ -540,7 +535,7 @@ func (m *authManager) postJSONStatus(ctx context.Context, endpoint string, paylo
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64*1024))
 		return resp.StatusCode, fmt.Errorf("HTTP %d", resp.StatusCode)

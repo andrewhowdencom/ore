@@ -16,7 +16,7 @@ import (
 // and returns a configurable result. Used by reference-path tests that
 // need to inspect the forwarding behavior.
 type recordingDiscoverer struct {
-	meta  []SkillMeta
+	meta   []SkillMeta
 	onRead func(name, path string) (string, error)
 }
 
@@ -60,7 +60,7 @@ func TestToolkit_ReadSkill_Truncated(t *testing.T) {
 	require.NotNil(t, r.Truncation, "Truncation should be non-nil for 100 KB output")
 	assert.LessOrEqual(t, len(r.Content), 50_000)
 	assert.NotEmpty(t, r.TempFilePath)
-	t.Cleanup(func() { os.Remove(r.TempFilePath) })
+	t.Cleanup(func() { require.NoError(t, os.Remove(r.TempFilePath)) })
 	contents, err := os.ReadFile(r.TempFilePath)
 	require.NoError(t, err)
 	assert.Equal(t, big, string(contents))
@@ -161,7 +161,7 @@ func TestToolkit_ReadSkill_ReferenceTruncated(t *testing.T) {
 	require.NotNil(t, r.Truncation, "Truncation should be non-nil for 100 KB reference")
 	assert.LessOrEqual(t, len(r.Content), 50_000)
 	assert.NotEmpty(t, r.TempFilePath)
-	t.Cleanup(func() { os.Remove(r.TempFilePath) })
+	t.Cleanup(func() { require.NoError(t, os.Remove(r.TempFilePath)) })
 	contents, err := os.ReadFile(r.TempFilePath)
 	require.NoError(t, err)
 	assert.Equal(t, big, string(contents))

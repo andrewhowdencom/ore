@@ -138,7 +138,7 @@ func TestReadFile_ByteCapTruncation(t *testing.T) {
 	// cap is 50 KB / 2000 lines, so the byte cap dominates.
 	var sb strings.Builder
 	for i := 0; i < 2000; i++ {
-		sb.WriteString(fmt.Sprintf("line %05d: this is a moderately long line of text for size to push us over the cap\n", i))
+		fmt.Fprintf(&sb, "line %05d: this is a moderately long line of text for size to push us over the cap\n", i)
 	}
 	full := sb.String()
 	require.NoError(t, os.WriteFile(p, []byte(full), 0o644))
@@ -152,7 +152,7 @@ func TestReadFile_ByteCapTruncation(t *testing.T) {
 	assert.NotEmpty(t, r.TempFilePath, "temp file path should be set on truncation")
 
 	// Verify the temp file exists and contains the full content.
-	t.Cleanup(func() { os.Remove(r.TempFilePath) })
+	t.Cleanup(func() { require.NoError(t, os.Remove(r.TempFilePath)) })
 	contents, err := os.ReadFile(r.TempFilePath)
 	require.NoError(t, err)
 	assert.Equal(t, len(full), len(contents), "temp file should hold the unmodified file content")
@@ -1000,7 +1000,7 @@ func TestSearchFiles_RowCap(t *testing.T) {
 	// 1500 matching lines; default cap is 1000.
 	var sb strings.Builder
 	for i := 0; i < 1500; i++ {
-		sb.WriteString(fmt.Sprintf("match line %d\n", i))
+		fmt.Fprintf(&sb, "match line %d\n", i)
 	}
 	require.NoError(t, os.WriteFile(p, []byte(sb.String()), 0o644))
 

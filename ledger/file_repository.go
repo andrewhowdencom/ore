@@ -30,7 +30,7 @@ type FileRepository struct {
 	dir string
 
 	// per-thread mutexes, lazily created.
-	mu sync.Mutex
+	mu    sync.Mutex
 	locks map[string]*sync.Mutex
 }
 
@@ -109,10 +109,12 @@ func (r *FileRepository) appendEntry(threadID string, entry JournalEntry) error 
 	if err != nil {
 		return fmt.Errorf("open journal file %q: %w", path, err)
 	}
-	defer f.Close()
-
 	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
 		return fmt.Errorf("write journal entry to %q: %w", path, err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close journal file %q: %w", path, err)
 	}
 	return nil
 }
@@ -206,7 +208,7 @@ func (r *FileRepository) HydrateThread(_ context.Context, threadID string) (map[
 		}
 		return nil, "", fmt.Errorf("open journal file %q: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	turns := make(map[string]*Turn)
 	var currentTip string
