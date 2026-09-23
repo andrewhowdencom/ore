@@ -141,6 +141,9 @@ func (p *Provider) Invoke(ctx context.Context, state ledger.State, spec models.S
 	}
 
 	reqBody := p.buildRequest(ctx, state, spec, opts)
+	if span != nil && reqBody.PromptCacheKey != "" {
+		span.SetAttributes(attribute.String("gen_ai.request.prompt_cache_key", reqBody.PromptCacheKey))
+	}
 	body, err := json.Marshal(reqBody)
 	if err != nil {
 		return fmt.Errorf("responses: marshal request: %w", err)
@@ -167,7 +170,7 @@ func (p *Provider) Invoke(ctx context.Context, state ledger.State, spec models.S
 		p.recordError(span, err)
 		return err
 	}
-	if err := consumeSSE(ctx, resp.Body, ch); err != nil {
+	if err := consumeSSE(ctx, resp.Body, ch, span); err != nil {
 		p.recordError(span, err)
 		return fmt.Errorf("responses: read stream: %w", err)
 	}
@@ -339,7 +342,7 @@ type responseDone struct {
 	} `json:"error"`
 }
 
-func consumeSSE(ctx context.Context, body io.Reader, ch chan<- artifact.Artifact) error {
+func consumeSSE(ctx context.Context, body io.Reader, ch chan<- artifact.Artifact, span trace.Span) error {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	var data strings.Builder
@@ -348,7 +351,7 @@ func consumeSSE(ctx context.Context, body io.Reader, ch chan<- artifact.Artifact
 		line := scanner.Text()
 		if line == "" {
 			if data.Len() > 0 {
-				if err := handleEvent(ctx, []byte(data.String()), ch, &state); err != nil {
+				if err := handleEvent(ctx, []byte(data.String()), ch, &state, span); err != nil {
 					return err
 				}
 				data.Reset()
@@ -369,7 +372,7 @@ func consumeSSE(ctx context.Context, body io.Reader, ch chan<- artifact.Artifact
 		return err
 	}
 	if data.Len() > 0 {
-		if err := handleEvent(ctx, []byte(data.String()), ch, &state); err != nil {
+		if err := handleEvent(ctx, []byte(data.String()), ch, &state, span); err != nil {
 			return err
 		}
 		if state.completed {
@@ -389,7 +392,7 @@ type streamState struct {
 	seenTool  map[string]bool
 }
 
-func handleEvent(ctx context.Context, data []byte, ch chan<- artifact.Artifact, state *streamState) error {
+func handleEvent(ctx context.Context, data []byte, ch chan<- artifact.Artifact, state *streamState, span trace.Span) error {
 	if string(data) == "[DONE]" {
 		return nil
 	}
@@ -462,8 +465,17 @@ func handleEvent(ctx context.Context, data []byte, ch chan<- artifact.Artifact, 
 				value := done.Usage.OutputTokenDetails.ReasoningTokens
 				thinking = &value
 			}
+			usage := artifact.Usage{
+				PromptTokens:     done.Usage.InputTokens,
+				CompletionTokens: done.Usage.OutputTokens,
+				TotalTokens:      done.Usage.TotalTokens,
+				CacheReadTokens:  done.Usage.InputTokenDetails.CachedTokens,
+				CacheWriteTokens: done.Usage.InputTokenDetails.CacheWriteTokens,
+				ThinkingTokens:   thinking,
+			}
+			recordUsage(span, usage)
 			state.completed = true
-			return emit(ctx, ch, artifact.Usage{PromptTokens: done.Usage.InputTokens, CompletionTokens: done.Usage.OutputTokens, TotalTokens: done.Usage.TotalTokens, CacheReadTokens: done.Usage.InputTokenDetails.CachedTokens, CacheWriteTokens: done.Usage.InputTokenDetails.CacheWriteTokens, ThinkingTokens: thinking})
+			return emit(ctx, ch, usage)
 		}
 		state.completed = true
 	case "response.failed", "error":
@@ -479,6 +491,23 @@ func handleEvent(ctx context.Context, data []byte, ch chan<- artifact.Artifact, 
 		return errors.New("responses stream failed")
 	}
 	return nil
+}
+
+func recordUsage(span trace.Span, usage artifact.Usage) {
+	if span == nil {
+		return
+	}
+	attrs := []attribute.KeyValue{
+		attribute.Int("gen_ai.usage.input_tokens", usage.PromptTokens),
+		attribute.Int("gen_ai.usage.output_tokens", usage.CompletionTokens),
+		attribute.Int("gen_ai.usage.total_tokens", usage.TotalTokens),
+		attribute.Int("gen_ai.usage.cache_read.input_tokens", usage.CacheReadTokens),
+		attribute.Int("gen_ai.usage.cache_creation.input_tokens", usage.CacheWriteTokens),
+	}
+	if usage.ThinkingTokens != nil {
+		attrs = append(attrs, attribute.Int("gen_ai.usage.reasoning.output_tokens", *usage.ThinkingTokens))
+	}
+	span.SetAttributes(attrs...)
 }
 
 func (s *streamState) markTool(ids ...string) {

@@ -796,7 +796,6 @@ func TestInvoke_ReasoningIncludeField(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			transport := &mockTransport{
 				response: mockResponseSSE(simpleSSE("ok")),
 			}
@@ -1782,6 +1781,9 @@ func TestInvoke_WithSessionID(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			sr := tracetest.NewSpanRecorder()
+			tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
+			t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
 
 			transport := &recordingMockTransport{
 				responseBody: simpleSSE("ok"),
@@ -1791,6 +1793,7 @@ func TestInvoke_WithSessionID(t *testing.T) {
 
 				WithBaseURL("https://api.openai.com/v1"),
 				WithHTTPClient(&http.Client{Transport: transport}),
+				WithTracer(tp.Tracer("test")),
 			)
 			spec := models.Spec{Name: "gpt-4"}
 			require.NoError(t, err)
@@ -1813,14 +1816,46 @@ func TestInvoke_WithSessionID(t *testing.T) {
 			require.NoError(t, json.Unmarshal(requests[0].body, &reqBody))
 
 			got, present := reqBody["prompt_cache_key"]
+			ended := sr.Ended()
+			require.Len(t, ended, 1)
+			spanAttrs := attributesByKey(ended[0].Attributes())
 			if !tt.wantPresent {
 				assert.False(t, present, "prompt_cache_key should be absent; got %v", got)
+				assert.NotContains(t, spanAttrs, attribute.Key("gen_ai.request.prompt_cache_key"))
 				return
 			}
 			require.True(t, present, "prompt_cache_key should be present in request body")
 			assert.Equal(t, tt.wantValue, got)
+			assert.Equal(t, tt.wantValue, spanAttrs["gen_ai.request.prompt_cache_key"].AsString())
 		})
 	}
+}
+
+func TestRecordUsage(t *testing.T) {
+	t.Parallel()
+	sr := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+	_, span := tp.Tracer("test").Start(t.Context(), "provider.invoke")
+	thinking := 7
+	recordUsage(span, artifact.Usage{PromptTokens: 100, CompletionTokens: 20, TotalTokens: 120, CacheReadTokens: 80, CacheWriteTokens: 10, ThinkingTokens: &thinking})
+	span.End()
+
+	attrs := attributesByKey(sr.Ended()[0].Attributes())
+	assert.Equal(t, int64(100), attrs["gen_ai.usage.input_tokens"].AsInt64())
+	assert.Equal(t, int64(20), attrs["gen_ai.usage.output_tokens"].AsInt64())
+	assert.Equal(t, int64(120), attrs["gen_ai.usage.total_tokens"].AsInt64())
+	assert.Equal(t, int64(80), attrs["gen_ai.usage.cache_read.input_tokens"].AsInt64())
+	assert.Equal(t, int64(10), attrs["gen_ai.usage.cache_creation.input_tokens"].AsInt64())
+	assert.Equal(t, int64(7), attrs["gen_ai.usage.reasoning.output_tokens"].AsInt64())
+}
+
+func attributesByKey(attrs []attribute.KeyValue) map[attribute.Key]attribute.Value {
+	result := make(map[attribute.Key]attribute.Value, len(attrs))
+	for _, attr := range attrs {
+		result[attr.Key] = attr.Value
+	}
+	return result
 }
 
 // TestInvoke_WithCacheControl verifies that WithCacheControl emits
