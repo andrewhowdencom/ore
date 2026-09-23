@@ -3,8 +3,8 @@ module github.com/andrewhowdencom/ore/x/conduit/http
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.3.2
-	github.com/andrewhowdencom/ore/x/conduit v0.2.1
+	github.com/andrewhowdencom/ore v1.4.1
+	github.com/andrewhowdencom/ore/x/conduit v0.2.2
 	github.com/getkin/kin-openapi v0.140.0
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.44.0
