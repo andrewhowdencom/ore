@@ -2,6 +2,7 @@ package tool
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 )
 
@@ -105,10 +106,9 @@ func (r *registry) Register(t Tool, fn ToolFunc) error {
 	return nil
 }
 
-// Tools returns a merged list of all registered tools, including local tools
-// and remote tools from all registered MCP servers. Local tools are returned
-// without a prefix. Remote tools are namespaced with their source prefix
-// (e.g., "filesystem/read_file").
+// Tools returns a merged list of all registered tools, sorted by name. Local
+// tools are returned without a prefix. Remote tools are namespaced with their
+// source prefix (e.g., "filesystem/read_file").
 func (r *registry) Tools() []Tool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -130,6 +130,7 @@ func (r *registry) Tools() []Tool {
 			})
 		}
 	}
+	sort.Slice(tools, func(i, j int) bool { return tools[i].Name < tools[j].Name })
 
 	return tools
 }

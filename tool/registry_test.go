@@ -334,6 +334,51 @@ func TestRegistry_Tools_WithRemoteSource(t *testing.T) {
 	assert.Contains(t, names, "filesystem/read_file")
 }
 
+func TestRegistry_Tools_StableOrder(t *testing.T) {
+	tests := []struct {
+		name   string
+		locals []string
+		remote []Tool
+		want   []string
+	}{
+		{
+			name:   "local tools",
+			locals: []string{"write", "read", "edit"},
+			want:   []string{"edit", "read", "write"},
+		},
+		{
+			name:   "local and remote tools",
+			locals: []string{"z_local", "a_local"},
+			remote: []Tool{{Name: "z_remote"}, {Name: "a_remote"}},
+			want:   []string{"a_local", "remote/a_remote", "remote/z_remote", "z_local"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var opts []Option
+			if len(tt.remote) > 0 {
+				opts = append(opts, WithMCPServer(&mockRemoteSource{name: "remote", tools: tt.remote}))
+			}
+			r := NewRegistry(opts...)
+			for _, name := range tt.locals {
+				require.NoError(t, r.Register(Tool{Name: name}, func(context.Context, Sandbox, map[string]any) (any, error) {
+					return nil, nil
+				}))
+			}
+
+			for range 20 {
+				tools := r.Tools()
+				names := make([]string, len(tools))
+				for i, tool := range tools {
+					names[i] = tool.Name
+				}
+				assert.Equal(t, tt.want, names)
+			}
+		})
+	}
+}
+
 func TestRegistry_Tools_RemoteExamplesPreserved(t *testing.T) {
 	remote := &mockRemoteSource{
 		name: "fs",
@@ -362,5 +407,3 @@ func TestRegistry_Tools_RemoteExamplesPreserved(t *testing.T) {
 	assert.Equal(t, "package main\n", tools[0].Examples[0].Output)
 	assert.Equal(t, "Basic file read", tools[0].Examples[0].Explanation)
 }
-
-
