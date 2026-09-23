@@ -143,7 +143,7 @@ func TestIntegration_FullStackCreateSubmitSSE(t *testing.T) {
 	// Create a session via POST /sessions.
 	createResp, err := http.Post(srv.URL+"/sessions", "application/json", nil)
 	require.NoError(t, err)
-	defer createResp.Body.Close()
+	defer func() { require.NoError(t, createResp.Body.Close()) }()
 	require.Equal(t, http.StatusCreated, createResp.StatusCode)
 	var created map[string]string
 	require.NoError(t, json.NewDecoder(createResp.Body).Decode(&created))
@@ -164,7 +164,7 @@ func TestIntegration_FullStackCreateSubmitSSE(t *testing.T) {
 			errCh <- err
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			errCh <- &unexpectedStatusError{Status: resp.StatusCode}
 			return
@@ -202,7 +202,7 @@ func TestIntegration_FullStackCreateSubmitSSE(t *testing.T) {
 	body := strings.NewReader(`{"kind":"user_message","content":"hello"}`)
 	submitResp, err := http.Post(srv.URL+"/sessions/"+id+"/events", "application/json", body)
 	require.NoError(t, err)
-	defer submitResp.Body.Close()
+	defer func() { require.NoError(t, submitResp.Body.Close()) }()
 	require.Equal(t, http.StatusAccepted, submitResp.StatusCode)
 
 	// Read events until lifecycle "done" arrives.
@@ -240,7 +240,7 @@ func TestIntegration_DeleteSessionReturns404(t *testing.T) {
 
 	createResp, err := http.Post(srv.URL+"/sessions", "application/json", nil)
 	require.NoError(t, err)
-	defer createResp.Body.Close()
+	defer func() { require.NoError(t, createResp.Body.Close()) }()
 	require.Equal(t, http.StatusCreated, createResp.StatusCode)
 	var created map[string]string
 	require.NoError(t, json.NewDecoder(createResp.Body).Decode(&created))
@@ -249,13 +249,13 @@ func TestIntegration_DeleteSessionReturns404(t *testing.T) {
 	req, _ := http.NewRequest("DELETE", srv.URL+"/sessions/"+id, nil)
 	delResp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer delResp.Body.Close()
+	defer func() { require.NoError(t, delResp.Body.Close()) }()
 	require.Equal(t, http.StatusNoContent, delResp.StatusCode)
 
 	// Subsequent operations on the deleted session should fail.
 	getResp, err := http.Get(srv.URL + "/sessions/" + id)
 	require.NoError(t, err)
-	defer getResp.Body.Close()
+	defer func() { require.NoError(t, getResp.Body.Close()) }()
 	assert.Equal(t, http.StatusNotFound, getResp.StatusCode)
 }
 

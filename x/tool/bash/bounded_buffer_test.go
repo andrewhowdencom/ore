@@ -50,7 +50,11 @@ func TestBoundedBuffer_OverCap(t *testing.T) {
 	if path == "" {
 		t.Fatal("Path() returned empty after spill")
 	}
-	t.Cleanup(func() { os.Remove(path) })
+	t.Cleanup(func() {
+		if err := os.Remove(path); err != nil {
+			t.Errorf("remove temp file: %v", err)
+		}
+	})
 
 	// In-memory tail should be the last 100 bytes (2*cap).
 	tail := bb.String()
@@ -89,7 +93,11 @@ func TestBoundedBuffer_MultipleWrites(t *testing.T) {
 	}
 
 	path := bb.Path()
-	t.Cleanup(func() { os.Remove(path) })
+	t.Cleanup(func() {
+		if err := os.Remove(path); err != nil {
+			t.Errorf("remove temp file: %v", err)
+		}
+	})
 
 	// Temp file should contain the full stream.
 	contents, err := os.ReadFile(path)
@@ -138,7 +146,11 @@ func TestBoundedBuffer_Close_AfterSpill(t *testing.T) {
 	bb := NewBoundedBuffer(10)
 	_, _ = bb.Write([]byte(strings.Repeat("a", 100)))
 	path := bb.Path()
-	t.Cleanup(func() { os.Remove(path) })
+	t.Cleanup(func() {
+		if err := os.Remove(path); err != nil {
+			t.Errorf("remove temp file: %v", err)
+		}
+	})
 
 	if err := bb.Close(); err != nil {
 		t.Errorf("Close: %v", err)

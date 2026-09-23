@@ -20,8 +20,8 @@ import (
 
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
-	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/ledger"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
 	xtool "github.com/andrewhowdencom/ore/x/tool"
@@ -73,11 +73,6 @@ func run() error {
 		return fmt.Errorf("ORE_API_KEY not set")
 	}
 
-	model := os.Getenv("ORE_MODEL")
-	if model == "" {
-		model = "gpt-4o"
-	}
-
 	baseURL := os.Getenv("ORE_BASE_URL")
 
 	// Create a temporary directory for the agent to work in.
@@ -85,7 +80,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	// Change to the temp directory so the agent writes files there
 	// and verifiers run in the correct location.
@@ -96,7 +91,7 @@ func run() error {
 	if err := os.Chdir(tempDir); err != nil {
 		return fmt.Errorf("chdir temp dir: %w", err)
 	}
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	// Create tool registry with filesystem functions.
 	registry := tool.NewRegistry()
@@ -123,7 +118,6 @@ func run() error {
 	}
 	prov, err := openai.New(append([]openai.Option{
 		openai.WithAPIKey(apiKey),
-		
 	}, opts...)...)
 	if err != nil {
 		return fmt.Errorf("create openai provider: %w", err)
@@ -133,8 +127,8 @@ func run() error {
 	mem := ledger.NewThread()
 	mem.Append(ledger.RoleSystem, artifact.Text{Content: fmt.Sprintf(
 		"You are a Go coding agent. Write Go code to files in the current directory (%s). "+
-		"Make sure your code compiles with `go build ./...`, passes tests with `go test ./...`, "+
-		"and is formatted with `gofmt -d .`.",
+			"Make sure your code compiles with `go build ./...`, passes tests with `go test ./...`, "+
+			"and is formatted with `gofmt -d .`.",
 		tempDir,
 	)})
 	mem.Append(ledger.RoleUser, artifact.Text{Content: message})

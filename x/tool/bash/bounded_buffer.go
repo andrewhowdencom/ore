@@ -92,8 +92,8 @@ func (b *BoundedBuffer) Write(p []byte) (int, error) {
 			return len(p), err
 		}
 		if _, err := f.Write(b.tail); err != nil {
-			f.Close()
-			os.Remove(f.Name())
+			_ = f.Close()
+			_ = os.Remove(f.Name())
 			return len(p), err
 		}
 		b.file = f

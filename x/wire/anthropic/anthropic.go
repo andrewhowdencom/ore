@@ -626,7 +626,7 @@ func (p *Provider) Invoke(ctx context.Context, s ledger.State, spec models.Spec,
 	}
 
 	stream := p.client.Messages.NewStreaming(ctx, params)
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	// The SDK's MessageDeltaUsage is cumulative across the stream,
 	// so we buffer the latest message_delta usage and emit a single

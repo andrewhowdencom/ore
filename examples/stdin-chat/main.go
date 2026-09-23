@@ -22,8 +22,8 @@ import (
 	"github.com/andrewhowdencom/ore/agent"
 	"github.com/andrewhowdencom/ore/artifact"
 	"github.com/andrewhowdencom/ore/cognitive"
-	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/ledger"
+	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
 )
 
@@ -76,7 +76,7 @@ func run() error {
 		agent.WithPattern(&cognitive.SingleShot{}),
 		agent.WithState(mem),
 	)
-	defer a.Close()
+	defer func() { _ = a.Close() }()
 
 	slog.Info("stdin-chat: type a message, then enter. Empty line, 'exit', 'quit', or EOF to quit.")
 

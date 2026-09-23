@@ -2063,7 +2063,7 @@ func TestProviderInvoke_ToolUseSpanEvents(t *testing.T) {
 	for k, v := range wantAttrs {
 		got, ok := gotAttrs[k]
 		require.True(t, ok, "missing attribute %q", k)
-		assert.True(t, v.Emit() == got.Emit(), "attribute %q = %v; want %v", k, got, v)
+		assert.Equal(t, v, got, "attribute %q", k)
 	}
 
 	// Span events. Exactly two anthropic.tool_use events, in order,

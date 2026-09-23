@@ -71,12 +71,8 @@ func TestKnownModelsHaveWindows(t *testing.T) {
 // never silently emits "temperature: 0" to a wire that expects
 // a float.
 //
-// This test is the single source of truth for the "Temperature
-// is always a *float64" contract. The generator's template
-// hard-codes ptr(1.0); if a future revision interpolates
-// printf %#g or similar, the rounding must continue to produce
-// a *float64 (not a *int).
-func TestTemperatureIsFloat64Pointer(t *testing.T) {
+// The generator's template sets Temperature for these models.
+func TestTemperatureIsSet(t *testing.T) {
 	t.Parallel()
 
 	specs := []models.Spec{
@@ -90,12 +86,5 @@ func TestTemperatureIsFloat64Pointer(t *testing.T) {
 			t.Errorf("spec %q has nil Temperature", s.Name)
 			continue
 		}
-		// Reading through the pointer as a float64 will
-		// panic at runtime if the underlying type is
-		// something other than float64 (e.g. an int
-		// stored in a *float64). The compile-time check
-		// below is what we really want; the runtime
-		// assertion is belt-and-suspenders.
-		var _ float64 = *s.Temperature
 	}
 }

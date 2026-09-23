@@ -103,7 +103,7 @@ func inModuleDir(path, dir string, excludeDirs []string) bool {
 	// Step 1: path must be within the module's directory.
 	inDir := true
 	if dir != "." {
-		if !(path == dir || strings.HasPrefix(path, dir+"/")) {
+		if path != dir && !strings.HasPrefix(path, dir+"/") {
 			inDir = false
 		}
 	} else {

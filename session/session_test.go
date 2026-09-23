@@ -15,7 +15,11 @@ func TestNew_ConstructsAndRuns(t *testing.T) {
 
 	thread := ledger.NewThread()
 	s := session.New("test-id", thread)
-	defer s.Close()
+	defer func() {
+		if err := s.Close(); err != nil {
+			t.Errorf("close session: %v", err)
+		}
+	}()
 
 	if s.ID() != "test-id" {
 		t.Fatalf("ID() = %q, want %q", s.ID(), "test-id")
@@ -30,7 +34,11 @@ func TestSetMetadata_EmitsPropertiesEvent(t *testing.T) {
 
 	thread := ledger.NewThread()
 	s := session.New("test-id", thread)
-	defer s.Close()
+	defer func() {
+		if err := s.Close(); err != nil {
+			t.Errorf("close session: %v", err)
+		}
+	}()
 
 	events := s.Subscribe("properties")
 
@@ -65,7 +73,11 @@ func TestGetMetadata_RoundTrips(t *testing.T) {
 
 	thread := ledger.NewThread()
 	s := session.New("test-id", thread)
-	defer s.Close()
+	defer func() {
+		if err := s.Close(); err != nil {
+			t.Errorf("close session: %v", err)
+		}
+	}()
 
 	s.SetMetadata("a", "1")
 	s.SetMetadata("b", "2")
@@ -125,7 +137,11 @@ func TestAttributes_PrefixesAndRoundTrips(t *testing.T) {
 
 	thread := ledger.NewThread()
 	s := session.New("test-id", thread)
-	defer s.Close()
+	defer func() {
+		if err := s.Close(); err != nil {
+			t.Errorf("close session: %v", err)
+		}
+	}()
 
 	s.SetMetadata("ore.model.name", "claude-opus-4-5")
 	s.SetMetadata("ore.model.thinking_level", "high")
@@ -153,7 +169,11 @@ func TestAttributes_EmptyMap(t *testing.T) {
 
 	thread := ledger.NewThread()
 	s := session.New("test-id", thread)
-	defer s.Close()
+	defer func() {
+		if err := s.Close(); err != nil {
+			t.Errorf("close session: %v", err)
+		}
+	}()
 
 	attrs := s.Attributes()
 	if attrs == nil {

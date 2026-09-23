@@ -14,11 +14,11 @@ import (
 // stream to a temp file. The path is exposed in StdoutPath /
 // StderrPath so the LLM can read the full output via read_file.
 type Result struct {
-	Stdout     string             `json:"stdout"`
-	Stderr     string             `json:"stderr"`
-	ExitCode   int                `json:"exit_code"`
-	StdoutPath string             `json:"stdout_path,omitempty"`
-	StderrPath string             `json:"stderr_path,omitempty"`
+	Stdout     string               `json:"stdout"`
+	Stderr     string               `json:"stderr"`
+	ExitCode   int                  `json:"exit_code"`
+	StdoutPath string               `json:"stdout_path,omitempty"`
+	StderrPath string               `json:"stderr_path,omitempty"`
 	Truncation *artifact.Truncation `json:"truncation,omitempty"`
 }
 
@@ -39,7 +39,7 @@ func (r *Result) MarshalMarkdown() string {
 		md.WriteString("\n```\n\n")
 	}
 
-	md.WriteString(fmt.Sprintf("**exit code:** %d", r.ExitCode))
+	fmt.Fprintf(&md, "**exit code:** %d", r.ExitCode)
 	return md.String()
 }
 
@@ -68,7 +68,7 @@ func (r *Result) MarshalLLM() string {
 		sb.WriteString("\n```\n")
 	}
 
-	sb.WriteString(fmt.Sprintf("\n**exit code:** %d\n", r.ExitCode))
+	fmt.Fprintf(&sb, "\n**exit code:** %d\n", r.ExitCode)
 
 	if r.Truncation != nil && r.Truncation.Truncated() {
 		sb.WriteString("\n[output truncated; full output at the temp file path(s) above]\n")

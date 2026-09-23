@@ -59,8 +59,8 @@ func (r *ReadSkillResult) MarshalLLM() string {
 		sb.WriteString("\n\n")
 		sb.WriteString(hint)
 	}
-	sb.WriteString(fmt.Sprintf("\n[%d lines shown of %d total; full content at %s]",
-		r.Truncation.ShownLines, r.Truncation.OriginalLines, r.TempFilePath))
+	fmt.Fprintf(&sb, "\n[%d lines shown of %d total; full content at %s]",
+		r.Truncation.ShownLines, r.Truncation.OriginalLines, r.TempFilePath)
 	return sb.String()
 }
 
@@ -117,13 +117,13 @@ func writeSkillToTemp(name, content string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("create temp: %w", err)
 	}
-	defer dst.Close()
+	defer func() { _ = dst.Close() }()
 	if _, err := dst.WriteString(content); err != nil {
-		os.Remove(dst.Name())
+		_ = os.Remove(dst.Name())
 		return "", fmt.Errorf("write: %w", err)
 	}
 	if err := dst.Close(); err != nil {
-		os.Remove(dst.Name())
+		_ = os.Remove(dst.Name())
 		return "", fmt.Errorf("close: %w", err)
 	}
 	return dst.Name(), nil

@@ -158,7 +158,6 @@ func TestNew_WithName(t *testing.T) {
 
 func TestHandler_ServeMux_Routing(t *testing.T) {
 
-
 	backend := newFakeBackend()
 	h := newTestHandler(t, backend, WithoutUI())
 	server := httptest.NewServer(h.ServeMux())
@@ -192,7 +191,6 @@ func TestHandler_ServeMux_Routing(t *testing.T) {
 
 func TestCreateSession_NoBodyCreatesEphemeralSession(t *testing.T) {
 
-
 	backend := newFakeBackend()
 	h := newTestHandler(t, backend, WithoutUI())
 	server := httptest.NewServer(h.ServeMux())
@@ -200,7 +198,7 @@ func TestCreateSession_NoBodyCreatesEphemeralSession(t *testing.T) {
 
 	resp, err := stdhttp.Post(server.URL+"/sessions", "application/json", nil)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { require.NoError(t, resp.Body.Close()) }()
 	require.Equal(t, 201, resp.StatusCode)
 
 	var data map[string]string
@@ -211,7 +209,6 @@ func TestCreateSession_NoBodyCreatesEphemeralSession(t *testing.T) {
 
 func TestCreateSession_AttachThread_404(t *testing.T) {
 
-
 	backend := newFakeBackend()
 	h := newTestHandler(t, backend, WithoutUI())
 	server := httptest.NewServer(h.ServeMux())
@@ -220,12 +217,11 @@ func TestCreateSession_AttachThread_404(t *testing.T) {
 	body, _ := json.Marshal(map[string]string{"thread_id": "missing"})
 	resp, err := stdhttp.Post(server.URL+"/sessions", "application/json", bytes.NewReader(body))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { require.NoError(t, resp.Body.Close()) }()
 	assert.Equal(t, 404, resp.StatusCode)
 }
 
 func TestDeleteSession_RemovesFromBackend(t *testing.T) {
-
 
 	backend := newFakeBackend()
 	h := newTestHandler(t, backend, WithoutUI())
@@ -235,7 +231,7 @@ func TestDeleteSession_RemovesFromBackend(t *testing.T) {
 	// Create a session first.
 	createResp, err := stdhttp.Post(server.URL+"/sessions", "application/json", nil)
 	require.NoError(t, err)
-	defer createResp.Body.Close()
+	defer func() { require.NoError(t, createResp.Body.Close()) }()
 	require.Equal(t, 201, createResp.StatusCode)
 	var data map[string]string
 	require.NoError(t, json.NewDecoder(createResp.Body).Decode(&data))
@@ -245,7 +241,7 @@ func TestDeleteSession_RemovesFromBackend(t *testing.T) {
 	req, _ := stdhttp.NewRequest("DELETE", server.URL+"/sessions/"+id, nil)
 	delResp, err := stdhttp.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer delResp.Body.Close()
+	defer func() { require.NoError(t, delResp.Body.Close()) }()
 	assert.Equal(t, 204, delResp.StatusCode)
 
 	// Confirm it's gone from the backend.
@@ -255,7 +251,6 @@ func TestDeleteSession_RemovesFromBackend(t *testing.T) {
 
 func TestSubmitEvent_UserMessageReturns202(t *testing.T) {
 
-
 	backend := newFakeBackend()
 	h := newTestHandler(t, backend, WithoutUI())
 	server := httptest.NewServer(h.ServeMux())
@@ -263,7 +258,7 @@ func TestSubmitEvent_UserMessageReturns202(t *testing.T) {
 
 	createResp, err := stdhttp.Post(server.URL+"/sessions", "application/json", nil)
 	require.NoError(t, err)
-	defer createResp.Body.Close()
+	defer func() { require.NoError(t, createResp.Body.Close()) }()
 	var data map[string]string
 	require.NoError(t, json.NewDecoder(createResp.Body).Decode(&data))
 	id := data["id"]
@@ -271,12 +266,11 @@ func TestSubmitEvent_UserMessageReturns202(t *testing.T) {
 	body, _ := json.Marshal(map[string]string{"kind": "user_message", "content": "hi"})
 	resp, err := stdhttp.Post(server.URL+"/sessions/"+id+"/events", "application/json", bytes.NewReader(body))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { require.NoError(t, resp.Body.Close()) }()
 	assert.Equal(t, 202, resp.StatusCode)
 }
 
 func TestSubmitEvent_InterruptReturns202(t *testing.T) {
-
 
 	backend := newFakeBackend()
 	h := newTestHandler(t, backend, WithoutUI())
@@ -285,7 +279,7 @@ func TestSubmitEvent_InterruptReturns202(t *testing.T) {
 
 	createResp, err := stdhttp.Post(server.URL+"/sessions", "application/json", nil)
 	require.NoError(t, err)
-	defer createResp.Body.Close()
+	defer func() { require.NoError(t, createResp.Body.Close()) }()
 	var data map[string]string
 	require.NoError(t, json.NewDecoder(createResp.Body).Decode(&data))
 	id := data["id"]
@@ -293,12 +287,11 @@ func TestSubmitEvent_InterruptReturns202(t *testing.T) {
 	body, _ := json.Marshal(map[string]string{"kind": "interrupt"})
 	resp, err := stdhttp.Post(server.URL+"/sessions/"+id+"/events", "application/json", bytes.NewReader(body))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { require.NoError(t, resp.Body.Close()) }()
 	assert.Equal(t, 400, resp.StatusCode)
 }
 
 func TestSubmitEvent_UnknownKindReturns400(t *testing.T) {
-
 
 	backend := newFakeBackend()
 	h := newTestHandler(t, backend, WithoutUI())
@@ -307,7 +300,7 @@ func TestSubmitEvent_UnknownKindReturns400(t *testing.T) {
 
 	createResp, err := stdhttp.Post(server.URL+"/sessions", "application/json", nil)
 	require.NoError(t, err)
-	defer createResp.Body.Close()
+	defer func() { require.NoError(t, createResp.Body.Close()) }()
 	var data map[string]string
 	require.NoError(t, json.NewDecoder(createResp.Body).Decode(&data))
 	id := data["id"]
@@ -315,12 +308,11 @@ func TestSubmitEvent_UnknownKindReturns400(t *testing.T) {
 	body, _ := json.Marshal(map[string]string{"kind": "bogus"})
 	resp, err := stdhttp.Post(server.URL+"/sessions/"+id+"/events", "application/json", bytes.NewReader(body))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { require.NoError(t, resp.Body.Close()) }()
 	assert.Equal(t, 400, resp.StatusCode)
 }
 
 func TestSessionEvents_StreamsSSE(t *testing.T) {
-
 
 	backend := newFakeBackend()
 	h := newTestHandler(t, backend, WithoutUI())
@@ -329,7 +321,7 @@ func TestSessionEvents_StreamsSSE(t *testing.T) {
 
 	createResp, err := stdhttp.Post(server.URL+"/sessions", "application/json", nil)
 	require.NoError(t, err)
-	defer createResp.Body.Close()
+	defer func() { require.NoError(t, createResp.Body.Close()) }()
 	var data map[string]string
 	require.NoError(t, json.NewDecoder(createResp.Body).Decode(&data))
 	id := data["id"]
@@ -354,7 +346,7 @@ func TestSessionEvents_StreamsSSE(t *testing.T) {
 			errCh <- err
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { require.NoError(t, resp.Body.Close()) }()
 		if resp.StatusCode != 200 {
 			errCh <- errors.New("unexpected status: " + resp.Status)
 			return
@@ -395,7 +387,7 @@ func TestSessionEvents_StreamsSSE(t *testing.T) {
 	body, _ := json.Marshal(map[string]string{"kind": "user_message", "content": "hi"})
 	resp, err := stdhttp.Post(server.URL+"/sessions/"+id+"/events", "application/json", bytes.NewReader(body))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { require.NoError(t, resp.Body.Close()) }()
 	require.Equal(t, 202, resp.StatusCode)
 
 	// Read events until we see the lifecycle "done".
@@ -433,7 +425,6 @@ func sseSignaled(ch chan struct{}) bool {
 
 func TestListThreads_PaginationAndCursor(t *testing.T) {
 
-
 	backend := newFakeBackend()
 	// Seed a synthetic thread list (no junk dependency).
 	backend.threads = []ThreadSummary{
@@ -448,7 +439,7 @@ func TestListThreads_PaginationAndCursor(t *testing.T) {
 
 	resp, err := stdhttp.Get(server.URL + "/threads")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { require.NoError(t, resp.Body.Close()) }()
 	require.Equal(t, 200, resp.StatusCode)
 
 	var body struct {
@@ -470,7 +461,6 @@ func TestListThreads_PaginationAndCursor(t *testing.T) {
 }
 
 func TestStart_ContextCancel(t *testing.T) {
-
 
 	backend := newFakeBackend()
 	c, err := New(backend, WithAddr(":0"))
@@ -495,7 +485,6 @@ func TestStart_ContextCancel(t *testing.T) {
 
 func TestWriteJSONError_BodyShape(t *testing.T) {
 
-
 	backend := newFakeBackend()
 	h := newTestHandler(t, backend, WithoutUI())
 	server := httptest.NewServer(h.ServeMux())
@@ -503,7 +492,7 @@ func TestWriteJSONError_BodyShape(t *testing.T) {
 
 	resp, err := stdhttp.Post(server.URL+"/sessions/does-not-exist/events", "application/json", nil)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { require.NoError(t, resp.Body.Close()) }()
 	require.Equal(t, 404, resp.StatusCode)
 
 	var body map[string]string

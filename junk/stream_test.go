@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -678,11 +678,11 @@ type saveErrStore struct {
 }
 
 func (s *saveErrStore) Create() (*Thread, error)                 { return s.inner.Create() }
-func (s *saveErrStore) Get(id string) (*Thread, error)            { return s.inner.Get(id) }
+func (s *saveErrStore) Get(id string) (*Thread, error)           { return s.inner.Get(id) }
 func (s *saveErrStore) GetBy(key, value string) (*Thread, error) { return s.inner.GetBy(key, value) }
-func (s *saveErrStore) Save(*Thread) error                      { return errors.New("save failed") }
-func (s *saveErrStore) Delete(id string) bool                   { return s.inner.Delete(id) }
-func (s *saveErrStore) List() ([]*Thread, error)                { return s.inner.List() }
+func (s *saveErrStore) Save(*Thread) error                       { return errors.New("save failed") }
+func (s *saveErrStore) Delete(id string) bool                    { return s.inner.Delete(id) }
+func (s *saveErrStore) List() ([]*Thread, error)                 { return s.inner.List() }
 
 func TestStream_Process_EmitsLifecycleEvent_WithSaveError(t *testing.T) {
 	store := &saveErrStore{inner: NewMemoryStore()}
@@ -1122,7 +1122,11 @@ func TestStream_MarkBoundary_RoundTrip(t *testing.T) {
 	mgr2 := NewManager(store, prov, func(*Stream) ([]loop.Option, error) { return nil, nil }, simpleProcessor())
 	stream2, err := mgr2.Attach(threadID)
 	require.NoError(t, err)
-	defer mgr2.Close(threadID)
+	defer func() {
+		if err := mgr2.Close(threadID); err != nil {
+			t.Errorf("close thread: %v", err)
+		}
+	}()
 
 	// The loaded summary turn must carry ControlStop.
 	gotTurns := stream2.Turns()

@@ -92,7 +92,7 @@ func run() error {
 		threadID = "tui-chat-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	}
 	sess := session.New(threadID, ledger.NewThread())
-	defer sess.Close()
+	defer func() { _ = sess.Close() }()
 
 	// 4. Seed default metadata on the session before constructing the
 	//    TUI. The TUI subscribes to live events only, so any
@@ -122,15 +122,15 @@ func run() error {
 	}()
 
 	// 6. Construct the TUI conduit. The application shares one
-	//    cancellable event-context (runCtx) with both tui.WithEventContext
+	//    cancellable event-context (ctx) with both tui.WithEventContext
 	//    (so emitted events carry it as their context) and eng.Submit
 	//    (so the engine's Submit loop is bounded by it). Pressing Esc
-	//    cancels the TUI's internal wrapper around runCtx; the engine
+	//    cancels the TUI's internal wrapper around ctx; the engine
 	//    observes the cancellation through event.Context() in handleEvent
 	//    and unwinds the running agent.
 	tuiC, err := tui.New(sess,
 		tui.WithName("ore"),
-		tui.WithEventContext(runCtx),
+		tui.WithEventContext(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("create tui conduit: %w", err)

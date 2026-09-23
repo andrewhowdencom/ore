@@ -153,7 +153,7 @@ func runAll(dryRun bool, args []string) error {
 
 			fmt.Printf("  %s: go mod tidy (with %d local replace(s))...\n", m.Path, len(deps))
 			if err := tidyWithLocalSource(root, m, deps, allVersions); err != nil {
-				return fmt.Errorf("pre-flight for %s: %w\nRun 'git checkout -- .' to revert changes.", m.Path, err)
+				return fmt.Errorf("pre-flight for %s: %w (run 'git checkout -- .' to revert changes)", m.Path, err)
 			}
 		}
 		fmt.Println("Pre-flight passed.")

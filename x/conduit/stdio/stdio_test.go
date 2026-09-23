@@ -10,7 +10,7 @@ import (
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 func TestNew_NilSession(t *testing.T) {
@@ -65,7 +65,7 @@ func TestNew_WithStderr(t *testing.T) {
 
 func TestNew_WithTracer(t *testing.T) {
 	sess := session.New("test-thread", ledger.NewThread())
-	tr := trace.NewNoopTracerProvider().Tracer("")
+	tr := noop.NewTracerProvider().Tracer("")
 	c, err := New(sess, WithTracer(tr))
 	require.NoError(t, err)
 	s := c.(*stdio)
@@ -96,8 +96,8 @@ func TestDescriptor_Capabilities(t *testing.T) {
 // newBytesReader / newDiscardWriter are local helpers that avoid
 // pulling io-test's full machinery into the package's test
 // dependencies.
-func newBytesReader(s string) *byteReader     { return &byteReader{s: s} }
-func newDiscardWriter() *discardWriter     { return &discardWriter{} }
+func newBytesReader(s string) *byteReader { return &byteReader{s: s} }
+func newDiscardWriter() *discardWriter    { return &discardWriter{} }
 
 type byteReader struct {
 	s string

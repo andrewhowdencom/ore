@@ -14,9 +14,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
-	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/x/compaction"
 	"github.com/andrewhowdencom/ore/x/conduit"
 	"github.com/andrewhowdencom/ore/x/conduit/tui/theme"
@@ -1243,8 +1243,9 @@ func TestModel_Update_AudioMsg(t *testing.T) {
 	newM, cmd := m.Update(audioMsg{})
 	mm := newM.(*model)
 
-	w.Close()
+	closeErr := w.Close()
 	os.Stdout = oldStdout
+	require.NoError(t, closeErr)
 
 	out, err := io.ReadAll(r)
 	require.NoError(t, err)
@@ -1351,9 +1352,10 @@ func TestModel_Update_Status_ZoneFormatter(t *testing.T) {
 		var segments []conduit.StatusSegment
 		for k, v := range status {
 			zone := "default"
-			if k == "phase" || k == "title" {
+			switch k {
+			case "phase", "title":
 				zone = "lifecycle"
-			} else if k == "thread_id" || k == "model" {
+			case "thread_id", "model":
 				zone = "context"
 			}
 			segments = append(segments, conduit.StatusSegment{

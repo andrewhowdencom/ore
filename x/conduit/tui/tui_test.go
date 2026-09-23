@@ -6,8 +6,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/ledger"
+	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/x/compaction"
 	"github.com/andrewhowdencom/ore/x/conduit"
@@ -30,7 +30,11 @@ func newTestSession() *session.Session {
 // returns a non-nil conduit.Conduit value.
 func TestNew_Happy(t *testing.T) {
 	sess := newTestSession()
-	defer sess.Close()
+	defer func() {
+		if err := sess.Close(); err != nil {
+			t.Errorf("close session: %v", err)
+		}
+	}()
 
 	c, err := New(sess)
 	require.NoError(t, err)
@@ -43,7 +47,11 @@ func TestNew_Happy(t *testing.T) {
 // usable after New returns.
 func TestNew_AppOwnedSession(t *testing.T) {
 	sess := newTestSession()
-	defer sess.Close()
+	defer func() {
+		if err := sess.Close(); err != nil {
+			t.Errorf("close session: %v", err)
+		}
+	}()
 
 	c, err := New(sess, WithName("my-app"))
 	require.NoError(t, err)
@@ -85,7 +93,11 @@ func TestTUI_ImplementsAudioNotifier(t *testing.T) {
 func TestStatusFromSession(t *testing.T) {
 	t.Run("returns a statusMsg carrying the session's current metadata", func(t *testing.T) {
 		sess := newTestSession()
-		defer sess.Close()
+		defer func() {
+			if err := sess.Close(); err != nil {
+				t.Errorf("close session: %v", err)
+			}
+		}()
 		sess.SetMetadata("thread_id", "abc-123")
 		sess.SetMetadata("cwd", "/tmp/ore")
 		sess.SetMetadata("git_branch", "main")
@@ -107,7 +119,11 @@ func TestStatusFromSession(t *testing.T) {
 
 	t.Run("returns nil when the session has no metadata", func(t *testing.T) {
 		sess := newTestSession()
-		defer sess.Close()
+		defer func() {
+			if err := sess.Close(); err != nil {
+				t.Errorf("close session: %v", err)
+			}
+		}()
 
 		msg := statusFromSession(sess)
 		assert.Nil(t, msg, "statusFromSession must return nil so Start skips a no-op Send")
@@ -115,7 +131,11 @@ func TestStatusFromSession(t *testing.T) {
 
 	t.Run("returns a defensive copy that the caller can mutate freely", func(t *testing.T) {
 		sess := newTestSession()
-		defer sess.Close()
+		defer func() {
+			if err := sess.Close(); err != nil {
+				t.Errorf("close session: %v", err)
+			}
+		}()
 		sess.SetMetadata("thread_id", "abc")
 
 		first := statusFromSession(sess).(statusMsg)
@@ -138,7 +158,11 @@ func TestStatusFromSession(t *testing.T) {
 func TestInitModel_SeedsStatusFromSession(t *testing.T) {
 	t.Run("populates initStatusMsg with a statusMsg carrying the session's metadata", func(t *testing.T) {
 		sess := newTestSession()
-		defer sess.Close()
+		defer func() {
+			if err := sess.Close(); err != nil {
+				t.Errorf("close session: %v", err)
+			}
+		}()
 		sess.SetMetadata("thread_id", "abc-123")
 		sess.SetMetadata("cwd", "/tmp/ore")
 
@@ -155,7 +179,11 @@ func TestInitModel_SeedsStatusFromSession(t *testing.T) {
 
 	t.Run("leaves initStatusMsg nil when the session has no metadata", func(t *testing.T) {
 		sess := newTestSession()
-		defer sess.Close()
+		defer func() {
+			if err := sess.Close(); err != nil {
+				t.Errorf("close session: %v", err)
+			}
+		}()
 
 		tui := &TUI{sess: sess, name: "test"}
 		eventsCh := make(chan session.Event, 16)
@@ -172,7 +200,11 @@ func TestInitModel_SeedsStatusFromSession(t *testing.T) {
 func TestInit_DispatchesSeedCmd(t *testing.T) {
 	t.Run("returns a Cmd that yields the seed statusMsg", func(t *testing.T) {
 		sess := newTestSession()
-		defer sess.Close()
+		defer func() {
+			if err := sess.Close(); err != nil {
+				t.Errorf("close session: %v", err)
+			}
+		}()
 		sess.SetMetadata("thread_id", "abc-123")
 		sess.SetMetadata("cwd", "/tmp/ore")
 
@@ -192,7 +224,11 @@ func TestInit_DispatchesSeedCmd(t *testing.T) {
 
 	t.Run("returns nil when no seed is present", func(t *testing.T) {
 		sess := newTestSession()
-		defer sess.Close()
+		defer func() {
+			if err := sess.Close(); err != nil {
+				t.Errorf("close session: %v", err)
+			}
+		}()
 
 		tui := &TUI{sess: sess, name: "test"}
 		eventsCh := make(chan session.Event, 16)
@@ -214,13 +250,21 @@ func TestReadBoundaryFromSession(t *testing.T) {
 
 	t.Run("zero value when metadata is missing", func(t *testing.T) {
 		sess := newTestSession()
-		defer sess.Close()
+		defer func() {
+			if err := sess.Close(); err != nil {
+				t.Errorf("close session: %v", err)
+			}
+		}()
 		assert.Equal(t, compaction.BoundaryInfo{}, readBoundaryFromSession(sess))
 	})
 
 	t.Run("zero value when encoded boundary is malformed", func(t *testing.T) {
 		sess := newTestSession()
-		defer sess.Close()
+		defer func() {
+			if err := sess.Close(); err != nil {
+				t.Errorf("close session: %v", err)
+			}
+		}()
 		sess.SetMetadata(compaction.MetaKeyBoundaryInfo, "not-a-valid-encoded-boundary")
 		assert.Equal(t, compaction.BoundaryInfo{}, readBoundaryFromSession(sess))
 	})
@@ -303,7 +347,6 @@ func TestEvents_EmitsUserMessageEvent(t *testing.T) {
 		t.Fatal("expected user message event on channel")
 	}
 }
-
 
 // TestEvents_EscDoesNotEmit asserts that pressing Esc with no
 // event-context cancellation registered does NOT send any event on
@@ -476,7 +519,11 @@ func TestEmitUserMessage_PostEscCtxIsLive(t *testing.T) {
 // channel; the test asserts that closure happens within a short window.
 func TestStart_ReachesEventLoop(t *testing.T) {
 	sess := newTestSession()
-	defer sess.Close()
+	defer func() {
+		if err := sess.Close(); err != nil {
+			t.Errorf("close session: %v", err)
+		}
+	}()
 
 	tuiC, err := New(sess,
 		WithProgramOptions(tea.WithoutRenderer(), tea.WithoutSignals(), tea.WithInput(nil)),

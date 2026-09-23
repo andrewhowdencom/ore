@@ -111,9 +111,3 @@ func TestSlash_NilSession_ReturnsNotice(t *testing.T) {
 	// user's next session); the empty-input path is purely informational.
 	assert.Equal(t, loop.SeverityWarn, result.Notice.Severity)
 }
-
-func TestSlash_ImplementsSlashHandler(t *testing.T) {
-	t.Parallel()
-
-	var _ slash.Handler = Slash()
-}

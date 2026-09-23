@@ -3,7 +3,6 @@ package minimax
 import (
 	"testing"
 
-	"github.com/andrewhowdencom/ore/provider"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,9 +32,6 @@ func TestNewAnthropicSucceeds(t *testing.T) {
 	p, err := NewAnthropic("test-key")
 	require.NoError(t, err)
 	require.NotNil(t, p)
-	// Compile-time check that the returned value satisfies the
-	// interface.
-	var _ provider.Provider = p
 }
 
 // TestNewOpenAISucceeds verifies that NewOpenAI constructs a provider
@@ -45,7 +41,6 @@ func TestNewOpenAISucceeds(t *testing.T) {
 	p, err := NewOpenAI("test-key")
 	require.NoError(t, err)
 	require.NotNil(t, p)
-	var _ provider.Provider = p
 }
 
 // TestBaseURLConstants pins the base URL values so a future

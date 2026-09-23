@@ -32,7 +32,7 @@ const frameworkDefaultByteCap = 50_000
 // frameworkDefaultMaxRows is the default per-call row cap for
 // list_directory (500) and search_files (1000).
 const (
-	frameworkDefaultListRows = 500
+	frameworkDefaultListRows   = 500
 	frameworkDefaultSearchRows = 1000
 )
 
@@ -87,7 +87,7 @@ func (r *ReadFileResult) MarshalLLM() string {
 		ReadFileTool.Format.RecoveryHint,
 		*r.Truncation,
 		map[string]string{
-			"path":     r.TempFilePath,
+			"path":        r.TempFilePath,
 			"next_offset": fmt.Sprintf("%d", r.Truncation.ShownLines+1),
 		},
 	)
@@ -97,8 +97,8 @@ func (r *ReadFileResult) MarshalLLM() string {
 		sb.WriteString("\n\n")
 		sb.WriteString(hint)
 	}
-	sb.WriteString(fmt.Sprintf("\n[%d lines shown of %d total; full content at %s]",
-		r.Truncation.ShownLines, r.Truncation.OriginalLines, r.TempFilePath))
+	fmt.Fprintf(&sb, "\n[%d lines shown of %d total; full content at %s]",
+		r.Truncation.ShownLines, r.Truncation.OriginalLines, r.TempFilePath)
 	return sb.String()
 }
 
@@ -119,13 +119,11 @@ func (r *ReadFileResult) MarshalMarkdown() string {
 	}
 	sb.WriteString("```")
 	if r.Truncation != nil && r.Truncation.Truncated() && r.TempFilePath != "" {
-		sb.WriteString(fmt.Sprintf(
-			"\n\nOutput truncated (%d of %d lines shown). Full file: `%s`. Use offset=%d to continue.",
+		fmt.Fprintf(&sb, "\n\nOutput truncated (%d of %d lines shown). Full file: `%s`. Use offset=%d to continue.",
 			r.Truncation.ShownLines,
 			r.Truncation.OriginalLines,
 			r.TempFilePath,
-			r.Truncation.ShownLines+1,
-		))
+			r.Truncation.ShownLines+1)
 	}
 	return sb.String()
 }
@@ -135,7 +133,7 @@ func (r *ReadFileResult) MarshalMarkdown() string {
 // line-numbered output verbatim for the LLM, and the TUI
 // renders it as a code block.
 var (
-	_ artifact.LLMRenderer     = (*ReadFileResult)(nil)
+	_ artifact.LLMRenderer      = (*ReadFileResult)(nil)
 	_ artifact.MarkdownRenderer = (*ReadFileResult)(nil)
 )
 
@@ -179,7 +177,7 @@ func ReadFile(ctx context.Context, sb tool.Sandbox, args map[string]any) (any, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	reader := bufio.NewReader(f)
 	var result strings.Builder
@@ -263,21 +261,22 @@ func writeFullFileToTemp(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("open source: %w", err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	dst, err := os.CreateTemp("", "ore-readfile-*.txt")
 	if err != nil {
 		return "", fmt.Errorf("create temp: %w", err)
 	}
-	// Best-effort close; we capture errors below.
-	defer dst.Close()
+	// The successful close below reports write errors; this also closes
+	// the file on early returns.
+	defer func() { _ = dst.Close() }()
 
 	if _, err := io.Copy(dst, src); err != nil {
-		os.Remove(dst.Name())
+		_ = os.Remove(dst.Name())
 		return "", fmt.Errorf("copy: %w", err)
 	}
 	if err := dst.Close(); err != nil {
-		os.Remove(dst.Name())
+		_ = os.Remove(dst.Name())
 		return "", fmt.Errorf("close temp: %w", err)
 	}
 	return dst.Name(), nil
@@ -321,7 +320,7 @@ var ReadFileTool = tool.Tool{
 			MaxBytes: frameworkDefaultByteCap,
 			MaxLines: 2000,
 		},
-		Style: tool.StyleHead,
+		Style:        tool.StyleHead,
 		RecoveryHint: "Output truncated. Use offset={next_offset} to continue, or read the full file at {path}.",
 	},
 }
@@ -360,7 +359,7 @@ func (r *WriteFileResult) MarshalMarkdown() string {
 }
 
 var (
-	_ artifact.LLMRenderer     = (*WriteFileResult)(nil)
+	_ artifact.LLMRenderer      = (*WriteFileResult)(nil)
 	_ artifact.MarkdownRenderer = (*WriteFileResult)(nil)
 )
 
@@ -528,7 +527,7 @@ func (r *EditFileResult) MarshalMarkdown() string {
 }
 
 var (
-	_ artifact.LLMRenderer     = (*EditFileResult)(nil)
+	_ artifact.LLMRenderer      = (*EditFileResult)(nil)
 	_ artifact.MarkdownRenderer = (*EditFileResult)(nil)
 )
 
@@ -681,8 +680,8 @@ func (r *ListDirectoryResult) MarshalLLM() string {
 		sb.WriteString("\n\n")
 		sb.WriteString(hint)
 	}
-	sb.WriteString(fmt.Sprintf("\n[%d entries shown of %d total]",
-		r.Truncation.ShownLines, r.Truncation.OriginalLines))
+	fmt.Fprintf(&sb, "\n[%d entries shown of %d total]",
+		r.Truncation.ShownLines, r.Truncation.OriginalLines)
 	return sb.String()
 }
 
@@ -700,17 +699,15 @@ func (r *ListDirectoryResult) MarshalMarkdown() string {
 	}
 	sb.WriteString("```")
 	if r.Truncation != nil && r.Truncation.Truncated() {
-		sb.WriteString(fmt.Sprintf(
-			"\n\nOutput truncated (%d of %d entries shown). Use a higher `limit` to see more.",
+		fmt.Fprintf(&sb, "\n\nOutput truncated (%d of %d entries shown). Use a higher `limit` to see more.",
 			r.Truncation.ShownLines,
-			r.Truncation.OriginalLines,
-		))
+			r.Truncation.OriginalLines)
 	}
 	return sb.String()
 }
 
 var (
-	_ artifact.LLMRenderer     = (*ListDirectoryResult)(nil)
+	_ artifact.LLMRenderer      = (*ListDirectoryResult)(nil)
 	_ artifact.MarkdownRenderer = (*ListDirectoryResult)(nil)
 )
 
@@ -772,7 +769,7 @@ func ListDirectory(ctx context.Context, sb tool.Sandbox, args map[string]any) (a
 
 // ListDirectoryTool is the tool.Tool descriptor for ListDirectory.
 var ListDirectoryTool = tool.Tool{
-	Name:        "list_directory",
+	Name: "list_directory",
 	Description: "List the immediate non-hidden entries in a directory. Returns entry names. " +
 		"Hidden entries (names starting with '.') are excluded.\n\n" +
 		"Output limits: capped at 500 entries by default. Use the limit " +
@@ -830,7 +827,7 @@ type SearchFilesResult struct {
 func (r *SearchFilesResult) MarshalLLM() string {
 	var sb strings.Builder
 	for _, m := range r.Results {
-		sb.WriteString(fmt.Sprintf("%s:%d: %s\n", m.Path, m.LineNumber, m.Content))
+		fmt.Fprintf(&sb, "%s:%d: %s\n", m.Path, m.LineNumber, m.Content)
 	}
 	if r.Truncation == nil || !r.Truncation.Truncated() {
 		return sb.String()
@@ -844,8 +841,8 @@ func (r *SearchFilesResult) MarshalLLM() string {
 		sb.WriteString(hint)
 		sb.WriteString("\n")
 	}
-	sb.WriteString(fmt.Sprintf("[%d matches shown of %d total]",
-		r.Truncation.ShownLines, r.Truncation.OriginalLines))
+	fmt.Fprintf(&sb, "[%d matches shown of %d total]",
+		r.Truncation.ShownLines, r.Truncation.OriginalLines)
 	return sb.String()
 }
 
@@ -862,17 +859,15 @@ func (r *SearchFilesResult) MarshalMarkdown() string {
 	}
 	sb.WriteString("```")
 	if r.Truncation != nil && r.Truncation.Truncated() {
-		sb.WriteString(fmt.Sprintf(
-			"\n\nOutput truncated (%d of %d matches shown). Use a higher `limit` or refine the regex.",
+		fmt.Fprintf(&sb, "\n\nOutput truncated (%d of %d matches shown). Use a higher `limit` or refine the regex.",
 			r.Truncation.ShownLines,
-			r.Truncation.OriginalLines,
-		))
+			r.Truncation.OriginalLines)
 	}
 	return sb.String()
 }
 
 var (
-	_ artifact.LLMRenderer     = (*SearchFilesResult)(nil)
+	_ artifact.LLMRenderer      = (*SearchFilesResult)(nil)
 	_ artifact.MarkdownRenderer = (*SearchFilesResult)(nil)
 )
 
@@ -965,9 +960,9 @@ func SearchFiles(ctx context.Context, sb tool.Sandbox, args map[string]any) (any
 func countResultBytes(results []SearchResult) int {
 	total := 0
 	for _, m := range results {
-		total += len(m.Path) + 1 // path + ':'
+		total += len(m.Path) + 1                          // path + ':'
 		total += len(fmt.Sprintf("%d", m.LineNumber)) + 2 // line + ": "
-		total += len(m.Content) + 1 // content + '\n'
+		total += len(m.Content) + 1                       // content + '\n'
 	}
 	return total
 }
@@ -978,7 +973,7 @@ func searchFile(path string, re *regexp.Regexp) ([]SearchResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	results := make([]SearchResult, 0)
 	scanner := bufio.NewScanner(f)
@@ -1002,7 +997,7 @@ func searchFile(path string, re *regexp.Regexp) ([]SearchResult, error) {
 
 // SearchFilesTool is the tool.Tool descriptor for SearchFiles.
 var SearchFilesTool = tool.Tool{
-	Name:        "search_files",
+	Name: "search_files",
 	Description: "Search files for lines matching a regex query. Returns matches with file path, line number, and matching line content. If the path is a directory, searches recursively. Hidden files and directories are skipped.\n\n" +
 		"Output limits: capped at 1000 matches by default. Use the limit " +
 		"parameter to control the cap. When truncated, the result includes a " +
