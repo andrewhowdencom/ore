@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/x/wire/openai/responses
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.4.0
+	github.com/andrewhowdencom/ore v1.4.1
 	github.com/andrewhowdencom/ore/x/provider/retry v0.0.3
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.69.0
