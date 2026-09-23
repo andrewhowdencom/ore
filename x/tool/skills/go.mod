@@ -3,7 +3,7 @@ module github.com/andrewhowdencom/ore/x/tool/skills
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.2.0
+	github.com/andrewhowdencom/ore v1.4.1
 	github.com/andrewhowdencom/ore/x/tool/truncate v0.1.1
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
