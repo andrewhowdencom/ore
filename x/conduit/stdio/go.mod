@@ -2,11 +2,9 @@ module github.com/andrewhowdencom/ore/x/conduit/stdio
 
 go 1.26.2
 
-replace github.com/andrewhowdencom/ore/x/conduit => ..
-
 require (
-	github.com/andrewhowdencom/ore v1.3.1
-	github.com/andrewhowdencom/ore/x/conduit v0.2.0
+	github.com/andrewhowdencom/ore v1.4.1
+	github.com/andrewhowdencom/ore/x/conduit v0.2.2
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel/trace v1.44.0
 )
@@ -20,3 +18,5 @@ require (
 )
 
 replace github.com/andrewhowdencom/ore => ../../..
+
+replace github.com/andrewhowdencom/ore/x/conduit => ..
