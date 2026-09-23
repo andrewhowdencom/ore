@@ -24,11 +24,17 @@
 // this interface at build time. The framework does not assume any specific
 // rendering mechanism.
 //
-// Capability and Descriptor provide a lingua franca for capability discovery
-// across ore frontends. Each conduit package exports a Descriptor variable that
-// enumerates the well-known capabilities it supports (e.g., event-source,
-// render-delta, show-status (structured metadata events via loop.PropertiesEvent),
-// accept-text, render-markdown).
+// Capability and Descriptor provide a shared vocabulary for describing ore
+// frontends. Each conduit package exports a Descriptor variable that enumerates
+// the well-known capabilities it supports (for example, event-source,
+// render-delta, show-status, accept-text, and render-markdown).
+//
+// Descriptors are static, package-level metadata intended for documentation and
+// discovery tooling. The conduit package does not maintain a registry, provide
+// a Supports method, negotiate capabilities at runtime, or verify that the
+// advertised capabilities match an implementation. Applications that inspect a
+// descriptor must do so explicitly (for example, by checking
+// tui.Descriptor.Capabilities).
 //
 // # Standard Conduit Contract (Session-Based)
 //
@@ -71,10 +77,10 @@
 //
 //  4. Exported Descriptor — var Descriptor = conduit.Descriptor{...}
 //
-//     Each package exports a package-level Descriptor variable that lists
-//     the well-known capabilities the conduit supports. The variable is
-//     consumed by documentation generators (cmd/docgen) and static
-//     discovery tools.
+//     Each package exports a package-level Descriptor variable that lists the
+//     well-known capabilities the conduit supports. This is descriptive metadata
+//     for documentation and static discovery; it is not part of the Conduit
+//     interface and is not enforced at runtime.
 //
 //  5. Sink registration inside Start()
 //
@@ -96,16 +102,15 @@
 //
 // # Legacy Pattern (junk.Manager-Based)
 //
-// The following conduit packages still follow the legacy `*junk.Manager`
+// The following conduit packages still follow the legacy *junk.Manager
 // pattern that pre-dated this contract:
 //
 //   - x/conduit/slack
 //   - x/conduit/telegram
-//   - x/conduit/stdio
 //
-// x/conduit/http was migrated to the session-based contract in the
-// engine migration; it now depends on a narrow Backend capability
-// supplied by the application rather than junk.Manager.
+// x/conduit/tui and x/conduit/stdio use the session-based contract.
+// x/conduit/http follows the same ownership boundary through a narrow Backend
+// interface supplied by the application rather than taking a session directly.
 //
 // The remaining legacy conduits take `*junk.Manager` and manage session
 // lifecycle internally (`mgr.Create`, `mgr.Attach(threadID)`). They submit

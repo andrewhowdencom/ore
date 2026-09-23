@@ -9,7 +9,9 @@ type Conduit interface {
 	Start(ctx context.Context) error
 }
 
-// Capability is a well-known conduit capability.
+// Capability is a well-known conduit capability advertised by a Descriptor.
+// Capabilities are descriptive metadata: the conduit package does not perform
+// runtime negotiation or verify that an implementation provides them.
 type Capability string
 
 // AudioNotifier is implemented by conduits that provide audible feedback
@@ -45,9 +47,9 @@ const (
 	CapRequestUserConfirm  Capability = "request-user-confirmation"
 )
 
-// Descriptor describes a conduit implementation for documentation and
-// static discovery. Each conduit package exports a Descriptor variable
-// that enumerates the capabilities it provides.
+// Descriptor describes a conduit implementation for documentation and static
+// discovery. Each conduit package exports its own Descriptor variable; there is
+// no global registry or runtime capability negotiation in this package.
 type Descriptor struct {
 	// Name is the human-readable conduit name (e.g., "TUI").
 	Name string

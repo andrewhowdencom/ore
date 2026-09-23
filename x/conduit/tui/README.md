@@ -37,8 +37,23 @@ err = tuiConduit.Start(ctx)
 The TUI is a **dumb pipe**: it does not invoke the provider, does not own
 the session lifecycle, and does not manage the turn loop. It subscribes to
 session output events and routes them into the Bubble Tea program. User
-actions (typed messages, Ctrl+C, Esc) are produced on the channel
-returned by `Events()` for the application to consume via `engine.Engine.Submit`.
+actions produce typed messages on the channel returned by `Events()` for the
+application to consume via `engine.Engine.Submit`. Ctrl+C and Esc cancel the
+context of the current message.
+
+## Capabilities
+
+`tui.Descriptor` advertises the following static capabilities:
+
+- `event-source` — emits user messages through `Events()`.
+- `show-status` — renders structured session and lifecycle metadata.
+- `render-turn` — renders completed assistant turns and history.
+- `render-markdown` — renders assistant text and reasoning as Markdown.
+- `audio-notification` — signals completion and failure with the terminal bell.
+
+Descriptors are descriptive metadata rather than runtime feature negotiation.
+The TUI also renders text and reasoning deltas incrementally, but its current
+descriptor does not advertise `render-delta`.
 
 ## Window Title
 
@@ -57,31 +72,29 @@ a terminal multiplexer.
 
 ## Cancellation
 
-Use `WithCancelFunc` to wire the TUI's keyboard interrupts (Ctrl+C, Esc) to
-the application's cancellable context. The application typically pairs this
-with a `context.WithCancel` whose parent ctx is also passed to `tui.Start`
-and `engine.Submit`, so a single `cancel()` unwinds the UI, any in-flight
-engine execution, and the engine pump:
+Use `WithEventContext` to provide the parent context carried by events emitted
+from the TUI. The TUI derives a cancellable child for each submitted event;
+Esc or Ctrl+C cancels that context so in-flight engine work can unwind:
 
 ```go
 ctx, cancel := context.WithCancel(context.Background())
 defer cancel()
 
-tui, _ := tui.New(sess, tui.WithCancelFunc(cancel))
-go tui.Start(ctx)
+tuiConduit, _ := tui.New(sess, tui.WithEventContext(ctx))
+go tuiConduit.Start(ctx)
 ```
 
-In addition to invoking the cancel func, the TUI emits
-`session.InterruptEvent` on its outbound channel so the application's
-engine pump can observe the interrupt before the shared context is cancelled.
+The lifetime of the TUI remains governed separately by the context passed to
+`Start`. If `WithEventContext` is omitted, the TUI uses the `Start` context for
+both purposes.
 
 ## Keyboard Shortcuts
 
 | Key | Action |
 |-----|--------|
 | `Ctrl+O` | Toggle expansion of the latest assistant turn's details — tool calls and reasoning (compact by default; resets after each new turn) |
-| `Ctrl+C` | Emit `InterruptEvent`, invoke cancel func, quit |
-| `Esc` | Emit `InterruptEvent` (does not quit) |
+| `Ctrl+C` | Cancel the current event context and quit |
+| `Esc` | Cancel the current event context (does not quit) |
 | `Shift+Enter` | Insert newline in the input box |
 | `Ctrl+J` | Insert newline (alternative for terminals that don't pass Shift+Enter) |
 
@@ -129,10 +142,9 @@ session-based API moves that responsibility to the application:
 - **After:** the application constructs the session (via
   `engine.Engine`'s session registry) and passes it to `tui.New(sess)`.
 
-This matches the framework-wide dumb-pipe convention: conduits do not
-own session lifecycle or manage the turn loop. The TUI is the canonical
-first adopter of the new pattern; other conduits (`x/conduit/slack`,
-`x/conduit/telegram`, `x/conduit/stdio`) still follow the legacy
-`*junk.Manager` pattern and are tracked separately.
+This matches the framework-wide dumb-pipe convention: conduits do not own
+session lifecycle or manage the turn loop. The stdio conduit now follows the
+same session-based pattern. Slack and Telegram still use the legacy
+`*junk.Manager` pattern; HTTP uses an application-supplied `Backend` interface.
 
 For full API documentation, run `go doc ./x/conduit/tui`.
