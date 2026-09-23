@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/andrewhowdencom/ore/x/provider/retry"
 	"github.com/anthropics/anthropic-sdk-go"
@@ -667,6 +667,7 @@ func (p *Provider) Invoke(ctx context.Context, s ledger.State, spec models.Spec,
 		}
 	}
 	if pendingUsage != nil {
+		recordUsage(span, *pendingUsage)
 		select {
 		case ch <- *pendingUsage:
 		case <-ctx.Done():
@@ -678,6 +679,23 @@ func (p *Provider) Invoke(ctx context.Context, s ledger.State, spec models.Spec,
 		}
 	}
 	return nil
+}
+
+func recordUsage(span trace.Span, usage artifact.Usage) {
+	if span == nil {
+		return
+	}
+	attrs := []attribute.KeyValue{
+		attribute.Int("gen_ai.usage.input_tokens", usage.PromptTokens),
+		attribute.Int("gen_ai.usage.output_tokens", usage.CompletionTokens),
+		attribute.Int("gen_ai.usage.total_tokens", usage.TotalTokens),
+		attribute.Int("gen_ai.usage.cache_read.input_tokens", usage.CacheReadTokens),
+		attribute.Int("gen_ai.usage.cache_creation.input_tokens", usage.CacheWriteTokens),
+	}
+	if usage.ThinkingTokens != nil {
+		attrs = append(attrs, attribute.Int("gen_ai.usage.reasoning.output_tokens", *usage.ThinkingTokens))
+	}
+	span.SetAttributes(attrs...)
 }
 
 // dispatchEvent routes a single SSE event from the SDK to the right

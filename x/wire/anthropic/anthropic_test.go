@@ -1969,6 +1969,7 @@ func TestRetriableError_PassesThroughNonSDKError(t *testing.T) {
 //   - the input_kind taxonomy (must be one of the four documented kinds)
 //   - the request-shape integer attributes (message_count, tool_use_count)
 //   - the always-on behavior when a tracer is configured
+//
 // all fail this test. This is what makes an upstream 400 of the form
 // "messages.N.content.K.tool_use.input: Input should be a valid
 // dictionary" diagnosable from a trace alone.
@@ -1978,8 +1979,8 @@ func TestRetriableError_PassesThroughNonSDKError(t *testing.T) {
 //   - toolu_obj:  Arguments='{"path":"/tmp/x"}'   -> input_kind="object"
 //   - toolu_empty: Arguments=""                    -> input_kind="object"
 //     (parseToolArguments returns map[string]any{} for empty Arguments,
-//      which the classifier reports as "object"; this is the correct
-//      shape — Anthropic accepts an empty object as input.)
+//     which the classifier reports as "object"; this is the correct
+//     shape — Anthropic accepts an empty object as input.)
 func TestProviderInvoke_ToolUseSpanEvents(t *testing.T) {
 	t.Parallel()
 
@@ -2052,7 +2053,7 @@ func TestProviderInvoke_ToolUseSpanEvents(t *testing.T) {
 	// message_count, tool_use_count.
 	wantAttrs := map[attribute.Key]attribute.Value{
 		"model":                            attribute.StringValue("claude-3-7-sonnet-latest"),
-		"anthropic.request.message_count": attribute.IntValue(2), // user + assistant
+		"anthropic.request.message_count":  attribute.IntValue(2), // user + assistant
 		"anthropic.request.tool_use_count": attribute.IntValue(2), // two tool_uses
 	}
 	gotAttrs := map[attribute.Key]attribute.Value{}
@@ -2092,6 +2093,43 @@ func TestProviderInvoke_ToolUseSpanEvents(t *testing.T) {
 	assert.Equal(t, "list_dir", attrValue(second.Attributes, "name"))
 	assert.Equal(t, "object", attrValue(second.Attributes, "input_kind"))
 }
+
+func TestRecordUsage(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		thinking     *int
+		wantThinking bool
+	}{
+		{name: "reported thinking", thinking: intPointer(7), wantThinking: true},
+		{name: "unreported thinking", thinking: nil, wantThinking: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			sr := tracetest.NewSpanRecorder()
+			tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
+			t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+			_, span := tp.Tracer("test").Start(t.Context(), "provider.invoke")
+			recordUsage(span, artifact.Usage{PromptTokens: 100, CompletionTokens: 20, TotalTokens: 120, CacheReadTokens: 80, CacheWriteTokens: 10, ThinkingTokens: tt.thinking})
+			span.End()
+
+			attrs := make(map[attribute.Key]attribute.Value)
+			for _, attr := range sr.Ended()[0].Attributes() {
+				attrs[attr.Key] = attr.Value
+			}
+			assert.Equal(t, int64(100), attrs["gen_ai.usage.input_tokens"].AsInt64())
+			assert.Equal(t, int64(20), attrs["gen_ai.usage.output_tokens"].AsInt64())
+			assert.Equal(t, int64(120), attrs["gen_ai.usage.total_tokens"].AsInt64())
+			assert.Equal(t, int64(80), attrs["gen_ai.usage.cache_read.input_tokens"].AsInt64())
+			assert.Equal(t, int64(10), attrs["gen_ai.usage.cache_creation.input_tokens"].AsInt64())
+			_, hasThinking := attrs["gen_ai.usage.reasoning.output_tokens"]
+			assert.Equal(t, tt.wantThinking, hasThinking)
+		})
+	}
+}
+
+func intPointer(v int) *int { return &v }
 
 // TestProviderInvoke_NoSpanWithoutTracer pins the always-on-when-tracing
 // behavior: when WithTracer is not configured, no span events are
@@ -2245,8 +2283,8 @@ func TestInvoke_SpecCacheControl_StampsAllThreeLocations(t *testing.T) {
 	require.NoError(t, err)
 
 	spec := models.Spec{
-		Name:          "claude-3-7-sonnet-latest",
-		CacheControl:  &models.CacheControl{TTL: models.CacheControlTTL5m},
+		Name:         "claude-3-7-sonnet-latest",
+		CacheControl: &models.CacheControl{TTL: models.CacheControlTTL5m},
 	}
 
 	tools := []tool.Tool{

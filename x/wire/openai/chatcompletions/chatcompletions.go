@@ -725,6 +725,9 @@ func (p *Provider) Invoke(ctx context.Context, s ledger.State, spec models.Spec,
 		// OpenAI native uses this for prefix-cache affinity; on other hosts
 		// it is informational or ignored.
 		params.PromptCacheKey = param.NewOpt(sessionID)
+		if span != nil {
+			span.SetAttributes(attribute.String("gen_ai.request.prompt_cache_key", sessionID))
+		}
 	}
 
 	// Build the per-host extra fields. Multiple concerns share the same
@@ -807,14 +810,16 @@ func (p *Provider) Invoke(ctx context.Context, s ledger.State, spec models.Spec,
 		if len(chunk.Choices) == 0 {
 			if chunk.Usage.TotalTokens > 0 {
 				cacheRead, cacheWrite := readCacheUsage(chunk.Usage)
-				select {
-				case ch <- artifact.Usage{
+				usage := artifact.Usage{
 					PromptTokens:     int(chunk.Usage.PromptTokens),
 					CompletionTokens: int(chunk.Usage.CompletionTokens),
 					TotalTokens:      int(chunk.Usage.TotalTokens),
 					CacheReadTokens:  cacheRead,
 					CacheWriteTokens: cacheWrite,
-				}:
+				}
+				recordUsage(span, usage)
+				select {
+				case ch <- usage:
 				case <-ctx.Done():
 					return ctx.Err()
 				}
@@ -923,6 +928,23 @@ func (p *Provider) Invoke(ctx context.Context, s ledger.State, spec models.Spec,
 	}
 
 	return nil
+}
+
+func recordUsage(span trace.Span, usage artifact.Usage) {
+	if span == nil {
+		return
+	}
+	attrs := []attribute.KeyValue{
+		attribute.Int("gen_ai.usage.input_tokens", usage.PromptTokens),
+		attribute.Int("gen_ai.usage.output_tokens", usage.CompletionTokens),
+		attribute.Int("gen_ai.usage.total_tokens", usage.TotalTokens),
+		attribute.Int("gen_ai.usage.cache_read.input_tokens", usage.CacheReadTokens),
+		attribute.Int("gen_ai.usage.cache_creation.input_tokens", usage.CacheWriteTokens),
+	}
+	if usage.ThinkingTokens != nil {
+		attrs = append(attrs, attribute.Int("gen_ai.usage.reasoning.output_tokens", *usage.ThinkingTokens))
+	}
+	span.SetAttributes(attrs...)
 }
 
 // translateFinishReason normalizes an OpenAI finish_reason value into

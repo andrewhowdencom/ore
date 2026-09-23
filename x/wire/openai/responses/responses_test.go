@@ -19,9 +19,15 @@ import (
 	"github.com/andrewhowdencom/ore/x/provider/retry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestInvokeSerializesRequestAndTranslatesStream(t *testing.T) {
+	sr := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
 	var captured map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "Bearer test", r.Header.Get("Authorization"))
@@ -52,6 +58,7 @@ func TestInvokeSerializesRequestAndTranslatesStream(t *testing.T) {
 
 	wire, err := New(
 		WithEndpoint(server.URL),
+		WithTracer(tp.Tracer("test")),
 		WithRequestEditor(func(_ context.Context, req *http.Request) error {
 			req.Header.Set("Authorization", "Bearer test")
 			return nil
@@ -84,6 +91,19 @@ func TestInvokeSerializesRequestAndTranslatesStream(t *testing.T) {
 	assert.Equal(t, artifact.ReasoningSignature{Provider: "openai", SubKind: "encrypted", Data: "opaque"}, got[5])
 	assert.Equal(t, artifact.StopReason{Reason: artifact.StopReasonToolUse}, got[6])
 	assert.Equal(t, artifact.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15, CacheReadTokens: 3, ThinkingTokens: intPtr(2)}, got[7])
+	ended := sr.Ended()
+	require.Len(t, ended, 1)
+	attrs := make(map[attribute.Key]attribute.Value)
+	for _, attr := range ended[0].Attributes() {
+		attrs[attr.Key] = attr.Value
+	}
+	assert.Equal(t, "thread-1", attrs["gen_ai.request.prompt_cache_key"].AsString())
+	assert.Equal(t, int64(10), attrs["gen_ai.usage.input_tokens"].AsInt64())
+	assert.Equal(t, int64(5), attrs["gen_ai.usage.output_tokens"].AsInt64())
+	assert.Equal(t, int64(15), attrs["gen_ai.usage.total_tokens"].AsInt64())
+	assert.Equal(t, int64(3), attrs["gen_ai.usage.cache_read.input_tokens"].AsInt64())
+	assert.Equal(t, int64(0), attrs["gen_ai.usage.cache_creation.input_tokens"].AsInt64())
+	assert.Equal(t, int64(2), attrs["gen_ai.usage.reasoning.output_tokens"].AsInt64())
 }
 
 func TestInvokeHTTPErrorSupportsRetryClassifier(t *testing.T) {
@@ -102,18 +122,18 @@ func TestInvokeHTTPErrorSupportsRetryClassifier(t *testing.T) {
 }
 
 func TestConsumeSSERejectsMalformedEvent(t *testing.T) {
-	err := consumeSSE(context.Background(), strings.NewReader("data: {nope}\n\n"), make(chan artifact.Artifact, 1))
+	err := consumeSSE(context.Background(), strings.NewReader("data: {nope}\n\n"), make(chan artifact.Artifact, 1), nil)
 	require.ErrorContains(t, err, "decode SSE event")
 }
 
 func TestConsumeSSERequiresTerminalEvent(t *testing.T) {
-	err := consumeSSE(context.Background(), strings.NewReader("data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n"), make(chan artifact.Artifact, 1))
+	err := consumeSSE(context.Background(), strings.NewReader("data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n"), make(chan artifact.Artifact, 1), nil)
 	require.ErrorContains(t, err, "stream closed before response.completed")
 }
 
 func TestConsumeSSEAcceptsTopLevelResponseDone(t *testing.T) {
 	ch := make(chan artifact.Artifact, 2)
-	err := consumeSSE(context.Background(), strings.NewReader("data: {\"type\":\"response.done\",\"status\":\"completed\",\"usage\":{\"input_tokens\":1,\"output_tokens\":2,\"total_tokens\":3}}\n\n"), ch)
+	err := consumeSSE(context.Background(), strings.NewReader("data: {\"type\":\"response.done\",\"status\":\"completed\",\"usage\":{\"input_tokens\":1,\"output_tokens\":2,\"total_tokens\":3}}\n\n"), ch, nil)
 	require.NoError(t, err)
 	assert.Equal(t, artifact.StopReason{Reason: artifact.StopReasonStop}, <-ch)
 	assert.Equal(t, artifact.Usage{PromptTokens: 1, CompletionTokens: 2, TotalTokens: 3}, <-ch)
@@ -129,7 +149,7 @@ func TestConsumeSSEPreservesFunctionCallIDAcrossArgumentDeltas(t *testing.T) {
 	}, "\n\n")
 	ch := make(chan artifact.Artifact, 4)
 
-	require.NoError(t, consumeSSE(context.Background(), strings.NewReader(stream), ch))
+	require.NoError(t, consumeSSE(context.Background(), strings.NewReader(stream), ch, nil))
 	close(ch)
 
 	var accumulated artifact.Artifact
