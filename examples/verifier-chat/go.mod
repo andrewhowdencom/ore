@@ -3,17 +3,17 @@ module github.com/andrewhowdencom/ore/examples/verifier-chat
 go 1.26.2
 
 require (
-	github.com/andrewhowdencom/ore v1.4.0
+	github.com/andrewhowdencom/ore v1.4.1
 	github.com/andrewhowdencom/ore/x/provider/openai v0.6.7
 	github.com/andrewhowdencom/ore/x/tool v0.6.1
-	github.com/andrewhowdencom/ore/x/tool/filesystem v0.5.2
-	github.com/andrewhowdencom/ore/x/verifier v0.2.1
+	github.com/andrewhowdencom/ore/x/tool/filesystem v0.5.3
+	github.com/andrewhowdencom/ore/x/verifier v0.2.2
 )
 
 require (
 	github.com/andrewhowdencom/ore/x/provider/retry v0.0.3 // indirect
 	github.com/andrewhowdencom/ore/x/tool/truncate v0.1.1 // indirect
-	github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions v0.1.0 // indirect
+	github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions v0.1.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
@@ -32,12 +32,12 @@ require (
 
 replace github.com/andrewhowdencom/ore/x/tool => ../../x/tool
 
-replace github.com/andrewhowdencom/ore/x/tool/filesystem => ../../x/tool/filesystem
-
-replace github.com/andrewhowdencom/ore/x/verifier => ../../x/verifier
+replace github.com/andrewhowdencom/ore/x/provider/openai => ../../x/provider/openai
 
 replace github.com/andrewhowdencom/ore => ../..
 
-replace github.com/andrewhowdencom/ore/x/provider/openai => ../../x/provider/openai
+replace github.com/andrewhowdencom/ore/x/tool/filesystem => ../../x/tool/filesystem
+
+replace github.com/andrewhowdencom/ore/x/verifier => ../../x/verifier
 
 replace github.com/andrewhowdencom/ore/x/wire/openai/chatcompletions => ../../x/wire/openai/chatcompletions
