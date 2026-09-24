@@ -57,6 +57,8 @@ Extensions (provider adapters, conduits, and tool implementations) live under `x
 
 To use a ChatGPT Plus or Pro subscription through the experimental Codex
 service surface, see [Use a ChatGPT subscription with an ore agent](docs/how-to/use-chatgpt-subscription.md).
+To inspect provider request and response bodies in Wireshark, see
+[Inspect provider HTTP traffic](docs/how-to/decrypt-provider-traffic.md).
 
 
 ## Getting Started

@@ -10,6 +10,7 @@ require (
 	github.com/andrewhowdencom/ore/x/tool v0.6.1
 	github.com/andrewhowdencom/ore/x/tool/calculator v0.4.1
 	github.com/andrewhowdencom/ore/x/tool/filesystem v0.5.3
+	github.com/andrewhowdencom/stdlib v0.0.0-20260924074001-3173b376437d
 	github.com/stretchr/testify v1.11.1
 )
 

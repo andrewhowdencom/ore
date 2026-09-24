@@ -21,11 +21,13 @@
 // func (does not quit). Press Ctrl+C (or send SIGINT) to interrupt
 // any in-flight turn and quit. ORE_THREAD_ID optionally resumes an
 // existing thread; otherwise a new thread ID is generated.
+// ORE_TLS_KEY_LOG_FILE optionally writes TLS secrets for Wireshark.
 package main
 
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -40,6 +42,7 @@ import (
 	"github.com/andrewhowdencom/ore/session"
 	"github.com/andrewhowdencom/ore/x/conduit/tui"
 	"github.com/andrewhowdencom/ore/x/provider/openai"
+	stdlibhttp "github.com/andrewhowdencom/stdlib/http"
 )
 
 func main() {
@@ -72,6 +75,26 @@ func run() error {
 	if baseURL := os.Getenv("ORE_BASE_URL"); baseURL != "" {
 		providerOpts = append(providerOpts, openai.WithBaseURL(baseURL))
 	}
+	var keyLogWriter io.Writer
+	if path := os.Getenv("ORE_TLS_KEY_LOG_FILE"); path != "" {
+		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
+		if err != nil {
+			return fmt.Errorf("open TLS key log: %w", err)
+		}
+		defer file.Close()
+		keyLogWriter = file
+	}
+	httpClient, err := stdlibhttp.NewClient(
+		stdlibhttp.WithTimeout(0),
+		stdlibhttp.WithConnectTimeout(30*time.Second),
+		stdlibhttp.WithTLSHandshakeTimeout(10*time.Second),
+		stdlibhttp.WithResponseHeaderTimeout(10*time.Minute),
+		stdlibhttp.WithTLSKeyLogWriter(keyLogWriter),
+	)
+	if err != nil {
+		return fmt.Errorf("create HTTP client: %w", err)
+	}
+	providerOpts = append(providerOpts, openai.WithHTTPClient(httpClient))
 	prov, err := openai.New(providerOpts...)
 	if err != nil {
 		return fmt.Errorf("create openai provider: %w", err)
