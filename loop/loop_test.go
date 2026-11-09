@@ -16,8 +16,8 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/ledger"
+	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -336,8 +336,9 @@ func TestStep_Turn_Transform_ViewChaining(t *testing.T) {
 			artifact.Text{Content: "world"},
 		},
 	}
-	_, err := s.Turn(context.Background(), mem, spec, prov)
+	result, err := s.Turn(context.Background(), mem, spec, prov)
 	require.NoError(t, err)
+	assert.Same(t, mem, result)
 
 	require.Len(t, seenTurns, 2)
 	assert.Equal(t, ledger.RoleSystem, seenTurns[0].Role)
@@ -1793,7 +1794,7 @@ func TestPropertiesEvent_MarshalJSON_Operations(t *testing.T) {
 		want  string
 	}{
 		{
-			name: "empty_operations",
+			name:  "empty_operations",
 			event: PropertiesEvent{Operations: nil},
 			want:  `{"kind":"properties","operations":null}`,
 		},

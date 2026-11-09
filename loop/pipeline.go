@@ -7,9 +7,9 @@ import (
 	"sync"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/ledger"
 )
 
 // Pipeline is the single-turn execution engine. It runs transforms, invokes
@@ -29,17 +29,19 @@ func newPipeline() *Pipeline {
 // Turn performs one inference turn: runs transforms, calls the provider,
 // accumulates artifacts, and invokes onArtifact for each artifact
 // (including deltas and flushed accumulated blocks). Returns the final
-// accumulated artifacts and any error.
+// accumulated artifacts and any error. The transformed state is used only for
+// this provider invocation; it never escapes back to the conversation loop.
 //
 // The spec carries the model identity and inference configuration;
 // it is forwarded to the provider's Invoke method.
-func (p *Pipeline) Turn(ctx context.Context, st ledger.State, spec models.Spec, prov provider.Provider, onArtifact func(artifact.Artifact), opts ...provider.InvokeOption) (ledger.State, []artifact.Artifact, error) {
+func (p *Pipeline) Turn(ctx context.Context, st ledger.State, spec models.Spec, prov provider.Provider, onArtifact func(artifact.Artifact), opts ...provider.InvokeOption) ([]artifact.Artifact, error) {
 	var err error
+	inferenceState := st
 
 	for _, tr := range p.transforms {
-		st, err = tr.Transform(ctx, st)
+		inferenceState, err = tr.Transform(ctx, inferenceState)
 		if err != nil {
-			return st, nil, fmt.Errorf("transform failed: %w", err)
+			return nil, fmt.Errorf("transform failed: %w", err)
 		}
 	}
 
@@ -101,7 +103,7 @@ func (p *Pipeline) Turn(ctx context.Context, st ledger.State, spec models.Spec, 
 		}
 	}()
 
-	err = prov.Invoke(ctx, st, spec, provCh, allOpts...)
+	err = prov.Invoke(ctx, inferenceState, spec, provCh, allOpts...)
 	close(provCh)
 	wg.Wait()
 
@@ -109,10 +111,10 @@ func (p *Pipeline) Turn(ctx context.Context, st ledger.State, spec models.Spec, 
 	applyDisplayHints(ctx, accumulatedArtifacts, allOpts)
 
 	if err != nil {
-		return st, accumulatedArtifacts, err
+		return accumulatedArtifacts, err
 	}
 
-	return st, accumulatedArtifacts, nil
+	return accumulatedArtifacts, nil
 }
 
 // RunHandlers executes all registered handlers on each artifact,

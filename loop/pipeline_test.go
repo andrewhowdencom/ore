@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
-	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/ledger"
+	"github.com/andrewhowdencom/ore/provider"
 	"github.com/andrewhowdencom/ore/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,7 +40,7 @@ func TestPipeline_Turn_AccumulatesDeltas(t *testing.T) {
 	}
 
 	var emittedArtifacts []artifact.Artifact
-	st, accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {
+	accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {
 		emittedArtifacts = append(emittedArtifacts, art)
 	})
 
@@ -61,7 +61,7 @@ func TestPipeline_Turn_AccumulatesDeltas(t *testing.T) {
 	require.True(t, ok, "artifact 3 should be Text, got %T", emittedArtifacts[3])
 
 	// State is not mutated by Pipeline (only by EventBus via Step).
-	assert.Equal(t, 1, len(st.Turns()))
+	assert.Equal(t, 1, len(mem.Turns()))
 }
 
 // TestPipeline_Turn_FlushesAccumulatorsOnNonDelta verifies that accumulated
@@ -83,7 +83,7 @@ func TestPipeline_Turn_FlushesAccumulatorsOnNonDelta(t *testing.T) {
 	}
 
 	var emittedArtifacts []artifact.Artifact
-	st, accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {
+	accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {
 		emittedArtifacts = append(emittedArtifacts, art)
 	})
 
@@ -102,7 +102,7 @@ func TestPipeline_Turn_FlushesAccumulatorsOnNonDelta(t *testing.T) {
 	assert.Equal(t, "world", emittedArtifacts[4].(artifact.TextDelta).Content)
 	assert.Equal(t, "world", emittedArtifacts[5].(artifact.Text).Content)
 
-	assert.Equal(t, 1, len(st.Turns()))
+	assert.Equal(t, 1, len(mem.Turns()))
 }
 
 // TestPipeline_Turn_ErrorPropagatesProviderError verifies that a provider
@@ -121,7 +121,7 @@ func TestPipeline_Turn_ErrorPropagatesProviderError(t *testing.T) {
 	}
 
 	var emittedArtifacts []artifact.Artifact
-	st, accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {
+	accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {
 		emittedArtifacts = append(emittedArtifacts, art)
 	})
 
@@ -135,7 +135,7 @@ func TestPipeline_Turn_ErrorPropagatesProviderError(t *testing.T) {
 	assert.Equal(t, "partial", emittedArtifacts[0].(artifact.TextDelta).Content)
 	assert.Equal(t, "partial", emittedArtifacts[1].(artifact.Text).Content)
 
-	assert.Equal(t, 1, len(st.Turns()))
+	assert.Equal(t, 1, len(mem.Turns()))
 }
 
 // TestPipeline_Turn_TransformErrorAborts verifies that transforms run in
@@ -162,11 +162,11 @@ func TestPipeline_Turn_TransformErrorAborts(t *testing.T) {
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	prov := &mockProvider{}
 
-	st, accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {})
+	accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {})
 
 	require.ErrorIs(t, err, wantErr)
 	assert.Empty(t, accumulated)
-	assert.Equal(t, 1, len(st.Turns()))
+	assert.Equal(t, 1, len(mem.Turns()))
 }
 
 // TestPipeline_Turn_TransformOrdering verifies that transforms run in
@@ -194,7 +194,7 @@ func TestPipeline_Turn_TransformOrdering(t *testing.T) {
 	mem.Append(ledger.RoleUser, artifact.Text{Content: "hello"})
 	prov := &mockProvider{artifacts: []artifact.Artifact{artifact.Text{Content: "response"}}}
 
-	_, _, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {})
+	_, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {})
 	require.NoError(t, err)
 
 	assert.Equal(t, []int{1, 2, 3}, order)
@@ -287,14 +287,14 @@ func TestPipeline_Turn_ApplyDisplayHints(t *testing.T) {
 		},
 	}
 
-	st, accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {})
+	accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {})
 	require.NoError(t, err)
 	require.Len(t, accumulated, 1)
 
 	tc, ok := accumulated[0].(artifact.ToolCall)
 	require.True(t, ok)
 	assert.Equal(t, "hint: hello", tc.Display)
-	assert.Equal(t, 1, len(st.Turns()))
+	assert.Equal(t, 1, len(mem.Turns()))
 }
 
 // TestPipeline_Turn_ApplyDisplayHints_NoMatchingHint verifies that ToolCall
@@ -325,14 +325,14 @@ func TestPipeline_Turn_ApplyDisplayHints_NoMatchingHint(t *testing.T) {
 		},
 	}
 
-	st, accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {})
+	accumulated, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {})
 	require.NoError(t, err)
 	require.Len(t, accumulated, 1)
 
 	tc, ok := accumulated[0].(artifact.ToolCall)
 	require.True(t, ok)
 	assert.Nil(t, tc.Display)
-	assert.Equal(t, 1, len(st.Turns()))
+	assert.Equal(t, 1, len(mem.Turns()))
 }
 
 // TestPipeline_Turn_HintsArtifactOnStream verifies that ToolCall
@@ -368,13 +368,13 @@ func TestPipeline_Turn_HintsArtifactOnStream(t *testing.T) {
 	}
 
 	var streamedToolCall artifact.Artifact
-	st, _, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {
+	_, err := p.Turn(context.Background(), mem, spec, prov, func(art artifact.Artifact) {
 		if _, ok := art.(artifact.ToolCall); ok && streamedToolCall == nil {
 			streamedToolCall = art
 		}
 	})
 	require.NoError(t, err)
-	require.Equal(t, 1, len(st.Turns()))
+	require.Equal(t, 1, len(mem.Turns()))
 
 	require.NotNil(t, streamedToolCall, "onArtifact was not called for the ToolCall")
 	tc, ok := streamedToolCall.(artifact.ToolCall)
