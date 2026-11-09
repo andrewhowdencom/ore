@@ -7,10 +7,10 @@ import (
 	"testing"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/loop"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,12 +38,14 @@ var _ provider.Provider = (*simpleProvider)(nil)
 type countingProvider struct {
 	mu        sync.Mutex
 	callCount int
+	seenTurns [][]ledger.Turn
 }
 
 func (p *countingProvider) Invoke(ctx context.Context, s ledger.State, _ models.Spec, ch chan<- artifact.Artifact, opts ...provider.InvokeOption) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.callCount++
+	p.seenTurns = append(p.seenTurns, s.Turns())
 	var artifacts []artifact.Artifact
 	switch p.callCount {
 	case 1:
@@ -67,6 +69,14 @@ func (p *countingProvider) Invoke(ctx context.Context, s ledger.State, _ models.
 }
 
 var _ provider.Provider = (*countingProvider)(nil)
+
+type prependTransform struct {
+	turn ledger.Turn
+}
+
+func (t prependTransform) Transform(_ context.Context, st ledger.State) (ledger.State, error) {
+	return ledger.Prepend(st, []ledger.Turn{t.turn}), nil
+}
 
 // cancelCheckingProvider checks ctx.Err() before returning artifacts.
 type cancelCheckingProvider struct{}
@@ -175,6 +185,43 @@ func TestReAct_ToolLoop(t *testing.T) {
 	assert.Equal(t, ledger.RoleTool, turns[2].Role)
 	assert.Equal(t, ledger.RoleAssistant, turns[3].Role)
 	assert.Equal(t, "done!", turns[3].Artifacts[0].(artifact.Text).Content)
+}
+
+func TestReAct_ToolLoopDoesNotRepeatInferenceViews(t *testing.T) {
+	mem := ledger.NewThread()
+	mem.Append(ledger.RoleUser, artifact.Text{Content: "do something"})
+
+	toolHandler := &testHandler{fn: func(ctx context.Context, art artifact.Artifact, e loop.Emitter) error {
+		if art.Kind() == "tool_call" {
+			e.Emit(ctx, loop.TurnCompleteEvent{Turn: ledger.Turn{
+				Role:      ledger.RoleTool,
+				Artifacts: []artifact.Artifact{artifact.Text{Content: "tool result"}},
+			}})
+		}
+		return nil
+	}}
+	step := loop.New(
+		loop.WithState(mem),
+		loop.WithTransforms(
+			prependTransform{turn: ledger.Turn{Role: ledger.RoleSystem, Artifacts: []artifact.Artifact{artifact.Text{Content: "system"}}}},
+			prependTransform{turn: ledger.Turn{Role: ledger.RoleUser, Artifacts: []artifact.Artifact{artifact.Text{Content: "guardrail"}}}},
+		),
+		loop.WithHandlers(toolHandler),
+	)
+	prov := &countingProvider{}
+	result, err := (&ReAct{Step: step, Provider: prov}).Run(context.Background(), mem)
+	require.NoError(t, err)
+	assert.Same(t, mem, result)
+	require.Len(t, prov.seenTurns, 2)
+
+	first := prov.seenTurns[0]
+	second := prov.seenTurns[1]
+	require.Len(t, first, 3)
+	require.Len(t, second, 5)
+	assert.Equal(t, first, second[:len(first)], "the first request must remain an identical prefix")
+	assert.Equal(t, ledger.RoleAssistant, second[3].Role)
+	assert.Equal(t, ledger.RoleTool, second[4].Role)
+	assert.Len(t, mem.Turns(), 4, "inference-only turns must not persist")
 }
 
 func TestReAct_ProviderError(t *testing.T) {

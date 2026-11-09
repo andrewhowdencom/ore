@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/andrewhowdencom/ore/artifact"
+	"github.com/andrewhowdencom/ore/ledger"
 	"github.com/andrewhowdencom/ore/models"
 	"github.com/andrewhowdencom/ore/provider"
-	"github.com/andrewhowdencom/ore/ledger"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
@@ -59,7 +59,7 @@ func (e TurnCompleteEvent) Context() context.Context { return e.Ctx }
 func (e TurnCompleteEvent) MarshalJSON() ([]byte, error) {
 	type output struct {
 		Kind    string                 `json:"kind"`
-		Turn    ledger.Turn             `json:"turn"`
+		Turn    ledger.Turn            `json:"turn"`
 		Context map[string]interface{} `json:"context,omitempty"`
 	}
 	o := output{
@@ -264,8 +264,8 @@ func (e PropertiesEvent) Context() context.Context { return e.Ctx }
 // round-trips with a stable kind discriminator.
 func (e PropertiesEvent) MarshalJSON() ([]byte, error) {
 	type output struct {
-		Kind       string               `json:"kind"`
-		Operations []PropertyOperation  `json:"operations"`
+		Kind       string                 `json:"kind"`
+		Operations []PropertyOperation    `json:"operations"`
 		Context    map[string]interface{} `json:"context,omitempty"`
 	}
 	o := output{
@@ -556,7 +556,8 @@ func (s *Step) startSpan(ctx context.Context) (context.Context, func()) {
 // per-call spec takes precedence over the loop's default spec
 // (configured via WithDefaultSpec); an empty per-call spec falls
 // back to the default. The resolved spec is forwarded to the
-// provider's Invoke.
+// provider's Invoke. Turn returns the input conversation state after emitted
+// turns have been recorded; inference transforms never become its return value.
 func (s *Step) Turn(ctx context.Context, st ledger.State, spec models.Spec, p provider.Provider, opts ...provider.InvokeOption) (ledger.State, error) {
 	defer s.clearEventContext()
 	ctx, endSpan := s.startSpan(ctx)
@@ -573,7 +574,9 @@ func (s *Step) Turn(ctx context.Context, st ledger.State, spec models.Spec, p pr
 	s.Emit(ctx, LifecycleEvent{Phase: "submitted", Ctx: s.eventContext})
 
 	var hasStreamed bool
-	st, accumulatedArtifacts, err := s.pipeline.Turn(ctx, st, spec, p, func(art artifact.Artifact) {
+	// Transforms build an inference-only view. Keep the conversation state
+	// returned to callers so another Turn does not apply them on top of it.
+	accumulatedArtifacts, err := s.pipeline.Turn(ctx, st, spec, p, func(art artifact.Artifact) {
 		if !hasStreamed {
 			hasStreamed = true
 			s.Emit(ctx, LifecycleEvent{Phase: "streaming", Ctx: s.eventContext})
