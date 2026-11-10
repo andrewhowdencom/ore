@@ -389,7 +389,13 @@ type streamState struct {
 	toolUse   bool
 	completed bool
 	refusal   bool
-	seenTool  map[string]bool
+	toolCalls map[int]*streamToolCall
+}
+
+type streamToolCall struct {
+	id        string
+	name      string
+	arguments string
 }
 
 func handleEvent(ctx context.Context, data []byte, ch chan<- artifact.Artifact, state *streamState, span trace.Span) error {
@@ -412,13 +418,11 @@ func handleEvent(ctx context.Context, data []byte, ch chan<- artifact.Artifact, 
 		var item outputItem
 		if json.Unmarshal(event.Item, &item) == nil && item.Type == "function_call" {
 			state.toolUse = true
-			state.markTool(item.ID, item.CallID)
-			return emit(ctx, ch, artifact.ToolCallDelta{Index: event.OutputIndex, ID: first(item.CallID, item.ID), Name: item.Name, Arguments: item.Arguments})
+			return state.emitToolCall(ctx, ch, artifact.ToolCallDelta{Index: event.OutputIndex, ID: first(item.CallID, item.ID), Name: item.Name, Arguments: item.Arguments})
 		}
 	case "response.function_call_arguments.delta":
 		state.toolUse = true
-		state.markTool(event.ItemID, event.CallID)
-		return emit(ctx, ch, artifact.ToolCallDelta{Index: event.OutputIndex, ID: event.CallID, Arguments: event.Delta})
+		return state.emitToolCall(ctx, ch, artifact.ToolCallDelta{Index: event.OutputIndex, ID: event.CallID, Arguments: event.Delta})
 	case "response.output_item.done":
 		var item outputItem
 		if err := json.Unmarshal(event.Item, &item); err != nil {
@@ -429,10 +433,7 @@ func handleEvent(ctx context.Context, data []byte, ch chan<- artifact.Artifact, 
 		}
 		if item.Type == "function_call" {
 			state.toolUse = true
-			if !state.hasSeenTool(item.ID, item.CallID) {
-				state.markTool(item.ID, item.CallID)
-				return emit(ctx, ch, artifact.ToolCallDelta{Index: event.OutputIndex, ID: first(item.CallID, item.ID), Name: item.Name, Arguments: item.Arguments})
-			}
+			return state.completeToolCall(ctx, ch, event.OutputIndex, item)
 		}
 	case "response.completed", "response.done", "response.incomplete":
 		var done responseDone
@@ -510,24 +511,51 @@ func recordUsage(span trace.Span, usage artifact.Usage) {
 	span.SetAttributes(attrs...)
 }
 
-func (s *streamState) markTool(ids ...string) {
-	if s.seenTool == nil {
-		s.seenTool = make(map[string]bool)
+func (s *streamState) emitToolCall(ctx context.Context, ch chan<- artifact.Artifact, delta artifact.ToolCallDelta) error {
+	if err := emit(ctx, ch, delta); err != nil {
+		return err
 	}
-	for _, id := range ids {
-		if id != "" {
-			s.seenTool[id] = true
-		}
+	if s.toolCalls == nil {
+		s.toolCalls = make(map[int]*streamToolCall)
 	}
+	call := s.toolCalls[delta.Index]
+	if call == nil {
+		call = &streamToolCall{}
+		s.toolCalls[delta.Index] = call
+	}
+	if delta.ID != "" {
+		call.id = delta.ID
+	}
+	call.name += delta.Name
+	call.arguments += delta.Arguments
+	return nil
 }
 
-func (s *streamState) hasSeenTool(ids ...string) bool {
-	for _, id := range ids {
-		if id != "" && s.seenTool[id] {
-			return true
-		}
+func (s *streamState) completeToolCall(ctx context.Context, ch chan<- artifact.Artifact, index int, item outputItem) error {
+	call := s.toolCalls[index]
+	if call == nil {
+		return s.emitToolCall(ctx, ch, artifact.ToolCallDelta{Index: index, ID: first(item.CallID, item.ID), Name: item.Name, Arguments: item.Arguments})
 	}
-	return false
+	if item.Name != "" && !strings.HasPrefix(item.Name, call.name) {
+		return fmt.Errorf("responses: completed function call name differs from streamed name at output index %d", index)
+	}
+	if item.Arguments != "" && !strings.HasPrefix(item.Arguments, call.arguments) {
+		return fmt.Errorf("responses: completed function call arguments differ from streamed arguments at output index %d", index)
+	}
+	delta := artifact.ToolCallDelta{Index: index}
+	if id := first(item.CallID, item.ID); id != call.id {
+		delta.ID = id
+	}
+	if item.Name != "" {
+		delta.Name = strings.TrimPrefix(item.Name, call.name)
+	}
+	if item.Arguments != "" {
+		delta.Arguments = strings.TrimPrefix(item.Arguments, call.arguments)
+	}
+	if delta.ID == "" && delta.Name == "" && delta.Arguments == "" {
+		return nil
+	}
+	return s.emitToolCall(ctx, ch, delta)
 }
 
 func first(values ...string) string {

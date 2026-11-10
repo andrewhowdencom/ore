@@ -165,6 +165,103 @@ func TestConsumeSSEPreservesFunctionCallIDAcrossArgumentDeltas(t *testing.T) {
 	}, accumulated)
 }
 
+func TestConsumeSSEReconcilesCompletedFunctionCalls(t *testing.T) {
+	tests := []struct {
+		name   string
+		events []string
+		want   map[int]artifact.ToolCall
+	}{
+		{
+			name: "arguments only on completed item",
+			events: []string{
+				`{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"bash","arguments":""}}`,
+				`{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"bash","arguments":"{\"command\":\"go test ./...\"}"}}`,
+			},
+			want: map[int]artifact.ToolCall{0: {ID: "call_1", Name: "bash", Arguments: `{"command":"go test ./..."}`}},
+		},
+		{
+			name: "completed item repeats argument deltas",
+			events: []string{
+				`{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"lookup","arguments":""}}`,
+				`{"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":0,"delta":"{\"q\":"}`,
+				`{"type":"response.function_call_arguments.delta","call_id":"call_1","output_index":0,"delta":"\"ore\"}"}`,
+				`{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"lookup","arguments":"{\"q\":\"ore\"}"}}`,
+			},
+			want: map[int]artifact.ToolCall{0: {ID: "call_1", Name: "lookup", Arguments: `{"q":"ore"}`}},
+		},
+		{
+			name: "completed item finishes partial deltas and supplies call ID",
+			events: []string{
+				`{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","name":"lookup","arguments":""}}`,
+				`{"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":0,"delta":"{\"q\":"}`,
+				`{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"lookup","arguments":"{\"q\":\"ore\"}"}}`,
+			},
+			want: map[int]artifact.ToolCall{0: {ID: "call_1", Name: "lookup", Arguments: `{"q":"ore"}`}},
+		},
+		{
+			name: "interleaved calls stay separate by output index",
+			events: []string{
+				`{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"lookup","arguments":""}}`,
+				`{"type":"response.output_item.added","output_index":1,"item":{"type":"function_call","id":"fc_2","call_id":"call_2","name":"bash","arguments":""}}`,
+				`{"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":0,"delta":"{\"q\":\"ore\"}"}`,
+				`{"type":"response.output_item.done","output_index":1,"item":{"type":"function_call","id":"fc_2","call_id":"call_2","name":"bash","arguments":"{\"command\":\"pwd\"}"}}`,
+				`{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"lookup","arguments":"{\"q\":\"ore\"}"}}`,
+			},
+			want: map[int]artifact.ToolCall{
+				0: {ID: "call_1", Name: "lookup", Arguments: `{"q":"ore"}`},
+				1: {ID: "call_2", Name: "bash", Arguments: `{"command":"pwd"}`},
+			},
+		},
+		{
+			name: "completed item supplies missing name after deltas",
+			events: []string{
+				`{"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":0,"delta":"{\"q\":\"ore\"}"}`,
+				`{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"lookup","arguments":"{\"q\":\"ore\"}"}}`,
+			},
+			want: map[int]artifact.ToolCall{0: {ID: "call_1", Name: "lookup", Arguments: `{"q":"ore"}`}},
+		},
+		{
+			name: "completed item without earlier events",
+			events: []string{
+				`{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","call_id":"call_1","name":"lookup","arguments":"{\"q\":\"ore\"}"}}`,
+			},
+			want: map[int]artifact.ToolCall{0: {ID: "call_1", Name: "lookup", Arguments: `{"q":"ore"}`}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lines := make([]string, 0, len(tt.events)+2)
+			for _, event := range tt.events {
+				lines = append(lines, "data: "+event)
+			}
+			lines = append(lines, `data: {"type":"response.completed","response":{"status":"completed"}}`, "")
+			ch := make(chan artifact.Artifact, 32)
+			require.NoError(t, consumeSSE(context.Background(), strings.NewReader(strings.Join(lines, "\n\n")), ch, nil))
+			close(ch)
+
+			got := make(map[int]artifact.ToolCall)
+			for item := range ch {
+				if delta, ok := item.(artifact.ToolCallDelta); ok {
+					got[delta.Index] = delta.MergeInto(got[delta.Index]).(artifact.ToolCall)
+				}
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestConsumeSSERejectsConflictingCompletedFunctionCall(t *testing.T) {
+	stream := strings.Join([]string{
+		`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","call_id":"call_1","name":"lookup","arguments":""}}`,
+		`data: {"type":"response.function_call_arguments.delta","output_index":0,"delta":"{\"q\":\"ore\"}"}`,
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","call_id":"call_1","name":"lookup","arguments":"{\"q\":\"other\"}"}}`,
+		"",
+	}, "\n\n")
+	err := consumeSSE(context.Background(), strings.NewReader(stream), make(chan artifact.Artifact, 4), nil)
+	require.ErrorContains(t, err, "completed function call arguments differ")
+}
+
 func TestInvokeReturnsAfterTerminalEventWithoutWaitingForEOF(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
