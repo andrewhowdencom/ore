@@ -294,7 +294,9 @@ func (h *Handler) submitEvent(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	case "user_message":
 		event = session.UserMessageEvent{
 			Content: req.Content,
-			Ctx:     loop.WithProvenance(ctx, "http"),
+			// The accepted turn outlives this POST request. Keep trace and
+			// provenance values without canceling inference when 202 returns.
+			Ctx: loop.WithProvenance(context.WithoutCancel(ctx), "http"),
 		}
 	default:
 		writeJSONError(w, stdhttp.StatusBadRequest, fmt.Sprintf("unknown event kind: %q", req.Kind))

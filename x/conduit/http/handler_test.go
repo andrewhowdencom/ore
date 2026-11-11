@@ -270,6 +270,40 @@ func TestSubmitEvent_UserMessageReturns202(t *testing.T) {
 	assert.Equal(t, 202, resp.StatusCode)
 }
 
+func TestSubmitEvent_AcceptedTurnOutlivesRequest(t *testing.T) {
+	backend := newFakeBackend()
+	type submittedContexts struct {
+		request context.Context
+		event   context.Context
+	}
+	submitted := make(chan submittedContexts, 1)
+	backend.submitHook = func(ctx context.Context, _ string, event session.Event) error {
+		submitted <- submittedContexts{request: ctx, event: event.Context()}
+		return nil
+	}
+	h := newTestHandler(t, backend, WithoutUI())
+	server := httptest.NewServer(h.ServeMux())
+	defer server.Close()
+
+	createResp, err := stdhttp.Post(server.URL+"/sessions", "application/json", nil)
+	require.NoError(t, err)
+	var created map[string]string
+	require.NoError(t, json.NewDecoder(createResp.Body).Decode(&created))
+	require.NoError(t, createResp.Body.Close())
+
+	resp, err := stdhttp.Post(server.URL+"/sessions/"+created["id"]+"/events", "application/json", strings.NewReader(`{"kind":"user_message","content":"hi"}`))
+	require.NoError(t, err)
+	require.Equal(t, stdhttp.StatusAccepted, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	contexts := <-submitted
+	require.Eventually(t, func() bool { return contexts.request.Err() != nil }, time.Second, time.Millisecond)
+	require.NoError(t, contexts.event.Err())
+	provenance, ok := loop.ProvenanceFrom(contexts.event)
+	require.True(t, ok)
+	assert.Equal(t, "http", provenance)
+}
+
 func TestSubmitEvent_InterruptReturns202(t *testing.T) {
 
 	backend := newFakeBackend()
